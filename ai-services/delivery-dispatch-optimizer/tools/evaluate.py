@@ -40,13 +40,45 @@ def secs(a, b):
     return int(meters(a, b) * ROAD / SPEED)
 
 
-def instance(rnd: random.Random, n: int, m: int) -> PlanRequest:
-    pts = [(MFC[0] + rnd.uniform(-0.025, 0.025), MFC[1] + rnd.uniform(-0.03, 0.03)) for _ in range(n)]
+ROAD_RATIOS: list[float] = []  # 카카오 도로 시간 / 합성 시간(MFC → 고객) — 합성값이 얼마나 맞았는지
+
+
+def point(rnd: random.Random):
+    return (MFC[0] + rnd.uniform(-0.025, 0.025), MFC[1] + rnd.uniform(-0.03, 0.03))
+
+
+def instance(rnd: random.Random, n: int, m: int, road=None) -> PlanRequest:
+    """road 가 없으면 합성 도로 시간(직선 × 1.3 ÷ 5m/s), 있으면 카카오 실제 도로 시간(tools/kakao_road.py). 길이 없는 점(강·공원 안 등)은 다시 뽑는다."""
+    pts = [point(rnd) for _ in range(n)]
+    if road is None:
+        direct = [secs(MFC, p) for p in pts]
+        between = [[0 if i == j else secs(pts[i], pts[j]) for j in range(n)] for i in range(n)]
+    else:
+        direct = road.seconds(MFC, pts)
+        for _ in range(5):
+            bad = [i for i, s in enumerate(direct) if s is None]
+            if not bad:
+                break
+            for i in bad:
+                pts[i] = point(rnd)
+            again = road.seconds(MFC, [pts[i] for i in bad])
+            for i, s in zip(bad, again):
+                direct[i] = s
+        keep = [i for i, s in enumerate(direct) if s is not None]
+        pts = [pts[i] for i in keep]
+        direct = [direct[i] for i in keep]
+        n = len(pts)
+        ROAD_RATIOS.extend(d / max(1, secs(MFC, p)) for d, p in zip(direct, pts))
+        between = []
+        for i in range(n):
+            others = [pts[j] for j in range(n) if j != i]
+            row = iter(road.seconds(pts[i], others))
+            between.append([0 if i == j else next(row) for j in range(n)])
     deliveries = [
         {
             "deliveryId": f"D{i}",
             "at": {"lat": p[0], "lng": p[1]},
-            "directSeconds": secs(MFC, p),
+            "directSeconds": direct[i],
             "readyInSeconds": rnd.choice([0, 0, 120, 300, 600]),
             "bundlable": True,
         }
@@ -61,7 +93,6 @@ def instance(rnd: random.Random, n: int, m: int) -> PlanRequest:
         }
         for j in range(m)
     ]
-    between = [[0 if i == j else secs(pts[i], pts[j]) for j in range(n)] for i in range(n)]
     return PlanRequest.model_validate(
         {
             "mfc": {"lat": MFC[0], "lng": MFC[1]},
@@ -152,7 +183,10 @@ def nearest(req: PlanRequest, k: int):
     n = len(req.deliveries)
     out = []
     for a in range(n):
-        others = sorted((b for b in range(n) if b != a and (req.between_seconds[a][b] or 0) >= 0), key=lambda b: (req.between_seconds[a][b], b))
+        others = sorted(
+            (b for b in range(n) if b != a and req.between_seconds[a][b] is not None and req.between_seconds[a][b] >= 0),
+            key=lambda b: (req.between_seconds[a][b], b),
+        )
         out.append(set(others[:k]))
     return out
 
@@ -187,18 +221,26 @@ def main():
     ap.add_argument("--min-n", type=int, default=4, help="문제당 배송 수 최소")
     ap.add_argument("--max-n", type=int, default=12, help="문제당 배송 수 최대(큰 MFC 비교는 20~40)")
     ap.add_argument("--multistart", action="store_true", help="RouteFinder 를 출발점 n개로 풀고 가장 싼 답(app.routefinder_model.route_cost)")
+    ap.add_argument("--road", choices=["synthetic", "kakao"], default="synthetic", help="도로 시간 — 합성(직선×1.3÷5m/s) 또는 카카오 실제")
+    ap.add_argument("--kakao-key-file", default=None, help="카카오모빌리티 REST 키 파일(또는 환경변수 KAKAO_MOBILITY_KEY)")
     ap.add_argument("--neighbors", type=int, default=0, help="OR-Tools 묶음 후보를 가까운 k 명으로(dispatch bundle-neighbors). 0 = 모든 조합")
     ap.add_argument("--ortools-limit", type=float, default=2.0, help="CP-SAT 시간 한도(초) — dispatch solver-time-limit 와 같게")
     args = ap.parse_args()
     from app.routefinder_model import RouteFinderModel, checkpoint_path
 
     model = RouteFinderModel(checkpoint_path(), multistart=args.multistart)
+    road = None
+    if args.road == "kakao":
+        from kakao_road import KakaoRoad
+
+        road = KakaoRoad.from_file(args.kakao_key_file)
     rnd = random.Random(args.seed)
     rows = []
     for _ in range(args.instances):
         n = rnd.randint(args.min_n, args.max_n)
         m = rnd.randint(max(2, n // 4), max(2, n // 2))
-        req = instance(rnd, n, m)
+        req = instance(rnd, n, m, road)
+        n = len(req.deliveries)
         t0 = time.perf_counter()
         ai = planner.plan(req, model)
         t_ai = (time.perf_counter() - t0) * 1000
@@ -212,7 +254,7 @@ def main():
     gap = [(r[2][1] - r[3][1]) / r[3][1] * 100 for r in same_cov if r[3][1] > 0]
     worse_cov = sum(1 for r in rows if r[2][0] < r[3][0])
     better_cov = sum(1 for r in rows if r[2][0] > r[3][0])
-    print(f"문제 {len(rows)}개 (배송 {args.min_n}~{args.max_n}, multistart={args.multistart}, OR-Tools 이웃={args.neighbors}, 라이더 배송/4~배송/2, 합성 도로 시간)")
+    print(f"문제 {len(rows)}개 (배송 {args.min_n}~{args.max_n}, multistart={args.multistart}, OR-Tools 이웃={args.neighbors}, 라이더 배송/4~배송/2, 도로 시간 {args.road})")
     print(f"배정 배송 수 합계: RouteFinder {cov_ai} / OR-Tools {cov_ot}")
     print(f"배정 수가 OR-Tools 보다 적은 문제 {worse_cov}개, 많은 문제 {better_cov}개")
     if gap:
@@ -226,6 +268,13 @@ def main():
         f"OR-Tools {statistics.median(r[5] for r in rows):.1f}"
     )
     print(f"계산 시간(ms) 최대: RouteFinder {max(r[4] for r in rows):.0f} / OR-Tools {max(r[5] for r in rows):.0f}")
+    if road is not None:
+        road.save()
+        ratios = sorted(ROAD_RATIOS)
+        print(
+            f"카카오 호출 {road.calls}번(저장분 제외). 카카오 / 합성(MFC → 고객) 시간 비: 중앙 {ratios[len(ratios) // 2]:.2f}"
+            f" · 10% {ratios[len(ratios) // 10]:.2f} · 90% {ratios[len(ratios) * 9 // 10]:.2f}"
+        )
     if ORTOOLS_NO_SOLUTION:
         print(
             f"OR-Tools 가 시간 안에 해를 못 찾아 규칙 기반 해를 쓴 문제 {len(ORTOOLS_NO_SOLUTION)}개"
