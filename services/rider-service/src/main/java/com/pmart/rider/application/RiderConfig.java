@@ -1,0 +1,15 @@
+package com.pmart.rider.application;
+
+import java.time.Clock;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+class RiderConfig {
+
+  /** UTC(ADR-0010). */
+  @Bean
+  Clock clock() {
+    return Clock.systemUTC();
+  }
+}
