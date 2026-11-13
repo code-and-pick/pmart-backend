@@ -3,6 +3,7 @@
 - 결정: 사용자 2026-11-09 — **백오피스 웹 하나에서 로그인 권한(역할)에 따라 메뉴가 바뀌게** 한다. MFC 화면도 같은 백오피스 안에.
 - 백엔드 정본: `pmart-backend/docs/architecture/backoffice-role-menus.md`(역할 → 메뉴 표, MFC 메뉴 목록·API).
 - 백엔드 변경: 없음(역할·센터는 이미 로그인 응답과 `GET /api/v1/auth/sessions/current` 에 있음). 근무 기본값만 mfc-capacity 0.9.3(아래 4).
+  - **2026-11-13 갱신**: 직원 로그인이 employee-auth-service 로 바뀌어 지금은 티켓 교환 응답과 `GET /api/v1/employee-auth/sessions/current` 의 `roles`·`centers` 를 쓴다(auth-service 운영자 로그인·`/operator-accounts` 는 없어짐 — `archive/2026-11-13-clients-notice-auth-operator-login-removed.md`). `OPERATOR_ADMIN` 의 "운영자 계정" 메뉴는 빼 주세요(백엔드 문서 2장 갱신).
 
 ## 1. 요청
 1. 지금 고정 메뉴 목록(`src/app/App.tsx` 의 `nav`)을 **세션의 `roles` 로 거르는** 방식으로 바꿔 주세요. 대응표는 백엔드 문서 2장(임시 기본값).

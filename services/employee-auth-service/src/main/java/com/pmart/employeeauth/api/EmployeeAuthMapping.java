@@ -4,6 +4,7 @@ import com.pmart.employeeauth.api.generated.model.Employee;
 import com.pmart.employeeauth.api.generated.model.EmployeeLoginResult;
 import com.pmart.employeeauth.api.generated.model.EmployeeState;
 import com.pmart.employeeauth.api.generated.model.TokenPair;
+import com.pmart.employeeauth.api.generated.model.TokenPair.RefreshTransportEnum;
 import com.pmart.employeeauth.application.EmployeeLoginService;
 import com.pmart.employeeauth.application.EmployeeTokens;
 import com.pmart.employeeauth.infrastructure.EmployeeAuthStore;
@@ -16,21 +17,32 @@ final class EmployeeAuthMapping {
 
   private EmployeeAuthMapping() {}
 
+  /** 본문 refresh token(PDA 등). */
   static TokenPair tokens(EmployeeTokens.Tokens t) {
+    return tokens(t, false);
+  }
+
+  /** {@code cookie} 면 refresh token 을 본문에 싣지 않는다(HttpOnly 쿠키 — ADR-0059). */
+  static TokenPair tokens(EmployeeTokens.Tokens t, boolean cookie) {
     return new TokenPair()
         .accessToken(t.accessToken())
         .accessTokenExpiresAt(odt(t.accessTokenExpiresAt()))
-        .refreshToken(t.refreshToken())
+        .refreshToken(cookie ? null : t.refreshToken())
+        .refreshTransport(cookie ? RefreshTransportEnum.COOKIE : RefreshTransportEnum.BODY)
         .refreshTokenExpiresAt(odt(t.refreshTokenExpiresAt()))
         .sessionId(t.sessionId());
   }
 
   static EmployeeLoginResult login(EmployeeLoginService.LoginResult r) {
+    return login(r, false);
+  }
+
+  static EmployeeLoginResult login(EmployeeLoginService.LoginResult r, boolean cookie) {
     return new EmployeeLoginResult()
         .operatorId(r.operatorId())
         .roles(r.roles())
         .centers(r.centers())
-        .tokens(tokens(r.tokens()));
+        .tokens(tokens(r.tokens(), cookie));
   }
 
   static Employee employee(EmployeeAuthStore.AccountRow a) {

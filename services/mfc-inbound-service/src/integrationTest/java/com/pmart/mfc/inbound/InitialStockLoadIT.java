@@ -322,11 +322,60 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
     assertThat(first.path("attempts").asInt()).isEqualTo(1);
 
     // 수령 줄마다 품질검사 작업(수령 LOT, 수령 위치)
+    // 상품명·바코드는 mfc-inventory SKU 사본에서(0.8.0, BR-53 R8) — 사본이 없는 SKU 는 null·빈 배열
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/skus"))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "items",
+                        List.of(
+                            Map.of(
+                                "sku",
+                                "E-00000001",
+                                "productName",
+                                "서울우유 1L",
+                                "barcodes",
+                                List.of("08801115114154"),
+                                "state",
+                                "ACTIVE",
+                                "productVersion",
+                                1)),
+                        "missing",
+                        List.of("B-00000002")))));
     JsonNode tasks =
         get(op(m1), "/inbound-tasks?mfcId=" + m1 + "&taskType=INSPECT").body().path("items");
     assertThat(tasks).hasSize(2);
     assertThat(tasks.findValuesAsString("lotId")).containsExactlyInAnyOrder("LOT-B", "LOT-E");
     assertThat(get(op(m2), "/inbound-tasks?mfcId=" + m1).status()).isEqualTo(403);
+    JsonNode taskE =
+        "E-00000001".equals(tasks.path(0).path("sku").asString()) ? tasks.path(0) : tasks.path(1);
+    JsonNode taskB = taskE == tasks.path(0) ? tasks.path(1) : tasks.path(0);
+    assertThat(taskE.path("productName").asString()).isEqualTo("서울우유 1L");
+    assertThat(taskE.path("barcodes").path(0).asString()).isEqualTo("08801115114154");
+    assertThat(taskB.path("productName").isNull()).isTrue();
+    assertThat(taskB.path("barcodes")).isEmpty();
+    // 단건 조회(0.8.0) — 그 센터 운영자만
+    String taskEId = taskE.path("taskId").asString();
+    Res single = get(op(m1), "/inbound-tasks/" + taskEId);
+    assertThat(single.status()).isEqualTo(200);
+    assertThat(single.body().path("productName").asString()).isEqualTo("서울우유 1L");
+    assertThat(single.body().path("lotId").asString()).isEqualTo("LOT-E");
+    assertThat(get(op(m2), "/inbound-tasks/" + taskEId).status()).isEqualTo(403);
+    assertThat(get(op(m1), "/inbound-tasks/TSK-NOPE").status()).isEqualTo(404);
+    // 반입 목록 줄에도
+    JsonNode loadLines =
+        get(op(m1), "/initial-stock-loads?approvalId=" + approvalId).body().path("items");
+    assertThat(loadLines.findValuesAsString("productName")).contains("서울우유 1L");
+    // 조회가 실패해도 작업 목록은 그대로(표시만 빈 값)
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/skus"))
+            .willReturn(aResponse().withStatus(503)));
+    JsonNode degraded =
+        get(op(m1), "/inbound-tasks?mfcId=" + m1 + "&taskType=INSPECT").body().path("items");
+    assertThat(degraded).hasSize(2);
+    assertThat(degraded.path(0).path("productName").isNull()).isTrue();
 
     // ConfirmReceipt: 서비스 토큰, Idempotency-Key = receiptId, TRF 없는 초기 반입 표기, 정상 수량만
     inventory.verify(

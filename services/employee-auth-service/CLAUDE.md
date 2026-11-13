@@ -29,6 +29,7 @@
 - access: RS256, 예전 auth-service 운영자 토큰과 같은 모양 — `iss` = `pmart.employee-auth.issuer`(발급자 표 `staff-ea` 줄과 같게), `sub` = 운영자 ID, `typ=OPERATOR`, `aud=pmart-api`, `roles`, `centers`, `sid`, 15분.
 - refresh: 한 번만(재사용이면 세션 폐기 `TOKEN_REUSED`), 로그인한 기기에서만. 세션 = min(갱신 + 앱 무활동 한도, 시작 + 12시간).
 - 서명키 `pmart.employee-auth.signing.keys`(다른 발급자와 다른 키, LAN `{cipher}`, 원본 `.secrets/employee-auth-signing-key.pem`). local/test 만 `ephemeral=true`.
+- **웹 refresh 쿠키(ADR-0059)**: 앱 설정 `refresh-cookie` 를 켠 앱은 refresh token 을 본문 대신 세션별 HttpOnly 쿠키(`api/RefreshCookies` — Path = 갱신 주소/{sessionId})로, CSRF 는 Signed Double-Submit(`application/CsrfTokens` — HMAC 에 sessionId 를 묶음, 서버 저장 없음, 세션 동안 고정, 키 `pmart.employee-auth.refresh-cookie.csrf-key` `{cipher}` — local·시험은 `signing.ephemeral` 이면 임시 키). 갱신 `POST /tokens/refresh/{sessionId}` 는 CSRF(403, 세션 유지) → 소유권(세션·기기·쿠키 앱, 401 — 토큰 안 씀) → 회전 순. 쿠키 앱 세션은 본문 갱신 경로를 못 쓰고, 본문 앱은 쿠키 경로를 못 쓴다. 로그아웃은 그 세션의 쿠키 둘을 지운다. 시험 `RefreshCookieIT`(Keycloak 없이 티켓을 직접 넣음).
 - 로그아웃·현재 세션은 이 서비스가 발급한 토큰만(Keycloak 토큰은 403). 관리 경로는 발급자 표가 인정하는 OPERATOR + `OPERATOR_ADMIN`.
 
 ## 시험

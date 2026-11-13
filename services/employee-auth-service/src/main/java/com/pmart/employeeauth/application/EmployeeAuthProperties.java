@@ -20,6 +20,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param roles 직원 역할 목록(이 밖의 역할은 저장하지 않는다)
  * @param keycloak Keycloak(인가 서버) 연결
  * @param devTokenExchange LAN 시험 전용 토큰 교환(ADR-0056 D5)
+ * @param refreshCookie 웹 앱 refresh 쿠키·Signed Double-Submit CSRF(ADR-0059)
  */
 @ConfigurationProperties(prefix = "pmart.employee-auth")
 public record EmployeeAuthProperties(
@@ -33,7 +34,8 @@ public record EmployeeAuthProperties(
     Map<String, App> apps,
     List<String> roles,
     Keycloak keycloak,
-    DevTokenExchange devTokenExchange) {
+    DevTokenExchange devTokenExchange,
+    RefreshCookie refreshCookie) {
 
   public static final String DEFAULT_AUDIENCE = "pmart-api";
 
@@ -55,6 +57,7 @@ public record EmployeeAuthProperties(
             : keycloak;
     devTokenExchange =
         devTokenExchange == null ? new DevTokenExchange(false, null) : devTokenExchange;
+    refreshCookie = refreshCookie == null ? new RefreshCookie(null) : refreshCookie;
   }
 
   /** 앱별 세션 무활동 한도. 모르는 앱(시험 교환 등)은 세션 최대 길이. */
@@ -84,18 +87,38 @@ public record EmployeeAuthProperties(
    *     끝내고 매번 비밀번호를 묻는다(결정 14 ①). 켠 앱은 로그아웃 때 Keycloak 로그아웃 주소를 돌려준다
    * @param postLogoutPath SSO 앱이 Keycloak 로그아웃 뒤 돌아갈 경로(로그인한 복귀 주소의 출처 + 이 경로, 기본 /login). Keycloak
    *     클라이언트의 post.logout.redirect.uris 에 있어야 한다
+   * @param refreshCookie refresh token 을 본문 대신 세션별 HttpOnly 쿠키로(웹 앱 — ADR-0059). 켠 앱의 세션은 쿠키 갱신
+   *     경로로만 갱신된다
    */
   public record App(
       List<String> returnUris,
       @Nullable Duration sessionIdle,
       boolean sso,
-      @Nullable String postLogoutPath) {
+      @Nullable String postLogoutPath,
+      boolean refreshCookie) {
     public App {
       returnUris = returnUris == null ? List.of() : List.copyOf(returnUris);
       postLogoutPath =
           postLogoutPath == null || postLogoutPath.isBlank() ? "/login" : postLogoutPath;
     }
   }
+
+  /** 앱이 refresh 쿠키를 쓰는가(모르는 앱은 아니다 — ADR-0059). */
+  public boolean refreshCookie(String app) {
+    App a = apps.get(app);
+    return a != null && a.refreshCookie();
+  }
+
+  /** 어느 앱이든 refresh 쿠키를 쓰는가. */
+  public boolean anyRefreshCookie() {
+    return apps.values().stream().anyMatch(App::refreshCookie);
+  }
+
+  /**
+   * @param csrfKey Signed Double-Submit CSRF 값의 HMAC-SHA256 키(32바이트 이상 문자열, 설정 {cipher}, 로그 금지). 쿠키
+   *     앱이 있는데 비어 있으면 기동 실패 — 단 {@code signing.ephemeral}(local·시험)이면 기동마다 임시 키
+   */
+  public record RefreshCookie(@Nullable String csrfKey) {}
 
   /** 앱이 SSO 를 쓰는가(모르는 앱은 아니다). */
   public boolean sso(String app) {

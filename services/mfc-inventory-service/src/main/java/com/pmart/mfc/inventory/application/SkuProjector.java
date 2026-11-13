@@ -39,6 +39,11 @@ public class SkuProjector {
         .orElseThrow(() -> PmartException.notFound("SKU_NOT_FOUND", "SKU " + sku + " 투영이 없습니다."));
   }
 
+  /** 투영 일괄 조회(서비스 간). 없는 SKU 는 결과에 없다. */
+  public java.util.Map<String, SkuProjection> projections(java.util.Collection<String> skus) {
+    return store.findAll(skus);
+  }
+
   public void apply(EventEnvelope e) {
     switch (e.eventType()) {
       case "SkuIssued" -> issued(e.payload());
@@ -104,6 +109,8 @@ public class SkuProjector {
               s.hasNonNull("alcohol") ? s.get("alcohol").asBoolean() : null,
               integer(s.path("shelfLifeGuarantee"), "minRemainingDays"),
               integer(s.path("shelfLifeGuarantee"), "maxDaysSinceManufacture"),
+              text(p, "internalName"),
+              strings(s.path("barcodes")),
               "INACTIVE".equals(text(s, "state")) ? SkuState.INACTIVE : SkuState.ACTIVE,
               version,
               at));
@@ -112,6 +119,17 @@ public class SkuProjector {
 
   private static @Nullable String text(JsonNode n, String field) {
     return n.hasNonNull(field) ? n.get(field).asString() : null;
+  }
+
+  private static java.util.List<String> strings(JsonNode arr) {
+    java.util.List<String> out = new java.util.ArrayList<>();
+    for (JsonNode b : arr) {
+      String v = b.asString("");
+      if (!v.isBlank()) {
+        out.add(v);
+      }
+    }
+    return out;
   }
 
   private static @Nullable Integer integer(JsonNode n, String field) {

@@ -27,7 +27,7 @@
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
 | [CL-1](claim-service.md) | claim | mfc-inbound, mfc-quality | 반품 클레임·회수비·검수 뒤 환불 | **필요**(감액·면제 사유) | 대기 |
 | [R-1](case-service.md) | case | orchestration | 결품 상신 | — | 취소(ADR-0049) |
-| [R-2](case-service.md) | case | claim | 진행 중 주문 고객센터 취소 | **필요** | 대기 |
+| [R-2](case-service.md) | case | claim | 진행 중 주문 고객센터 취소 | ADR-0060 | **거둠**(2026-11-13) |
 | [R-3](case-service.md) | case | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | 대기 |
 | [R-4](case-service.md) | case | delivery-execution | 라이더 도움요청·전달 실패 등록(`DeliveryIncidentRaised`) → 지원센터 사건, `CaseOpened` 로 caseId 회신 | — (사용자 결정 1번, 2026-11-13) | 대기 — execution 쪽 발행은 구현됨 |
 | [N-1](notification-service.md) | notification | order, mfc | 결품 부분 취소·환불 고객 안내 | **필요**(보류 단계 안내) | 대기 |
@@ -39,6 +39,7 @@
 | [BO-12](backoffice-bff.md) | backoffice-bff | orchestration, mfc-fulfillment | 운영자 수동 개입 화면(사가·인계·중지 재시도) | **필요** | 대기 |
 | [CU-1](customer-service.md) | customer | auth | 약관 동의 → `require-consent` 켜기 | **필요**(시점) | 대기 |
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
+| [CO-1](cdc-outbound-service.md) | cdc-outbound | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)
 - 서비스끼리의 직접 호출(RestClient)은 모두 구현된 엔드포인트를 부른다. 남은 공백은 전부 **사건**(발행자 또는 구독자 없음) 쪽이다.

@@ -293,6 +293,7 @@ POST /api/v1/disposal-approvals/{disposalApprovalId}/executions OPERATOR
 POST /api/v1/employee-auth/logouts OPERATOR
 POST /api/v1/employee-auth/tokens PUBLIC
 POST /api/v1/employee-auth/tokens/refresh PUBLIC
+POST /api/v1/employee-auth/tokens/refresh/{sessionId} PUBLIC
 POST /api/v1/fefo-exceptions OPERATOR
 POST /api/v1/forecast-runs OPERATOR
 POST /api/v1/fulfillment-issues/{issueId}/acknowledgements OPERATOR

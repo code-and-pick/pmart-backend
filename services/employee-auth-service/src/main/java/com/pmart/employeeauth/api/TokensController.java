@@ -10,8 +10,11 @@ import com.pmart.employeeauth.api.generated.model.RefreshEmployeeTokensRequest;
 import com.pmart.employeeauth.api.generated.model.TokenPair;
 import com.pmart.employeeauth.application.EmployeeLoginService;
 import com.pmart.employeeauth.application.EmployeeSessionService;
+import com.pmart.employeeauth.application.EmployeeTokens;
+import jakarta.servlet.http.HttpServletRequest;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,10 +27,13 @@ public class TokensController implements TokensApi {
 
   private final EmployeeLoginService logins;
   private final EmployeeSessionService sessions;
+  private final HttpServletRequest request;
 
-  public TokensController(EmployeeLoginService logins, EmployeeSessionService sessions) {
+  public TokensController(
+      EmployeeLoginService logins, EmployeeSessionService sessions, HttpServletRequest request) {
     this.logins = logins;
     this.sessions = sessions;
+    this.request = request; // 요청 범위 프록시 — 쿠키 읽기(ADR-0059)
   }
 
   @Override
@@ -36,12 +42,18 @@ public class TokensController implements TokensApi {
       String xSourceSystem,
       String xDeviceId,
       ExchangeLoginTicketRequest body) {
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .body(
-            EmployeeAuthMapping.login(
-                logins.exchangeTicket(
-                    body.getTicket(), body.getCodeVerifier(), xDeviceId, xSourceSystem)));
+    EmployeeLoginService.LoginResult r =
+        logins.exchangeTicket(body.getTicket(), body.getCodeVerifier(), xDeviceId, xSourceSystem);
+    boolean cookie = sessions.refreshCookie(r.app());
+    ResponseEntity.BodyBuilder res = ResponseEntity.ok().cacheControl(CacheControl.noStore());
+    if (cookie) {
+      String sid = r.tokens().sessionId();
+      res.header(
+          HttpHeaders.SET_COOKIE,
+          RefreshCookies.open(sid, r.tokens().refreshToken(), sessions.csrfFor(sid))
+              .toArray(String[]::new));
+    }
+    return res.body(EmployeeAuthMapping.login(r, cookie));
   }
 
   @Override
@@ -52,16 +64,44 @@ public class TokensController implements TokensApi {
       RefreshEmployeeTokensRequest body) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
-        .body(EmployeeAuthMapping.tokens(sessions.refresh(body.getRefreshToken(), xDeviceId)));
+        .body(
+            EmployeeAuthMapping.tokens(sessions.refresh(body.getRefreshToken(), xDeviceId, null)));
+  }
+
+  @Override
+  public ResponseEntity<TokenPair> refreshEmployeeTokensWithCookie(
+      String idempotencyKey,
+      String xSourceSystem,
+      String sessionId,
+      String xDeviceId,
+      String xCSRFToken) {
+    EmployeeTokens.Tokens t =
+        sessions.refreshWithCookie(
+            sessionId,
+            RefreshCookies.read(request, RefreshCookies.REFRESH),
+            RefreshCookies.read(request, RefreshCookies.CSRF_PREFIX + sessionId),
+            xCSRFToken,
+            xDeviceId);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .header(HttpHeaders.SET_COOKIE, RefreshCookies.refresh(sessionId, t.refreshToken()))
+        .body(EmployeeAuthMapping.tokens(t, true));
   }
 
   @Override
   public ResponseEntity<EmployeeLogoutResult> employeeLogout(
       String idempotencyKey, String xSourceSystem, @Nullable EmployeeLogoutRequest body) {
-    java.net.URI idp = sessions.logout(body != null && Boolean.TRUE.equals(body.getAllDevices()));
-    return ResponseEntity.ok()
-        .cacheControl(CacheControl.noStore())
-        .body(new EmployeeLogoutResult().idpLogoutUri(idp == null ? null : idp.toString()));
+    EmployeeSessionService.LogoutOutcome out =
+        sessions.logout(body != null && Boolean.TRUE.equals(body.getAllDevices()));
+    ResponseEntity.BodyBuilder res = ResponseEntity.ok().cacheControl(CacheControl.noStore());
+    if (out.cookieSessionId() != null) {
+      // 서버 세션 폐기와 함께 이 탭 세션의 쿠키 둘을 지운다(ADR-0059 결정 7)
+      res.header(
+          HttpHeaders.SET_COOKIE,
+          RefreshCookies.clear(out.cookieSessionId()).toArray(String[]::new));
+    }
+    java.net.URI idp = out.idpLogoutUri();
+    return res.body(new EmployeeLogoutResult().idpLogoutUri(idp == null ? null : idp.toString()));
   }
 
   @Override

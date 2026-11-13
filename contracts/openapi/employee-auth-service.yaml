@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: employee-auth-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
     (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
@@ -17,6 +17,14 @@ info:
        설정의 복귀 주소로 60초·1회용 로그인 티켓을 붙여 보낸다(예 pmart-mfc://login?ticket=…). 실패면 ?error=코드.
     4. 앱이 POST /employee-auth/tokens {ticket, codeVerifier} + X-Device-Id 로 직원 토큰을 받는다. 티켓은 시작한 기기·code_verifier 로만 바뀐다
        (딥링크를 가로챈 다른 앱은 쓸 수 없다 — RFC 8252 §8.1 과 같은 방식).
+
+    웹 앱 refresh 쿠키(0.3.0, ADR-0059 — 설정 refresh-cookie 가 켜진 앱: backoffice·hr-backoffice):
+    - 티켓 교환·갱신 응답의 tokens.refreshToken 은 null 이고 refreshTransport = COOKIE. 대신 두 쿠키를 심는다(세션 쿠키 — Max-Age 없음):
+      `__Secure-pmart_ea_rt`(refresh token. HttpOnly·Secure·SameSite=Strict·Path=/api/v1/employee-auth/tokens/refresh/{sessionId}) 와
+      `__Secure-pmart_ea_csrf_{sessionId}`(CSRF 값. JS 가 읽는다·Secure·SameSite=Strict·Path=/ — 세션 동안 바뀌지 않는다).
+    - 갱신은 POST /employee-auth/tokens/refresh/{sessionId} + 헤더 X-CSRF-Token(= 그 CSRF 쿠키 값) + X-Device-Id, 브라우저는 credentials: include.
+    - 교차 출처(화면 443·8444 → 게이트웨이 8443) 호출이라 티켓 교환·갱신·로그아웃은 credentials: include 로 불러야 쿠키가 저장·전송·삭제된다.
+    - 결과를 모르는 갱신(응답 유실)은 다시 보내지 않는다(재사용 → 세션 종료). 세션 끝남·CSRF 쿠키 유실이면 silent 로그인으로 새 세션.
 servers:
   - url: /api/v1
 security:
@@ -95,7 +103,9 @@ paths:
                 codeVerifier: { type: string, minLength: 43, maxLength: 128, description: 로그 금지 }
       responses:
         '200':
-          description: OK
+          description: |
+            OK. refresh 쿠키 앱(ADR-0059)이면 tokens.refreshToken = null, refreshTransport = COOKIE 이고 Set-Cookie 로
+            `__Secure-pmart_ea_rt`(Path=/api/v1/employee-auth/tokens/refresh/{sessionId})·`__Secure-pmart_ea_csrf_{sessionId}`(Path=/) 를 심는다.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EmployeeLoginResult' }
@@ -113,8 +123,10 @@ paths:
   /employee-auth/tokens/refresh:
     post:
       tags: [tokens]
-      summary: 토큰 갱신 (refresh token 회전. 재사용 감지 시 세션 폐기)
+      summary: 토큰 갱신 — 본문 refresh token (PDA 등. 회전, 재사용 감지 시 세션 폐기)
       description: |
+        refresh 쿠키 앱(backoffice·hr-backoffice — ADR-0059)의 세션은 이 경로로 갱신할 수 없다(401 TOKEN_INVALID, 토큰은 쓰지 않은 채로 둔다) —
+        POST /employee-auth/tokens/refresh/{sessionId}.
         refresh token 은 한 번만 쓴다. 이미 쓴 토큰이 다시 오면 세션을 끝내고 TOKEN_REUSED. 로그인한 기기(X-Device-Id)에서만.
         세션은 앱별 무활동 한도(mfc 30분 — ADR-0056 결정 14 ③)와 최대 길이(근무 12시간) 안에서만 이어진다. 직원 상태를 매번 다시 본다.
       operationId: refreshEmployeeTokens
@@ -144,6 +156,42 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /employee-auth/tokens/refresh/{sessionId}:
+    post:
+      tags: [tokens]
+      summary: 토큰 갱신 — refresh 쿠키 + Signed Double-Submit CSRF (웹 백오피스, ADR-0059)
+      description: |
+        브라우저가 credentials: include 로 부른다. 요청 쿠키 `__Secure-pmart_ea_rt`(이 주소 Path 라 이 세션 것만 실린다)와
+        `__Secure-pmart_ea_csrf_{sessionId}`, 헤더 X-CSRF-Token(= CSRF 쿠키 값)·X-Device-Id 를 본다.
+        확인 순서: ① CSRF — 헤더 = 쿠키, 서명이 맞고 서명에 묶인 세션 = 주소의 sessionId. 틀리면 403 CSRF_INVALID(세션은 끊지 않는다).
+        ② 소유권 — refresh token 이 주소의 세션 것, 세션의 기기·앱(refresh 쿠키 앱)이 맞고 살아 있음. 틀리면 401 TOKEN_INVALID(토큰을 쓰지 않음).
+        ③ 회전 — 이미 쓴 토큰이면 세션 종료 401 TOKEN_REUSED. 성공하면 새 refresh 쿠키(같은 Path), CSRF 쿠키는 그대로.
+        결과를 모르는 요청(응답 유실)은 다시 보내지 않는다 — silent 로그인으로 새 세션.
+      operationId: refreshEmployeeTokensWithCookie
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: sessionId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string, maxLength: 256 }, description: "CSRF 쿠키 값 그대로. 로그 금지" }
+      responses:
+        '200':
+          description: OK — refreshToken = null(refreshTransport = COOKIE), Set-Cookie 로 새 refresh 쿠키
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: TOKEN_INVALID / TOKEN_REUSED (세션 끝남 — silent 로그인으로 새 세션)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: CSRF_INVALID (CSRF 쿠키 없음·헤더 불일치·서명 틀림 — 세션은 그대로. 이 탭에서는 silent 로그인으로 새 세션)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /employee-auth/logouts:
     post:
       tags: [tokens]
@@ -153,6 +201,8 @@ paths:
         SSO 앱(backoffice — 2026-11-12 사용자 결정)은 Keycloak 세션이 남아 있으므로 응답의 idpLogoutUri 로 **브라우저를 이동**시켜야
         Keycloak 세션까지 끝난다(확인 화면 없이 바로 끝나고 그 앱의 로그인 화면으로 돌아온다). 이동하지 않으면 같은 브라우저의 새 로그인이
         비밀번호 없이 된다. 이미 끝난 세션이면 idpLogoutUri 없이 200.
+        refresh 쿠키 앱(ADR-0059)이면 이 세션의 쿠키 둘을 Max-Age=0 으로 지운다(credentials: include 로 불러야 브라우저가 지운다).
+        allDevices 면 서버 세션은 모두 끝나지만 쿠키는 이 탭 세션 것만 지워진다(다른 탭 쿠키는 세션이 없어 쓸 수 없다).
       operationId: employeeLogout
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -339,12 +389,16 @@ components:
             additionalProperties: true
     TokenPair:
       type: object
-      required: [accessToken, refreshToken, accessTokenExpiresAt, refreshTokenExpiresAt, sessionId]
+      required: [accessToken, accessTokenExpiresAt, refreshTokenExpiresAt, sessionId, refreshTransport]
       properties:
         accessToken:
           type: string
           description: "PMart 직원 토큰(RS256, iss = employee-auth-service, sub = 운영자 ID, typ = OPERATOR, aud = pmart-api, roles, centers, sid). 15분"
-        refreshToken: { type: string }
+        refreshToken: { type: string, description: "refreshTransport = BODY 일 때만. COOKIE 면 null(HttpOnly 쿠키 — ADR-0059)" }
+        refreshTransport:
+          type: string
+          enum: [BODY, COOKIE]
+          description: "BODY = 본문 refreshToken 으로 POST /employee-auth/tokens/refresh(PDA 등). COOKIE = 쿠키로 POST /employee-auth/tokens/refresh/{sessionId}"
         accessTokenExpiresAt: { type: string, format: date-time }
         refreshTokenExpiresAt: { type: string, format: date-time }
         sessionId: { type: string }

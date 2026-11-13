@@ -133,25 +133,45 @@ public class GatewaySecurityConfig {
     return http.build();
   }
 
-  /** 허용 출처가 없으면 어떤 경로에도 CORS 설정을 걸지 않는다(브라우저 교차 출처 호출은 거부). */
+  /** 사전 요청에서 허용하는 헤더. */
+  static final List<String> ALLOWED_HEADERS =
+      List.of(
+          "Authorization",
+          "Content-Type",
+          "Idempotency-Key",
+          "X-Source-System",
+          "X-Expected-Version",
+          "X-Device-Id",
+          "X-Request-Id",
+          "traceparent");
+
+  /**
+   * 허용 출처가 없으면 어떤 경로에도 CORS 설정을 걸지 않는다(브라우저 교차 출처 호출은 거부). 자격 증명 경로(ADR-0059 — 웹 백오피스 refresh 쿠키)는
+   * 먼저 등록해 그 경로에서는 그 설정만 쓴다(UrlBasedCorsConfigurationSource 는 등록 순서대로 처음 맞는 것).
+   */
   static CorsConfigurationSource corsSource(GatewayProperties.Cors cors) {
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    if (!cors.credentialedOrigins().isEmpty()) {
+      CorsConfiguration k = new CorsConfiguration();
+      k.setAllowedOrigins(cors.credentialedOrigins());
+      k.setAllowedMethods(List.of("POST"));
+      List<String> headers = new java.util.ArrayList<>(ALLOWED_HEADERS);
+      headers.add("X-CSRF-Token");
+      k.setAllowedHeaders(headers);
+      k.setExposedHeaders(List.of("X-Request-Id", "Retry-After"));
+      k.setAllowCredentials(true);
+      k.setMaxAge(Duration.ofMinutes(30));
+      for (String path : cors.credentialedPaths()) {
+        source.registerCorsConfiguration(path, k);
+      }
+    }
     if (cors.allowedOrigins().isEmpty()) {
       return source;
     }
     CorsConfiguration c = new CorsConfiguration();
     c.setAllowedOrigins(cors.allowedOrigins());
     c.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
-    c.setAllowedHeaders(
-        List.of(
-            "Authorization",
-            "Content-Type",
-            "Idempotency-Key",
-            "X-Source-System",
-            "X-Expected-Version",
-            "X-Device-Id",
-            "X-Request-Id",
-            "traceparent"));
+    c.setAllowedHeaders(ALLOWED_HEADERS);
     c.setExposedHeaders(List.of("X-Request-Id", "Location", "Retry-After"));
     c.setAllowCredentials(false);
     c.setMaxAge(Duration.ofMinutes(30));

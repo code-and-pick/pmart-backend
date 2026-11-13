@@ -1,10 +1,12 @@
 package com.pmart.gateway;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.any;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,7 +54,8 @@ import reactor.core.publisher.Mono;
           "pmart.gateway.upstream.delivery-dispatch-service",
           "pmart.gateway.upstream.backoffice-bff",
           "pmart.gateway.upstream.auth-service",
-          "pmart.gateway.upstream.payment-service"
+          "pmart.gateway.upstream.payment-service",
+          "pmart.gateway.upstream.employee-auth-service"
         }))
 class GatewayRoutingSecurityTest {
 
@@ -306,5 +309,127 @@ class GatewayRoutingSecurityTest {
         .isOk()
         .expectHeader()
         .valueEquals("Access-Control-Allow-Origin", "http://localhost:5173");
+  }
+
+  /**
+   * 웹 백오피스 refresh 쿠키 갱신(ADR-0059): 토큰 없이 통과(공개 작업), employee-auth-service 쿠키만 업스트림으로, 응답
+   * Set-Cookie 는 그대로 브라우저로.
+   */
+  @Test
+  void refreshCookieRouteForwardsOnlyEmployeeAuthCookiesAndSetCookie() {
+    String path = "/api/v1/employee-auth/tokens/refresh/ESES-1";
+    upstream.stubFor(
+        post(urlPathEqualTo(path))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withHeader(
+                        "Set-Cookie",
+                        "__Secure-pmart_ea_rt=new; Path="
+                            + path
+                            + "; Secure; HttpOnly; SameSite=Strict")
+                    .withBody("{}")));
+    client
+        .post()
+        .uri(path)
+        .header(
+            "Cookie",
+            "AUTH_SESSION_ID=kc; __Secure-pmart_ea_rt=old; __Secure-pmart_ea_csrf_ESES-1=c.s; other=1")
+        .header("X-CSRF-Token", "c.s")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .valueMatches("Set-Cookie", "__Secure-pmart_ea_rt=new; Path=" + path + ".*");
+    upstream.verify(
+        postRequestedFor(urlPathEqualTo(path))
+            .withHeader(
+                "Cookie", equalTo("__Secure-pmart_ea_rt=old; __Secure-pmart_ea_csrf_ESES-1=c.s")));
+    assertThat(routeId(path)).isEqualTo("employee-auth-refresh-cookie");
+
+    // 다른 employee-auth 경로(티켓 교환)는 쿠키를 넘기지 않는다
+    client
+        .post()
+        .uri("/api/v1/employee-auth/tokens")
+        .header("Cookie", "__Secure-pmart_ea_rt=old; other=1")
+        .exchange()
+        .expectStatus()
+        .isOk();
+    upstream.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/employee-auth/tokens"))
+            .withHeader("Cookie", absent()));
+  }
+
+  /** 자격 증명 CORS 는 정한 경로·정한 출처에만(ADR-0059). 그 밖은 지금처럼 자격 증명 없음. */
+  @Test
+  void credentialedCorsOnlyOnCookiePathsAndOrigins() {
+    for (String path :
+        List.of(
+            "/api/v1/employee-auth/tokens/refresh/ESES-1",
+            "/api/v1/employee-auth/tokens",
+            "/api/v1/employee-auth/logouts")) {
+      client
+          .options()
+          .uri("http://gateway.test" + path)
+          .header("Origin", "http://localhost:5174")
+          .header("Access-Control-Request-Method", "POST")
+          .header(
+              "Access-Control-Request-Headers",
+              "content-type,idempotency-key,x-source-system,x-device-id,x-csrf-token,authorization")
+          .exchange()
+          .expectStatus()
+          .isOk()
+          .expectHeader()
+          .valueEquals("Access-Control-Allow-Origin", "http://localhost:5174")
+          .expectHeader()
+          .valueEquals("Access-Control-Allow-Credentials", "true")
+          .expectHeader()
+          .value(
+              "Access-Control-Allow-Headers",
+              h -> assertThat(h).containsIgnoringCase("x-csrf-token"))
+          .expectHeader()
+          .value("Vary", v -> assertThat(v).contains("Origin"));
+      // 쿠키 경로라도 쿠키 출처가 아니면 거절
+      client
+          .options()
+          .uri("http://gateway.test" + path)
+          .header("Origin", "http://localhost:5173")
+          .header("Access-Control-Request-Method", "POST")
+          .exchange()
+          .expectStatus()
+          .isForbidden();
+    }
+    // 그 밖의 경로는 쿠키 출처라도 자격 증명 없음(일반 출처 목록에 없으면 거절)
+    client
+        .options()
+        .uri("http://gateway.test/api/v1/products")
+        .header("Origin", "http://localhost:5174")
+        .header("Access-Control-Request-Method", "POST")
+        .exchange()
+        .expectStatus()
+        .isForbidden();
+    client
+        .options()
+        .uri("http://gateway.test/api/v1/products")
+        .header("Origin", "http://localhost:5173")
+        .header("Access-Control-Request-Method", "POST")
+        .exchange()
+        .expectStatus()
+        .isOk()
+        .expectHeader()
+        .doesNotExist("Access-Control-Allow-Credentials");
+  }
+
+  private String routeId(String path) {
+    MockServerWebExchange exchange =
+        MockServerWebExchange.from(MockServerHttpRequest.post(path).build());
+    Route route =
+        routeLocator
+            .getRoutes()
+            .filterWhen(r -> Mono.from(r.getPredicate().apply(exchange)))
+            .next()
+            .block();
+    return route == null ? null : route.getId();
   }
 }

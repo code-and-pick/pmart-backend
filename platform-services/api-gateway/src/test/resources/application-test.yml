@@ -19,6 +19,7 @@ pmart:
       enabled: false # Redis 없음 — 확인 필터·사건 함수 없음(SubjectBlockFilterTest 가 따로 본다)
     cors:
       allowed-origins: http://localhost:5173
+      credentialed-origins: http://localhost:5174 # 쿠키 CORS(ADR-0059) — 일반 출처와 다르게 두어 둘이 섞이지 않는지 본다
 management:
   tracing:
     enabled: false

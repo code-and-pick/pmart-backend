@@ -2,9 +2,10 @@
 
 > 2026-11-09 사용자 결정: **기존 백오피스(pmart-clients `web/backoffice`) 하나에서 로그인 권한에 따라 메뉴가 바뀌는 방식**. 화면 구현은 클라이언트 몫 — 요청서 `docs/handoff/clients/backoffice/2026-11-09-clients-request-backoffice-role-menus.md`.
 > 아래 "임시 기본값"은 사용자 확인 전 내가 정한 것. 바뀌면 이 문서와 요청서를 고친다.
+> 2026-11-13 갱신: 직원 로그인은 employee-auth-service 하나(ADR-0056, auth-service 운영자 로그인·`/operator-accounts` 없어짐). 인사(직원 등록·상태)는 별도 앱 인사팀 백오피스(hr-backoffice, :8444).
 
 ## 1. 원칙
-- 메뉴는 **로그인 응답·`GET /api/v1/auth/sessions/current` 의 `roles`·`centers`** 로 정한다(백엔드 변경 없음). 토큰 클레임에도 같은 값이 있다(ADR-0018).
+- 메뉴는 **로그인(티켓 교환) 응답·`GET /api/v1/employee-auth/sessions/current` 의 `roles`·`centers`** 로 정한다(백엔드 변경 없음). 토큰 클레임에도 같은 값이 있다(ADR-0056 — 토큰 모양은 예전 운영자 토큰과 같음, `typ=OPERATOR`). 역할·센터 = 계정 값 ∪ 지금 유효한 승인 권한(grant)이라 로그인·갱신 때마다 바뀔 수 있다.
 - **메뉴 숨김은 편의일 뿐, 권한은 서버가 행위마다 판정한다**(BO 문서·클라이언트 원칙 그대로). 숨긴 화면의 API 를 불러도 서버가 403 을 준다.
 - 역할 이름은 백엔드가 실제로 쓰는 이름을 쓴다(클라이언트 문서의 담당 그룹 CS / MFC_OPS … 는 설명용 묶음 — 역할 이름이 아님).
 
@@ -12,8 +13,8 @@
 
 | 역할(실제 이름) | 보이는 메뉴 | 근거 API(정본) |
 |---|---|---|
-| (모든 운영자) | 로그인·내 세션, 업무 도우미 | auth, ai-assistant |
-| `OPERATOR_ADMIN` | 운영자 계정(역할·센터 지정) | auth `/operator-accounts` |
+| (모든 운영자) | 로그인·내 세션, 업무 도우미 | employee-auth, ai-assistant |
+| `OPERATOR_ADMIN` | 직원 계정 보정(역할·센터·상태 — 화면 요청 아직 없음). 평소 역할 부여는 권한 요청(approval `GRANT`), 직원 등록·상태는 인사팀 백오피스 | employee-auth `PUT /employee-auth/employees/{operatorId}` |
 | `MD` | 카테고리, 상품 등록·일괄·조회, 콘텐츠 등록·일괄, 가격·가격 일괄, 센터 취급 | product·product-content·pricing·mfc-inventory `sku-handlings` |
 | `PRODUCT_APPROVER`·`DISPLAY_APPROVER`·`PRICE_APPROVER`·`SERVICEABILITY_APPROVER`·`CENTER_MASTER_APPROVER`·`INVENTORY_APPROVER` | 승인함·승인 상세(자기 유형) | approval `/approvals*` |
 | **`MFC_SUPERVISOR`(센터 관리자)** | **MFC 메뉴 전체**(아래 3장) — 자기 `centers` 의 센터만 | mfc-* 서비스 |

@@ -26,25 +26,38 @@ public record GatewayProperties(
     upstream = upstream == null ? Map.of() : Map.copyOf(upstream);
     publicPaths = publicPaths == null ? List.of() : List.copyOf(publicPaths);
     rateLimit = rateLimit == null ? RateLimit.DISABLED : rateLimit;
-    cors = cors == null ? new Cors(null) : cors;
+    cors = cors == null ? new Cors(null, null, null) : cors;
     guestPaths = guestPaths == null ? List.of() : List.copyOf(guestPaths);
   }
 
   /**
-   * 웹(브라우저) 클라이언트 CORS(D8). 쿠키를 쓰지 않고 Bearer 토큰만 쓰므로 자격 증명 허용은 하지 않는다.
+   * 웹(브라우저) 클라이언트 CORS(D8). API 는 Bearer 토큰만 쓰므로 자격 증명 허용은 하지 않는다 — 예외는 웹 백오피스 refresh 쿠키가 오가는
+   * 경로(ADR-0059)뿐이고, 그 경로는 따로 정한 출처에만 {@code Allow-Credentials: true}.
    *
    * @param allowedOrigins 허용 출처(정확히 일치. 와일드카드 없음)
+   * @param credentialedOrigins 자격 증명(쿠키) CORS 를 허용할 출처 — 쿠키를 쓰는 웹 앱만(정확히 일치)
+   * @param credentialedPaths 자격 증명 CORS 를 거는 경로 패턴(그 밖의 경로는 늘 자격 증명 없음)
    */
-  public record Cors(List<String> allowedOrigins) {
+  public record Cors(
+      List<String> allowedOrigins,
+      List<String> credentialedOrigins,
+      List<String> credentialedPaths) {
     public Cors {
-      allowedOrigins =
-          allowedOrigins == null
+      allowedOrigins = clean(allowedOrigins, "allowed-origins");
+      credentialedOrigins = clean(credentialedOrigins, "credentialed-origins");
+      credentialedPaths = clean(credentialedPaths, "credentialed-paths");
+    }
+
+    private static List<String> clean(List<String> values, String name) {
+      List<String> v =
+          values == null
               ? List.of()
-              : allowedOrigins.stream().map(String::strip).filter(s -> !s.isEmpty()).toList();
-      if (allowedOrigins.contains("*")) {
+              : values.stream().map(String::strip).filter(s -> !s.isEmpty()).toList();
+      if (v.contains("*")) {
         throw new IllegalArgumentException(
-            "pmart.gateway.cors.allowed-origins 에 * 를 쓰지 않는다(출처를 나열한다)");
+            "pmart.gateway.cors." + name + " 에 * 를 쓰지 않는다(하나씩 나열한다)");
       }
+      return v;
     }
   }
 

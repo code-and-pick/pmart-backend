@@ -59,8 +59,13 @@ public class EmployeeLoginService {
   private static final Logger log = LoggerFactory.getLogger(EmployeeLoginService.class);
 
   /** 티켓 교환·시험 교환 결과. */
+  /** {@code app} = 로그인한 앱(refresh 쿠키 앱인지 컨트롤러가 본다 — ADR-0059). */
   public record LoginResult(
-      String operatorId, List<String> roles, List<String> centers, EmployeeTokens.Tokens tokens) {}
+      String operatorId,
+      List<String> roles,
+      List<String> centers,
+      EmployeeTokens.Tokens tokens,
+      String app) {}
 
   private final EmployeeAuthStore store;
   private final EmployeeTokens tokens;
@@ -396,7 +401,7 @@ public class EmployeeLoginService {
     EmployeeTokens.Tokens t =
         tokens.issue(
             account.operatorId(), access.roles(), access.centers(), sessionId, expires, now);
-    return new LoginResult(account.operatorId(), access.roles(), access.centers(), t);
+    return new LoginResult(account.operatorId(), access.roles(), access.centers(), t, app);
   }
 
   /** 재직 중(ACTIVE)이고 근무 시작일(Asia/Seoul)이 지났는가. */

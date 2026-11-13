@@ -1,11 +1,12 @@
 # [pmart-backend → pmart-clients] 안내: 백오피스 정책 질문(ai-assistant 1차) (2026-11-04)
 
 - 성격: **새 API 안내(백오피스, 선택 구현).** 백엔드는 클라이언트를 수정하지 않는다. 화면을 만들지와 시기는 클라이언트가 정한다.
-- 계약: `contracts/openapi/ai-assistant-service.yaml`(1.0.0), 결정 ADR-0036. 게이트웨이 경로 `/api/v1/assistant/**`(pmart-config 미반영·**LAN 배포 전**).
+- 계약: `contracts/openapi/ai-assistant-service.yaml`(1.0.0), 결정 ADR-0036. 게이트웨이 경로 `/api/v1/assistant/**`(pmart-config 미반영·**LAN 배포 전**). — 2026-11-13 갱신: 게이트웨이 경로 반영·LAN 배포됨(운영자 RAG, PC 5).
 - **지금은 기준선 모드**다. `answerMode=BASELINE_EXTRACTIVE`·`retrievalMode=BASELINE_HASH` 이면 생성 답변이 아니라 근거 문서 원문 발췌다. 의미 검색·생성 품질은 검증되지 않았다 — 화면에 "기준선(문서 발췌)"이라고 표시해 주면 좋다.
 
 ## 1. 인증·헤더
 - 운영자 토큰(typ=OPERATOR)만 쓸 수 있다. 고객·라이더 토큰은 403 이다.
+  - 2026-11-13 갱신: 직원(운영자) 토큰은 이제 employee-auth-service 가 발급한다(ADR-0056, 모양은 같음 — auth-service 운영자 로그인은 없어짐).
 - `X-Source-System: backoffice-web` 는 필수다. 토큰에 `src` 가 있으면 그 값과 같아야 하고, 없으면 `backoffice-web` 만 받는다. 다르면 403 이다.
 - 질문에는 `Idempotency-Key`(UUID 권장)가 필수다. 같은 키로 다시 보내면 같은 답이 온다.
 

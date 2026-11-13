@@ -42,6 +42,7 @@ public class EmployeeSessionService {
   private final Clock clock;
   private final EmployeeAccess access;
   private final SubjectBlocks blocks;
+  private final CsrfTokens csrf;
 
   public EmployeeSessionService(
       EmployeeAuthStore store,
@@ -50,7 +51,8 @@ public class EmployeeSessionService {
       TransactionTemplate tx,
       Clock clock,
       EmployeeAccess access,
-      SubjectBlocks blocks) {
+      SubjectBlocks blocks,
+      CsrfTokens csrf) {
     this.store = store;
     this.tokens = tokens;
     this.props = props;
@@ -58,9 +60,54 @@ public class EmployeeSessionService {
     this.clock = clock;
     this.access = access;
     this.blocks = blocks;
+    this.csrf = csrf;
   }
 
-  public EmployeeTokens.Tokens refresh(String refreshToken, @Nullable String deviceId) {
+  /**
+   * 쿠키 갱신(ADR-0059). ① Signed Double-Submit — 헤더 = CSRF 쿠키, 서명이 그 세션 것. 틀리면 403 CSRF_INVALID(세션은 끊지
+   * 않는다 — 남이 일부러 틀린 요청으로 세션을 끝내지 못하게). ② 소유권·회전은 {@link #refresh}.
+   */
+  public EmployeeTokens.Tokens refreshWithCookie(
+      String sessionId,
+      @Nullable String refreshCookie,
+      @Nullable String csrfCookie,
+      @Nullable String csrfHeader,
+      @Nullable String deviceId) {
+    if (!CsrfTokens.same(csrfHeader, csrfCookie) || !csrf.verify(sessionId, csrfCookie)) {
+      log.warn("CSRF 확인 실패(쿠키 갱신): sessionId={}", sessionId);
+      throw new PmartException(
+          "CSRF_INVALID", HttpStatus.FORBIDDEN, "CSRF 확인에 실패했습니다. 다시 로그인하세요.", false, List.of());
+    }
+    if (refreshCookie == null || refreshCookie.isBlank()) {
+      throw new PmartException(
+          "TOKEN_INVALID",
+          HttpStatus.UNAUTHORIZED,
+          "refresh token 이 유효하지 않습니다. 다시 로그인하세요.",
+          false,
+          List.of());
+    }
+    return refresh(refreshCookie, deviceId, sessionId);
+  }
+
+  /** 세션을 열 때 한 번 — 쿠키 앱의 CSRF 값. */
+  public String csrfFor(String sessionId) {
+    return csrf.issue(sessionId);
+  }
+
+  /** 앱이 refresh 쿠키를 쓰는가. */
+  public boolean refreshCookie(String app) {
+    return props.refreshCookie(app);
+  }
+
+  /** 로그아웃 결과 — Keycloak 로그아웃 주소(SSO 앱), 지울 쿠키의 세션(refresh 쿠키 앱이면, ADR-0059). */
+  public record LogoutOutcome(@Nullable URI idpLogoutUri, @Nullable String cookieSessionId) {}
+
+  /**
+   * 갱신. {@code cookieSessionId} 가 있으면 쿠키 갱신 경로(ADR-0059) — refresh token 이 그 세션 것이고 그 세션이 refresh
+   * 쿠키 앱이어야 한다. 없으면 본문 경로 — refresh 쿠키 앱 세션은 거절한다. 어느 쪽이든 거절은 토큰을 쓰지 않은 채로 둔다(재사용 감지는 이미 쓴 토큰만).
+   */
+  public EmployeeTokens.Tokens refresh(
+      String refreshToken, @Nullable String deviceId, @Nullable String cookieSessionId) {
     Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
     String[] reason = new String[1];
     EmployeeTokens.Tokens result =
@@ -87,7 +134,13 @@ public class EmployeeSessionService {
                 reason[0] = "TOKEN_REUSED";
                 return null;
               }
-              if (!"ACTIVE".equals(s.state())
+              boolean cookieApp = props.refreshCookie(s.app());
+              boolean ownerOk =
+                  cookieSessionId == null
+                      ? !cookieApp
+                      : cookieApp && s.sessionId().equals(cookieSessionId);
+              if (!ownerOk
+                  || !"ACTIVE".equals(s.state())
                   || !r.expiresAt().isAfter(now)
                   || !s.expiresAt().isAfter(now)
                   || !s.deviceId().equals(deviceId)) {
@@ -131,13 +184,19 @@ public class EmployeeSessionService {
    * 현재 토큰의 세션(또는 그 직원의 모든 세션)을 끝낸다. 이미 끝났어도 성공. SSO 앱(백오피스) 세션이면 브라우저가 이동할 Keycloak 로그아웃 주소를 돌려준다(이
    * 브라우저의 Keycloak 세션까지 끝내려고 — 2026-11-12 사용자 결정). 아니면 null.
    */
-  public @Nullable URI logout(boolean allDevices) {
+  public LogoutOutcome logout(boolean allDevices) {
     Jwt jwt = ownJwt();
     Instant now = clock.instant();
     String sid = jwt.getClaimAsString("sid");
     return tx.execute(
         status -> {
           SessionRow current = sid == null ? null : store.session(sid, true).orElse(null);
+          String cookieSession =
+              current != null
+                      && current.operatorId().equals(jwt.getSubject())
+                      && props.refreshCookie(current.app())
+                  ? current.sessionId()
+                  : null;
           URI idpLogout =
               current != null
                       && "ACTIVE".equals(current.state())
@@ -157,7 +216,7 @@ public class EmployeeSessionService {
                   jwt.getSubject(), sid, version(jwt.getSubject()), now, "LOGOUT", me);
             }
           }
-          return idpLogout;
+          return new LogoutOutcome(idpLogout, cookieSession);
         });
   }
 

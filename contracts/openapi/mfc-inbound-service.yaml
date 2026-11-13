@@ -1,11 +1,14 @@
 openapi: 3.1.0
 info:
   title: mfc-inbound-service
-  version: 0.7.1
+  version: 0.8.0
   description: |
     MFC 입고 작업(RECEIVE/INSPECT/PUTAWAY Task)·InboundPromise(TRF·TOUT·ETA 투영)·수령 사실·수령 차이·회수품 반입·로컬 공급 요청(WK-14)의 정본. (docs/architecture/service-map.md §5)
     비정본: 수량(mfc-inventory에 ConfirmReceipt 요청 후 commitId 수신), 수령창·수용량(mfc-capacity), 품질 판정(mfc-quality), 공급 승인(replenishment).
     InboundPromise: EXPECTED→RECEIVING→TIN_POSTED. SupplyRequest(로컬): DRAFT→SUBMITTED→ACKNOWLEDGED / WITHDRAWN.
+    (0.8.0) **입고 예정(`/inbound-promises/*`, CDC→MFC 송장 TRF)은 아직 서버 미구현(501)** — 지금 실서버의 현장 수령은 초기 보유 반입
+    (`/initial-stock-loads/{receiptId}/receipts`)뿐이다. 아래 TRF 규칙(작업 ID·라벨·차이 사유)은 구현 때 그대로 따른다(클라이언트 BR-53, 2026-11-13).
+    현장 표시용 상품명(`productName` — 상품 관리용 명칭)·바코드(`barcodes`)는 mfc-inventory SKU 사본에서 채운다. 모르면 null·빈 배열(목록은 실패하지 않는다).
 servers:
   - url: /api/v1
 security:
@@ -64,7 +67,10 @@ paths:
     post:
       tags: [inbound-promises]
       summary: 도착 등록 (차량 도착·하차 시작, InboundArrivalRecorded)
-      description: TMS 인계 증빙(TransportHandoverEvidenceRecorded)과 연결한다. EXPECTED→RECEIVING.
+      description: |
+        TMS 인계 증빙(TransportHandoverEvidenceRecorded)과 연결한다. EXPECTED→RECEIVING.
+        (0.8.0) 송장(TRF) 라벨 스캔 값 = `TRF:{trfId}:{version}`(라벨 스캔 형식 `{유형}:{id}:{버전}` — 포장 `PKG:` 와 같은 규칙). 맞는 송장인지는
+        `trfId` 만 비교한다(버전은 라벨 인쇄 때 값이라 지금 예정 version 과 다를 수 있다). 라벨 인쇄는 출발 센터(CDC) 쪽 몫이다.
       operationId: recordArrival
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -469,6 +475,23 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/InboundTask' } }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /inbound-tasks/{taskId}:
+    get:
+      tags: [inbound-tasks]
+      summary: '[운영자·현장] 입고 작업 단건 (0.8.0)'
+      operationId: getInboundTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InboundTask' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /inbound-tasks/{taskId}/inspections:
     post:
       tags: [inbound-tasks]
@@ -772,7 +795,7 @@ components:
     InboundPromise:
       type: object
       properties:
-        trfId: { type: string }
+        trfId: { type: string, description: '(0.8.0) mfc-capacity RECEIVE 작업의 taskId = 이 trfId(다음 작업 받기·수동 배정 모두). 송장 라벨은 `TRF:{trfId}:{version}`' }
         departureId: { type: [string, 'null'], description: TOUT departureId }
         mfcId: { type: string }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
@@ -787,6 +810,8 @@ components:
             type: object
             properties:
               sku: { type: string }
+              productName: { type: [string, 'null'], description: (0.8.0) 표시용 사본 }
+              barcodes: { type: array, items: { type: string }, description: (0.8.0) 스캔 대조용 활성 바코드 }
               lotId: { type: string }
               expectedQty: { type: integer }
               receivedQty: { type: integer }
@@ -821,7 +846,12 @@ components:
               quarantinedQty: { type: integer, minimum: 0 }
               pendingQty: { type: integer, minimum: 0 }
               toLocationCode: { type: string }
-              discrepancyReason: { type: string, enum: [NOT_RECEIVED, SHORT, OVER, DAMAGED, TEMPERATURE] }
+              discrepancyReason:
+                type: string
+                enum: [NOT_RECEIVED, SHORT, OVER, DAMAGED, TEMPERATURE]
+                description: |
+                  (0.8.0) 줄당 하나. **수량 차이(NOT_RECEIVED·SHORT·OVER)가 있으면 그것을 보낸다.** 수량이 맞고 격리(quarantinedQty > 0)가
+                  있을 때만 격리 사유(DAMAGED·TEMPERATURE). 격리 수량은 사유와 상관없이 quarantinedQty 로 따로 남는다(IV-02 인수 = 정상 + 격리 + 보류).
     Receipt:
       type: object
       properties:
@@ -867,6 +897,8 @@ components:
             required: [sku, qty]
             properties:
               sku: { type: string }
+              productName: { type: [string, 'null'], description: '(0.8.0) 표시용 사본. 모르면 null' }
+              barcodes: { type: array, items: { type: string }, description: '(0.8.0) 스캔 대조용 활성 바코드' }
               qty: { type: integer, description: 승인 수량 }
               receivedQty: { type: [integer, 'null'], description: 현장 수령 수량(수령 전 null) }
         createdAt: { type: string, format: date-time }
@@ -881,6 +913,8 @@ components:
         receiptId: { type: string }
         parentTaskId: { type: [string, 'null'], description: 적치 작업을 만든 품질검사 작업 }
         sku: { type: string }
+        productName: { type: [string, 'null'], description: '(0.8.0) 표시용 사본(상품 관리용 명칭). 모르면 null' }
+        barcodes: { type: array, items: { type: string }, description: '(0.8.0) 스캔 대조용 활성 바코드. 모르면 빈 배열' }
         lotId: { type: string, description: mfc-inventory lotId(품질검사 = 수령 LOT, 적치 = 나뉜 LOT) }
         locationCode: { type: string, description: 출발 위치 }
         plannedQty: { type: integer }

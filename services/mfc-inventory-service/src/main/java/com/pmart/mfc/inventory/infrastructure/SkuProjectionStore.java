@@ -26,8 +26,8 @@ public class SkuProjectionStore {
 
   private static final String COLUMNS =
       "sku, product_id, base_product_id, unit_type, units_per_sku, weight_g, volume_ml, storage_type,"
-          + " alcohol, shelf_min_remaining_days, shelf_max_days_since_mfg, state, product_version,"
-          + " updated_at";
+          + " alcohol, shelf_min_remaining_days, shelf_max_days_since_mfg, product_name, barcodes, state,"
+          + " product_version, updated_at";
 
   private final JdbcTemplate jdbc;
   private final NamedParameterJdbcTemplate named;
@@ -64,13 +64,14 @@ public class SkuProjectionStore {
     return jdbc.update(
         "INSERT INTO sku_projection ("
             + COLUMNS
-            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             + " ON CONFLICT (sku) DO UPDATE SET product_id = EXCLUDED.product_id,"
             + " base_product_id = EXCLUDED.base_product_id, unit_type = EXCLUDED.unit_type,"
             + " units_per_sku = EXCLUDED.units_per_sku, weight_g = EXCLUDED.weight_g,"
             + " volume_ml = EXCLUDED.volume_ml, storage_type = EXCLUDED.storage_type,"
             + " alcohol = EXCLUDED.alcohol, shelf_min_remaining_days = EXCLUDED.shelf_min_remaining_days,"
-            + " shelf_max_days_since_mfg = EXCLUDED.shelf_max_days_since_mfg, state = EXCLUDED.state,"
+            + " shelf_max_days_since_mfg = EXCLUDED.shelf_max_days_since_mfg,"
+            + " product_name = EXCLUDED.product_name, barcodes = EXCLUDED.barcodes, state = EXCLUDED.state,"
             + " product_version = EXCLUDED.product_version, updated_at = EXCLUDED.updated_at"
             + " WHERE sku_projection.product_version <= EXCLUDED.product_version",
         p.sku(),
@@ -84,6 +85,8 @@ public class SkuProjectionStore {
         p.alcohol(),
         p.shelfMinRemainingDays(),
         p.shelfMaxDaysSinceManufacture(),
+        p.productName(),
+        String.join("\n", p.barcodes()),
         p.state().name(),
         p.productVersion(),
         Timestamp.from(p.updatedAt()));
@@ -135,6 +138,10 @@ public class SkuProjectionStore {
     return rows.stream().collect(Collectors.toMap(SkuProjection::sku, Function.identity()));
   }
 
+  private static List<String> barcodes(@Nullable String joined) {
+    return joined == null || joined.isEmpty() ? List.of() : List.of(joined.split("\n"));
+  }
+
   static SkuProjection map(ResultSet rs, int i) throws SQLException {
     return new SkuProjection(
         rs.getString("sku"),
@@ -148,6 +155,8 @@ public class SkuProjectionStore {
         rs.getObject("alcohol", Boolean.class),
         rs.getObject("shelf_min_remaining_days", Integer.class),
         rs.getObject("shelf_max_days_since_mfg", Integer.class),
+        rs.getString("product_name"),
+        barcodes(rs.getString("barcodes")),
         SkuState.valueOf(rs.getString("state")),
         rs.getInt("product_version"),
         rs.getTimestamp("updated_at").toInstant());

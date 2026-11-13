@@ -13,6 +13,12 @@ final class InitialStockLoads {
   private InitialStockLoads() {}
 
   static InitialStockLoad dto(LoadRow r) {
+    return dto(r, java.util.Map.of());
+  }
+
+  /** labels: 줄 SKU 의 상품명·바코드(0.8.0). 없으면 null·빈 배열. */
+  static InitialStockLoad dto(
+      LoadRow r, java.util.Map<String, com.pmart.mfc.inbound.application.SkuLabels.Label> labels) {
     var d = new InitialStockLoad();
     d.setReceiptId(r.receiptId());
     d.setApprovalId(r.approvalId());
@@ -28,6 +34,9 @@ final class InitialStockLoads {
             (sku, qty) -> {
               var l = new InitialStockLoadLinesInner();
               l.setSku(sku);
+              var label = com.pmart.mfc.inbound.application.SkuLabels.get(labels, sku);
+              l.setProductName(label.productName());
+              l.setBarcodes(new ArrayList<>(label.barcodes()));
               l.setQty(qty);
               l.setReceivedQty(r.received().get(sku));
               lines.add(l);
