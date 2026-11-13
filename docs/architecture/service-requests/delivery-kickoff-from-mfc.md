@@ -23,7 +23,7 @@
 ### 사건 — 토픽 `mfc.fulfillment.v1` (스키마 `contracts/events/<이름>.v1.json`, 목록 `docs/architecture/events.md`)
 | 사건 | 언제 | 배송이 쓰는 항목 |
 |---|---|---|
-| `DispatchRequested` | 점원이 포장 중 예상 시간과 함께 요청, 없으면 READY 때 자동. **출고당 한 번** | orderId·shipmentId·mfcId·trigger(MANUAL/AUTO_ON_READY)·estimatedPackMinutes(MANUAL)·estimatedReadyAt·requestedAt |
+| `DispatchRequested` | 점원이 포장 중(또는 READY 뒤) 예상 시간과 함께 요청 — **점원 요청만, 자동 없음(2026-11-13)**. **출고당 한 번** | orderId·shipmentId·mfcId·trigger(MANUAL/AUTO_ON_READY)·estimatedPackMinutes(MANUAL)·estimatedReadyAt·requestedAt |
 | `PackingFinished` | 포장 완료(인계 아님) | shipmentId·packages[{packageId, bagCount, weight, volume, alcohol}] — 결품으로 줄어든 내용도 여기 |
 | `ShipmentReady` | 출하 대기 | orderId·shipmentId·mfcId·readyAt·packages[]·pickupLocation — `DispatchRequested` 보다 먼저 와도 같은 출고 하나로 |
 | `PackageHandedOver` | 라이더 인계 확정 + 재고 차감 뒤 | orderId·shipmentId·deliveryId·packageId·riderId·handoverId·inventoryCommitId·lines[]·handedAt |

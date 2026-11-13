@@ -53,6 +53,7 @@
 - 차이: 이르게 요청하면 대기 짧지만 포장 중 취소·결품 시 배차 취소 필요(슬라이스 7). 봉인 전 QR 은 이미 거절됨.
 - 권장: 업무 원문(Delivery)대로 — 점원 앱 별도 "배차요청" 동작(포장 소요시간 필수). **추가로 정할 것**: 포장 완료까지 요청 안 했으면 READY 때 자동 요청할지.
 - **결정(2026-11-08, 사용자 "추천대로")**: 점원 요청 `POST /shipments/{id}/dispatch-requests`(예상 포장 분 1~180 필수, PACK 시작 뒤) + 포장 끝까지 없으면 READY 때 자동 → `DispatchRequested`(MANUAL/AUTO_ON_READY), 출고당 한 번. mfc-fulfillment 0.4.5(V9). 배차 자체·포장 중 취소 때 배차 취소는 delivery-dispatch 요청 DD-1.
+- **바뀜(2026-11-13, 사용자 "자동요청빼" — 클라이언트 BR-51, 사용자 2026-11-10 "배차는 무조건 직원 요청")**: READY 때 자동 요청을 뺐다 — **배차는 점원 요청만**. 요청 없이 READY 가 된 출고는 요청 없음으로 남고 점원이 READY 뒤에도 요청한다. mfc-fulfillment 0.4.11.
 
 ## D-6 픽업 완료 판단
 - ADR-0006 결정 5: 사건 기반(모든 포장 PackageHandedOver → 픽업 완료). delivery-execution 계약 초안: 픽업 완료 버튼 API. Delivery §5.1: "인계 확인 후 픽업 완료 가능".

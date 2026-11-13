@@ -18,9 +18,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 배차 요청(2026-11-08 사용자 결정 D-5 — Delivery §3.1). 점원이 포장 중 예상 포장 시간과 함께 요청(MANUAL), 포장이 끝날 때까지 없으면 출하
- * 대기 때 자동(AUTO_ON_READY). 출고당 한 번, 같은 트랜잭션에서 {@code DispatchRequested}. 잠금 = 그 출고 PACK 작업 행(포장 밀봉과
- * 한 줄).
+ * 배차 요청(2026-11-08 사용자 결정 D-5 — Delivery §3.1). 점원이 포장 중(또는 출하 대기 뒤) 예상 포장 시간과 함께 요청(MANUAL)만 한다 —
+ * 출하 대기 때 자동 요청(AUTO_ON_READY)은 뺐다(사용자 2026-11-13 "자동요청빼", BR-51). 출고당 한 번, 같은 트랜잭션에서 {@code
+ * DispatchRequested}. 잠금 = 그 출고 PACK 작업 행(포장 밀봉과 한 줄).
  */
 @Service
 public class DispatchRequestService {
@@ -101,17 +101,6 @@ public class DispatchRequestService {
               log.info("출고 {} 배차 요청(점원 {}, 예상 포장 {}분)", shipmentId, me, packMinutes);
               return new Outcome(r, true);
             }));
-  }
-
-  /** 출하 대기가 되는 순간(포장 밀봉 트랜잭션 안, PACK 작업 행 잠금 아래) — 요청이 없었으면 자동. */
-  void autoOnReady(TaskInfo pack, Instant now) {
-    if (find(pack.shipmentId()).isPresent()) {
-      return;
-    }
-    Request r = new Request(pack.shipmentId(), "AUTO_ON_READY", null, now, now, null);
-    save(r);
-    events.dispatchRequested(pack, r);
-    log.info("출고 {} 배차 자동 요청(포장 끝까지 요청 없음)", pack.shipmentId());
   }
 
   public Optional<Request> find(String shipmentId) {

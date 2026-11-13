@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.10
+  version: 0.4.11
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -539,10 +539,11 @@ paths:
   /shipments/{shipmentId}/dispatch-requests:
     post:
       tags: [shipments]
-      summary: 배차 요청 — 포장 중 점원이 예상 포장 시간과 함께 (0.4.5, D-5)
+      summary: 배차 요청 — 점원만, 예상 포장 시간과 함께 (0.4.5, D-5 / 0.4.11 자동 요청 없음)
       description: |
         2026-11-08 사용자 결정 D-5(Delivery §3.1): 점원이 포장을 시작하면 예상 포장 시간(분, 필수)을 넣고 배차를 요청한다 → `DispatchRequested`
-        (trigger MANUAL, estimatedReadyAt = 지금 + 분). 포장이 끝날 때까지 요청이 없으면 출하 대기(READY)가 되는 순간 자동 요청(AUTO_ON_READY).
+        (trigger MANUAL, estimatedReadyAt = 지금 + 분). **0.4.11(사용자 2026-11-13 "자동요청빼", BR-51): 배차는 점원 요청만** — 요청 없이
+        출하 대기(READY)가 돼도 서버가 자동으로 요청하지 않는다(그 출고는 `dispatchRequest` 가 없는 채로 남고, 점원이 READY 뒤에도 요청할 수 있다).
         출고당 한 번 — 이미 요청됐으면 그 요청을 200 으로 돌려준다(새 사건 없음). 그 센터 MFC_WORKER, PACK 작업이 시작됐거나 출고가 READY 여야
         (아니면 409 INVALID_STATE). 배차 자체(라이더 찾기)는 delivery-dispatch(아직 없음).
       operationId: requestDispatch
@@ -1365,7 +1366,10 @@ components:
       required: [shipmentId, trigger, estimatedReadyAt, requestedAt]
       properties:
         shipmentId: { type: string }
-        trigger: { type: string, enum: [MANUAL, AUTO_ON_READY] }
+        trigger:
+          type: string
+          enum: [MANUAL, AUTO_ON_READY]
+          description: 0.4.11 부터 새 요청은 늘 MANUAL. AUTO_ON_READY 는 그 전에 자동 요청된 출고 기록에만 남는다(새로 나오지 않음)
         estimatedPackMinutes: { type: [integer, 'null'] }
         estimatedReadyAt: { type: string, format: date-time }
         requestedAt: { type: string, format: date-time }

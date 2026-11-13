@@ -1797,7 +1797,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
    * AUTO.
    */
   @Test
-  void dispatchIsRequestedByClerkDuringPackingOrAutomaticallyWhenReady() {
+  void dispatchIsRequestedOnlyByClerk() {
     String o0 = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
     String s0 = accept(o0);
     assertThat(dispatch(W2, s0, 5).body().path("code").asString()).isEqualTo("INVALID_STATE");
@@ -1819,13 +1819,20 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("DispatchRequested", s1)).isEqualTo(1);
     assertThat(dispatch(W2, s1, 0).status()).isEqualTo(400); // 계약 최소 1분
 
+    // 요청 없이 출하 대기가 돼도 자동 요청하지 않는다(사용자 2026-11-13 "자동요청빼", BR-51) — 점원이 그 뒤에 요청
     String o2 = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
     readyShipment(o2);
     String s2 = o2 + "-S1";
-    assertThat(outbox("DispatchRequested", s2)).isEqualTo(1);
+    assertThat(outbox("DispatchRequested", s2)).isZero();
     JsonNode ship = call("GET", VIEWER, "/shipments/" + s2, null, null).body();
-    assertThat(ship.path("dispatchRequest").path("trigger").asString()).isEqualTo("AUTO_ON_READY");
-    assertThat(dispatch(W2, s2, 5).status()).isEqualTo(200); // 이미 자동 요청됨
+    assertThat(ship.path("state").asString()).isEqualTo("READY");
+    assertThat(
+            ship.path("dispatchRequest").isMissingNode() || ship.path("dispatchRequest").isNull())
+        .as(ship.toString())
+        .isTrue();
+    Res late = dispatch(W2, s2, 5);
+    assertThat(late.status()).as(late.body().toString()).isEqualTo(201);
+    assertThat(late.body().path("trigger").asString()).isEqualTo("MANUAL");
     assertThat(outbox("DispatchRequested", s2)).isEqualTo(1);
   }
 
