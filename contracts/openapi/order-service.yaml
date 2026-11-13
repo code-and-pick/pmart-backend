@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-service
-  version: 0.2.2
+  version: 0.2.3
   description: |
     주문 초안·주문 원장·스냅샷·상태·이행 계획의 정본. (docs/architecture/service-map.md §2)
     사가 진행은 order-orchestration-service, PG 거래는 payment-service, 클레임 심사는 claim-service.
@@ -486,12 +486,13 @@ components:
     DeliveryDestination:
       type: object
       description: 배차용 배송지(개인정보 최소 — 수령인·연락처·출입 정보 없음)
-      required: [orderId, mfcId, status, deliveryMode]
+      required: [orderId, mfcId, status, deliveryMode, confirmedAt]
       properties:
         orderId: { type: string }
         mfcId: { type: string }
         status: { $ref: '#/components/schemas/OrderStatus' }
         deliveryMode: { type: string, enum: [SINGLE, BUNDLED, SCHEDULED], description: 한집 / 알뜰 / 예약 }
+        confirmedAt: { type: string, format: date-time, description: '주문 확정 시각 — 배송 약속(한집·알뜰 = 확정 + 50분, 사용자 2026-11-13) 계산', x-added-in: '2026-11-13' }
         arrivalWindow: { $ref: '#/components/schemas/ArrivalWindow' }
         roadAddress: { type: [string, 'null'], description: 주문 당시 도로명주소 — 좌표 변환에만 쓴다(저장·로그 금지) }
         geo:

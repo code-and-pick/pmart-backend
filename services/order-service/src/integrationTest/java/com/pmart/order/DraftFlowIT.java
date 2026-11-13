@@ -1012,6 +1012,7 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     Res dest = get(svc, "/internal/orders/" + orderId + "/delivery-destination");
     assertThat(dest.status()).as(dest.body().toString()).isEqualTo(200);
     assertThat(dest.body().path("deliveryMode").asString()).isEqualTo("SCHEDULED");
+    assertThat(dest.body().path("confirmedAt").isString()).isTrue();
     assertThat(dest.body().path("arrivalWindow").path("start").asString()).isEqualTo("10:00");
     assertThat(dest.body().has("receiverPhone")).isFalse();
     assertThat(dest.body().has("receiverName")).isFalse();

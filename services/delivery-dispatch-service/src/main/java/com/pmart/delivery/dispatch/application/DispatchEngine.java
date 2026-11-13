@@ -61,6 +61,7 @@ public class DispatchEngine {
   private final Upstreams upstreams;
   private final AssignmentSolver solver;
   private final AiOptimizerClient ai;
+  private final com.pmart.delivery.dispatch.infrastructure.RouteCache routes;
   private final org.springframework.beans.factory.ObjectProvider<
           io.micrometer.core.instrument.MeterRegistry>
       meters;
@@ -75,6 +76,7 @@ public class DispatchEngine {
       Upstreams upstreams,
       AssignmentSolver solver,
       AiOptimizerClient ai,
+      com.pmart.delivery.dispatch.infrastructure.RouteCache routes,
       org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry>
           meters,
       DeliveryTransitions transitions,
@@ -86,6 +88,7 @@ public class DispatchEngine {
     this.upstreams = upstreams;
     this.solver = solver;
     this.ai = ai;
+    this.routes = routes;
     this.meters = meters;
     this.transitions = transitions;
     this.events = events;
@@ -118,7 +121,15 @@ public class DispatchEngine {
       try {
         runMfc(e.getKey(), e.getValue(), now);
       } catch (RuntimeException ex) {
-        log.error("MFC {} 배차 판단 실패 — 30초 뒤 다시", e.getKey(), ex);
+        boolean quota =
+            ex instanceof org.springframework.web.client.HttpClientErrorException.TooManyRequests
+                || (ex instanceof PmartException pe && "QUOTA_EXCEEDED".equals(pe.code()));
+        Instant later = now.plus(quota ? props.quotaBackoff() : RETRY_LATER);
+        log.error(
+            "MFC {} 배차 판단 실패 — {} 뒤 다시",
+            e.getKey(),
+            quota ? props.quotaBackoff() : RETRY_LATER,
+            ex);
         e.getValue()
             .forEach(
                 d ->
@@ -148,17 +159,29 @@ public class DispatchEngine {
         });
   }
 
-  /** 배차 지연 안내 — 첫 시도부터 delayAlertAfter 넘게 배차 대기면 한 번 DispatchDelayed(원문 §3.6). */
+  /**
+   * 배차 지연 안내 — 예상 전달 시각이 배송 약속(한집·알뜰 = 주문 확정 + 50분, 예약 = 도착 시간대 끝)보다 delayAlertAfter(20분) 넘게 늦으면 한
+   * 번 DispatchDelayed(사용자 2026-11-13). 라이더가 아직 없으므로 예상 = 지금(또는 출하 대기) + MFC → 고객 도로 시간 — 가장 빠른 경우라
+   * 실제는 더 늦을 수 있다.
+   */
   void alertDelays(Instant now) {
     tx.executeWithoutResult(
         s -> {
           int threshold = (int) props.delayAlertAfter().toMinutes();
-          for (DispatchStore.Delayed x :
-              store.lockDelayed(now.minus(props.delayAlertAfter()), 100)) {
-            int minutes = (int) Duration.between(x.waitingSince(), now).toMinutes();
-            events.delayed(x.delivery(), minutes, threshold, now);
-            store.markDelayAlerted(x.delivery().deliveryId(), now);
-            log.warn("배송 {} 배차 지연 {}분(임계 {}분)", x.delivery().deliveryId(), minutes, threshold);
+          for (DeliveryRow d :
+              store.lockDelayCandidates(now.plus(props.delayAlertAfter()).plusSeconds(7200), 200)) {
+            if (d.dropDurationS() == null) {
+              continue;
+            }
+            Instant ready = d.readyOrEstimate();
+            Instant depart = ready != null && ready.isAfter(now) ? ready : now;
+            Instant eta = depart.plusSeconds(d.dropDurationS());
+            if (eta.isAfter(d.promisedAt().plus(props.delayAlertAfter()))) {
+              int minutes = (int) Duration.between(d.promisedAt(), eta).toMinutes();
+              events.delayed(d, minutes, threshold, now);
+              store.markDelayAlerted(d.deliveryId(), now);
+              log.warn("배송 {} 배차 지연 — 약속보다 {}분 늦을 것(임계 {}분)", d.deliveryId(), minutes, threshold);
+            }
           }
         });
   }
@@ -251,13 +274,9 @@ public class DispatchEngine {
             .toList();
 
     // 라이더 → MFC 도로 소요(카카오모빌리티)
-    Upstreams.Leg[] legs = new Upstreams.Leg[riders.size()];
+    Upstreams.Leg[] legs = new Upstreams.Leg[0];
     if (!riders.isEmpty()) {
-      Upstreams.Leg[][] m =
-          upstreams.matrix(riders.stream().map(located::get).toList(), List.of(mfc));
-      for (int i = 0; i < riders.size(); i++) {
-        legs[i] = m[i][0];
-      }
+      legs = routes.toMfc(mfcId, riders.stream().map(located::get).toList(), mfc);
     }
     List<Integer> usable = new ArrayList<>();
     for (int i = 0; i < riders.size(); i++) {
@@ -281,12 +300,29 @@ public class DispatchEngine {
     int[] readyIn = new int[nd];
     int[] direct = new int[nd];
     boolean[] bundlable = new boolean[nd];
+    int[] promiseIn = new int[nd];
+    // 최근 반복 배차취소 → 제안 순위를 뒤로(제재 아님 — 사용자 2026-11-13)
+    Map<String, Integer> cancels =
+        store.recentRiderCancellations(
+            usable.stream().map(riders::get).toList(), now.minus(props.cancellationWindow()));
+    int[] penalty = new int[nr];
+    for (int i = 0; i < nr; i++) {
+      penalty[i] =
+          (int)
+              (cancels.getOrDefault(riders.get(usable.get(i)), 0)
+                  * props.cancellationPenalty().toSeconds());
+    }
     for (int d = 0; d < nd; d++) {
       DeliveryRow row = ready.get(d).delivery();
       Instant at = row.readyOrEstimate();
       readyIn[d] = at == null ? 0 : (int) Math.max(0, Duration.between(now, at).toSeconds());
       direct[d] = row.dropDurationS() == null ? 0 : row.dropDurationS();
       bundlable[d] = "BUNDLED".equals(row.deliveryMode()); // 알뜰배달만 묶는다(원문 §5.3)
+      promiseIn[d] =
+          row.promisedAt() == null
+              ? Integer.MAX_VALUE
+              : (int)
+                  Math.max(Integer.MIN_VALUE, Duration.between(now, row.promisedAt()).toSeconds());
     }
     int[][] between = betweenDrops(ready, bundlable);
     int maxSize = Math.min(3, props.maxActiveDeliveries());
@@ -335,7 +371,8 @@ public class DispatchEngine {
         }
         BundleProblem.Checked checked =
             BundleProblem.check(
-                raw, direct, between, bundlable, maxSize, maxExtra, capacity, allowed);
+                raw, direct, between, bundlable, maxSize, maxExtra, capacity, allowed, pickup,
+                readyIn, promiseIn);
         if (checked.dropped() > 0) {
           log.warn("AI 배정안 {}건이 검증을 통과하지 못해 버림(MFC {})", checked.dropped(), mfcId);
           count("pmart.dispatch.ai.dropped", checked.dropped());
@@ -354,7 +391,8 @@ public class DispatchEngine {
     if (bundles == null) {
       bundles = BundleProblem.candidates(direct, between, bundlable, maxSize, maxExtra);
       BundleProblem problem =
-          new BundleProblem(pickup, allowed, capacity, readyIn, bundles, props.lateWeight());
+          new BundleProblem(
+              pickup, allowed, capacity, readyIn, bundles, props.lateWeight(), promiseIn, penalty);
       sol = nr == 0 ? problem.greedy() : solver.solve(problem, props.solverTimeLimit());
     }
 
@@ -402,11 +440,13 @@ public class DispatchEngine {
             .map(d -> new Geo(ready.get(d).delivery().dropLat(), ready.get(d).delivery().dropLng()))
             .toList();
     try {
-      Upstreams.Leg[][] m = upstreams.matrix(drops, drops);
+      int[][] m =
+          routes.betweenDeliveries(
+              use.stream().map(d -> ready.get(d).delivery().deliveryId()).toList(), drops);
       for (int i = 0; i < use.size(); i++) {
         for (int j = 0; j < use.size(); j++) {
-          if (i != j && m[i][j].ok()) {
-            between[use.get(i)][use.get(j)] = m[i][j].durationS();
+          if (i != j && m[i][j] >= 0) {
+            between[use.get(i)][use.get(j)] = m[i][j];
           }
         }
       }
@@ -512,7 +552,7 @@ public class DispatchEngine {
               props.radiiKm(),
               props.offerTimeout(),
               props.maxRetries())) {
-            case STAY -> store.postpone(a.attemptId(), now.plus(props.tickInterval()));
+            case STAY -> store.postpone(a.attemptId(), now.plus(props.searchInterval()));
             case NEXT_STAGE ->
                 store.updateAttempt(
                     a.attemptId(),
@@ -541,8 +581,14 @@ public class DispatchEngine {
             }
             case FAIL -> {
               String reason = SearchRules.failureReason(a.hadRejection(), a.hadExpiry());
-              transitions.fail(d, a, reason, now);
-              log.warn("배송 {} 배차 실패 {}", deliveryId, reason);
+              String next =
+                  transitions.failAndRedispatch(d, a, reason, now.plus(props.retryInterval()), now);
+              log.warn(
+                  "배송 {} 배차 실패 {} — {} 뒤 다시 배차 요청({})",
+                  deliveryId,
+                  reason,
+                  props.retryInterval(),
+                  next);
             }
           }
         });
@@ -601,11 +647,27 @@ public class DispatchEngine {
                   dest.arrivalStart(),
                   dest.arrivalEnd(),
                   now));
+      tx.executeWithoutResult(s -> store.setPromise(d.deliveryId(), promise(dest)));
       return store.delivery(d.deliveryId());
     } catch (PmartException e) {
       log.warn("배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
       return later(d, a, e.code(), now);
     }
+  }
+
+  /** 배송 약속 — 예약은 도착 시간대 끝(Asia/Seoul), 한집·알뜰은 주문 확정 + deliveryPromise(50분). 모르면 null. */
+  private @org.jspecify.annotations.Nullable Instant promise(Upstreams.Destination dest) {
+    if ("SCHEDULED".equals(dest.deliveryMode())
+        && dest.arrivalDate() != null
+        && dest.arrivalEnd() != null) {
+      java.time.LocalDate day = dest.arrivalDate();
+      String end = dest.arrivalEnd();
+      if ("24:00".equals(end)) {
+        return day.plusDays(1).atStartOfDay(OperatingHours.SEOUL).toInstant();
+      }
+      return day.atTime(java.time.LocalTime.parse(end)).atZone(OperatingHours.SEOUL).toInstant();
+    }
+    return dest.confirmedAt() == null ? null : dest.confirmedAt().plus(props.deliveryPromise());
   }
 
   private Optional<DeliveryRow> later(DeliveryRow d, AttemptRow a, String reason, Instant now) {

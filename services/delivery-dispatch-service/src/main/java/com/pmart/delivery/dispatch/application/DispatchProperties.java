@@ -22,8 +22,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param lateWeight 출하 대기보다 늦게 도착하는 초에 주는 가중(설계값 — 원문 §3.1 "포장이 끝날 즈음 도착")
  * @param solverTimeLimit 한 번 계산 상한
  * @param pollAfterSec 라이더 앱 폴링 권장(초) — 계약 잠정 5초
- * @param delayAlertAfter 배차 대기가 이만큼 넘으면 DispatchDelayed(원문 §3.6 "ex.20분" — 사용자 확인 필요)
- * @param bundleMaxExtra 알뜰배달 묶음에서 어느 배송이든 바로 갈 때보다 이만큼 넘게 늦어지면 묶지 않는다(설계값 20분 — 원문에 없음, 사용자 확인 필요)
+ * @param delayAlertAfter 예상 전달이 약속 시각보다 이만큼 넘게 늦으면 DispatchDelayed(사용자 2026-11-13 "안내기준보다 20분 더
+ *     늦춰지면")
+ * @param cancellationWindow 최근 배차취소를 세는 기간(설계값 7일)
+ * @param cancellationPenalty AI 추천 제안에서 최근 배차취소 1건마다 비용에 더하는 시간(설계값 3분 — 다른 라이더가 먼저)
+ * @param listDelayPerCancellation 일반 모드 배달리스트에 새 배송이 보이기까지 배차취소 1건마다 늦추는 시간(설계값 1분)
+ * @param searchInterval 제안할 사람이 없을 때 그 시도를 다시 볼 간격(설계값 30초 — 카카오 호출 줄이기 M3)
+ * @param quotaBackoff 카카오 사용량 초과(429) 때 그 MFC 판단을 미루는 시간(설계값 5분)
+ * @param routeCacheTtl 라이더 → MFC 도로 시간을 다시 쓰는 시간(설계값 5분, 약 100m 칸)
+ * @param deliveryPromise 배송 약속 — 한집·알뜰은 주문 확정 + 이 값(사용자 2026-11-13 "주문한지 50분 이내 전달"), 예약은 도착 시간대 끝
+ * @param bundleMaxExtra 묶음 보조 상한(바로 갈 때보다 이만큼 넘게 늦으면 안 묶음) — 주 조건은 약속 시각(BundleProblem), 기본 50분
  */
 @ConfigurationProperties(prefix = "pmart.dispatch")
 public record DispatchProperties(
@@ -42,6 +50,13 @@ public record DispatchProperties(
     @Nullable Integer pollAfterSec,
     @Nullable Duration bundleMaxExtra,
     @Nullable Duration delayAlertAfter,
+    @Nullable Duration deliveryPromise,
+    @Nullable Duration searchInterval,
+    @Nullable Duration quotaBackoff,
+    @Nullable Duration routeCacheTtl,
+    @Nullable Duration cancellationWindow,
+    @Nullable Duration cancellationPenalty,
+    @Nullable Duration listDelayPerCancellation,
     @Nullable Ai ai,
     @Nullable Urls urls) {
 
@@ -59,9 +74,17 @@ public record DispatchProperties(
     lateWeight = lateWeight == null ? 2 : lateWeight;
     solverTimeLimit = solverTimeLimit == null ? Duration.ofSeconds(2) : solverTimeLimit;
     pollAfterSec = pollAfterSec == null ? 5 : pollAfterSec;
-    bundleMaxExtra = bundleMaxExtra == null ? Duration.ofMinutes(20) : bundleMaxExtra;
+    bundleMaxExtra = bundleMaxExtra == null ? Duration.ofMinutes(50) : bundleMaxExtra;
     ai = ai == null ? new Ai(null, null) : ai;
     delayAlertAfter = delayAlertAfter == null ? Duration.ofMinutes(20) : delayAlertAfter;
+    deliveryPromise = deliveryPromise == null ? Duration.ofMinutes(50) : deliveryPromise;
+    searchInterval = searchInterval == null ? Duration.ofSeconds(30) : searchInterval;
+    quotaBackoff = quotaBackoff == null ? Duration.ofMinutes(5) : quotaBackoff;
+    routeCacheTtl = routeCacheTtl == null ? Duration.ofMinutes(5) : routeCacheTtl;
+    cancellationWindow = cancellationWindow == null ? Duration.ofDays(7) : cancellationWindow;
+    cancellationPenalty = cancellationPenalty == null ? Duration.ofMinutes(3) : cancellationPenalty;
+    listDelayPerCancellation =
+        listDelayPerCancellation == null ? Duration.ofMinutes(1) : listDelayPerCancellation;
     urls = urls == null ? new Urls(null, null, null, null, null) : urls;
   }
 

@@ -93,6 +93,7 @@ public class InternalController implements InternalApi {
             .mfcId(o.mfcId())
             .status(OrderStatus.fromValue(o.status()))
             .deliveryMode(DeliveryDestination.DeliveryModeEnum.fromValue(o.deliveryMode()))
+            .confirmedAt(OffsetDateTime.ofInstant(o.confirmedAt(), ZoneOffset.UTC))
             .roadAddress(s == null ? null : s.roadAddress())
             .geo(
                 s == null || s.lat() == null || s.lng() == null

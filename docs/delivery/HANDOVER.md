@@ -36,7 +36,16 @@ delivery 영역(`docs/operations/pc-split.md` §1 — PC 5, 192.168.0.101)을 �
 
 kickoff §6 "남은 결정"이 정본. 요약:
 - ~~AI 배정 계산 엔진~~ — **결정 2026-11-13**: Python AI 최적화 서버(GreedRL·RouteFinder), Spring 이 계산 요청(ADR-0058). 서버 세부(이름·위치·프레임워크·장애 때 대체)는 ADR-0058 "구현 때 정할 것"
-- 라이더 앱 기반(`code-and-pick/PMart-Delivery-Test` 후보 — 검토 결과는 kickoff)
+- ~~라이더 앱 기반~~ — **결정 2026-11-13: 클라이언트(pmart-clients rider-app, PC 5)가 새로 만든다**(PMart-Delivery-Test 기반 아님)
+- **2026-11-13 사용자 결정 묶음**(PR #8 검토 답):
+  - AI 추천 배차(RouteFinder)는 **LAN 에서 끄고 OR-Tools 로**, **추가 학습** 진행(ADR-0058, `ai-optimizer-evaluation.md`)
+  - **배송 약속 = 주문 50분 안 전달**(예약은 시간대), 약속보다 20분 더 늦을 것 같으면 지연 안내 — 알뜰배달 묶음도 약속 안에서만
+  - **고객센터 취소 없음**(ADR-0052 2번 변경 — platform, `claim-service.md` CL-D1), **피킹 시작 전 포장소요시간 입력 → 배차 요청**(mfc, `mfc-fulfillment-service.md` F-2)
+  - 배차 실패 → 시스템이 자동으로 다시 배차 요청, 재배차 없이 취소는 MFC 백오피스 관리자
+  - 반복 배차취소 → 제재 없이 배차 알림 자동 감소
+  - 배차 취소 결과는 백오피스 권한자·고객센터·지원센터(지원센터 역할은 아직 없음)
+  - 픽업한 배송은 배달 완료 전까지 "진행 중"(3건이면 새 배차 없음) → delivery-execution 배달 완료가 필요
+- 라이더·지원센터 화면을 기존 백오피스에 넣을지 새로 만들지 — 조사 결과 보고(2026-11-13), 사용자 결정 대기
 - ~~카카오모빌리티 REST 키~~ — **2026-11-13 받음**: PC 5 `deploy/lan/.secrets/kakao-rest-api-key`(git 제외, 길찾기 호출 확인). LAN 설정(pmart-config `{cipher}`) 등록은 PC 1. 키를 문서·커밋·로그에 적지 않는다
 - ~~배차 가능 시간 충돌~~ — **결정 2026-11-13: PMart 배달 서비스 시간 08~24시**
 - CP-1(`CapacityReduced` 영향 주문 처리) — 사용자 결정 필요, 오배송 확인 사건 기록 주체(DD-2)

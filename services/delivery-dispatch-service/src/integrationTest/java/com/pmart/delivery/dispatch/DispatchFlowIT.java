@@ -428,7 +428,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT rider_id FROM dispatch_offer WHERE offer_id = ?", String.class, second))
         .isEqualTo(rider);
 
-    // 응답 없이 만료 → 마지막 재요청까지 다 썼으면 실패(거절이 있었으니 REPEATED_REJECTION)
+    // 응답 없이 만료 → 마지막 재요청까지 다 썼으면 실패(거절이 있었으니 REPEATED_REJECTION) → 10분 뒤 자동으로 다시 배차 요청(M2)
     jdbc.update("UPDATE dispatch_offer SET expires_at = ? WHERE offer_id = ?", ago(1), second);
     jdbc.update(
         "UPDATE dispatch_attempt SET retry_count = 2, stage = 3 WHERE delivery_id = ?", deliveryId);
@@ -446,9 +446,17 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(
             jdbc.queryForObject(
                 "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
-        .isEqualTo("DISPATCH_FAILED");
+        .isEqualTo("DISPATCHING");
     assertThat(outbox(deliveryId, "DispatchFailed").path("payload").path("reason").asString())
         .isEqualTo("REPEATED_REJECTION");
+    Map<String, Object> next =
+        jdbc.queryForMap(
+            "SELECT trigger, state, next_run_at > ? AS later FROM dispatch_attempt WHERE delivery_id = ? AND"
+                + " state = 'SEARCHING'",
+            java.sql.Timestamp.from(Instant.now().plusSeconds(540)),
+            deliveryId);
+    assertThat(next.get("trigger")).isEqualTo("RETRY");
+    assertThat(next.get("later")).isEqualTo(true);
   }
 
   @Test
@@ -760,14 +768,14 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     riders(mfc);
     String deliveryId =
         readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-8-" + UUID.randomUUID());
+    engine.tick(); // 좌표·MFC → 고객 도로 시간 준비
+    // 약속(주문 확정 + 50분)이 30분 전에 지났다 — 예상 전달(지금 + 400초)이 약속 + 20분을 넘는다
     jdbc.update(
-        "UPDATE dispatch_attempt SET started_at = ? WHERE delivery_id = ?",
-        ago(25 * 60),
-        deliveryId);
+        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ago(30 * 60), deliveryId);
     engine.tick();
     JsonNode delayed = outbox(deliveryId, "DispatchDelayed").path("payload");
     assertThat(delayed.path("threshold").asInt()).isEqualTo(20);
-    assertThat(delayed.path("delayedMinutes").asInt()).isGreaterThanOrEqualTo(25);
+    assertThat(delayed.path("delayedMinutes").asInt()).isGreaterThanOrEqualTo(36);
     engine.tick();
     assertThat(
             jdbc.queryForObject(
@@ -1033,6 +1041,70 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 rider))
         .isEqualTo(1);
+  }
+
+  @Test
+  void onTimeDeliveryGetsNoDelayAlertAndOperatorCanCancelWaitingDelivery() {
+    String mfc = "MFC-D12";
+    riders(mfc);
+    String deliveryId =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-12-" + UUID.randomUUID());
+    engine.tick();
+    // 약속까지 10분 남음 — 예상 전달(지금 + 400초)이 약속 + 20분 안이라 안내 없음
+    jdbc.update("UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ago(-600), deliveryId);
+    engine.tick();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DispatchDelayed'",
+                Integer.class,
+                deliveryId))
+        .isZero();
+    // 라이더는 배정 전 배송을 취소할 수 없다, 운영자(MFC 백오피스)는 재배차 없이 취소(M2)
+    ResponseEntity<String> riderTry =
+        cancel("RD-x-" + UUID.randomUUID(), deliveryId, "rc-" + deliveryId);
+    assertThat(riderTry.getStatusCode().value()).isEqualTo(403);
+    ResponseEntity<String> op =
+        http.post()
+            .uri("/deliveries/{id}/assignment-cancellations", deliveryId)
+            .header("Authorization", "Bearer " + TestJwt.operator("OP-M", List.of(), List.of(mfc)))
+            .header("Idempotency-Key", "oc-" + deliveryId)
+            .header("X-Source-System", "mfc-backoffice")
+            .body(
+                Map.of("requestedBy", "STORE_STAFF", "reason", "STORE_REQUEST", "reassign", false))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(op.getStatusCode().value()).isEqualTo(202);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("CANCELLED_BEFORE_PICKUP");
+  }
+
+  @Test
+  void riderWithRecentCancellationsSeesNewDeliveriesLater() {
+    String mfc = "MFC-D13";
+    String rider = "RD-p-" + UUID.randomUUID();
+    riders(mfc, rider(rider, "NORMAL", true));
+    riderLookup(rider(rider, "NORMAL", true));
+    locations(Map.of(rider, new double[] {37.4985, 127.0280}));
+    String deliveryId =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-13-" + UUID.randomUUID());
+    engine.tick();
+    assertThat(listIds(rider)).contains(deliveryId);
+    // 최근 배차취소 3건 → 새 배송은 3분 뒤에야 보인다(제재 아님 — 알림 감소)
+    for (int i = 0; i < 3; i++) {
+      jdbc.update(
+          "INSERT INTO assignment_cancellation (request_id, delivery_id, requested_by, actor, reason, reassign,"
+              + " state, created_at) VALUES (?, ?, 'RIDER', ?, 'RIDER_UNABLE', true, 'CANCELLED_BEFORE_PICKUP', ?)",
+          "pc-" + i + "-" + rider,
+          "DLV-old-" + i,
+          rider,
+          ago(3600));
+    }
+    assertThat(listIds(rider)).doesNotContain(deliveryId);
+    jdbc.update(
+        "UPDATE dispatch_attempt SET started_at = ? WHERE delivery_id = ?", ago(200), deliveryId);
+    assertThat(listIds(rider)).contains(deliveryId);
   }
 
   ResponseEntity<String> cancel(String rider, String deliveryId, String key) {

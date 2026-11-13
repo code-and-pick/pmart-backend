@@ -58,7 +58,8 @@ public class DispatchStore {
       Instant updatedAt,
       @Nullable String bundleId,
       @Nullable Integer stopSeq,
-      @Nullable Instant delayAlertedAt) {
+      @Nullable Instant delayAlertedAt,
+      @Nullable Instant promisedAt) {
 
     public boolean geoReady() {
       return mfcLat != null && dropLat != null && dropDistanceM != null;
@@ -253,6 +254,11 @@ public class DispatchStore {
         deliveryId);
   }
 
+  public void setPromise(String deliveryId, @Nullable Instant promisedAt) {
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ts(promisedAt), deliveryId);
+  }
+
   public void saveGeoError(String deliveryId, String error, Instant now) {
     jdbc.update(
         "UPDATE delivery SET geo_error = ?, updated_at = ? WHERE delivery_id = ?",
@@ -335,14 +341,19 @@ public class DispatchStore {
   }
 
   /** 배차 대기 배송과 진행 중 시도의 반경 단계(배달리스트). */
-  public record ListedDelivery(DeliveryRow delivery, int stage) {}
+  public record ListedDelivery(DeliveryRow delivery, int stage, Instant waitingSince) {}
 
   public List<ListedDelivery> dispatchingWithStage() {
     return jdbc.query(
-        "SELECT d.*, a.stage AS attempt_stage FROM delivery d JOIN dispatch_attempt a ON a.delivery_id ="
+        "SELECT d.*, a.stage AS attempt_stage, a.started_at AS attempt_started FROM delivery d JOIN"
+            + " dispatch_attempt a ON a.delivery_id ="
             + " d.delivery_id AND a.state IN ('SEARCHING', 'OFFERING') WHERE d.state = 'DISPATCHING'"
             + " AND d.drop_distance_m IS NOT NULL ORDER BY d.created_at LIMIT 500",
-        (rs, i) -> new ListedDelivery(delivery(rs), rs.getInt("attempt_stage")));
+        (rs, i) ->
+            new ListedDelivery(
+                delivery(rs),
+                rs.getInt("attempt_stage"),
+                rs.getTimestamp("attempt_started").toInstant()));
   }
 
   // ---------- 시도 ----------
@@ -405,6 +416,31 @@ public class DispatchStore {
         jdbc.queryForObject(
             "SELECT count(*) FROM stopped_order WHERE order_id = ?", Integer.class, orderId);
     return n != null && n > 0;
+  }
+
+  /** 라이더별 최근 배차취소 수(라이더 본인이 한 것) — 배차 알림 감소에 쓴다(제재 아님). */
+  public java.util.Map<String, Integer> recentRiderCancellations(
+      Collection<String> riderIds, Instant since) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    if (riderIds.isEmpty()) {
+      return out;
+    }
+    Object[] args = new Object[riderIds.size() + 1];
+    int i = 0;
+    for (String id : riderIds) {
+      args[i++] = id;
+    }
+    args[i] = ts(since);
+    jdbc.query(
+        "SELECT actor, count(*) FROM assignment_cancellation WHERE requested_by = 'RIDER' AND"
+            + " state = 'CANCELLED_BEFORE_PICKUP' AND actor IN ("
+            + in(riderIds.size())
+            + ") AND created_at >= ? GROUP BY actor",
+        rs -> {
+          out.put(rs.getString(1), rs.getInt(2));
+        },
+        args);
+    return out;
   }
 
   // ---------- 배차 취소 기록 ----------
@@ -471,18 +507,13 @@ public class DispatchStore {
 
   // ---------- 배차 지연 안내 ----------
 
-  /** 배차 대기가 cutoff 전부터(첫 시도 시작) 이어지고 아직 안내하지 않은 배송(잠금). */
-  public record Delayed(DeliveryRow delivery, Instant waitingSince) {}
-
-  public List<Delayed> lockDelayed(Instant cutoff, int limit) {
+  /** 지연 안내 후보 — 배차 대기·아직 안내 안 함·약속 시각 있음(잠금). 늦었는지는 호출자가 예상 전달 시각으로 판정. */
+  public List<DeliveryRow> lockDelayCandidates(Instant promisedBefore, int limit) {
     return jdbc.query(
-        "SELECT d.*, (SELECT min(a.started_at) FROM dispatch_attempt a WHERE a.delivery_id ="
-            + " d.delivery_id) AS waiting_since FROM delivery d WHERE d.state = 'DISPATCHING' AND"
-            + " d.delay_alerted_at IS NULL AND (SELECT min(a.started_at) FROM dispatch_attempt a WHERE"
-            + " a.delivery_id = d.delivery_id) <= ? ORDER BY d.created_at LIMIT ? FOR UPDATE OF d SKIP"
-            + " LOCKED",
-        (rs, i) -> new Delayed(delivery(rs), rs.getTimestamp("waiting_since").toInstant()),
-        ts(cutoff),
+        "SELECT * FROM delivery WHERE state = 'DISPATCHING' AND delay_alerted_at IS NULL AND promised_at"
+            + " IS NOT NULL AND promised_at < ? ORDER BY promised_at LIMIT ? FOR UPDATE SKIP LOCKED",
+        (rs, i) -> delivery(rs),
+        ts(promisedBefore),
         limit);
   }
 
@@ -836,7 +867,8 @@ public class DispatchStore {
         rs.getTimestamp("updated_at").toInstant(),
         rs.getString("bundle_id"),
         rs.getObject("stop_seq", Integer.class),
-        instant(rs, "delay_alerted_at"));
+        instant(rs, "delay_alerted_at"),
+        instant(rs, "promised_at"));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {

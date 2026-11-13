@@ -19,6 +19,10 @@ import java.util.List;
  * @param capacity [라이더] 이번에 더 맡을 수 있는 배송 수(0 이면 제외)
  * @param readyInSeconds [배송] 지금부터 출하 대기까지(초)
  * @param bundles 후보 묶음({@link #candidates})
+ * @param promiseInSeconds [배송] 지금부터 배송 약속 시각까지(초, 모르면 {@link Integer#MAX_VALUE}) — 2건 이상 묶음은 모든 고객이
+ *     약속 안에 받을 때만(사용자 2026-11-13 "주문한지 50분 이내 전달"). 1건은 늦어도 보낸다
+ * @param penaltySeconds [라이더] 비용에 더하는 초 — 최근 반복 배차취소한 라이더는 뒤로(사용자 2026-11-13 "기록을 보고 자동으로 배차 알림
+ *     감소")
  */
 public record BundleProblem(
     int[] pickupSeconds,
@@ -26,7 +30,51 @@ public record BundleProblem(
     int[] capacity,
     int[] readyInSeconds,
     List<Bundle> bundles,
-    int lateWeight) {
+    int lateWeight,
+    int[] promiseInSeconds,
+    int[] penaltySeconds) {
+
+  /** 약속·감점 없이(시험·단순 사용). */
+  public BundleProblem(
+      int[] pickupSeconds,
+      boolean[][] allowed,
+      int[] capacity,
+      int[] readyInSeconds,
+      List<Bundle> bundles,
+      int lateWeight) {
+    this(
+        pickupSeconds,
+        allowed,
+        capacity,
+        readyInSeconds,
+        bundles,
+        lateWeight,
+        filled(readyInSeconds.length, Integer.MAX_VALUE),
+        new int[pickupSeconds.length]);
+  }
+
+  static int[] filled(int n, int v) {
+    int[] a = new int[n];
+    Arrays.fill(a, v);
+    return a;
+  }
+
+  /** 2건 이상 묶음이면 이 라이더로도 모든 고객이 약속 안에 받는가(출발 = 라이더 MFC 도착과 출하 대기 중 늦은 쪽). */
+  static boolean withinPromise(Bundle b, int pickup, int[] readyIn, int[] promiseIn) {
+    if (b.size() < 2) {
+      return true;
+    }
+    int depart = pickup;
+    for (int d : b.deliveries()) {
+      depart = Math.max(depart, readyIn[d]);
+    }
+    for (int i = 0; i < b.size(); i++) {
+      if ((long) depart + b.arrivalSeconds()[i] > promiseIn[b.deliveries()[i]]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   /**
    * @param deliveries 방문 순서대로의 배송 번호
@@ -59,7 +107,7 @@ public record BundleProblem(
         return false;
       }
     }
-    return true;
+    return withinPromise(x, pickupSeconds[r], readyInSeconds, promiseInSeconds);
   }
 
   public long cost(int r, int b) {
@@ -70,7 +118,7 @@ public record BundleProblem(
     }
     long diff = (long) pickupSeconds[r] - ready;
     long wait = diff > 0 ? diff * lateWeight : -diff;
-    return pickupSeconds[r] + wait + x.arrivalSum();
+    return pickupSeconds[r] + wait + x.arrivalSum() + penaltySeconds[r];
   }
 
   /** 규칙 기반 해 — (짝 수 큰 순, 비용 작은 순)으로 겹치지 않게 고른다. 솔버를 못 쓸 때와 힌트. */
@@ -145,6 +193,33 @@ public record BundleProblem(
       int maxExtraSeconds,
       int[] capacity,
       boolean[][] allowed) {
+    return check(
+        plan,
+        directSeconds,
+        betweenSeconds,
+        bundlable,
+        maxSize,
+        maxExtraSeconds,
+        capacity,
+        allowed,
+        new int[capacity.length],
+        new int[directSeconds.length],
+        filled(directSeconds.length, Integer.MAX_VALUE));
+  }
+
+  /** 약속 시각까지 보는 검증(라이더 MFC 도착·출하 대기·약속). */
+  public static Checked check(
+      List<int[]> plan,
+      int[] directSeconds,
+      int[][] betweenSeconds,
+      boolean[] bundlable,
+      int maxSize,
+      int maxExtraSeconds,
+      int[] capacity,
+      boolean[][] allowed,
+      int[] pickupSeconds,
+      int[] readyInSeconds,
+      int[] promiseInSeconds) {
     List<Bundle> out = new ArrayList<>();
     List<Integer> riders = new ArrayList<>();
     boolean[] riderUsed = new boolean[capacity.length];
@@ -175,6 +250,10 @@ public record BundleProblem(
           ok &= ok && arrival[i] - directSeconds[d] <= maxExtraSeconds;
         }
       }
+      ok =
+          ok
+              && withinPromise(
+                  new Bundle(ds, arrival), pickupSeconds[r], readyInSeconds, promiseInSeconds);
       if (!ok) {
         dropped++;
         continue;

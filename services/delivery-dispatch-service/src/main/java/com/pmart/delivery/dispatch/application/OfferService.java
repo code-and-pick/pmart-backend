@@ -292,8 +292,18 @@ public class OfferService {
     if (loc.isEmpty()) {
       return new DeliveryList(List.of(), now, props.pollAfterSec());
     }
+    // 최근 반복 배차취소 → 새 배송이 늦게 보인다(배차 알림 감소 — 제재 아님, 사용자 2026-11-13)
+    int cancels =
+        store
+            .recentRiderCancellations(List.of(riderId), now.minus(props.cancellationWindow()))
+            .getOrDefault(riderId, 0);
+    Instant visibleIfWaitingSince =
+        now.minus(props.listDelayPerCancellation().multipliedBy(cancels));
     List<ListItem> items = new ArrayList<>();
     for (DispatchStore.ListedDelivery x : store.dispatchingWithStage()) {
+      if (x.waitingSince().isAfter(visibleIfWaitingSince)) {
+        continue;
+      }
       DeliveryRow d = x.delivery();
       double km = loc.get().at().metersTo(new Geo(d.mfcLat(), d.mfcLng())) / 1000.0;
       if (km <= SearchRules.radiusKm(props.radiiKm(), x.stage())) {

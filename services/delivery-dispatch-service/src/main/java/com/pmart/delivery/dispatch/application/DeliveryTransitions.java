@@ -63,7 +63,24 @@ public class DeliveryTransitions {
     store.setState(d.deliveryId(), "BLOCKED", "ORDER_CANCELLED", now);
   }
 
-  /** 배차 실패(원문 §3.6 — 기사 없음·반복 거절·응답 만료·시스템 장애 구분). */
+  /**
+   * 라이더를 못 구한 배차 실패 — DispatchFailed 로 알리고 배송은 배차 대기 그대로, redispatchAt 에 새 시도(RETRY)로 다시 배차 요청(사용자
+   * 2026-11-13 "배차 실패하면 자동으로 시스템 상에서 배차요청이 다시 가도록"). 재배차 없이 취소는 MFC 백오피스 관리자가 직접(배차 취소 API).
+   *
+   * @return 새 시도 ID
+   */
+  public String failAndRedispatch(
+      DeliveryRow d, AttemptRow a, String reason, Instant redispatchAt, Instant now) {
+    store.supersedeOpenOffers(d.deliveryId(), now, "EXPIRED");
+    store.finishAttempt(a.attemptId(), "FAILED", reason, now);
+    events.failed(d, reason, a.retryCount() + 1, now);
+    String next = "ATT-" + UUID.randomUUID();
+    store.insertAttempt(next, d.deliveryId(), "RETRY", now);
+    store.updateAttempt(next, "SEARCHING", 1, redispatchAt, 0, 0, redispatchAt, null, null);
+    return next;
+  }
+
+  /** 배차 실패(원문 §3.6 — 기사 없음·반복 거절·응답 만료·시스템 장애 구분). 다시 배차하지 않는다(시스템 장애 — 운영자 확인). */
   public void fail(DeliveryRow d, AttemptRow a, String reason, Instant now) {
     store.supersedeOpenOffers(d.deliveryId(), now, "EXPIRED");
     store.finishAttempt(a.attemptId(), "FAILED", reason, now);

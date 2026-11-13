@@ -34,6 +34,7 @@
 
 ## 남은 것
 - **첫 성능 검증(2026-11-13, `docs/delivery/ai-optimizer-evaluation.md`)**: 합성 문제에서 RouteFinder 가 OR-Tools 보다 배정 22~23% 적고 비용 20~30% 높다(차량 수 제한 없는 VRP 로 학습된 모델). 추가 학습 전 LAN 사용 여부는 사용자 결정 대기. 추가 학습은 PC 5 GPU.
+- **사용자 결정(2026-11-13)**: 첫 검증 결과에 따라 **LAN 에서는 AI 를 끄고 OR-Tools 로**(`pmart.dispatch.ai.base-url` 비움), **추가 학습을 진행**한다(우리 문제 모양 — 라이더 수 제한·라이더별 출발 비용·최대 3건·배송 약속 50분). 학습 뒤 같은 평가 도구로 OR-Tools 를 넘으면 켠다.
 - service-map·architecture-design 에 이 서버 추가(PC 1 이 합칠 때 — `pc-split.md` §5), LAN 배치(placement·compose — PC 1).
 
 ## 대안

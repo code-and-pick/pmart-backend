@@ -10,6 +10,7 @@ import com.pmart.delivery.dispatch.infrastructure.DispatchStore;
 import com.pmart.delivery.dispatch.infrastructure.DispatchStore.DeliveryRow;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -117,7 +118,44 @@ public class CancellationService {
                     requestId, deliveryId, "REJECTED_PICKED_UP", null, d.version(), now);
               }
               if (!"ASSIGNED".equals(d.state())) {
-                throw PmartException.invalidState("배정된 배송만 배차 취소할 수 있습니다(지금 " + d.state() + ").");
+                // 배정 전 배송: 운영자(MFC 백오피스)만 — 재배차 없이 취소, 또는 배차 실패(시스템 장애) 다시 배차(사용자 2026-11-13 M2)
+                boolean staff = p.type() != PmartPrincipal.PrincipalType.RIDER;
+                boolean waiting =
+                    List.of("CREATED", "DISPATCHING", "DISPATCH_FAILED").contains(d.state());
+                if (!staff || !waiting) {
+                  throw PmartException.invalidState("배정된 배송만 배차 취소할 수 있습니다(지금 " + d.state() + ").");
+                }
+                String restart = null;
+                if (!c.reassign()) {
+                  transitions.cancelBeforePickup(d, c.reason(), now);
+                } else if ("DISPATCH_FAILED".equals(d.state())) {
+                  store.setState(deliveryId, "DISPATCHING", null, now);
+                  restart = "ATT-" + UUID.randomUUID();
+                  store.insertAttempt(restart, deliveryId, "REASSIGN", now);
+                } else {
+                  throw PmartException.invalidState(
+                      "이미 배차 중입니다 — 재배차 없이 취소(reassign=false)만 할 수 있습니다.");
+                }
+                store.insertCancellation(
+                    requestId,
+                    deliveryId,
+                    c.requestedBy(),
+                    p.subject(),
+                    c.reason(),
+                    c.reasonDetail(),
+                    c.reassign(),
+                    c.approvalRef(),
+                    "CANCELLED_BEFORE_PICKUP",
+                    null,
+                    restart,
+                    now);
+                return new Result(
+                    requestId,
+                    deliveryId,
+                    "CANCELLED_BEFORE_PICKUP",
+                    restart,
+                    d.version() + 1,
+                    now);
               }
               EventEnvelope.Actor actor = actor(p);
               String attemptId = null;

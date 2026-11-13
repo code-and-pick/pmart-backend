@@ -53,7 +53,8 @@ public class Upstreams {
       @Nullable String roadAddress,
       @Nullable LocalDate arrivalDate,
       @Nullable String arrivalStart,
-      @Nullable String arrivalEnd) {}
+      @Nullable String arrivalEnd,
+      @Nullable Instant confirmedAt) {}
 
   public record Place(Geo at, @Nullable String areaLabel) {}
 
@@ -222,7 +223,8 @@ public class Upstreams {
         n.path("roadAddress").isString() ? n.path("roadAddress").asString() : null,
         w.path("date").isString() ? LocalDate.parse(w.path("date").asString()) : null,
         w.path("start").asString(null),
-        w.path("end").asString(null));
+        w.path("end").asString(null),
+        n.path("confirmedAt").isString() ? Instant.parse(n.path("confirmedAt").asString()) : null);
   }
 
   // ---------- center-master ----------
