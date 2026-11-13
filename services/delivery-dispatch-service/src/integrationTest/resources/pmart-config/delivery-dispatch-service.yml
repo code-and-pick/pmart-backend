@@ -32,7 +32,7 @@ pmart:
     search-interval: PT30S # 제안할 사람이 없을 때 다시 볼 간격
     quota-backoff: PT5M # 카카오 사용량 초과(429) 때 미루기
     route-cache-ttl: PT5M # 라이더 → MFC 도로 시간 다시 쓰기(약 100m 칸)
-    # 반복 배차취소 → 배차 알림 감소(제재 아님, 사용자 2026-11-13) — 설계값
+    # 반복 배차취소 → 배차 알림 감소(제재 아님, 사용자 2026-11-13) — 값도 사용자 확인("배차취소 패널티는 그대로")
     cancellation-window: P7D
     cancellation-penalty: PT3M # AI 추천 제안 비용에 1건마다
     list-delay-per-cancellation: PT1M # 일반 모드 배달리스트에 새 배송이 1건마다 늦게 보임

@@ -24,9 +24,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param pollAfterSec 라이더 앱 폴링 권장(초) — 계약 잠정 5초
  * @param delayAlertAfter 예상 전달이 약속 시각보다 이만큼 넘게 늦으면 DispatchDelayed(사용자 2026-11-13 "안내기준보다 20분 더
  *     늦춰지면")
- * @param cancellationWindow 최근 배차취소를 세는 기간(설계값 7일)
- * @param cancellationPenalty AI 추천 제안에서 최근 배차취소 1건마다 비용에 더하는 시간(설계값 3분 — 다른 라이더가 먼저)
- * @param listDelayPerCancellation 일반 모드 배달리스트에 새 배송이 보이기까지 배차취소 1건마다 늦추는 시간(설계값 1분)
+ * @param cancellationWindow 최근 배차취소를 세는 기간(7일 — 사용자 확인 2026-11-13)
+ * @param cancellationPenalty AI 추천 제안에서 최근 배차취소 1건마다 비용에 더하는 시간(3분 — 다른 라이더가 먼저, 사용자 확인 2026-11-13)
+ * @param listDelayPerCancellation 일반 모드 배달리스트에 새 배송이 보이기까지 배차취소 1건마다 늦추는 시간(1분 — 사용자 확인 2026-11-13)
  * @param searchInterval 제안할 사람이 없을 때 그 시도를 다시 볼 간격(설계값 30초 — 카카오 호출 줄이기 M3)
  * @param quotaBackoff 카카오 사용량 초과(429) 때 그 MFC 판단을 미루는 시간(설계값 5분)
  * @param routeCacheTtl 라이더 → MFC 도로 시간을 다시 쓰는 시간(설계값 5분, 약 100m 칸)

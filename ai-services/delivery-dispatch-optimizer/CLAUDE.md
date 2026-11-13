@@ -27,4 +27,5 @@ docker build -t pmart/delivery-dispatch-optimizer:dev .   # 가중치를 이미�
 - 지연 한도를 RouteFinder 시간창으로 넣는다(`planner._deadlines` — 도로 초 ↔ 평면 거리는 직선 미터당 도로 초 중앙값으로 환산).
 - dispatch 연결: `pmart.dispatch.ai.base-url`(비우면 OR-Tools 만), 시간 초과 3초, 실패·검증 실패는 OR-Tools 로 대신(지표 `pmart.dispatch.ai.fallback`·`pmart.dispatch.ai.dropped`).
 - LAN 배치는 PC 1(PC 5, 포트 8407, CPU). 아직 안 함.
-- 남은 것: 추가 학습(라이더 수 제한·라이더별 출발 비용·최대 3건·20분), 실제 카카오 도로 시간으로 재검증, GreedRL 비교.
+- **추가 학습(2026-11-13)** `tools/finetune.py`: 보상 = Σ고객 도착 + λ × 경로 수(공개 가중치는 경로 길이 합). λ 2.0·3000 단계·CPU 17분 → 덜 배정 −22% → −2%, 비용 차이 +8% 안팎 — 아직 OR-Tools 밑이라 LAN 은 계속 끔. 가중치 `models/`(git 제외, PC 5 만). 결과 `docs/delivery/ai-optimizer-evaluation.md` 끝 절.
+- 남은 것: 추론 다중 시작 고르기, 실제 카카오 도로 시간으로 재검증, 큰 MFC 크기 비교, GreedRL 비교.
