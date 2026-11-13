@@ -22,7 +22,7 @@ BODY = {
 
 def test_plan_with_model():
     with TestClient(app) as c:
-        app.state.model = lambda mfc, pts, k: [list(range(len(pts)))]
+        app.state.model = lambda mfc, pts, k, deadlines=None: [list(range(len(pts)))]
         app.state.model_name = "FAKE"
         res = c.post("/api/v1/internal/dispatch-plans", json=BODY)
         assert res.status_code == 200
@@ -41,7 +41,7 @@ def test_no_model_is_503_and_bad_body_is_400():
         assert res.status_code == 503
         assert res.json()["code"] == "MODEL_UNAVAILABLE"
         assert c.get("/health").json()["status"] == "DEGRADED"
-        app.state.model = lambda mfc, pts, k: []
+        app.state.model = lambda mfc, pts, k, deadlines=None: []
         bad = dict(BODY, betweenSeconds=[[0]])
         assert c.post("/api/v1/internal/dispatch-plans", json=bad).status_code == 400
         assert c.post("/api/v1/internal/dispatch-plans", json={"mfc": {}}).status_code == 400

@@ -22,7 +22,9 @@ docker build -t pmart/delivery-dispatch-optimizer:dev .   # 가중치를 이미�
 환경변수: `OPTIMIZER_MODEL_PATH`(가중치 파일, 이미지 안 `/models/rf-transformer.ckpt`), `OPTIMIZER_DISABLE_MODEL=1`(시험), `LOG_LEVEL`.
 
 ## 상태 (2026-11-13)
-- 구현·시험: pytest 10 통과(실제 가중치 시험 2 포함), Docker 이미지 빌드·실행 확인(상태 UP, 고객 3·라이더 2 계산 8ms, 메모리 약 390MB). **이미지 5GB** — rl4co 가 학습용 의존성(lightning·wandb 등)을 끌고 온다. 줄이기는 다음 일.
+- 구현·시험: pytest 10 통과(실제 가중치 시험 2 포함), Docker 이미지 빌드·실행 확인(상태 UP, 계산 7~8ms, 메모리 약 390MB). 이미지 **2.16GB**(두 단계 빌드 — 처음 5GB 는 uv 캐시·git 이 남았던 것. 가상환경 1.5GB 대부분 PyTorch).
+- **성능 검증(2026-11-13)**: `tools/evaluate.py` — 합성 문제 60개 × 2 에서 RouteFinder 가 OR-Tools 보다 배정 22~23% 적고 비용 20~30% 높음(`docs/delivery/ai-optimizer-evaluation.md`). 라이더 수 제한이 없는 VRP 로 학습된 모델이라 — 추가 학습 전에는 LAN 에서 끄고 OR-Tools 로(사용자 결정 대기).
+- 지연 한도를 RouteFinder 시간창으로 넣는다(`planner._deadlines` — 도로 초 ↔ 평면 거리는 직선 미터당 도로 초 중앙값으로 환산).
 - dispatch 연결: `pmart.dispatch.ai.base-url`(비우면 OR-Tools 만), 시간 초과 3초, 실패·검증 실패는 OR-Tools 로 대신(지표 `pmart.dispatch.ai.fallback`·`pmart.dispatch.ai.dropped`).
 - LAN 배치는 PC 1(PC 5, 포트 8407, CPU). 아직 안 함.
-- 남은 것: 성능 검증(같은 문제를 OR-Tools 와 비교 — 원문 §2.1 ③), 필요하면 추가 학습(PC 5 GPU), 이미지 줄이기, GreedRL 비교(나중).
+- 남은 것: 추가 학습(라이더 수 제한·라이더별 출발 비용·최대 3건·20분), 실제 카카오 도로 시간으로 재검증, GreedRL 비교.

@@ -30,7 +30,7 @@ def r(i, pickup=300, capacity=3, allowed=None):
     return {"riderId": f"R{i}", "pickupSeconds": pickup, "capacity": capacity, "allowedDeliveryIds": allowed}
 
 
-def one_route(mfc, pts, max_size):
+def one_route(mfc, pts, max_size, deadlines=None):
     return [list(range(len(pts)))]
 
 

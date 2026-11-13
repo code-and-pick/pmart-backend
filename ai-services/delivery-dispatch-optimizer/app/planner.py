@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from .schemas import PlanAssignment, PlanRequest
 
 # 경로 모델: (MFC, 고객 좌표 목록, 최대 묶음 크기) → 고객 번호 묶음(방문 순서)
-RouteModel = Callable[[tuple[float, float], Sequence[tuple[float, float]], int], list[list[int]]]
+RouteModel = Callable[..., list[list[int]]]
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ def bundles(req: PlanRequest, model: RouteModel | None) -> list[Bundle]:
     if len(pooled) >= 2 and req.max_bundle_size >= 2 and model is not None:
         mfc = (req.mfc.lat, req.mfc.lng)
         pts = [(req.deliveries[i].at.lat, req.deliveries[i].at.lng) for i in pooled]
-        routes = model(mfc, pts, req.max_bundle_size)
+        routes = model(mfc, pts, req.max_bundle_size, deadlines=_deadlines(req, pooled, mfc, pts))
         seen: set[int] = set()
         for route in routes:
             order = [pooled[j] for j in route if 0 <= j < len(pooled) and pooled[j] not in seen]
@@ -98,6 +98,32 @@ def bundles(req: PlanRequest, model: RouteModel | None) -> list[Bundle]:
     else:
         out.extend(Bundle((i,), (req.deliveries[i].direct_seconds,)) for i in pooled)
     return out
+
+
+def _deadlines(req: PlanRequest, pooled: list[int], mfc, pts) -> list[float] | None:
+    """지연 한도를 모델 시간창으로 — 고객 i 는 (바로 갈 때 + max_extra) 안에 도착. 도로 초 → 평면 거리: 직선 미터당 도로 초(중앙값)로 환산."""
+    from .routefinder_model import normalized_span_m
+
+    ratios = []
+    for i, p in zip(pooled, pts):
+        m = _meters(mfc, p)
+        if m > 1:
+            ratios.append(req.deliveries[i].direct_seconds / m)
+    if not ratios:
+        return None
+    ratios.sort()
+    sec_per_m = ratios[len(ratios) // 2]
+    span = normalized_span_m([mfc, *pts])
+    return [(req.deliveries[i].direct_seconds + req.max_extra_seconds) / sec_per_m / span for i in pooled]
+
+
+def _meters(a, b) -> float:
+    import math
+
+    dlat = math.radians(b[0] - a[0])
+    dlng = math.radians(b[1] - a[1])
+    h = math.sin(dlat / 2) ** 2 + math.cos(math.radians(a[0])) * math.cos(math.radians(b[0])) * math.sin(dlng / 2) ** 2
+    return 2 * 6_371_000 * math.asin(min(1, math.sqrt(h)))
 
 
 def cost(req: PlanRequest, r: int, b: Bundle) -> int:

@@ -33,7 +33,7 @@
 13. **응답이 없거나(시간 초과 3초)·오류·검증 실패면 OR-Tools 배정으로 대신**하고 경고 + 지표(`pmart.dispatch.ai.fallback`). Spring 은 AI 결과를 그대로 믿지 않고 검증한다(결정 5): 반경 단계·용량·하나씩 배달·묶음 크기·알뜰배달만 묶음·배송 중복·지연 한도. 틀린 묶음은 버리고 그 배송은 다음 판단에서 다시. AI 서버 주소 설정이 비어 있으면 처음부터 OR-Tools.
 
 ## 남은 것
-- 모델 성능 검증(OR-Tools 와 같은 문제 비교), 필요하면 추가 학습(PC 5 GPU).
+- **첫 성능 검증(2026-11-13, `docs/delivery/ai-optimizer-evaluation.md`)**: 합성 문제에서 RouteFinder 가 OR-Tools 보다 배정 22~23% 적고 비용 20~30% 높다(차량 수 제한 없는 VRP 로 학습된 모델). 추가 학습 전 LAN 사용 여부는 사용자 결정 대기. 추가 학습은 PC 5 GPU.
 - service-map·architecture-design 에 이 서버 추가(PC 1 이 합칠 때 — `pc-split.md` §5), LAN 배치(placement·compose — PC 1).
 
 ## 대안

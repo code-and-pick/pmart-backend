@@ -91,8 +91,13 @@ class RouteFinderModel:
         log.info("RouteFinder 적재 %.1f초 (%s)", time.time() - t0, NAME)
 
     def __call__(
-        self, mfc: tuple[float, float], points: Sequence[tuple[float, float]], max_size: int
+        self,
+        mfc: tuple[float, float],
+        points: Sequence[tuple[float, float]],
+        max_size: int,
+        deadlines: Sequence[float] | None = None,
     ) -> list[list[int]]:
+        """deadlines[i] = 고객 i 도착 한도를 [0,1] 평면 거리 단위로(속도 1). None 이면 시간창 없음."""
         torch = self._torch
         from tensordict import TensorDict
 
@@ -107,7 +112,7 @@ class RouteFinderModel:
                 "vehicle_capacity": torch.ones(1, 1),
                 "capacity_original": torch.ones(1, 1),
                 "open_route": torch.ones(1, 1, dtype=torch.bool),
-                "time_windows": torch.tensor([[0.0, float("inf")]]).repeat(1, n + 1, 1),
+                "time_windows": _windows(torch, n, deadlines),
                 "service_time": torch.zeros(1, n + 1),
                 "distance_limit": torch.full((1, 1), float("inf")),
                 "speed": torch.ones(1, 1),
@@ -130,6 +135,23 @@ class RouteFinderModel:
         if cur:
             routes.append(cur)
         return routes
+
+
+def _windows(torch, n: int, deadlines: Sequence[float] | None):
+    tw = torch.tensor([[0.0, float("inf")]]).repeat(1, n + 1, 1)
+    if deadlines is not None:
+        for i, d in enumerate(deadlines):
+            tw[0, i + 1, 1] = float(d)
+    return tw
+
+
+def normalized_span_m(latlng: Sequence[tuple[float, float]]) -> float:
+    """_normalize 의 축척(미터) — [0,1] 한 칸이 몇 미터인지."""
+    lat0 = sum(p[0] for p in latlng) / len(latlng)
+    k = math.cos(math.radians(lat0)) * 111_320.0
+    xs = [p[1] * k for p in latlng]
+    ys = [p[0] * 110_574.0 for p in latlng]
+    return max(max(xs) - min(xs), max(ys) - min(ys)) or 1.0
 
 
 def _normalize(latlng: Sequence[tuple[float, float]]) -> list[list[float]]:
