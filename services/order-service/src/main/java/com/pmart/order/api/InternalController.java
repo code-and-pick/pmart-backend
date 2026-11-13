@@ -3,7 +3,10 @@ package com.pmart.order.api;
 import com.pmart.common.web.CommandResponse;
 import com.pmart.order.api.generated.InternalApi;
 import com.pmart.order.api.generated.model.ApplyLineQuantityChangeRequest;
+import com.pmart.order.api.generated.model.ArrivalWindow;
 import com.pmart.order.api.generated.model.ConfirmOrderRequest;
+import com.pmart.order.api.generated.model.DeliveryDestination;
+import com.pmart.order.api.generated.model.DeliveryDestinationGeo;
 import com.pmart.order.api.generated.model.InternalOrder;
 import com.pmart.order.api.generated.model.InternalOrderLinesInner;
 import com.pmart.order.api.generated.model.OrderStatus;
@@ -12,6 +15,7 @@ import com.pmart.order.application.OrderService;
 import com.pmart.order.domain.OrderRules;
 import com.pmart.order.infrastructure.OrderStore.LineRow;
 import com.pmart.order.infrastructure.OrderStore.OrderRow;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import org.jspecify.annotations.Nullable;
@@ -19,8 +23,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 InternalApi — 주문 확정·주문 원장 조회·주문행 수량 변경(출고 전 취소). 나머지 내부 API(탈퇴 확인·배송 사실·고객 약속)는 인터페이스 default
- * 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
+ * 계약 InternalApi — 주문 확정·주문 원장 조회·배차용 배송지(O-4)·주문행 수량 변경(출고 전 취소). 나머지 내부 API(탈퇴 확인·배송 사실·고객 약속)는
+ * 인터페이스 default 가 501 을 돌려준다. 업무 규칙은 application/domain 에 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
 public class InternalController implements InternalApi {
@@ -75,6 +79,32 @@ public class InternalController implements InternalApi {
                     .toList()),
             xExpectedVersion);
     return ResponseEntity.ok(command(r));
+  }
+
+  /** 배차용 배송지(O-4, 2026-11-13) — 도로명주소·핀만, 수령인·연락처·출입 정보 없음. */
+  @Override
+  public ResponseEntity<DeliveryDestination> getOrderDeliveryDestination(String orderId) {
+    OrderService.OrderView v = orders.internal(orderId);
+    OrderRow o = v.order();
+    var s = v.shipping();
+    DeliveryDestination out =
+        new DeliveryDestination()
+            .orderId(o.orderId())
+            .mfcId(o.mfcId())
+            .status(OrderStatus.fromValue(o.status()))
+            .deliveryMode(DeliveryDestination.DeliveryModeEnum.fromValue(o.deliveryMode()))
+            .roadAddress(s == null ? null : s.roadAddress())
+            .geo(
+                s == null || s.lat() == null || s.lng() == null
+                    ? null
+                    : new DeliveryDestinationGeo()
+                        .lat(BigDecimal.valueOf(s.lat()))
+                        .lng(BigDecimal.valueOf(s.lng())));
+    if (o.arrivalDate() != null && o.arrivalStart() != null && o.arrivalEnd() != null) {
+      out.arrivalWindow(
+          new ArrivalWindow().date(o.arrivalDate()).start(o.arrivalStart()).end(o.arrivalEnd()));
+    }
+    return ResponseEntity.ok(out);
   }
 
   @Override

@@ -384,6 +384,15 @@ public class ServiceabilityService {
     return geocoder.search(q, false);
   }
 
+  /** 배차용(내부) — 판정 좌표와 같은 정확 일치 변환(ADR-0023, 2026-11-13 DD-1). 저장 없음. */
+  public List<Geocoder.Place> geocodeExact(String query) {
+    String q = query.strip();
+    if (q.isEmpty() || q.length() > 200) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "query 는 1~200자입니다.");
+    }
+    return geocoder.search(q, true);
+  }
+
   public List<Geocoder.Place> reverseGeocode(double lat, double lng) {
     return geocoder.reverse(lat, lng);
   }

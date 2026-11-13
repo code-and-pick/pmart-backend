@@ -459,6 +459,21 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(quota.body().path("code").asString()).isEqualTo("QUOTA_EXCEEDED");
     assertThat(get(CUSTOMER, "/address-geocodes?query=").status()).isEqualTo(400);
 
+    // 배차용 내부 조회(2026-11-13): 토큰 없이 내부 호출, 판정과 같은 정확 일치(analyze_type=exact)
+    var internal =
+        http.get()
+            .uri("/internal/address-geocodes?query=IN-ROAD")
+            .header("X-Source-System", "delivery-dispatch-service")
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(internal.getStatusCode().value()).isEqualTo(200);
+    assertThat(mapper.readTree(internal.getBody()).path("results").path(0).path("lat").asDouble())
+        .isEqualTo(37.50);
+    kakao.verify(
+        getRequestedFor(urlPathEqualTo("/v2/local/search/address.json"))
+            .withQueryParam("query", equalTo("IN-ROAD"))
+            .withQueryParam("analyze_type", equalTo("exact")));
+
     // 좌표 → 주소(핀 위치 표시)
     Res reverse = get(GUEST, "/address-reverse-geocodes?lat=37.5&lng=127.02");
     assertThat(reverse.status()).isEqualTo(200);

@@ -31,7 +31,7 @@ public class GeocodingController implements GeocodingApi {
     return ResponseEntity.ok(view(service.reverseGeocode(lat.doubleValue(), lng.doubleValue())));
   }
 
-  private static AddressLookupResult view(List<Geocoder.Place> places) {
+  static AddressLookupResult view(List<Geocoder.Place> places) {
     return new AddressLookupResult()
         .results(
             places.stream()

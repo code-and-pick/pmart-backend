@@ -35,3 +35,4 @@
 권역 매핑 버전·좌표 판정 구현(2026-10-30), 카카오 주소 변환·도로명 좌표 판정(2026-10-31). 배송 가능 조건(`/delivery-conditions`, 2026-10-31): 발효 권역의 MFC 만(아니면 404), 확정값만 — 방식 3가지·배송당 10,000g·00:00~08:00 제한, 부피·보냉·수단은 NOT_SET·빈 목록(`DeliveryPolicy`). 비회원 조회 허용.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
+- 배차용 주소 → 좌표(2026-11-13, 계약 0.1.1): `GET /internal/address-geocodes`(내부 호출) — 판정과 같은 정확 일치 변환(`ServiceabilityService.geocodeExact`). delivery-dispatch 가 주문 배송지 좌표를 얻는다. 저장·로그 없음.

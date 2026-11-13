@@ -1006,6 +1006,17 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
             .asString();
     assertThat(confirm(svc, orderId, UUID.randomUUID().toString(), total).status()).isEqualTo(200);
 
+    // 배차용 배송지(O-4): 서비스만, 방식·예약 창, 수령인·연락처는 없다
+    assertThat(get(repeat, "/internal/orders/" + orderId + "/delivery-destination").status())
+        .isEqualTo(403);
+    Res dest = get(svc, "/internal/orders/" + orderId + "/delivery-destination");
+    assertThat(dest.status()).as(dest.body().toString()).isEqualTo(200);
+    assertThat(dest.body().path("deliveryMode").asString()).isEqualTo("SCHEDULED");
+    assertThat(dest.body().path("arrivalWindow").path("start").asString()).isEqualTo("10:00");
+    assertThat(dest.body().has("receiverPhone")).isFalse();
+    assertThat(dest.body().has("receiverName")).isFalse();
+    assertThat(get(svc, "/internal/orders/ORD-NOPE/delivery-destination").status()).isEqualTo(404);
+
     // 내부 주문 조회: 서비스만, 소유자·결제·행 수량
     assertThat(get(repeat, "/internal/orders/" + orderId).status()).isEqualTo(403);
     assertThat(get(svc, "/internal/orders/ORD-NOPE").status()).isEqualTo(404);

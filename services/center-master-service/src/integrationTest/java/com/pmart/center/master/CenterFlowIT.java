@@ -238,6 +238,13 @@ class CenterFlowIT extends PostgresKafkaContainerSupport {
                 .status())
         .isEqualTo(403);
 
+    // 내부 센터 조회(delivery-dispatch, CM-1 2026-11-13) — 공개 조회와 같은 모양, 좌표 포함
+    Res internalCenter = get(SERVICE, "/internal/centers/" + centerId);
+    assertThat(internalCenter.status()).isEqualTo(200);
+    assertThat(internalCenter.body().path("centerId").asString()).isEqualTo(centerId);
+    assertThat(internalCenter.body().path("coordinates").path("lat").isNumber()).isTrue();
+    assertThat(get(SERVICE, "/internal/centers/MFC-NONE-" + centerId).status()).isEqualTo(404);
+
     // 사건: platform.center.v1
     assertThat(
             jdbc.queryForObject(

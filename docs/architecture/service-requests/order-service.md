@@ -17,3 +17,8 @@
 ## O-3. 확인된 오배송 — 새 발송 (2026-11-09, ADR-0052)
 - 오배송이 확인되면 같은 상품·수량을 MFC 에서 다시 확보·피킹·포장해 원주소로 보낸다(구매자 비용 0원). 재고 부족 품목은 그 품목만 부분 취소·환불(ADR-0049 방식).
 - 같은 피해 수량을 새 발송과 환불로 겹치지 않게 주문 수량 원장에 기록. 회수(DD-2)와 동시에 시작.
+
+## O-4. 배차용 배송지 조회 (2026-11-13, delivery DD-1 — **구현해 PR 에 넣음, platform 검토 필요**)
+- **요청한 곳**: delivery-dispatch(MFC → 고객 도로 거리·예상 배달료·알뜰배달 묶음 — ADR-0058, 원문 §2.1 ②).
+- **필요한 것**: `GET /internal/orders/{orderId}/delivery-destination`(토큰 없는 내부 호출) — 주문 당시 사본(BR-37)의 도로명주소·지도 핀, 배송 방식(SINGLE·BUNDLED·SCHEDULED), 예약 창, 상태. **수령인·연락처·출입 정보는 주지 않는다.** dispatch 는 도로명주소를 serviceability `/internal/address-geocodes`(정확 일치, ADR-0023)로 좌표로 바꾸고 좌표·동 이름만 저장한다(주소 원문 저장·로그 금지).
+- **한 것**: delivery 영역 PC 5 가 계약 0.2.2·`InternalController.getOrderDeliveryDestination`·`DraftFlowIT` 확인을 PR 에 넣었다(급해서 — `pc-split.md` §1 "급하면 PR 을 열되 그 영역 담당이 리뷰"). 표·사건 변경 없음.

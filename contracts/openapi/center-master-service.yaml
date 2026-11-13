@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: center-master-service
-  version: 0.1.0
+  version: 0.1.1
   description: |
     센터 코드·유형(CDC/MFC)·명칭·주소·좌표·진입/하차/인계 위치·층수·반입 조건·취급 온도대·영업 캘린더(다섯 시간표)·휴폐점 의무 목록(BO-06)의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 센터 내부 LOC(cdc/mfc-location), 현장 용량(mfc-capacity), 권역(delivery-serviceability).
@@ -99,6 +99,24 @@ paths:
               schema: { $ref: '#/components/schemas/CalendarDay' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+
+  /internal/centers/{centerId}:
+    get:
+      tags: [internal]
+      summary: '[delivery-dispatch→center-master] 센터 조회 (토큰 없는 내부 호출) — 공개 조회와 같은 응답(현재 버전)'
+      description: |
+        배차가 MFC 좌표(라이더 반경·도로 거리 출발점)를 읽는다(2026-11-13, delivery DD-1 — 요청 CM-1). 공개 GET /centers/{centerId} 는 운영자 토큰 경로라 서비스 간 호출용으로 둔다.
+      x-added-in: '2026-11-13'
+      operationId: getCenterInternal
+      parameters:
+        - { name: centerId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Center' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/centers:
     post:

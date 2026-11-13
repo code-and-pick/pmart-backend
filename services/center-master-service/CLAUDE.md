@@ -29,3 +29,4 @@
 
 ## 상태
 센터 조회·목록, 영업 캘린더(공개·내부), CENTER_MASTER 승인 반영 구현(2026-10-31). 센터 변경 동기 반영(`POST /internal/centers`)·결과 조회는 501, 과거 버전 조회 없음.
+- 내부 센터 조회(2026-11-13, CM-1 — delivery PC 5 가 넣음, 계약 0.1.1): `GET /internal/centers/{id}`(내부 호출) — 공개 조회와 같은 응답. delivery-dispatch 가 MFC 좌표를 읽는다.

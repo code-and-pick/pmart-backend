@@ -51,3 +51,4 @@
 - 준비 시작(슬라이스 6b, 2026-11-07, ADR-0043): `PreparationStarted`(mfc.fulfillment.v1, 바인딩 `fulfillmentEvents-in-0`) → CONFIRMED 주문만 PREPARING(+버전)·`OrderPreparationStarted`. 다른 상태면 그대로(재수신·취소 뒤 도착).
 - **이행 확인 필요(2026-11-08 사용자 결정, 외부 검토 #5, 계약 0.2.0, V7)**: `ReservationBlocked`(mfc.inventory.v1, 바인딩 `inventoryEvents-in-0`) → `order_fulfillment_issue`(OPEN, 같은 사건 한 번 — source_event_id 유일). **자동 취소·환불·LOT 대체·고객 안내 없음, 주문 상태 불변.** `GET /fulfillment-issues?mfcId=&state=`(그 센터 운영자, 기본 OPEN), `POST /fulfillment-issues/{id}/acknowledgements`(확인 표시 + note). 실제 결품 처리는 피킹 결품 보고 → 결품 사가 그대로.
 - 이행 확인 필요 자동 종결(2026-11-08 #5, V8, 계약 0.2.1): `ReservationBlockCleared`(mfc.inventory.v1) → 그 예약·SKU 남은 보류 0 이면 RESOLVED(`resolvedAt`), 일부면 메모.
+- **배차용 배송지(2026-11-13, O-4 — delivery PC 5 가 넣음, 계약 0.2.2)**: `GET /internal/orders/{orderId}/delivery-destination`(내부 호출) — 도로명주소·핀·배송 방식·예약 창·상태만(수령인·연락처·출입 정보 없음). delivery-dispatch 가 좌표 변환에만 쓴다.
