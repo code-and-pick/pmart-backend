@@ -289,6 +289,45 @@ public class WorkerStore {
         rs.getBigDecimal("speed_factor").doubleValue());
   }
 
+  /** 이 운영자 ID 로 등록된 모든 센터의 작업자 행(잠금) — 인사 사건 반영용(V14). */
+  public List<WorkerRow> lockAllCenters(String workerId) {
+    return jdbc.query(
+        "SELECT * FROM mfc_worker WHERE worker_id = ? ORDER BY mfc_id FOR UPDATE",
+        (rs, i) -> worker(rs),
+        workerId);
+  }
+
+  /** 마지막으로 반영한 인사 사건 버전(없으면 null — 인사 사건을 받은 적 없음). */
+  public @Nullable Long hrVersion(String mfcId, String workerId) {
+    List<Long> r =
+        jdbc.query(
+            "SELECT hr_version FROM mfc_worker WHERE mfc_id = ? AND worker_id = ?",
+            (rs, i) -> rs.getObject("hr_version", Long.class),
+            mfcId,
+            workerId);
+    return r.isEmpty() ? null : r.getFirst();
+  }
+
+  public void setHrVersion(String mfcId, String workerId, long version) {
+    jdbc.update(
+        "UPDATE mfc_worker SET hr_version = ? WHERE mfc_id = ? AND worker_id = ?",
+        version,
+        mfcId,
+        workerId);
+  }
+
+  /** 마지막 상태 변경을 한 주체(없으면 null). */
+  public @Nullable String lastStateChangedBy(String mfcId, String workerId) {
+    List<String> r =
+        jdbc.queryForList(
+            "SELECT changed_by FROM mfc_worker_state_change WHERE mfc_id = ? AND worker_id = ?"
+                + " ORDER BY changed_at DESC, change_id DESC LIMIT 1",
+            String.class,
+            mfcId,
+            workerId);
+    return r.isEmpty() ? null : r.getFirst();
+  }
+
   /** 속도 배율(0.11.0). */
   public void setSpeed(String mfcId, String workerId, double factor) {
     jdbc.update(

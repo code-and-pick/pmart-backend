@@ -57,7 +57,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 | 운영 제한 사건 → fulfillment 거절(F-1) | 대기(mfc 안) | `service-requests/mfc-fulfillment-service.md` |
 | MFC 승인 번호 실제 검증(AP-1) — 지금 `RECORD_ONLY`(LAN 만) | 운영 전 필수, Q-11 | `service-requests/approval-service.md` |
 | 반품 클레임·회수비·검수 뒤 환불(CL-1), 결품 고객 안내(N-1), 인계 → 주문 상태(O-1) | 대기 | `service-requests/claim-service.md`·`notification-service.md`·`order-service.md` |
-| **작업자 명단 ↔ 인사(hr-service, 2026-11-13 새로)** | mfc 영역 일, **사용자 결정 3가지 필요** | `docs/operations/pc-split.md` §1-2 — mfc-capacity 가 `EmployeeRegistered·Suspended·Reinstated·Left`(고용 형태·소속 센터 포함)를 구독하면 퇴사·정지·계약 종료가 배정에 반영되고 고용 형태를 두 번 넣지 않는다. 정할 것: 인사 등록 때 MFC 작업자 자동 생성? 퇴사·정지 자동 반영? 고용 형태 정본(추천 인사) |
+| **작업자 명단 ↔ 인사(hr-service, 2026-11-13 새로)** | **결정·구현 2026-11-13**(사용자 "추천대로" — 자동 생성·퇴사/정지 자동 반영·고용 형태 정본 인사, mfc-capacity V14). LAN 은 PC 1 이 설정 저장소에 구독 바인딩을 넣고 배포해야 켜짐 | `docs/operations/pc-split.md` §1-2 — mfc-capacity 가 `EmployeeRegistered·Suspended·Reinstated·Left`(고용 형태·소속 센터 포함)를 구독하면 퇴사·정지·계약 종료가 배정에 반영되고 고용 형태를 두 번 넣지 않는다. 정할 것: 인사 등록 때 MFC 작업자 자동 생성? 퇴사·정지 자동 반영? 고용 형태 정본(추천 인사) |
 | PDA 앱(mfc_app) 직원 로그인 | 클라이언트 구현 끝(a766d36), 실기기 확인 대기 | 클라이언트 handoff `2026-11-13-clients-request-mfc-app-employee-login.md` |
 
 ## 5. 남은 일 (mfc 영역)
@@ -79,4 +79,4 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 | 로컬 직원 토큰 | `POST http://localhost:8511/api/v1/internal/dev-tokens`(local 프로필 employee-auth-service) — `dev-on-other-pcs.md` |
 | 평면도 재등록 | `deploy/lan/seed/mfc_layout.py`(센터 관리자 토큰) |
 | 작업자 ID | 운영자 ID(`OP-…`) = 토큰 `sub`. `claude-mfc-wrk` = `OP-d696814f-4cd7-4263-86a6-032b591e5b42`, `claude-mfc-sup` = `OP-88399b05-87b7-48e2-aa33-229a3ab36f93` |
-| 새 작업자 | 인사팀 백오피스(`https://192.168.0.40:8444`)로 등록 → 소속 센터 `MFC_WORKER` 자동 승인 → 센터 관리자가 mfc-capacity 에 작업자 등록(지금은 따로 — §4) |
+| 새 작업자 | 인사팀 백오피스(`https://192.168.0.40:8444`)로 등록 → 소속 센터 `MFC_WORKER` 자동 승인 → mfc-capacity 작업자 자동 생성(소속이 MFC 센터일 때, 2026-11-13 — §4) → 센터 관리자가 자격·업무 지정(정규직·알바) |
