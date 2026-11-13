@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-optimizer
-  version: 0.1.0
+  version: 0.1.1
   description: |
     AI 추천 배차 계산 서버(Python FastAPI, ADR-0058 결정 9~13). delivery-dispatch 만 부르는 내부 계산 API — 자체 DB·사건 없음, 게이트웨이에 열지 않음, 상태 없음.
     원문 Delivery §2.1 ③: 기사·주문 정보, 거리·이동시간 행렬, 배차 제약을 받아 기사별 담당 주문과 방문 순서를 낸다. 모델은 RouteFinder(ai4co).
     결과는 "배정안"이다 — delivery-dispatch 가 검증·제안·확정한다(④). 이 서버가 답하지 않거나(3초) 오류면 dispatch 는 OR-Tools 로 대신한다(결정 13).
     시각·거리는 초·미터 정수, 좌표는 WGS84. 고객 주소·이름은 받지 않는다(좌표·배송 ID 만).
+    0.1.1(2026-11-13, PC 1 검토 L6): betweenSeconds 행·열과 allowedDeliveryIds 도 최대 50 — 넘으면 400.
 servers:
   - url: /api/v1
 
@@ -82,7 +83,7 @@ components:
         riderId: { type: string }
         pickupSeconds: { type: integer, minimum: 0, description: '라이더 → MFC 도로 소요' }
         capacity: { type: integer, minimum: 1, maximum: 3, description: 이번에 더 맡을 수 있는 배송 수 }
-        allowedDeliveryIds: { type: array, items: { type: string }, description: '반경 단계 안·이번 회차 미제안' }
+        allowedDeliveryIds: { type: array, maxItems: 50, items: { type: string }, description: '반경 단계 안·이번 회차 미제안' }
     PlanRequest:
       type: object
       required: [mfc, deliveries, riders, betweenSeconds, maxBundleSize, maxExtraSeconds, lateWeight]
@@ -93,7 +94,8 @@ components:
         betweenSeconds:
           type: array
           description: '[i][j] = deliveries[i] 고객 → deliveries[j] 고객 도로 소요(초), 길 없음·모름은 null. deliveries 순서, 정사각'
-          items: { type: array, items: { type: [integer, 'null'] } }
+          maxItems: 50
+          items: { type: array, maxItems: 50, items: { type: [integer, 'null'] } }
         maxBundleSize: { type: integer, minimum: 1, maximum: 3 }
         maxExtraSeconds: { type: integer, minimum: 0 }
         lateWeight: { type: integer, minimum: 1, description: '출하 대기보다 늦게 도착한 초의 가중(비용식 — dispatch BundleProblem 과 같음)' }

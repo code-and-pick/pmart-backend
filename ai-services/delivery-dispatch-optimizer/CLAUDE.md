@@ -22,6 +22,7 @@ docker build -t pmart/delivery-dispatch-optimizer:dev .   # 가중치를 이미�
 환경변수: `OPTIMIZER_MODEL_PATH`(가중치 파일, 이미지 안 `/models/rf-transformer.ckpt`), `OPTIMIZER_DISABLE_MODEL=1`(시험), `OPTIMIZER_MULTISTART`(기본 1 — 출발점 n개를 한꺼번에 풀고 가장 싼 답, 0 이면 한 번), `LOG_LEVEL`.
 
 ## 상태 (2026-11-13)
+- 기반 이미지 digest·HF 가중치 revision `4edf73d6…` 고정, betweenSeconds·allowedDeliveryIds 최대 50(계약 0.1.1) — PC 1 검토 L6(2026-11-13). 이미지는 고친 뒤 다시 빌드하지 않았다.
 - 구현·시험: pytest 10 통과(실제 가중치 시험 2 포함), Docker 이미지 빌드·실행 확인(상태 UP, 계산 7~8ms, 메모리 약 390MB). 이미지 **2.16GB**(두 단계 빌드 — 처음 5GB 는 uv 캐시·git 이 남았던 것. 가상환경 1.5GB 대부분 PyTorch).
 - **성능 검증(2026-11-13)**: `tools/evaluate.py` — 합성 문제 60개 × 2 에서 RouteFinder 가 OR-Tools 보다 배정 22~23% 적고 비용 20~30% 높음(`docs/delivery/ai-optimizer-evaluation.md`). 라이더 수 제한이 없는 VRP 로 학습된 모델이라 — 추가 학습 전에는 LAN 에서 끄고 OR-Tools 로(사용자 결정 대기).
 - 지연 한도를 RouteFinder 시간창으로 넣는다(`planner._deadlines` — 도로 초 ↔ 평면 거리는 직선 미터당 도로 초 중앙값으로 환산).

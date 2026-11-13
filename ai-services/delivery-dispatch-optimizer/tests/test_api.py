@@ -45,3 +45,14 @@ def test_no_model_is_503_and_bad_body_is_400():
         bad = dict(BODY, betweenSeconds=[[0]])
         assert c.post("/api/v1/internal/dispatch-plans", json=bad).status_code == 400
         assert c.post("/api/v1/internal/dispatch-plans", json={"mfc": {}}).status_code == 400
+
+
+def test_oversized_matrix_is_400_before_planning():
+    """betweenSeconds 행·열도 50 까지(PC 1 검토 L6) — 큰 본문은 계산 전에 거절."""
+    with TestClient(app) as c:
+        app.state.model = lambda mfc, pts, k, deadlines=None: []
+        app.state.model_name = "FAKE"
+        too_many_rows = dict(BODY, betweenSeconds=[[0, 0]] * 51)
+        assert c.post("/api/v1/internal/dispatch-plans", json=too_many_rows).status_code == 400
+        too_wide = dict(BODY, betweenSeconds=[[0] * 51, [0] * 51])
+        assert c.post("/api/v1/internal/dispatch-plans", json=too_wide).status_code == 400

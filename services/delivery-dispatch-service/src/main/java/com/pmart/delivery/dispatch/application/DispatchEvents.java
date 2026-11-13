@@ -42,7 +42,10 @@ public class DispatchEvents {
     publish("DeliveryCreated", d, d.version(), system(), p);
   }
 
-  public void offerSent(DeliveryRow d, OfferRow o) {
+  /**
+   * @param version 이 사건의 배송 버전(DispatchStore.bumpVersion — 직전 사건과 겹치지 않게, L3)
+   */
+  public void offerSent(DeliveryRow d, OfferRow o, int version) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("offerId", o.offerId());
     p.put("attemptId", o.attemptId());
@@ -51,7 +54,7 @@ public class DispatchEvents {
     p.put("expiresAt", o.expiresAt().toString());
     p.put("fee", o.fee());
     p.put("sentAt", o.sentAt().toString());
-    publish("DispatchOfferSent", d, d.version(), system(), p);
+    publish("DispatchOfferSent", d, version, system(), p);
   }
 
   public void assigned(
@@ -108,14 +111,15 @@ public class DispatchEvents {
   }
 
   /** 배차 지연 임계 초과(원문 §3.6 — MFC 관리자·고객센터 안내). */
-  public void delayed(DeliveryRow d, int delayedMinutes, int thresholdMinutes, Instant at) {
+  public void delayed(
+      DeliveryRow d, int delayedMinutes, int thresholdMinutes, Instant at, int version) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", d.deliveryId());
     p.put("orderId", d.orderId());
     p.put("delayedMinutes", delayedMinutes);
     p.put("threshold", thresholdMinutes);
     p.put("detectedAt", at.toString());
-    publish("DispatchDelayed", d, d.version(), system(), p);
+    publish("DispatchDelayed", d, version, system(), p);
   }
 
   public void failed(DeliveryRow before, String reason, int attempts, Instant at) {

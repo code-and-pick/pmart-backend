@@ -22,6 +22,8 @@ log = logging.getLogger(__name__)
 
 HF_REPO = "ai4co/routefinder"
 HF_FILE = "checkpoints/100/rf-transformer.ckpt"
+# HF 저장소 커밋 고정(PC 1 검토 L6, 2026-11-13) — Dockerfile 의 revision 과 같게
+HF_REVISION = "4edf73d68a5915787dd2f81ba177d77e13317190"
 NAME = "ROUTEFINDER rf-transformer-100"
 
 _TENSOR_GLOBALS = {
@@ -65,7 +67,7 @@ def checkpoint_path() -> str:
         return p
     from huggingface_hub import hf_hub_download
 
-    return hf_hub_download(repo_id=HF_REPO, filename=HF_FILE)
+    return hf_hub_download(repo_id=HF_REPO, filename=HF_FILE, revision=HF_REVISION)
 
 
 class RouteFinderModel:

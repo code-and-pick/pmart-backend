@@ -13,8 +13,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class DeliveryQueries {
 
+  /**
+   * @param showAssignment false 면 배정(라이더 ID 등)을 숨긴다 — 제안만 받았던 라이더(PC 1 검토 L4)
+   */
   public record DeliveryView(
-      DeliveryRow delivery, List<AttemptRow> attempts, List<OfferRow> offers) {}
+      DeliveryRow delivery,
+      List<AttemptRow> attempts,
+      List<OfferRow> offers,
+      boolean showAssignment) {}
 
   private final DispatchStore store;
 
@@ -29,6 +35,7 @@ public class DeliveryQueries {
         attempts.stream().flatMap(a -> store.offersOfAttempt(a.attemptId()).stream()).toList();
     PmartPrincipal p =
         PmartPrincipal.current().orElseThrow(() -> OfferService.forbidden("인증이 필요합니다."));
+    boolean showAssignment = true;
     switch (p.type()) {
       case OPERATOR -> {
         if (!p.canAccessCenter(d.mfcId()) && !p.hasRole("OPERATOR_ADMIN")) {
@@ -44,11 +51,13 @@ public class DeliveryQueries {
         }
         // 라이더에게는 남의 제안을 보여 주지 않는다
         offers = offers.stream().filter(o -> o.riderId().equals(p.subject())).toList();
+        // 제안만 받았던 라이더에게는 누가 배정됐는지 보여 주지 않는다(L4)
+        showAssignment = p.subject().equals(d.riderId());
       }
       case SERVICE -> {}
       default -> throw OfferService.forbidden("볼 수 없습니다.");
     }
-    return new DeliveryView(d, attempts, offers);
+    return new DeliveryView(d, attempts, offers, showAssignment);
   }
 
   public DeliveryRow assignment(String deliveryId) {

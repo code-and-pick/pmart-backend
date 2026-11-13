@@ -55,7 +55,9 @@ public class DispatchEngine {
 
   private static final Logger log = LoggerFactory.getLogger(DispatchEngine.class);
   private static final Duration RETRY_LATER = Duration.ofSeconds(30);
-  private static final Set<String> USABLE_QUALITY = Set.of("GOOD", "LOW_ACCURACY");
+
+  /** 배차 후보로 쓸 수 있는 위치 품질(AI 추천·배달리스트 같은 기준 — PC 1 검토 L5). */
+  static final Set<String> USABLE_QUALITY = Set.of("GOOD", "LOW_ACCURACY");
 
   private final DispatchStore store;
   private final Upstreams upstreams;
@@ -178,8 +180,8 @@ public class DispatchEngine {
             Instant eta = depart.plusSeconds(d.dropDurationS());
             if (eta.isAfter(d.promisedAt().plus(props.delayAlertAfter()))) {
               int minutes = (int) Duration.between(d.promisedAt(), eta).toMinutes();
-              events.delayed(d, minutes, threshold, now);
               store.markDelayAlerted(d.deliveryId(), now);
+              events.delayed(d, minutes, threshold, now, store.bumpVersion(d.deliveryId(), now));
               log.warn("배송 {} 배차 지연 — 약속보다 {}분 늦을 것(임계 {}분)", d.deliveryId(), minutes, threshold);
             }
           }
@@ -527,7 +529,7 @@ public class DispatchEngine {
                 null,
                 null);
             store.markAttempt(y.attemptId(), true, false, false);
-            events.offerSent(x, o);
+            events.offerSent(x, o, store.bumpVersion(x.deliveryId(), now));
           }
           log.info(
               "제안 배송 {}건{} → 라이더 {} ({})",

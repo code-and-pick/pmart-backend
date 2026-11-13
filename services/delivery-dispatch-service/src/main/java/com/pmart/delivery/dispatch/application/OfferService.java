@@ -304,6 +304,9 @@ public class OfferService {
       if (x.waitingSince().isAfter(visibleIfWaitingSince)) {
         continue;
       }
+      if (riderId.equals(x.excludedRiderId())) {
+        continue; // 방금 배차취소한 배송은 다른 라이더에게(원문 §5.4, L5)
+      }
       DeliveryRow d = x.delivery();
       double km = loc.get().at().metersTo(new Geo(d.mfcLat(), d.mfcLng())) / 1000.0;
       if (km <= SearchRules.radiusKm(props.radiiKm(), x.stage())) {
@@ -345,6 +348,7 @@ public class OfferService {
                       .orElse(props.maxRadiusKm());
               if (late == null
                   && (attempt.isEmpty()
+                      || riderId.equals(attempt.get().excludedRiderId())
                       || d.mfcLat() == null
                       || loc.isEmpty()
                       || !fresh(loc.get(), now)
@@ -419,8 +423,10 @@ public class OfferService {
         o.offerId(), outcome, late, o.deliveryId(), assignmentId, null, null, now);
   }
 
+  /** 최근 위치이고 품질을 쓸 수 있을 때만(AI 추천 후보와 같은 기준 — L5). */
   private boolean fresh(Upstreams.Location l, Instant now) {
-    return !l.receivedAt().plus(props.locationMaxAge()).isBefore(now);
+    return !l.receivedAt().plus(props.locationMaxAge()).isBefore(now)
+        && DispatchEngine.USABLE_QUALITY.contains(l.quality());
   }
 
   private OfferRow ownOffer(String offerId, String riderId) {

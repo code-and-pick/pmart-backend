@@ -101,7 +101,7 @@ public class CancellationService {
                 throw PmartException.versionConflict("배송이 바뀌었습니다(현재 버전 " + d.version() + ").");
               }
               if ("PICKED_UP".equals(d.state())) {
-                store.insertCancellation(
+                if (!store.insertCancellation(
                     requestId,
                     deliveryId,
                     c.requestedBy(),
@@ -113,7 +113,10 @@ public class CancellationService {
                     "REJECTED_PICKED_UP",
                     d.riderId(),
                     null,
-                    now);
+                    now)) {
+                  throw PmartException.idempotencyConflict(
+                      "같은 Idempotency-Key 로 다른 요청이 이미 처리되었습니다. 새 키를 사용하세요.");
+                }
                 return new Result(
                     requestId, deliveryId, "REJECTED_PICKED_UP", null, d.version(), now);
               }
@@ -136,7 +139,7 @@ public class CancellationService {
                   throw PmartException.invalidState(
                       "이미 배차 중입니다 — 재배차 없이 취소(reassign=false)만 할 수 있습니다.");
                 }
-                store.insertCancellation(
+                if (!store.insertCancellation(
                     requestId,
                     deliveryId,
                     c.requestedBy(),
@@ -148,7 +151,10 @@ public class CancellationService {
                     "CANCELLED_BEFORE_PICKUP",
                     null,
                     restart,
-                    now);
+                    now)) {
+                  throw PmartException.idempotencyConflict(
+                      "같은 Idempotency-Key 로 다른 요청이 이미 처리되었습니다. 새 키를 사용하세요.");
+                }
                 return new Result(
                     requestId,
                     deliveryId,
@@ -168,7 +174,7 @@ public class CancellationService {
               } else {
                 transitions.cancelBeforePickup(d, c.reason(), now);
               }
-              store.insertCancellation(
+              if (!store.insertCancellation(
                   requestId,
                   deliveryId,
                   c.requestedBy(),
@@ -180,7 +186,10 @@ public class CancellationService {
                   "CANCELLED_BEFORE_PICKUP",
                   d.riderId(),
                   attemptId,
-                  now);
+                  now)) {
+                throw PmartException.idempotencyConflict(
+                    "같은 Idempotency-Key 로 다른 요청이 이미 처리되었습니다. 새 키를 사용하세요.");
+              }
               return new Result(
                   requestId,
                   deliveryId,

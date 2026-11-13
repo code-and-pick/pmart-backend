@@ -341,11 +341,16 @@ public class DispatchStore {
   }
 
   /** 배차 대기 배송과 진행 중 시도의 반경 단계(배달리스트). */
-  public record ListedDelivery(DeliveryRow delivery, int stage, Instant waitingSince) {}
+  /**
+   * @param excludedRiderId 이 시도에서 빼는 라이더(방금 배차취소한 라이더, 원문 §5.4)
+   */
+  public record ListedDelivery(
+      DeliveryRow delivery, int stage, Instant waitingSince, @Nullable String excludedRiderId) {}
 
   public List<ListedDelivery> dispatchingWithStage() {
     return jdbc.query(
-        "SELECT d.*, a.stage AS attempt_stage, a.started_at AS attempt_started FROM delivery d JOIN"
+        "SELECT d.*, a.stage AS attempt_stage, a.started_at AS attempt_started,"
+            + " a.excluded_rider_id AS attempt_excluded FROM delivery d JOIN"
             + " dispatch_attempt a ON a.delivery_id ="
             + " d.delivery_id AND a.state IN ('SEARCHING', 'OFFERING') WHERE d.state = 'DISPATCHING'"
             + " AND d.drop_distance_m IS NOT NULL ORDER BY d.created_at LIMIT 500",
@@ -353,7 +358,8 @@ public class DispatchStore {
             new ListedDelivery(
                 delivery(rs),
                 rs.getInt("attempt_stage"),
-                rs.getTimestamp("attempt_started").toInstant()));
+                rs.getTimestamp("attempt_started").toInstant(),
+                rs.getString("attempt_excluded")));
   }
 
   // ---------- 시도 ----------
@@ -456,7 +462,10 @@ public class DispatchStore {
       @Nullable String reassignAttemptId,
       Instant createdAt) {}
 
-  public void insertCancellation(
+  /**
+   * @return 새로 남겼으면 true — 같은 (요청, 배송)이 이미 있으면 false(다른 X-Source-System 으로 같은 키, PC 1 검토 L2)
+   */
+  public boolean insertCancellation(
       String requestId,
       String deliveryId,
       String requestedBy,
@@ -469,22 +478,24 @@ public class DispatchStore {
       @Nullable String previousRiderId,
       @Nullable String reassignAttemptId,
       Instant now) {
-    jdbc.update(
-        "INSERT INTO assignment_cancellation (request_id, delivery_id, requested_by, actor, reason,"
-            + " reason_detail, reassign, approval_ref, state, previous_rider_id, reassign_attempt_id,"
-            + " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        requestId,
-        deliveryId,
-        requestedBy,
-        actor,
-        reason,
-        detail,
-        reassign,
-        approvalRef,
-        state,
-        previousRiderId,
-        reassignAttemptId,
-        ts(now));
+    return jdbc.update(
+            "INSERT INTO assignment_cancellation (request_id, delivery_id, requested_by, actor, reason,"
+                + " reason_detail, reassign, approval_ref, state, previous_rider_id, reassign_attempt_id,"
+                + " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                + " ON CONFLICT (request_id, delivery_id) DO NOTHING",
+            requestId,
+            deliveryId,
+            requestedBy,
+            actor,
+            reason,
+            detail,
+            reassign,
+            approvalRef,
+            state,
+            previousRiderId,
+            reassignAttemptId,
+            ts(now))
+        > 0;
   }
 
   public Optional<CancellationRow> cancellation(String deliveryId, String requestId) {
@@ -515,6 +526,22 @@ public class DispatchStore {
         (rs, i) -> delivery(rs),
         ts(promisedBefore),
         limit);
+  }
+
+  /**
+   * 상태는 그대로 두고 배송 버전만 올린다 — 사건(DispatchOfferSent·DispatchDelayed)마다 aggregateVersion 이 달라지게(PC 1 검토
+   * L3).
+   *
+   * @return 올린 뒤 버전
+   */
+  public int bumpVersion(String deliveryId, Instant now) {
+    Integer v =
+        jdbc.queryForObject(
+            "UPDATE delivery SET version = version + 1, updated_at = ? WHERE delivery_id = ? RETURNING version",
+            Integer.class,
+            ts(now),
+            deliveryId);
+    return v == null ? 0 : v;
   }
 
   public void markDelayAlerted(String deliveryId, Instant now) {

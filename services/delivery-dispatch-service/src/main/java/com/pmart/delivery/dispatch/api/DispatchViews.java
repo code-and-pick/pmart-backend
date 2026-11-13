@@ -133,7 +133,12 @@ class DispatchViews {
         .decidedAt(time(r.decidedAt()));
   }
 
-  Delivery delivery(DeliveryRow d, List<AttemptRow> attempts, List<OfferRow> offers, Instant now) {
+  Delivery delivery(
+      DeliveryRow d,
+      List<AttemptRow> attempts,
+      List<OfferRow> offers,
+      boolean showAssignment,
+      Instant now) {
     Packages p = packages(d);
     Delivery out =
         new Delivery()
@@ -150,7 +155,7 @@ class DispatchViews {
                     .bagCount(p.bags())
                     .containsAlcohol(p.alcohol())
                     .packageIds(p.ids()))
-            .assignment(d.riderId() == null ? null : assignment(d))
+            .assignment(d.riderId() == null || !showAssignment ? null : assignment(d))
             .delayAlertedAt(time(d.delayAlertedAt()))
             .createdAt(time(d.createdAt()))
             .updatedAt(time(d.updatedAt()));

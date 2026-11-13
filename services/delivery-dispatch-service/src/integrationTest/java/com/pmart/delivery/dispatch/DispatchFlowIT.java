@@ -786,6 +786,66 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 deliveryId))
         .isEqualTo(other);
 
+    // 취소한 라이더는 배달리스트에서도 이 배송을 못 받는다(L5)
+    JsonNode again =
+        body(
+            http.post()
+                .uri("/delivery-list/{id}/acceptances", deliveryId)
+                .headers(h -> riderHeaders(h, first, "l-" + deliveryId))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(again.path("outcome").asString()).isEqualTo("LATE");
+    assertThat(again.path("lateReason").asString()).isEqualTo("INELIGIBLE");
+    // 같은 키를 다른 경로(X-Source-System)로 다시 써도 500 이 아니라 409(L2)
+    ResponseEntity<String> otherSource =
+        http.post()
+            .uri("/deliveries/{id}/assignment-cancellations", deliveryId)
+            .headers(
+                h -> {
+                  h.setBearerAuth(TestJwt.operator("OP-7", List.of(), List.of(mfc)));
+                  h.set("Idempotency-Key", "c-" + deliveryId);
+                  h.set("X-Source-System", "mfc-backoffice");
+                })
+            .body(
+                Map.of("requestedBy", "STORE_STAFF", "reason", "STORE_REQUEST", "reassign", false))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(otherSource.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(otherSource).path("code").asString()).isEqualTo("IDEMPOTENCY_CONFLICT");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("DISPATCHING"); // 취소는 되돌려졌다(같은 트랜잭션)
+    // 다른 라이더가 수락 → 제안만 받았던 첫 라이더는 누가 배정됐는지 못 본다(L4)
+    String offerId =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            deliveryId);
+    assertThat(
+            body(respond(other, offerId, "a2-" + deliveryId, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    JsonNode seenByFirst =
+        body(
+            http.get()
+                .uri("/deliveries/{id}/dispatch", deliveryId)
+                .header("Authorization", "Bearer " + TestJwt.rider(first))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(seenByFirst.path("state").asString()).isEqualTo("ASSIGNED");
+    assertThat(
+            seenByFirst.path("assignment").isMissingNode()
+                || seenByFirst.path("assignment").isNull())
+        .isTrue();
+    // 배송 사건마다 aggregateVersion 이 다르다(L3 — 제안 사건이 직전 사건과 같은 버전이던 것)
+    List<Long> versions =
+        jdbc.queryForList(
+            "SELECT (payload->>'aggregateVersion')::bigint FROM outbox_event WHERE aggregateid = ?"
+                + " ORDER BY created_at",
+            Long.class,
+            deliveryId);
+    assertThat(versions).doesNotHaveDuplicates();
+
     // 픽업 뒤는 지원센터로(422)
     jdbc.update(
         "UPDATE delivery SET state = 'PICKED_UP', rider_id = ? WHERE delivery_id = ?",
