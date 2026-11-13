@@ -23,6 +23,38 @@ public final class ExecutionRules {
   /** 증빙 사진을 올릴 수 있는 상태(원문 §6.2 — 전달 직전). */
   public static final Set<String> PHOTO_FROM = Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
 
+  /** 전달 실패를 등록할 수 있는 상태 — 상품을 가지고 있을 때(픽업 전은 dispatch 배차 취소). */
+  public static final Set<String> FAILURE_FROM = Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
+
+  /** 고객 사유 — 연락 2회 이상이 있어야 실패 등록(원문 §9.2 "연락 시도 2회 이상"). */
+  public static final Set<String> CUSTOMER_REASONS =
+      Set.of("CUSTOMER_ABSENT", "UNREACHABLE", "ADDRESS_ERROR", "REFUSED");
+
+  public static final int MIN_CONTACT_ATTEMPTS = 2;
+
+  /** 도움요청을 낼 수 있는 상태 — 배정 뒤 끝나기 전(실패 등록 뒤에도 지원센터와 연락). */
+  public static final Set<String> HELP_FROM =
+      Set.of(
+          "ASSIGNED", "ARRIVED_AT_STORE", "PICKED_UP", "ARRIVED_AT_CUSTOMER", "FAILURE_REPORTED");
+
+  /** 라이더 "진행 중"이 끝난 상태(dispatch 가 CLOSED 로 바꾸는 사건을 낸 상태). */
+  public static final Set<String> ENDED = Set.of("COMPLETED", "FAILED", "CANCELLED");
+
+  /** 실패 등록 검사: 고객 사유면 연락 기록 2회 이상. */
+  public static boolean enoughContacts(String reason, int attempts) {
+    return !CUSTOMER_REASONS.contains(reason) || attempts >= MIN_CONTACT_ATTEMPTS;
+  }
+
+  /** 운영자 확정 때 상품이 있는 곳 — 지정이 없으면 라이더가 적은 상품 위치(점포 반납이면 STORE, 그 밖 RIDER). */
+  public static String custody(
+      @org.jspecify.annotations.Nullable String decided,
+      @org.jspecify.annotations.Nullable String goodsLocation) {
+    if (decided != null) {
+      return decided;
+    }
+    return "RETURNED_TO_STORE".equals(goodsLocation) ? "STORE" : "RIDER";
+  }
+
   private ExecutionRules() {}
 
   /**

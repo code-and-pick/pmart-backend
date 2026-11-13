@@ -2,6 +2,7 @@ package com.pmart.delivery.execution.application;
 
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.EventPublisher;
+import com.pmart.delivery.execution.infrastructure.ExecutionStore;
 import com.pmart.delivery.execution.infrastructure.ExecutionStore.DeliveryRow;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -79,6 +80,103 @@ public class ExecutionEvents {
         Map.of("evidenceId", evidenceId, "kind", "PHOTO", "capturedAt", takenAt.toString()));
     p.put("deliveredAt", at.toString());
     publish("DeliveryCompleted", before, rider(before), p);
+  }
+
+  /** 운영자가 실패를 확정(2026-11-13) — 배송 종료. 회수 배차는 새 배송(claim·case 판단). */
+  public void failed(
+      DeliveryRow before,
+      String reason,
+      String custody,
+      @org.jspecify.annotations.Nullable String goodsLocation,
+      String operatorId,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", before.deliveryId());
+    if (before.orderId() != null) {
+      p.put("orderId", before.orderId());
+    }
+    if (before.riderId() != null) {
+      p.put("riderId", before.riderId());
+    }
+    p.put("reason", reason);
+    p.put("custody", custody);
+    if (goodsLocation != null) {
+      p.put("goodsLocation", goodsLocation);
+    }
+    p.put("failedAt", at.toString());
+    publish(
+        "DeliveryFailed",
+        before,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, operatorId),
+        p);
+  }
+
+  /** 라이더 도움요청 → case-service 가 받아 지원센터 사건으로(구현 전). version = 이 사건의 수행 버전(bumpVersion). */
+  public void helpRequested(
+      DeliveryRow d, ExecutionStore.HelpRow h, List<String> evidenceRefs, int version) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("incidentId", h.requestId());
+    p.put("deliveryId", d.deliveryId());
+    p.put("riderId", h.riderId());
+    p.put("type", "HELP_REQUEST");
+    p.put("category", h.category());
+    p.put("stage", h.stage());
+    if (d.orderId() != null) {
+      p.put("orderId", d.orderId());
+    }
+    if (d.mfcId() != null) {
+      p.put("mfcId", d.mfcId());
+    }
+    if (h.detail() != null) {
+      p.put("detail", h.detail());
+    }
+    p.put("evidenceRefs", evidenceRefs);
+    p.put("raisedAt", h.createdAt().toString());
+    events.publish(
+        "DeliveryIncidentRaised",
+        1,
+        "Delivery",
+        d.deliveryId(),
+        version,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.RIDER, h.riderId()),
+        p);
+  }
+
+  /** 수행료 근거(환불과 독립). version = 이 사건의 수행 버전(bumpVersion). */
+  public void earningRecorded(ExecutionStore.EarningRow e, int version, Instant at) {
+    Map<String, Object> basis = new LinkedHashMap<>();
+    if (e.baseFee() != null) {
+      basis.put("baseFee", e.baseFee());
+    }
+    if (e.total() != null) {
+      basis.put("totalFee", e.total());
+    }
+    if (e.vehicleType() != null) {
+      basis.put("vehicleType", e.vehicleType());
+    }
+    if (e.distanceM() != null) {
+      basis.put("distanceM", e.distanceM());
+    }
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", e.deliveryId());
+    p.put("riderId", e.riderId());
+    p.put("earningId", e.earningId());
+    p.put("feeBasis", basis);
+    p.put("rateVersion", e.rateTableVersion());
+    p.put("status", e.settlementState());
+    p.put("calculable", e.calculable());
+    if (e.payoutDate() != null) {
+      p.put("payoutDate", e.payoutDate().toString());
+    }
+    p.put("recordedAt", at.toString());
+    events.publish(
+        "RiderEarningRecorded",
+        1,
+        "Delivery",
+        e.deliveryId(),
+        version,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+        p);
   }
 
   private void publish(

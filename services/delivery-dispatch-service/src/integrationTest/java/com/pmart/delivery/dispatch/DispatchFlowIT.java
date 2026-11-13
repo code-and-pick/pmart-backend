@@ -252,6 +252,10 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     JsonNode assigned = outbox(deliveryId, "DeliveryAssigned");
     assertThat(assigned.path("payload").path("riderId").asString()).isEqualTo(rider);
     assertThat(assigned.path("payload").path("assignmentVersion").asInt()).isEqualTo(1);
+    // 수락 당시 금액·수단·거리(execution 수행료 기준, 2026-11-13)
+    assertThat(assigned.path("payload").path("fee").isNumber()).isTrue();
+    assertThat(assigned.path("payload").path("vehicleType").asString()).isEqualTo("MOTORCYCLE");
+    assertThat(assigned.path("payload").path("distanceM").asInt()).isEqualTo(1800);
 
     // 다른 라이더가 배달리스트에서 수락 → 이미 배정
     JsonNode late =
@@ -1087,6 +1091,31 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         "SELECT count(*) FROM delivery WHERE delivery_id = '"
             + deliveryId
             + "' AND state = 'PICKED_UP'");
+
+    // 운영자가 확정한 전달 실패(execution DeliveryFailed) → CLOSED(2026-11-13)
+    kafka
+        .send(
+            "delivery.delivery.v1",
+            deliveryId,
+            EventEnvelopeFixtures.envelope("DeliveryFailed")
+                .from("delivery-execution-service")
+                .aggregate("Delivery", deliveryId, 7)
+                .payload(
+                    Map.of(
+                        "deliveryId",
+                        deliveryId,
+                        "reason",
+                        "CUSTOMER_ABSENT",
+                        "custody",
+                        "RIDER",
+                        "failedAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'CLOSED'");
   }
 
   @Test

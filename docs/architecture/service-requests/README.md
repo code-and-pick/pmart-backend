@@ -29,6 +29,7 @@
 | [R-1](case-service.md) | case | orchestration | 결품 상신 | — | 취소(ADR-0049) |
 | [R-2](case-service.md) | case | claim | 진행 중 주문 고객센터 취소 | **필요** | 대기 |
 | [R-3](case-service.md) | case | orchestration, payment | 사가·결제 상신(`ReconciliationRequired` 등) 구독 | **필요** | 대기 |
+| [R-4](case-service.md) | case | delivery-execution | 라이더 도움요청·전달 실패 등록(`DeliveryIncidentRaised`) → 지원센터 사건, `CaseOpened` 로 caseId 회신 | — (사용자 결정 1번, 2026-11-13) | 대기 — execution 쪽 발행은 구현됨 |
 | [N-1](notification-service.md) | notification | order, mfc | 결품 부분 취소·환불 고객 안내 | **필요**(보류 단계 안내) | 대기 |
 | [N-2](notification-service.md) | notification(·case) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | 대기 |
 | [AP-1](approval-service.md) | approval | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | **필요**(Q-11) | 대기 — 운영 전 필수 |

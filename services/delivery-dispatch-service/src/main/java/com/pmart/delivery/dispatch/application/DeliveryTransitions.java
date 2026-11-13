@@ -40,7 +40,7 @@ public class DeliveryTransitions {
         .openAttempt(d.deliveryId())
         .ifPresent(a -> store.finishAttempt(a.attemptId(), "ASSIGNED", null, now));
     store.resetRejections(riderId, now);
-    events.assigned(d, riderId, offerId, version, now);
+    events.assigned(d, riderId, offerId, version, now, store.offer(offerId).orElse(null));
     return assignmentId;
   }
 

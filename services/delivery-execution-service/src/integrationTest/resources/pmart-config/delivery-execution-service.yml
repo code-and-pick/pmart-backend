@@ -5,6 +5,12 @@ server:
 pmart:
   messaging:
     domain: delivery
+  # 수행료·정산(원문 §7.2, 사용자 결정 2026-11-13). 공휴일은 지급 예정일 계산에서 뺀다 — 운영이 목록을 넣는다(비면 주말만)
+  execution:
+    confirm-after: PT5H
+    payout-business-days: 3
+    public-holidays: []
+    confirm-interval: PT1M
 spring:
   servlet:
     multipart:

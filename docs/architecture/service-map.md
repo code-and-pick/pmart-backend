@@ -299,7 +299,7 @@
 - **소유하지 않음**: 라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution).
 - **API**: 배차 요청(점원만 — 2026-11-13 BR-51 자동 요청 뺌), 제안 응답(라이더), 배차 취소, 배송 조회, 회수 배차 요청(claim), 배차 상태 조회(orchestration S3).
 - **발행**: `DeliveryCreated`, `DispatchOfferSent`, `DeliveryAssigned`, `DeliveryAssignmentChanged`, `DispatchFailed`(기사 없음/반복 거절/만료/장애 구분), `DispatchDelayed`, `DeliveryCancelledBeforePickup`.
-- **구독**: `ShipmentReady`, `PackingFinished`, `OrderCancelled`, `ReturnPickupRequested`, `ExchangeReshipmentApproved`, `RiderStateChanged`, `RiderRestricted`, `PackageHandedOver`, `DeliveryCompleted`(배송 CLOSED — 2026-11-13 H2).
+- **구독**: `ShipmentReady`, `PackingFinished`, `OrderCancelled`, `ReturnPickupRequested`, `ExchangeReshipmentApproved`, `RiderStateChanged`, `RiderRestricted`, `PackageHandedOver`, `DeliveryCompleted`·`DeliveryFailed`(배송 CLOSED — 2026-11-13 H2·전달 실패 확정).
 - **의존**: rider, delivery-tracking(거리), mfc-fulfillment(포장 정보), order(이행 계획). AI 추천 배차 계산은 **Python AI 최적화 서버**(GreedRL·RouteFinder, 내부 계산 서버 — ADR-0058), 거리·시간은 카카오모빌리티 길찾기, 알뜰배달 묶음은 OR-Tools 또는 AI(ADR-0050 일부 대체).
 
 ### delivery-execution-service `[1단계]`

@@ -29,7 +29,40 @@ public class ExecutionStore {
       @Nullable Instant completedAt,
       @Nullable String method,
       @Nullable String evidenceJson,
+      Instant createdAt,
+      @Nullable Integer acceptedFee,
+      @Nullable String vehicleType,
+      @Nullable Integer distanceM,
+      @Nullable String failureJson) {}
+
+  public record HelpRow(
+      String requestId,
+      String deliveryId,
+      String riderId,
+      String category,
+      @Nullable String detail,
+      String evidenceRefsJson,
+      String stage,
+      String state,
+      @Nullable String caseId,
       Instant createdAt) {}
+
+  public record EarningRow(
+      String earningId,
+      String deliveryId,
+      String riderId,
+      boolean calculable,
+      int rateTableVersion,
+      @Nullable String vehicleType,
+      @Nullable Integer distanceM,
+      @Nullable Integer baseFee,
+      @Nullable Integer total,
+      String settlementState,
+      java.time.LocalDate performedOn,
+      @Nullable Instant confirmAt,
+      java.time.@Nullable LocalDate payoutDate,
+      @Nullable String note,
+      Instant recordedAt) {}
 
   public record HandoverRow(
       String handoverId,
@@ -58,7 +91,7 @@ public class ExecutionStore {
   private static final String DELIVERY_COLUMNS =
       "delivery_id, version, type, order_id, shipment_id, mfc_id, state, rider_id,"
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
-          + " created_at";
+          + " created_at, accepted_fee, vehicle_type, distance_m, failure::text";
 
   private final JdbcTemplate jdbc;
 
@@ -326,6 +359,247 @@ public class ExecutionStore {
         deliveryId);
   }
 
+  /**
+   * 상태는 그대로, 수행 버전만 올린다 — 상태를 바꾸지 않는 사건(도움요청·수행료)도 aggregateVersion 이 겹치지 않게(dispatch L3 와 같은 규칙).
+   *
+   * @return 올린 뒤 버전
+   */
+  public int bumpVersion(String deliveryId, Instant now) {
+    Integer v =
+        jdbc.queryForObject(
+            "UPDATE execution_delivery SET version = version + 1, updated_at = ? WHERE delivery_id = ?"
+                + " RETURNING version",
+            Integer.class,
+            ts(now),
+            deliveryId);
+    return v == null ? 0 : v;
+  }
+
+  // ---- 수락 당시 금액·전달 실패
+
+  public void accepted(
+      String deliveryId,
+      @Nullable Integer fee,
+      @Nullable String vehicleType,
+      @Nullable Integer distanceM) {
+    jdbc.update(
+        "UPDATE execution_delivery SET accepted_fee = ?, vehicle_type = ?, distance_m = ?"
+            + " WHERE delivery_id = ?",
+        fee,
+        vehicleType,
+        distanceM,
+        deliveryId);
+  }
+
+  /** 실패 등록·결정 기록과 상태를 함께 바꾼다. */
+  public void failure(String deliveryId, String state, String failureJson, Instant now) {
+    jdbc.update(
+        "UPDATE execution_delivery SET state = ?, failure = ?::jsonb, version = version + 1,"
+            + " updated_at = ? WHERE delivery_id = ?",
+        state,
+        failureJson,
+        ts(now),
+        deliveryId);
+  }
+
+  // ---- 도움요청
+
+  /**
+   * @return 새로 남겼으면 true(같은 배송·같은 요청 ID 는 한 번)
+   */
+  public boolean insertHelp(HelpRow h) {
+    return jdbc.update(
+            "INSERT INTO help_request (request_id, delivery_id, rider_id, category, detail,"
+                + " evidence_refs, stage, state, case_id, created_at) VALUES (?, ?, ?, ?, ?, ?::jsonb,"
+                + " ?, ?, ?, ?) ON CONFLICT (delivery_id, request_id) DO NOTHING",
+            h.requestId(),
+            h.deliveryId(),
+            h.riderId(),
+            h.category(),
+            h.detail(),
+            h.evidenceRefsJson(),
+            h.stage(),
+            h.state(),
+            h.caseId(),
+            ts(h.createdAt()))
+        > 0;
+  }
+
+  public Optional<HelpRow> help(String deliveryId, String requestId) {
+    return jdbc
+        .query(
+            HELP_SELECT + " WHERE delivery_id = ? AND request_id = ?",
+            this::mapHelp,
+            deliveryId,
+            requestId)
+        .stream()
+        .findFirst();
+  }
+
+  public List<HelpRow> helps(String deliveryId) {
+    return jdbc.query(
+        HELP_SELECT + " WHERE delivery_id = ? ORDER BY created_at", this::mapHelp, deliveryId);
+  }
+
+  private static final String HELP_SELECT =
+      "SELECT request_id, delivery_id, rider_id, category, detail, evidence_refs::text, stage,"
+          + " state, case_id, created_at FROM help_request";
+
+  private HelpRow mapHelp(ResultSet rs, int i) throws SQLException {
+    return new HelpRow(
+        rs.getString(1),
+        rs.getString(2),
+        rs.getString(3),
+        rs.getString(4),
+        rs.getString(5),
+        rs.getString(6),
+        rs.getString(7),
+        rs.getString(8),
+        rs.getString(9),
+        rs.getTimestamp(10).toInstant());
+  }
+
+  // ---- 수행료
+
+  /**
+   * @return 새로 만들었으면 true(배송당 하나 — 중복 완료·사건 재전달은 한 번만, 원문 §6.1·§9.7)
+   */
+  public boolean insertEarning(EarningRow e) {
+    return jdbc.update(
+            "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable,"
+                + " rate_table_version, vehicle_type, distance_m, base_fee, total, settlement_state,"
+                + " performed_on, confirm_at, payout_date, note, recorded_at, updated_at) VALUES (?, ?,"
+                + " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (delivery_id, rider_id) DO NOTHING",
+            e.earningId(),
+            e.deliveryId(),
+            e.riderId(),
+            e.calculable(),
+            e.rateTableVersion(),
+            e.vehicleType(),
+            e.distanceM(),
+            e.baseFee(),
+            e.total(),
+            e.settlementState(),
+            java.sql.Date.valueOf(e.performedOn()),
+            e.confirmAt() == null ? null : ts(e.confirmAt()),
+            e.payoutDate() == null ? null : java.sql.Date.valueOf(e.payoutDate()),
+            e.note(),
+            ts(e.recordedAt()),
+            ts(e.recordedAt()))
+        > 0;
+  }
+
+  public Optional<EarningRow> earningOf(String deliveryId, String riderId) {
+    return jdbc
+        .query(
+            EARNING_SELECT + " WHERE delivery_id = ? AND rider_id = ?",
+            this::mapEarning,
+            deliveryId,
+            riderId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 확정 시각이 지난 확정 대기 수행료(다른 인스턴스와 겹치지 않게 잠근다). */
+  public List<EarningRow> lockDueEarnings(Instant now, int limit) {
+    return jdbc.query(
+        EARNING_SELECT
+            + " WHERE settlement_state = 'PENDING_CONFIRMATION' AND confirm_at <= ?"
+            + " ORDER BY confirm_at LIMIT ? FOR UPDATE SKIP LOCKED",
+        this::mapEarning,
+        ts(now),
+        limit);
+  }
+
+  public void settlementState(String earningId, String state, Instant now) {
+    jdbc.update(
+        "UPDATE rider_earning SET settlement_state = ?, updated_at = ? WHERE earning_id = ?",
+        state,
+        ts(now),
+        earningId);
+  }
+
+  public List<EarningRow> riderEarnings(
+      String riderId,
+      java.time.@Nullable LocalDate from,
+      java.time.@Nullable LocalDate to,
+      @Nullable String state,
+      int limit,
+      int offset) {
+    StringBuilder sql = new StringBuilder(EARNING_SELECT + " WHERE rider_id = ?");
+    List<Object> args = new java.util.ArrayList<>();
+    args.add(riderId);
+    if (from != null) {
+      sql.append(" AND performed_on >= ?");
+      args.add(java.sql.Date.valueOf(from));
+    }
+    if (to != null) {
+      sql.append(" AND performed_on <= ?");
+      args.add(java.sql.Date.valueOf(to));
+    }
+    if (state != null) {
+      sql.append(" AND settlement_state = ?");
+      args.add(state);
+    }
+    sql.append(" ORDER BY performed_on DESC, recorded_at DESC, earning_id LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(sql.toString(), this::mapEarning, args.toArray());
+  }
+
+  /** 상태별 합계(산정 가능한 것만) — 기간 조건은 목록과 같다. */
+  public java.util.Map<String, Long> riderTotals(
+      String riderId, java.time.@Nullable LocalDate from, java.time.@Nullable LocalDate to) {
+    StringBuilder sql =
+        new StringBuilder(
+            "SELECT settlement_state, COALESCE(SUM(total), 0) FROM rider_earning WHERE rider_id = ?"
+                + " AND calculable");
+    List<Object> args = new java.util.ArrayList<>();
+    args.add(riderId);
+    if (from != null) {
+      sql.append(" AND performed_on >= ?");
+      args.add(java.sql.Date.valueOf(from));
+    }
+    if (to != null) {
+      sql.append(" AND performed_on <= ?");
+      args.add(java.sql.Date.valueOf(to));
+    }
+    sql.append(" GROUP BY settlement_state");
+    java.util.Map<String, Long> out = new java.util.HashMap<>();
+    jdbc.query(
+        sql.toString(),
+        rs -> {
+          out.put(rs.getString(1), rs.getLong(2));
+        },
+        args.toArray());
+    return out;
+  }
+
+  private static final String EARNING_SELECT =
+      "SELECT earning_id, delivery_id, rider_id, calculable, rate_table_version, vehicle_type,"
+          + " distance_m, base_fee, total, settlement_state, performed_on, confirm_at, payout_date,"
+          + " note, recorded_at FROM rider_earning";
+
+  private EarningRow mapEarning(ResultSet rs, int i) throws SQLException {
+    java.sql.Date payout = rs.getDate(13);
+    return new EarningRow(
+        rs.getString(1),
+        rs.getString(2),
+        rs.getString(3),
+        rs.getBoolean(4),
+        rs.getInt(5),
+        rs.getString(6),
+        (Integer) rs.getObject(7),
+        (Integer) rs.getObject(8),
+        (Integer) rs.getObject(9),
+        rs.getString(10),
+        rs.getDate(11).toLocalDate(),
+        instant(rs, 12),
+        payout == null ? null : payout.toLocalDate(),
+        rs.getString(14),
+        rs.getTimestamp(15).toInstant());
+  }
+
   private DeliveryRow mapDelivery(ResultSet rs, int i) throws SQLException {
     return new DeliveryRow(
         rs.getString(1),
@@ -342,7 +616,11 @@ public class ExecutionStore {
         instant(rs, 12),
         rs.getString(13),
         rs.getString(14),
-        rs.getTimestamp(15).toInstant());
+        rs.getTimestamp(15).toInstant(),
+        (Integer) rs.getObject(16),
+        rs.getString(17),
+        (Integer) rs.getObject(18),
+        rs.getString(19));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

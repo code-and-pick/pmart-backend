@@ -57,8 +57,16 @@ public class DispatchEvents {
     publish("DispatchOfferSent", d, version, system(), p);
   }
 
+  /**
+   * @param offer 수락한 제안 — 수락 당시 금액·수단을 실어 execution 수행료 기준으로(2026-11-13). 없으면 생략
+   */
   public void assigned(
-      DeliveryRow before, String riderId, String offerId, int assignmentVersion, Instant at) {
+      DeliveryRow before,
+      String riderId,
+      String offerId,
+      int assignmentVersion,
+      Instant at,
+      @Nullable OfferRow offer) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", before.deliveryId());
     p.put("orderId", before.orderId());
@@ -66,6 +74,15 @@ public class DispatchEvents {
     p.put("offerId", offerId);
     p.put("assignmentVersion", assignmentVersion);
     p.put("acceptedAt", at.toString());
+    if (offer != null) {
+      p.put("fee", offer.fee());
+      if (offer.vehicleType() != null) {
+        p.put("vehicleType", offer.vehicleType());
+      }
+    }
+    if (before.dropDistanceM() != null) {
+      p.put("distanceM", before.dropDistanceM());
+    }
     publish(
         "DeliveryAssigned",
         before,

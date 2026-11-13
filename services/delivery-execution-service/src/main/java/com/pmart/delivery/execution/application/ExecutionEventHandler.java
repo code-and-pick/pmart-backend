@@ -47,13 +47,19 @@ public class ExecutionEventHandler {
 
   private final ExecutionStore store;
   private final PickupJudgement pickup;
+  private final EarningService earnings;
   private final ObjectMapper mapper;
   private final Clock clock;
 
   public ExecutionEventHandler(
-      ExecutionStore store, PickupJudgement pickup, ObjectMapper mapper, Clock clock) {
+      ExecutionStore store,
+      PickupJudgement pickup,
+      EarningService earnings,
+      ObjectMapper mapper,
+      Clock clock) {
     this.store = store;
     this.pickup = pickup;
+    this.earnings = earnings;
     this.mapper = mapper;
     this.clock = clock;
   }
@@ -92,6 +98,12 @@ public class ExecutionEventHandler {
         }
         Instant at = instant(p.path("acceptedAt"), e.occurredAt());
         store.assign(deliveryId, p.path("riderId").asString(), v, at, now);
+        // 수락 당시 금액·조건(원문 §7.1) — 수행료 기준(2026-11-13)
+        store.accepted(
+            deliveryId,
+            p.path("fee").isNumber() ? p.path("fee").asInt() : null,
+            p.path("vehicleType").asString(null),
+            p.path("distanceM").isNumber() ? p.path("distanceM").asInt() : null);
         store.history(
             deliveryId, "ASSIGNED", at, "SYSTEM_EVENT", p.path("offerId").asString(null), now);
       }
@@ -106,6 +118,9 @@ public class ExecutionEventHandler {
         }
         Instant at = instant(p.path("changedAt"), e.occurredAt());
         String newRider = p.path("newRiderId").asString(null);
+        if (d.riderId() != null && !byRider(e)) {
+          earnings.notCalculable(d, "UNASSIGNED", now); // 운영자·주문 사유 배차 취소 — 기준 없음(본인 취소는 수행료 없음)
+        }
         if (newRider == null || newRider.isBlank()) {
           store.unassign(deliveryId, v, now);
           store.history(
@@ -120,6 +135,9 @@ public class ExecutionEventHandler {
         if (!ExecutionRules.BEFORE_PICKUP.contains(d.state())) {
           log.warn("배송 {} 픽업 전 취소 사건 — 이미 {}, 그대로 둔다", deliveryId, d.state());
           return;
+        }
+        if (d.riderId() != null && !"UNASSIGNED".equals(d.state()) && !byRider(e)) {
+          earnings.notCalculable(d, "CANCELLED_BEFORE_PICKUP", now);
         }
         store.setState(deliveryId, "CANCELLED", now);
         store.history(
@@ -180,6 +198,11 @@ public class ExecutionEventHandler {
       }
       default -> {}
     }
+  }
+
+  /** 라이더 본인이 낸 배차 취소인가(사건 행위자) — 본인 취소는 수행료를 만들지 않는다. */
+  private static boolean byRider(EventEnvelope e) {
+    return e.actor() != null && e.actor().type() == EventEnvelope.ActorType.RIDER;
   }
 
   private static List<String> strings(JsonNode arr) {

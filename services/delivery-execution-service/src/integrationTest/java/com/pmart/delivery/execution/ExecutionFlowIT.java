@@ -6,6 +6,7 @@ import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import com.pmart.delivery.execution.application.EarningService;
 import com.pmart.delivery.execution.application.EvidencePhotoStorage;
 import java.time.Instant;
 import java.util.List;
@@ -42,7 +43,8 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.messaging.outbox.delete-after-insert=false"
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.execution.confirm-interval=PT1H" // 확정 판단은 시험이 직접 부른다
     })
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
 class ExecutionFlowIT extends PostgresKafkaContainerSupport {
@@ -63,6 +65,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired EarningService earnings;
 
   RestClient http;
 
@@ -196,6 +199,176 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .retrieve()
                 .toEntity(String.class));
     assertThat(mine.path("items").size()).isEqualTo(1);
+
+    // 수행료 — 수락 당시 금액(DeliveryAssigned.fee)으로 확정 대기, 5시간 뒤 확정(시험은 확정 시각을 당겨 직접 판단)
+    Map<String, Object> earning =
+        jdbc.queryForMap(
+            "SELECT calculable, total, settlement_state, payout_date FROM rider_earning WHERE delivery_id = ?",
+            id);
+    assertThat(earning.get("calculable")).isEqualTo(true);
+    assertThat(earning.get("total")).isEqualTo(3900);
+    assertThat(earning.get("settlement_state")).isEqualTo("PENDING_CONFIRMATION");
+    assertThat(earning.get("payout_date")).isNotNull();
+    assertThat(outbox(id, "RiderEarningRecorded").path("payload").path("status").asString())
+        .isEqualTo("PENDING_CONFIRMATION");
+    jdbc.update(
+        "UPDATE rider_earning SET confirm_at = ? WHERE delivery_id = ?",
+        java.sql.Timestamp.from(Instant.now().minusSeconds(1)),
+        id);
+    earnings.confirmDue();
+    JsonNode myEarnings =
+        body(
+            http.get()
+                .uri("/riders/me/earnings")
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(myEarnings.path("items").get(0).path("settlementState").asString())
+        .isEqualTo("CONFIRMED");
+    assertThat(myEarnings.path("items").get(0).path("total").asInt()).isEqualTo(3900);
+    assertThat(myEarnings.path("totals").path("confirmed").asInt()).isEqualTo(3900);
+    assertThat(view(id, rider).path("earning").path("settlementState").asString())
+        .isEqualTo("CONFIRMED");
+    // 배송 사건마다 aggregateVersion 이 다르다(수행료 사건 포함)
+    assertThat(
+            jdbc.queryForList(
+                "SELECT (payload->>'aggregateVersion')::bigint FROM outbox_event WHERE aggregateid = ?",
+                Long.class,
+                id))
+        .doesNotHaveDuplicates();
+  }
+
+  @Test
+  void failureReportedStaysInProgressUntilOperatorDecides() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+
+    // 고객 사유인데 연락 1회 → 422, 남의(없는) 사진 → 422
+    ResponseEntity<String> oneCall =
+        post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of(photo), 1));
+    assertThat(oneCall.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(oneCall).path("code").asString()).isEqualTo("CONTACT_ATTEMPTS_REQUIRED");
+    ResponseEntity<String> noPhoto =
+        post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of("EVP-NONE"), 2));
+    assertThat(body(noPhoto).path("code").asString()).isEqualTo("EVIDENCE_REQUIRED");
+
+    // 등록 → FAILURE_REPORTED(접수 — 아직 진행 중), 지원센터로 갈 사건
+    ResponseEntity<String> reported =
+        post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of(photo), 2));
+    assertThat(reported.getStatusCode().value()).isEqualTo(200);
+    assertThat(body(reported).path("status").asString()).isEqualTo("ACCEPTED");
+    assertThat(state(id)).isEqualTo("FAILURE_REPORTED");
+    JsonNode incident = outbox(id, "DeliveryIncidentRaised").path("payload");
+    assertThat(incident.path("category").asString()).isEqualTo("DELIVERY_FAILURE");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryFailed'",
+                Integer.class,
+                id))
+        .isZero();
+    // 다른 센터 운영자 403, 반려 → 원래 상태(고객 도착 전이면 PICKED_UP)로
+    assertThat(decide(id, "OP-X", List.of("MFC-OTHER"), "REJECT").getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(decide(id, "OP-1", List.of("MFC-1"), "REJECT").getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(state(id)).isEqualTo("PICKED_UP");
+
+    // 다시 등록(고객 도착 뒤) → 확정 → FAILED + DeliveryFailed, 수행료 산정 불가
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(
+            post(id, "failures", rider, failure("UNREACHABLE", List.of(photo), 2))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(
+            post(id, "completions", rider, completion(List.of(photo), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409); // 확정 전에는 완료도 안 된다
+    assertThat(decide(id, "OP-1", List.of("MFC-1"), "CONFIRM").getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(state(id)).isEqualTo("FAILED");
+    JsonNode failed = outbox(id, "DeliveryFailed").path("payload");
+    assertThat(failed.path("reason").asString()).isEqualTo("UNREACHABLE");
+    assertThat(failed.path("custody").asString()).isEqualTo("RIDER");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT calculable FROM rider_earning WHERE delivery_id = ?", Boolean.class, id))
+        .isFalse();
+    JsonNode v = view(id, rider);
+    assertThat(v.path("failure").path("decision").asString()).isEqualTo("CONFIRM");
+    assertThat(v.path("failure").path("contactAttempts").asInt()).isEqualTo(2);
+    assertThat(decide(id, "OP-1", List.of("MFC-1"), "CONFIRM").getStatusCode().value())
+        .isEqualTo(409); // 이미 끝남
+  }
+
+  @Test
+  void helpRequestIsRecordedAndRaisedForSupportCenter() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    assertThat(
+            post(id, "help-requests", "RDR-OTHER", Map.of("category", "ACCIDENT"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    ResponseEntity<String> created =
+        post(
+            id,
+            "help-requests",
+            rider,
+            Map.of("category", "STORE_WAITING", "detail", "포장이 아직 안 나옴"));
+    assertThat(created.getStatusCode().value()).isEqualTo(202);
+    String requestId = body(created).path("resultId").asString();
+    JsonNode raised = outbox(id, "DeliveryIncidentRaised").path("payload");
+    assertThat(raised.path("type").asString()).isEqualTo("HELP_REQUEST");
+    assertThat(raised.path("category").asString()).isEqualTo("STORE_WAITING");
+    assertThat(raised.path("stage").asString()).isEqualTo("PICKED_UP");
+    assertThat(raised.path("incidentId").asString()).isEqualTo(requestId);
+
+    JsonNode mine =
+        body(
+            http.get()
+                .uri("/deliveries/{id}/help-requests/{r}", id, requestId)
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(mine.path("state").asString()).isEqualTo("OPEN");
+    assertThat(mine.path("caseId").isNull() || mine.path("caseId").isMissingNode()).isTrue();
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/help-requests/{r}", id, requestId)
+                .header("Authorization", "Bearer " + TestJwt.rider("RDR-OTHER"))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/help-requests/{r}", id, requestId)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(view(id, rider).path("incidents").get(0).path("category").asString())
+        .isEqualTo("STORE_WAITING");
+  }
+
+  JsonNode view(String id, String rider) {
+    return body(
+        http.get()
+            .uri("/deliveries/{id}", id)
+            .header("Authorization", "Bearer " + TestJwt.rider(rider))
+            .retrieve()
+            .toEntity(String.class));
   }
 
   @Test
@@ -287,7 +460,76 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             "assignmentVersion",
             version,
             "acceptedAt",
-            Instant.now().toString()));
+            Instant.now().toString(),
+            "fee",
+            3900,
+            "vehicleType",
+            "MOTORCYCLE",
+            "distanceM",
+            1800));
+  }
+
+  /** 배정 → 목록(포장 1개) → 인계 → PICKED_UP 까지. */
+  void pickedUp(String id, String shipment, String order, String rider) {
+    created(id, shipment, order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    send(
+        "mfc.fulfillment.v1",
+        "ShipmentReady",
+        "Shipment",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            "MFC-1",
+            "readyAt",
+            Instant.now().toString(),
+            "packages",
+            List.of(Map.of("packageId", "PKG-" + id))));
+    handedOver(id, shipment, order, rider, "PKG-" + id, "HO-" + id, Map.of("L-1", 1));
+    awaitState(id, "PICKED_UP");
+  }
+
+  static Map<String, Object> failure(String reason, List<String> photos, int contacts) {
+    List<Map<String, Object>> attempts = new java.util.ArrayList<>();
+    for (int i = 0; i < contacts; i++) {
+      attempts.add(
+          Map.of(
+              "attemptedAt",
+              Instant.now().minusSeconds(60L * (i + 1)).toString(),
+              "method",
+              "SAFE_NUMBER_CALL",
+              "result",
+              "NO_ANSWER"));
+    }
+    return Map.of(
+        "reason",
+        reason,
+        "evidenceRefs",
+        photos,
+        "goodsLocation",
+        "WITH_RIDER",
+        "contactAttempts",
+        attempts);
+  }
+
+  ResponseEntity<String> decide(String id, String operator, List<String> centers, String decision) {
+    return http.post()
+        .uri("/deliveries/{id}/failure-decisions", id)
+        .headers(
+            h -> {
+              h.setBearerAuth(TestJwt.operator(operator, List.of(), centers));
+              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("X-Source-System", "mfc-backoffice");
+            })
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(Map.of("decision", decision, "note", "IT"))
+        .retrieve()
+        .toEntity(String.class);
   }
 
   void handedOver(

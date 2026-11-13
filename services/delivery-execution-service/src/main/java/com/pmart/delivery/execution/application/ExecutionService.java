@@ -50,13 +50,26 @@ public class ExecutionService {
       @Nullable String substituteEvidenceCaseId) {}
 
   public record View(
-      DeliveryRow delivery, List<HandoverRow> handovers, List<ExecutionStore.HistoryRow> history) {}
+      DeliveryRow delivery,
+      List<HandoverRow> handovers,
+      List<ExecutionStore.HistoryRow> history,
+      List<ExecutionStore.HelpRow> helps,
+      ExecutionStore.@Nullable EarningRow earning) {}
+
+  /** 전달 실패 등록(2026-11-13) — contactAttempts 는 [{attemptedAt, method, result}]. */
+  public record Failure(
+      String reason,
+      @Nullable String detail,
+      List<String> photoRefs,
+      @Nullable String goodsLocation,
+      List<Map<String, Object>> contactAttempts) {}
 
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
   private final ExecutionStore store;
   private final ExecutionEvents events;
   private final PickupJudgement pickup;
+  private final EarningService earnings;
   private final RequestIdempotency idempotency;
   private final ObjectProvider<EvidencePhotoStorage> photos;
   private final ObjectMapper mapper;
@@ -66,6 +79,7 @@ public class ExecutionService {
       ExecutionStore store,
       ExecutionEvents events,
       PickupJudgement pickup,
+      EarningService earnings,
       RequestIdempotency idempotency,
       ObjectProvider<EvidencePhotoStorage> photos,
       ObjectMapper mapper,
@@ -73,10 +87,20 @@ public class ExecutionService {
     this.store = store;
     this.events = events;
     this.pickup = pickup;
+    this.earnings = earnings;
     this.idempotency = idempotency;
     this.photos = photos;
     this.mapper = mapper;
     this.clock = clock;
+  }
+
+  View viewOf(DeliveryRow d) {
+    return new View(
+        d,
+        store.handovers(d.deliveryId()),
+        store.history(d.deliveryId()),
+        store.helps(d.deliveryId()),
+        d.riderId() == null ? null : store.earningOf(d.deliveryId(), d.riderId()).orElse(null));
   }
 
   // ---- 조회
@@ -98,7 +122,7 @@ public class ExecutionService {
     if (!ok) {
       throw notFound();
     }
-    return new View(d, store.handovers(deliveryId), store.history(deliveryId));
+    return viewOf(d);
   }
 
   public List<View> mine(
@@ -110,7 +134,7 @@ public class ExecutionService {
     Instant from = date == null ? null : date.atStartOfDay(SEOUL).toInstant();
     Instant to = date == null ? null : date.plusDays(1).atStartOfDay(SEOUL).toInstant();
     return store.riderDeliveries(p.subject(), from, to, state, size, offset(cursor)).stream()
-        .map(d -> new View(d, store.handovers(d.deliveryId()), store.history(d.deliveryId())))
+        .map(this::viewOf)
         .toList();
   }
 
@@ -299,7 +323,74 @@ public class ExecutionService {
               evidenceId,
               c.takenAt(),
               now);
-          return d.version() + 1;
+          earnings.completed(d, now); // 수락 당시 금액 → 확정 대기(사건 버전은 따로 올린다)
+          return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
+        });
+  }
+
+  /**
+   * 전달 실패 등록(사용자 결정 2026-11-13): 사유 + 이 배송에 올린 사진 + 고객 사유면 연락 2회 이상 → FAILURE_REPORTED(아직 진행 중 —
+   * 운영자 확정 전). 사건은 DeliveryIncidentRaised(지원센터가 확정·반려를 판단하도록 — case-service 구현 전).
+   */
+  public Applied reportFailure(
+      String deliveryId,
+      String requestId,
+      String source,
+      @Nullable Integer expectedVersion,
+      Failure f) {
+    return transition(
+        "reportFailure",
+        deliveryId,
+        requestId,
+        source,
+        expectedVersion,
+        Map.of("failure", f),
+        (d, rider, now) -> {
+          if (!ExecutionRules.FAILURE_FROM.contains(d.state())) {
+            throw PmartException.invalidState("픽업 뒤 전달 전에만 실패를 등록할 수 있습니다(지금 " + d.state() + ").");
+          }
+          Set<String> mine =
+              store.photos(deliveryId).stream()
+                  .filter(ph -> ph.riderId().equals(rider))
+                  .map(PhotoRow::photoRef)
+                  .collect(Collectors.toSet());
+          if (f.photoRefs().isEmpty() || !mine.containsAll(f.photoRefs())) {
+            throw new PmartException(
+                ErrorCode.EVIDENCE_REQUIRED, "이 배송에 올린 사진이 필요합니다. 사진을 먼저 올려 주세요.");
+          }
+          if (!ExecutionRules.enoughContacts(f.reason(), f.contactAttempts().size())) {
+            throw unprocessable(
+                "CONTACT_ATTEMPTS_REQUIRED", "고객 연락을 2회 이상 시도하고 기록해 주세요(고객 부재·연락 두절·주소 오류·수령 거부).");
+          }
+          Map<String, Object> failure = new LinkedHashMap<>();
+          failure.put("reason", f.reason());
+          if (f.detail() != null) {
+            failure.put("detail", f.detail());
+          }
+          failure.put("photoRefs", f.photoRefs());
+          if (f.goodsLocation() != null) {
+            failure.put("goodsLocation", f.goodsLocation());
+          }
+          failure.put("contactAttempts", f.contactAttempts());
+          failure.put("reportedAt", now.toString());
+          failure.put("previousState", d.state());
+          failure.put("requestId", requestId);
+          store.failure(deliveryId, "FAILURE_REPORTED", mapper.writeValueAsString(failure), now);
+          store.history(deliveryId, "FAILURE_REPORTED", now, "RIDER", requestId, now);
+          ExecutionStore.HelpRow incident =
+              new ExecutionStore.HelpRow(
+                  requestId,
+                  deliveryId,
+                  rider,
+                  "DELIVERY_FAILURE",
+                  f.detail(),
+                  mapper.writeValueAsString(f.photoRefs()),
+                  "FAILURE_REPORTED",
+                  "OPEN",
+                  null,
+                  now);
+          events.helpRequested(d, incident, f.photoRefs(), store.bumpVersion(deliveryId, now));
+          return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });
   }
 

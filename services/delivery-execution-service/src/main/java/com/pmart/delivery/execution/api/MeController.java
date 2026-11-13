@@ -1,25 +1,78 @@
 package com.pmart.delivery.execution.api;
 
+import com.pmart.common.web.ErrorCode;
+import com.pmart.common.web.PmartException;
 import com.pmart.delivery.execution.api.generated.MeApi;
 import com.pmart.delivery.execution.api.generated.model.ExecutionState;
 import com.pmart.delivery.execution.api.generated.model.ListMyDeliveries200Response;
 import com.pmart.delivery.execution.api.generated.model.ListMyDeliveries200ResponsePage;
+import com.pmart.delivery.execution.api.generated.model.ListMyEarnings200Response;
+import com.pmart.delivery.execution.api.generated.model.ListMyEarnings200ResponseAsOf;
+import com.pmart.delivery.execution.api.generated.model.ListMyEarnings200ResponseTotals;
+import com.pmart.delivery.execution.api.generated.model.SettlementState;
+import com.pmart.delivery.execution.application.EarningService;
 import com.pmart.delivery.execution.application.ExecutionService;
 import java.time.LocalDate;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 MeApi — 내 배송(0.2.0). 수행료·정산은 아직 501(인터페이스 default). */
+/** 계약 MeApi — 내 배송(0.2.0), 수행료·정산(0.3.0). */
 @RestController
 public class MeController implements MeApi {
 
   private final ExecutionService service;
+  private final EarningService earnings;
   private final ExecutionViews views;
 
-  public MeController(ExecutionService service, ExecutionViews views) {
+  public MeController(ExecutionService service, EarningService earnings, ExecutionViews views) {
     this.service = service;
+    this.earnings = earnings;
     this.views = views;
+  }
+
+  /** 수행료·정산(0.3.0) — 수행일(Asia/Seoul) 기준 기간, 합계는 산정 가능한 것만. 지급(PAID)은 외부 회계 연결 뒤. */
+  @Override
+  public ResponseEntity<ListMyEarnings200Response> listMyEarnings(
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable SettlementState settlementState,
+      Integer size,
+      @Nullable String cursor) {
+    int offset = 0;
+    if (cursor != null && !cursor.isBlank()) {
+      try {
+        offset = Math.max(0, Integer.parseInt(cursor));
+      } catch (NumberFormatException e) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+      }
+    }
+    var rows =
+        earnings.mine(
+            from,
+            to,
+            settlementState == null ? null : settlementState.getValue(),
+            size + 1,
+            offset);
+    boolean more = rows.size() > size;
+    var page = more ? rows.subList(0, size) : rows;
+    var t = earnings.totals(from, to);
+    return ResponseEntity.ok(
+        new ListMyEarnings200Response()
+            .items(page.stream().map(ExecutionViews::earning).toList())
+            .totals(
+                new ListMyEarnings200ResponseTotals()
+                    .estimated((int) t.estimated())
+                    .confirmed((int) t.confirmed())
+                    .paid((int) t.paid()))
+            .page(
+                new ListMyDeliveries200ResponsePage()
+                    .nextCursor(more ? String.valueOf(offset + size) : null)
+                    .size(page.size()))
+            .asOf(
+                new ListMyEarnings200ResponseAsOf()
+                    .asOf(ExecutionViews.time(earnings.now()))
+                    .freshness(ListMyEarnings200ResponseAsOf.FreshnessEnum.CURRENT)));
   }
 
   @Override

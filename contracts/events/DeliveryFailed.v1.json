@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/DeliveryFailed.v1.json",
   "title": "DeliveryFailed",
-  "description": "전달 실패·중단(자동 환불 없음). 발행 delivery-execution. 구독 order, claim, case, notification. 토픽 delivery.delivery.v1. 단계 ①",
+  "description": "전달 실패·중단(자동 환불 없음). 운영자가 라이더의 실패 등록을 확정했을 때(2026-11-13 — 확정 전은 진행 중). 발행 delivery-execution. 구독 order, claim, case, notification, delivery-dispatch(배송 CLOSED — 라이더 진행 중 수에서 뺌). 토픽 delivery.delivery.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

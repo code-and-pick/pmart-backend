@@ -40,3 +40,18 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   2. 사가 ESCALATED(S1·S3·결품 사가의 업무 거절) 상신 경로 — 사건으로 받을지 직접 호출로 받을지 함께 정한다.
 - **사용자 결정**: 문서에 없음 — 케이스 유형·담당·처리 기한은 case 구현 때 질문.
 - 근거: `docs/architecture/events.md`, `docs/business/flows/cancel-vs-handover.md`, `services/order-orchestration-service/CLAUDE.md`(상태).
+
+## R-4. 라이더 도움요청·전달 실패 등록 → 지원센터 사건 (2026-11-13, 보낸 영역 delivery — 사용자 결정 "1번")
+
+- **요청한 곳**: delivery-execution-service(PC 5).
+- **사용자 결정(2026-11-13)**: 라이더 도움요청은 delivery-execution 이 받아 **자기 DB 에 기록하고 사건 `DeliveryIncidentRaised` 를 낸다**. case-service 가 그 사건을 받아 지원센터 사건으로 만든다 — "나중에 case-service 가 생겨도 이벤트만 받으면 되니 다시 고칠 것이 적다". (같은 모양의 구현 사례: hr-service `GrantRequested` → approval-service `intakeGrantRequest`.)
+- **지금(구현됨, execution 계약 0.3.0)**
+  - `POST /api/v1/deliveries/{id}/help-requests`(라이더) → `help_request` 기록 + `DeliveryIncidentRaised`(토픽 delivery.delivery.v1, 집계 Delivery·키 deliveryId). payload: `incidentId`(= 도움요청 ID), `deliveryId`, `riderId`, `type: HELP_REQUEST`, `category`(CUSTOMER_UNREACHABLE·ADDRESS_ISSUE·GOODS_ISSUE·PHOTO_UPLOAD_FAILED·ACCIDENT·APP_ERROR·STORE_WAITING·STATUS_CORRECTION·OTHER), `stage`(요청 때 배송 수행 상태), `orderId`, `mfcId`, `detail`(라이더 글 — 개인정보가 들어갈 수 있으니 로그 금지), `evidenceRefs`(execution 사진 photoRef), `raisedAt`.
+  - 전달 실패 등록(`POST …/failures`)도 같은 사건을 낸다 — `category: DELIVERY_FAILURE`, `stage: FAILURE_REPORTED`, `evidenceRefs` = 실패 사진. 배송은 운영자 확정 전까지 진행 중이다(확정·반려는 지금 `POST …/failure-decisions` — 백오피스 권한자).
+  - 라이더 조회 `GET …/help-requests/{id}` 의 `caseId` 는 비어 있고 state 는 OPEN 으로 남는다(사건을 받는 곳이 없다). 지원센터 화면도 없다.
+- **case-service 에 필요한 것**
+  1. 구독 `deliveryEvents`(delivery.delivery.v1, `EventConsumers.of(e -> "DeliveryIncidentRaised".equals(e.eventType()), …)` — 같은 토픽의 다른 배송 사건은 버린다) → `InboxGuard` 안에서 지원센터 사건 열기(유형 예 `RIDER_HELP` / `DELIVERY_FAILURE`, 참조 deliveryId·orderId·incidentId, 우선순위는 category 로 — 예 ACCIDENT 높음). 같은 incidentId 는 한 번.
+  2. 사건을 열면 `CaseOpened`(refs 에 `{refType: "incidentId", refId}`·`{refType: "deliveryId", refId}`) — delivery-execution 이 받아 도움요청에 caseId 를 연결하고 state 를 IN_PROGRESS 로(그쪽 구현은 case-service 가 생길 때 delivery 영역이 한다). 사건 종료(`CaseClosed`) → RESOLVED.
+  3. 지원센터 화면에서 전달 실패 확정·반려 — 결정은 delivery-execution `POST /api/v1/deliveries/{id}/failure-decisions`(CONFIRM·REJECT, note, custody)를 부른다(사건을 정본으로 두고 결정만 execution 에). 지원센터 역할이 생기면 execution 권한 검사(`Access.operatorCanSee` — 지금 OPERATOR_ADMIN·CS_AGENT·그 센터 운영자)에 더한다.
+  4. 고객 연락(안심번호 5시간·시도 기록 — 원문 §9.1), 대체 장소 승인, 회수·취소 결정은 원문대로 case 쪽 — 결정 결과를 어디로 보낼지(claim 회수 승인 등)는 case-service 설계 때.
+- **case-service 가 생기면 요청한 쪽(delivery-execution)에서 바꿀 것**: `CaseOpened`·`CaseClosed` 구독 → `help_request.case_id`·state 갱신(지금 테이블·조회 칸은 있다).

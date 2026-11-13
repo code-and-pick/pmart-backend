@@ -190,7 +190,7 @@
 | `RiderSupplyChanged` | rider | delivery-capacity | zoneId, activeRiders | 수급 참고 | ① |
 | `DeliveryCreated` | delivery-dispatch | delivery-execution, delivery-tracking, order, commerce | deliveryId, orderId, shipmentId, type(FORWARD/RETURN/RESHIPMENT — API 와 같게, 2026-11-10. 분할은 유형이 아님), mfcId, dropAddressRef | 배송 단위 생성 | ① |
 | `DispatchOfferSent` | delivery-dispatch | notification(라이더 알림) | offerId, attemptId, deliveryId, riderId, expiresAt(1분), fee | 제안 전송 | ① |
-| `DeliveryAssigned` | delivery-dispatch | delivery-execution, delivery-tracking, mfc-fulfillment, order, notification | deliveryId, riderId, assignmentVersion, acceptedAt | 유효 수락 1건 확정 | ① |
+| `DeliveryAssigned` | delivery-dispatch | delivery-execution, delivery-tracking, mfc-fulfillment, order, notification | deliveryId, riderId, assignmentVersion, acceptedAt, fee·vehicleType·distanceM(수락 당시 금액·조건 — execution 수행료 기준, 2026-11-13) | 유효 수락 1건 확정 | ① |
 | `DeliveryAssignmentChanged` | delivery-dispatch | delivery-execution, mfc-fulfillment(이전 기사 인계 차단) | deliveryId, oldRiderId, newRiderId, assignmentVersion, reason | 재배정·배차 취소 | ① |
 | `DispatchFailed` | delivery-dispatch | case, notification, order | deliveryId, reason(NO_RIDER/REPEATED_REJECTION/EXPIRED/SYSTEM_FAILURE — API 와 같게, 2026-11-10), attempts | 배차 불가 | ① |
 | `DispatchDelayed` | delivery-dispatch | notification(점포·CS·고객), case | deliveryId, delayedMinutes, threshold | 지연 임계 초과 | ① |
@@ -199,11 +199,11 @@
 | `PickupCompleted` | delivery-execution | order, delivery-tracking, notification, delivery-dispatch | deliveryId, packageIds[], handoverIds[], at | 모든 포장 `PackageHandedOver` 확인 후 | ① |
 | `RiderArrivedAtCustomer` | delivery-execution | notification | deliveryId, at | 고객 도착 | ① |
 | `DeliveryCompleted` | delivery-execution | order, review, notification, claim, demand-planning, BI, delivery-dispatch(배송 CLOSED — 라이더 진행 중 수에서 뺌) | deliveryId, orderId, lines[{orderLineId, qty}], method(FACE/CONTACTLESS), evidenceRef, deliveredAt | 사진 증빙 확인 후 서버 완료(자동 완료 없음) | ① |
-| `DeliveryFailed` | delivery-execution | order, claim, case, notification | deliveryId, reason, custody(RIDER/STORE), at | 전달 실패·중단 | ① |
-| `DeliveryIncidentRaised` | delivery-execution | case, rider, claim | incidentId, deliveryId, type(DAMAGE/MISDELIVERY/ABSENT/UNSAFE/STATUS_FIX), evidenceRef | 도움요청·사고 | ① |
+| `DeliveryFailed` | delivery-execution | order, claim, case, notification, delivery-dispatch(배송 CLOSED) | deliveryId, reason, custody(RIDER/STORE), goodsLocation, at | 운영자가 라이더 실패 등록을 확정했을 때(등록만으로는 진행 중 — 2026-11-13) | ① |
+| `DeliveryIncidentRaised` | delivery-execution | case(구독 구현 전 — service-requests case R-4), rider, claim | incidentId, deliveryId, type(DAMAGE/MISDELIVERY/ABSENT/UNSAFE/STATUS_FIX/HELP_REQUEST), category, stage, orderId, mfcId, detail, evidenceRefs | 라이더 도움요청(HELP_REQUEST)·전달 실패 등록(category DELIVERY_FAILURE)·사고 | ① |
 | `ReturnPickedUp` / `ReturnDelivered` | delivery-execution | claim, mfc-inbound | returnPickupId, claimId, lines[], at | 고객 수거 / 점포 반납 | ② |
 | `DeliveryStatusCorrected` | delivery-execution | order, audit, notification | deliveryId, from, to, operatorId, basis | 관리자 정정 | ① |
-| `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, feeBasis, rateVersion, status | 수행료 근거(환불과 독립) | ① |
+| `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, earningId, feeBasis, rateVersion, status, calculable, payoutDate | 수행료 근거(환불과 독립) — 완료 때 확정 대기·5시간 뒤 확정, 실패·취소는 산정 불가(2026-11-13) | ① |
 | `SettlementStateChanged` | delivery-execution | notification | riderId, periodId, state | 정산 상태 | ② |
 | `DeliveryEtaUpdated` | delivery-tracking | order(고객 조회), mfc-fulfillment(점원), notification(지연) | deliveryId, etaPickup?, etaDrop, basis, staleness | ETA 갱신 | ① |
 | `RiderLocationStale` | delivery-tracking | delivery-dispatch, case | riderId, lastSeenAt | 위치 단절 | ① |

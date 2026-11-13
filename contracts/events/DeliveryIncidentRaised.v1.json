@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/DeliveryIncidentRaised.v1.json",
   "title": "DeliveryIncidentRaised",
-  "description": "도움요청·사고. 발행 delivery-execution. 구독 case, rider, claim. 토픽 delivery.delivery.v1. 단계 ①",
+  "description": "도움요청·사고. 발행 delivery-execution. 구독 case(라이더 도움요청 → 지원센터 사건, 구현 전 — service-requests/case-service.md), rider, claim. 토픽 delivery.delivery.v1. 단계 ①. 2026-11-13: type HELP_REQUEST 와 category·stage 등 필드 추가(필드 추가만)",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -40,8 +40,36 @@
                 "MISDELIVERY",
                 "ABSENT",
                 "UNSAFE",
-                "STATUS_FIX"
-              ]
+                "STATUS_FIX",
+                "HELP_REQUEST"
+              ],
+              "description": "HELP_REQUEST = 라이더 도움요청(원문 §5.4 — 종류는 category)"
+            },
+            "category": {
+              "type": "string",
+              "description": "도움요청 종류(execution 계약 createHelpRequest.category — CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, GOODS_ISSUE, PHOTO_UPLOAD_FAILED, ACCIDENT, APP_ERROR, STORE_WAITING, STATUS_CORRECTION, OTHER — 그리고 라이더 전달 실패 등록이면 DELIVERY_FAILURE)"
+            },
+            "stage": {
+              "type": "string",
+              "description": "요청 때 배송 수행 상태(ExecutionState)"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "detail": {
+              "type": "string",
+              "maxLength": 500,
+              "description": "라이더가 적은 내용(개인정보가 들어갈 수 있어 구독자도 로그 금지)"
+            },
+            "evidenceRefs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "사진 등 증빙 참조(execution evidence photoRef 등)"
             },
             "evidenceRef": {
               "$ref": "_defs.v1.json#/$defs/EvidenceRef"
