@@ -40,6 +40,7 @@ public record DispatchProperties(
     @Nullable Duration solverTimeLimit,
     @Nullable Integer pollAfterSec,
     @Nullable Duration bundleMaxExtra,
+    @Nullable Ai ai,
     @Nullable Urls urls) {
 
   public DispatchProperties {
@@ -57,6 +58,7 @@ public record DispatchProperties(
     solverTimeLimit = solverTimeLimit == null ? Duration.ofSeconds(2) : solverTimeLimit;
     pollAfterSec = pollAfterSec == null ? 5 : pollAfterSec;
     bundleMaxExtra = bundleMaxExtra == null ? Duration.ofMinutes(20) : bundleMaxExtra;
+    ai = ai == null ? new Ai(null, null) : ai;
     urls = urls == null ? new Urls(null, null, null, null, null) : urls;
   }
 
@@ -66,6 +68,19 @@ public record DispatchProperties(
 
   public double maxRadiusKm() {
     return radiiKm.get(radiiKm.size() - 1);
+  }
+
+  /**
+   * Python AI 최적화 서버(ADR-0058 결정 9~13).
+   *
+   * @param baseUrl 예 http://delivery-dispatch-optimizer:8407 — 비우면 부르지 않고 OR-Tools 만
+   * @param timeout 응답 기다림(사용자 결정 3초) — 넘으면 OR-Tools 로 대신
+   */
+  public record Ai(@Nullable String baseUrl, @Nullable Duration timeout) {
+    public Ai {
+      baseUrl = baseUrl == null || baseUrl.isBlank() ? null : baseUrl;
+      timeout = timeout == null ? Duration.ofSeconds(3) : timeout;
+    }
   }
 
   /** 서비스 간 호출 주소(LAN 은 Eureka 이름 그대로). */

@@ -611,7 +611,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(2);
   }
 
-  private void bundledOrder(String orderId, String road, double lat, double lng) {
+  void bundledOrder(String orderId, String road, double lat, double lng) {
     up.stubFor(
         get(urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/delivery-destination"))
             .atPriority(1)
@@ -639,7 +639,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                         List.of(Map.of("lat", lat, "lng", lng, "jibunAddress", "서울 강남구 역삼동 1"))))));
   }
 
-  private static Map<String, Object> square(int seconds) {
+  static Map<String, Object> square(int seconds) {
     return Map.of(
         "provider",
         "KAKAO_MOBILITY",
@@ -661,11 +661,11 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
 
   // ---------- 도우미 ----------
 
-  private String readyShipment(String mfc, String shipment, String packageId) {
+  String readyShipment(String mfc, String shipment, String packageId) {
     return readyShipment(mfc, shipment, packageId, "ORD-" + UUID.randomUUID());
   }
 
-  private String readyShipment(String mfc, String shipment, String packageId, String order) {
+  String readyShipment(String mfc, String shipment, String packageId, String order) {
     send(
         "ShipmentReady",
         shipment,
@@ -726,7 +726,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     return deliveryId;
   }
 
-  private List<String> listIds(String rider) {
+  List<String> listIds(String rider) {
     JsonNode n =
         body(
             http.get()
@@ -739,8 +739,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     return out;
   }
 
-  private ResponseEntity<String> respond(
-      String rider, String offerId, String key, String response) {
+  ResponseEntity<String> respond(String rider, String offerId, String key, String response) {
     return http.post()
         .uri("/offers/{id}/responses", offerId)
         .headers(h -> riderHeaders(h, rider, key))
@@ -749,7 +748,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(String.class);
   }
 
-  private void send(String type, String key, Map<String, Object> payload) {
+  void send(String type, String key, Map<String, Object> payload) {
     String aggregateType =
         switch (type) {
           case "PackageHandedOver" -> "Package";
@@ -766,7 +765,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   @SafeVarargs
-  private void riders(String mfc, Map<String, Object>... items) {
+  final void riders(String mfc, Map<String, Object>... items) {
     up.stubFor(
         get(urlPathEqualTo("/api/v1/internal/riders/eligible"))
             .withQueryParam("mfcId", equalTo(mfc))
@@ -774,14 +773,14 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   @SafeVarargs
-  private void riderLookup(Map<String, Object>... items) {
+  final void riderLookup(Map<String, Object>... items) {
     for (Map<String, Object> r : items) {
       up.stubFor(
           get(urlPathEqualTo("/api/v1/internal/riders/" + r.get("riderId"))).willReturn(json(r)));
     }
   }
 
-  private void locations(Map<String, double[]> at) {
+  void locations(Map<String, double[]> at) {
     List<Map<String, Object>> items = new ArrayList<>();
     at.forEach(
         (id, ll) ->
@@ -814,7 +813,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             .willReturn(json(Map.of("items", items))));
   }
 
-  private static Map<String, Object> rider(String id, String mode, boolean accepts) {
+  static Map<String, Object> rider(String id, String mode, boolean accepts) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("riderId", id);
     m.put("vehicleType", "MOTORCYCLE");
@@ -827,7 +826,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     return m;
   }
 
-  private static Map<String, Object> matrix(List<List<Integer>> rows) {
+  static Map<String, Object> matrix(List<List<Integer>> rows) {
     List<Map<String, Object>> out = new ArrayList<>();
     for (List<Integer> r : rows) {
       out.add(
@@ -838,13 +837,13 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     return Map.of("provider", "KAKAO_MOBILITY", "fallback", false, "rows", out);
   }
 
-  private String awaitDelivery(String shipment) {
+  String awaitDelivery(String shipment) {
     awaitSql("SELECT count(*) FROM delivery WHERE shipment_id = '" + shipment + "'");
     return jdbc.queryForObject(
         "SELECT delivery_id FROM delivery WHERE shipment_id = ?", String.class, shipment);
   }
 
-  private void awaitSql(String countSql) {
+  void awaitSql(String countSql) {
     long until = System.currentTimeMillis() + 30_000;
     while (System.currentTimeMillis() < until) {
       Integer n = jdbc.queryForObject(countSql, Integer.class);
@@ -861,7 +860,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     throw new AssertionError("기다린 상태가 오지 않음: " + countSql);
   }
 
-  private JsonNode outbox(String deliveryId, String type) {
+  JsonNode outbox(String deliveryId, String type) {
     String payload =
         jdbc.queryForObject(
             "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = ? ORDER BY created_at DESC LIMIT 1",
@@ -871,23 +870,22 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     return mapper.readTree(payload);
   }
 
-  private static void riderHeaders(
-      org.springframework.http.HttpHeaders h, String rider, String key) {
+  static void riderHeaders(org.springframework.http.HttpHeaders h, String rider, String key) {
     h.setBearerAuth(TestJwt.rider(rider));
     h.set("Idempotency-Key", key);
     h.set("X-Source-System", "rider-app");
   }
 
-  private JsonNode body(ResponseEntity<String> r) {
+  JsonNode body(ResponseEntity<String> r) {
     return mapper.readTree(r.getBody() == null ? "{}" : r.getBody());
   }
 
   /** 시험의 시각은 JVM 시계로(Docker DB 시계와 어긋날 수 있어 DB now() 를 쓰지 않는다). */
-  private static java.sql.Timestamp ago(long seconds) {
+  static java.sql.Timestamp ago(long seconds) {
     return java.sql.Timestamp.from(Instant.now().minusSeconds(seconds));
   }
 
-  private ResponseDefinitionBuilder json(Object body) {
+  ResponseDefinitionBuilder json(Object body) {
     return aResponse()
         .withHeader("Content-Type", "application/json")
         .withBody(mapper.writeValueAsString(body));

@@ -125,6 +125,70 @@ public record BundleProblem(
     return n;
   }
 
+  // ---------- AI 배정안 검증(ADR-0058 결정 5·13) ----------
+
+  /** 지킨 묶음과 그 라이더, 버린 수. */
+  public record Checked(List<Bundle> bundles, int[] riderForBundle, int dropped) {}
+
+  /**
+   * AI 서버 배정안을 그대로 믿지 않고 검증한다 — 라이더·배송 중복 없음, 묶음 1~maxSize, 2건 이상은 알뜰배달만, 라이더 남은 용량·갈 수 있는 배송, 고객
+   * 사이 길 있음, 어느 배송이든 바로 갈 때보다 maxExtraSeconds 넘게 늦지 않음. 어긴 배정은 버린다(그 배송은 다음 판단에서 다시).
+   *
+   * @param plan 배정마다 [라이더 번호, 배송 번호…(방문 순서)]. 번호가 -1 이면(모르는 ID) 버린다
+   */
+  public static Checked check(
+      List<int[]> plan,
+      int[] directSeconds,
+      int[][] betweenSeconds,
+      boolean[] bundlable,
+      int maxSize,
+      int maxExtraSeconds,
+      int[] capacity,
+      boolean[][] allowed) {
+    List<Bundle> out = new ArrayList<>();
+    List<Integer> riders = new ArrayList<>();
+    boolean[] riderUsed = new boolean[capacity.length];
+    boolean[] deliveryUsed = new boolean[directSeconds.length];
+    int dropped = 0;
+    for (int[] a : plan) {
+      int r = a.length > 0 ? a[0] : -1;
+      int[] ds = Arrays.copyOfRange(a, Math.min(1, a.length), a.length);
+      boolean ok =
+          r >= 0 && r < capacity.length && !riderUsed[r] && ds.length >= 1 && ds.length <= maxSize;
+      ok &= ok && capacity[r] >= ds.length;
+      int[] arrival = new int[ds.length];
+      for (int i = 0; i < ds.length && ok; i++) {
+        int d = ds[i];
+        ok = d >= 0 && d < directSeconds.length && !deliveryUsed[d] && allowed[r][d];
+        ok &= ok && (ds.length == 1 || bundlable[d]);
+        for (int j = 0; j < i && ok; j++) {
+          ok = ds[j] != d;
+        }
+        if (ok) {
+          if (i == 0) {
+            arrival[0] = directSeconds[d];
+          } else {
+            int leg = betweenSeconds[ds[i - 1]][d];
+            ok = leg >= 0;
+            arrival[i] = arrival[i - 1] + Math.max(0, leg);
+          }
+          ok &= ok && arrival[i] - directSeconds[d] <= maxExtraSeconds;
+        }
+      }
+      if (!ok) {
+        dropped++;
+        continue;
+      }
+      riderUsed[r] = true;
+      for (int d : ds) {
+        deliveryUsed[d] = true;
+      }
+      out.add(new Bundle(ds, arrival));
+      riders.add(r);
+    }
+    return new Checked(out, riders.stream().mapToInt(Integer::intValue).toArray(), dropped);
+  }
+
   // ---------- 후보 묶음 ----------
 
   /**

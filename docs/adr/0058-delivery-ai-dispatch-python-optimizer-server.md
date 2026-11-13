@@ -21,14 +21,20 @@
 
 ## 덧붙임 (2026-11-13)
 - **알뜰배달은 묶음 배정**(사용자 "알뜰배달은 한건씩 배정하지 말고 묶음 배정으로 진행한다"): 같은 MFC 의 알뜰배달(BUNDLED) 1~3건을 한 라이더에게 묶어 제안(배송마다 제안, 같은 bundleId·방문 순서, 수락·거절은 묶음 전체). 지금 계산은 OR-Tools CP-SAT(라이더 ↔ 묶음) — 결정 3·7. 묶을지는 "라이더 → MFC 이동 한 번 절약 vs 뒤 고객 도착 지연"을 비용으로 비교, 어느 배송이든 바로 갈 때보다 20분 넘게 늦으면 안 묶음(설계값, 사용자 확인 필요). 한집·예약배달은 묶지 않는다.
-- Python AI 서버 세부의 **후보(추천 먼저)** — 사용자 결정 대기: 이름 `delivery-dispatch-optimizer` / 위치 `pmart-backend/ai-services/delivery-dispatch-optimizer/` / FastAPI + uvicorn + pydantic, uv, `python:3.12-slim` + PyTorch CPU / **RouteFinder 먼저**(ai4co, 관리 중, HF 가중치, 열린 경로·용량·시간창 변형) — GreedRL 은 2022년 이후 정체·CUDA 빌드 위험 / PC 5 CPU 로 시작 / 응답 없음(시간 초과 3초)이면 OR-Tools 배정으로 대신 + 경고.
+- Python AI 서버 세부의 후보(추천 먼저) — 아래 결정 9~13 으로 확정(같은 날): 이름 `delivery-dispatch-optimizer` / 위치 `pmart-backend/ai-services/delivery-dispatch-optimizer/` / FastAPI + uvicorn + pydantic, uv, `python:3.12-slim` + PyTorch CPU / **RouteFinder 먼저**(ai4co, 관리 중, HF 가중치, 열린 경로·용량·시간창 변형) — GreedRL 은 2022년 이후 정체·CUDA 빌드 위험 / PC 5 CPU 로 시작 / 응답 없음(시간 초과 3초)이면 OR-Tools 배정으로 대신 + 경고.
 
-## 구현 때 정할 것(남은 것)
-- 서버 이름·저장소 안 위치(예: `ai-services/delivery-dispatch-optimizer/`)·Python 웹 프레임워크·패키지 관리 도구 — 만들기 전에 정해 이 ADR 에 덧붙인다.
-- GreedRL·RouteFinder 중 무엇을 먼저(원문 "또는"), 모델 입력 형식·추가 학습·성능 검증(원문 §2.1 ③ "적용 작업").
-- 실행 위치: GPU 가 필요하면 PC 5(ollama GPU 와 같은 PC — 남은 메모리 약 5GB 주의) 또는 다른 PC. 배포는 PC 1.
-- AI 서버가 응답하지 않을 때: 배차를 멈출지, OR-Tools 배정으로 대신할지, 일반 배차모드(배달리스트)로만 돌릴지 — 사용자 결정.
-- service-map·architecture-design 에 이 서버 추가(PC 1 이 합칠 때 — `pc-split.md` §5).
+## 서버 세부 — 결정 (2026-11-13, 사용자 "AI 서버는 추천대로 진행해")
+9. **이름 `delivery-dispatch-optimizer`**, 위치 **`pmart-backend/ai-services/delivery-dispatch-optimizer/`**(Gradle `services/` 밖 — 빌드 체계가 섞이지 않는다). delivery 영역 소유. 계약 `contracts/openapi/delivery-dispatch-optimizer.yaml`(내부 계산 API).
+10. **FastAPI + uvicorn + pydantic**, 패키지 관리 **uv**(잠금 파일 `uv.lock`), 이미지 **`python:3.12-slim` + PyTorch CPU**. 시험은 pytest.
+11. **RouteFinder 먼저**(ai4co, MIT, HF `ai4co/routefinder` 가중치 `checkpoints/100/rf-transformer.ckpt`). PyPI 배포가 확인되지 않아 Git 을 커밋으로 고정해 설치한다. GreedRL 은 나중(비교가 필요할 때).
+    - 문제 모양: 알뜰배달 고객 = 고객 노드, MFC = 출발점(depot), 열린 경로(라이더는 MFC 로 돌아오지 않음, OVRP), 용량 = 묶음 최대 3건(고객 수요 1/3). 모델이 묶음과 방문 순서를 내고, 라이더 ↔ 묶음 짝짓기는 서버가 같은 비용식(dispatch `BundleProblem`)으로 한다. 한집·예약배달은 1건 묶음.
+    - 모델은 좌표를 쓴다(학습 때 [0,1] 정사각형) — 서버가 MFC·고객 좌표를 [0,1] 로 바꿔 넣고, 도로 거리·시간(카카오모빌리티)으로 지연 한도를 다시 확인해 넘는 묶음은 나눈다. 100노드로 학습한 모델이 5~30노드에서 잘 맞는지는 확인되지 않았다 — OR-Tools 결과와 비교해 검증한다(원문 §2.1 ③ "성능 검증").
+12. **실행: PC 5, CPU**(GPU 는 학습할 때만 — ollama 와 나눠 쓰지 않는다). 배포는 PC 1.
+13. **응답이 없거나(시간 초과 3초)·오류·검증 실패면 OR-Tools 배정으로 대신**하고 경고 + 지표(`pmart.dispatch.ai.fallback`). Spring 은 AI 결과를 그대로 믿지 않고 검증한다(결정 5): 반경 단계·용량·하나씩 배달·묶음 크기·알뜰배달만 묶음·배송 중복·지연 한도. 틀린 묶음은 버리고 그 배송은 다음 판단에서 다시. AI 서버 주소 설정이 비어 있으면 처음부터 OR-Tools.
+
+## 남은 것
+- 모델 성능 검증(OR-Tools 와 같은 문제 비교), 필요하면 추가 학습(PC 5 GPU).
+- service-map·architecture-design 에 이 서버 추가(PC 1 이 합칠 때 — `pc-split.md` §5), LAN 배치(placement·compose — PC 1).
 
 ## 대안
 - **OR-Tools(Java)만**: 이미 승인된 스택이라 런타임이 하나로 끝나지만, 원문 §2.1 ③(GreedRL·RouteFinder)과 다르다 — 사용자가 원문대로를 골랐다. OR-Tools 는 알뜰배달 경로 계산 쪽으로 남긴다(결정 3).

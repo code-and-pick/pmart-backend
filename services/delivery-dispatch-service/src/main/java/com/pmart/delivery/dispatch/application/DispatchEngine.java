@@ -7,6 +7,7 @@ import com.pmart.delivery.dispatch.domain.FeeTable;
 import com.pmart.delivery.dispatch.domain.Geo;
 import com.pmart.delivery.dispatch.domain.OperatingHours;
 import com.pmart.delivery.dispatch.domain.SearchRules;
+import com.pmart.delivery.dispatch.infrastructure.AiOptimizerClient;
 import com.pmart.delivery.dispatch.infrastructure.DispatchStore;
 import com.pmart.delivery.dispatch.infrastructure.DispatchStore.AttemptRow;
 import com.pmart.delivery.dispatch.infrastructure.DispatchStore.DeliveryRow;
@@ -59,6 +60,10 @@ public class DispatchEngine {
   private final DispatchStore store;
   private final Upstreams upstreams;
   private final AssignmentSolver solver;
+  private final AiOptimizerClient ai;
+  private final org.springframework.beans.factory.ObjectProvider<
+          io.micrometer.core.instrument.MeterRegistry>
+      meters;
   private final DeliveryTransitions transitions;
   private final DispatchEvents events;
   private final DispatchProperties props;
@@ -69,6 +74,9 @@ public class DispatchEngine {
       DispatchStore store,
       Upstreams upstreams,
       AssignmentSolver solver,
+      AiOptimizerClient ai,
+      org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry>
+          meters,
       DeliveryTransitions transitions,
       DispatchEvents events,
       DispatchProperties props,
@@ -77,6 +85,8 @@ public class DispatchEngine {
     this.store = store;
     this.upstreams = upstreams;
     this.solver = solver;
+    this.ai = ai;
+    this.meters = meters;
     this.transitions = transitions;
     this.events = events;
     this.props = props;
@@ -259,17 +269,74 @@ public class DispatchEngine {
       bundlable[d] = "BUNDLED".equals(row.deliveryMode()); // 알뜰배달만 묶는다(원문 §5.3)
     }
     int[][] between = betweenDrops(ready, bundlable);
-    List<BundleProblem.Bundle> bundles =
-        BundleProblem.candidates(
-            direct,
-            between,
-            bundlable,
-            Math.min(3, props.maxActiveDeliveries()),
-            (int) props.bundleMaxExtra().toSeconds());
-    BundleProblem problem =
-        new BundleProblem(pickup, allowed, capacity, readyIn, bundles, props.lateWeight());
-    BundleProblem.Solution sol =
-        nr == 0 ? problem.greedy() : solver.solve(problem, props.solverTimeLimit());
+    int maxSize = Math.min(3, props.maxActiveDeliveries());
+    int maxExtra = (int) props.bundleMaxExtra().toSeconds();
+    List<BundleProblem.Bundle> bundles = null;
+    BundleProblem.Solution sol = null;
+    // 1) Python AI 최적화 서버(RouteFinder) — 검증한 묶음만 쓴다(ADR-0058 결정 13)
+    if (ai.enabled() && nr > 0) {
+      List<AiOptimizerClient.Delivery> ds = new ArrayList<>();
+      Map<String, Integer> dIndex = new HashMap<>();
+      for (int d = 0; d < nd; d++) {
+        DeliveryRow row = ready.get(d).delivery();
+        dIndex.put(row.deliveryId(), d);
+        ds.add(
+            new AiOptimizerClient.Delivery(
+                row.deliveryId(),
+                new Geo(row.dropLat(), row.dropLng()),
+                direct[d],
+                readyIn[d],
+                bundlable[d]));
+      }
+      List<AiOptimizerClient.Rider> rs = new ArrayList<>();
+      Map<String, Integer> rIndex = new HashMap<>();
+      for (int i = 0; i < nr; i++) {
+        String id = riders.get(usable.get(i));
+        rIndex.put(id, i);
+        List<String> ok = new ArrayList<>();
+        for (int d = 0; d < nd; d++) {
+          if (allowed[i][d]) {
+            ok.add(ready.get(d).delivery().deliveryId());
+          }
+        }
+        rs.add(new AiOptimizerClient.Rider(id, pickup[i], capacity[i], ok));
+      }
+      Optional<AiOptimizerClient.Plan> plan =
+          ai.plan(mfc, ds, rs, between, maxSize, maxExtra, props.lateWeight());
+      if (plan.isPresent()) {
+        List<int[]> raw = new ArrayList<>();
+        for (AiOptimizerClient.Assignment a : plan.get().assignments()) {
+          int[] row = new int[a.deliveryIds().size() + 1];
+          row[0] = rIndex.getOrDefault(a.riderId(), -1);
+          for (int k = 0; k < a.deliveryIds().size(); k++) {
+            row[k + 1] = dIndex.getOrDefault(a.deliveryIds().get(k), -1);
+          }
+          raw.add(row);
+        }
+        BundleProblem.Checked checked =
+            BundleProblem.check(
+                raw, direct, between, bundlable, maxSize, maxExtra, capacity, allowed);
+        if (checked.dropped() > 0) {
+          log.warn("AI 배정안 {}건이 검증을 통과하지 못해 버림(MFC {})", checked.dropped(), mfcId);
+          count("pmart.dispatch.ai.dropped", checked.dropped());
+        }
+        if (!checked.bundles().isEmpty()) {
+          bundles = checked.bundles();
+          sol = new BundleProblem.Solution(checked.riderForBundle(), "AI " + plan.get().solver());
+        } else {
+          count("pmart.dispatch.ai.fallback", 1);
+        }
+      } else {
+        count("pmart.dispatch.ai.fallback", 1);
+      }
+    }
+    // 2) OR-Tools CP-SAT(AI 서버가 없거나 응답·검증 실패)
+    if (bundles == null) {
+      bundles = BundleProblem.candidates(direct, between, bundlable, maxSize, maxExtra);
+      BundleProblem problem =
+          new BundleProblem(pickup, allowed, capacity, readyIn, bundles, props.lateWeight());
+      sol = nr == 0 ? problem.greedy() : solver.solve(problem, props.solverTimeLimit());
+    }
 
     boolean[] offered = new boolean[nd];
     for (int b = 0; b < bundles.size(); b++) {
@@ -459,6 +526,13 @@ public class DispatchEngine {
             }
           }
         });
+  }
+
+  private void count(String name, int n) {
+    io.micrometer.core.instrument.MeterRegistry r = meters.getIfAvailable();
+    if (r != null) {
+      r.counter(name).increment(n);
+    }
   }
 
   // ---------- 좌표 준비 ----------

@@ -28,7 +28,8 @@
 - **라이더 API**(`OfferService`): `GET /offers`(만료 전 SENT, pollAfterSec — 신규배차 못 받으면 null), `GET /offers/{id}`(viewedAt), `POST /offers/{id}/responses`(배송 행 잠금 아래 `AcceptRules` — 한 명만, LATE 이유 4가지, 거절은 연속 거절 +1·5회 안내). **묶음은 전체가 한 번에** — 하나 수락이면 모두 배정(배송마다 DeliveryAssigned, `delivery.bundle_id`·`stop_seq`)·하나라도 안 되면 전체 LATE, 거절·만료도 전체(연속 거절 1회), 상세 조회는 묶음 전체 viewedAt. 일반 배차모드 `GET /delivery-list`(내 위치 → MFC 직선거리 ≤ 그 배송 단계 반경), `POST /delivery-list/{id}/acceptances`(배차 이력에 source DELIVERY_LIST 제안 한 줄).
 - 예상 배달료 `domain/FeeTable` = 원문 §7.1 표(MFC → 고객 도로 거리, 구간 해석은 클래스 주석). 정산 수행료 정본은 execution.
 - 조회: `GET /deliveries/{id}/dispatch`(그 센터 운영자·OPERATOR_ADMIN·배정/제안받은 라이더 — 라이더에게는 자기 제안만), `GET /internal/deliveries/{id}/assignment`.
-- 아직 없음: Python AI 최적화 서버 어댑터(ADR-0058 — 세부 결정 대기), 배달리스트에서 묶음째 고르기(지금은 한 건씩, 최대 3건), 묶음 배달료 할인·할증(지금은 배송마다 §7.1 표), 라이더 단계(RS-1 정지·계약 종료 → 배정 풀기), 배차 취소·재배정 REST, 배차 지연 알림(DispatchDelayed 20분), 추가·분할 배차, 회수 배차(DD-2), 주류·보냉·용량 거르기.
+- **AI 추천 계산(2026-11-13, ADR-0058 결정 13)**: `pmart.dispatch.ai.base-url` 이 있으면 먼저 `AiOptimizerClient`(Python `ai-services/delivery-dispatch-optimizer` — RouteFinder) → `BundleProblem.check` 로 검증(라이더·배송 중복, 묶음 크기, 2건 이상은 알뜰배달만, 용량·반경, 길 있음, 지연 한도 — 어긴 배정은 버림) → 통과한 묶음으로 제안(solver `AI ROUTEFINDER…`). 응답 없음(3초)·오류·전부 무효면 OR-Tools CP-SAT. 지표 `pmart.dispatch.ai.fallback`·`pmart.dispatch.ai.dropped`. 비우면 처음부터 OR-Tools.
+- 아직 없음: 배달리스트에서 묶음째 고르기(지금은 한 건씩, 최대 3건), 묶음 배달료 할인·할증(지금은 배송마다 §7.1 표), 라이더 단계(RS-1 정지·계약 종료 → 배정 풀기), 배차 취소·재배정 REST, 배차 지연 알림(DispatchDelayed 20분), 추가·분할 배차, 회수 배차(DD-2), 주류·보냉·용량 거르기.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
 

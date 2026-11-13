@@ -1,0 +1,39 @@
+# delivery-dispatch-optimizer — AI 추천 배차 계산 서버(ADR-0058 결정 9~13). delivery 영역.
+# Gradle 로 빌드하지 않는다: uv(잠금 파일 uv.lock) + Docker 이미지(python:3.12-slim + PyTorch CPU).
+[project]
+name = "delivery-dispatch-optimizer"
+version = "0.1.0"
+description = "PMart AI 추천 배차 계산 서버 — RouteFinder(ai4co)로 알뜰배달 묶음·방문 순서, 라이더 짝짓기"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pydantic>=2.8",
+  "numpy>=1.26",
+  "torch>=2.4",
+  "huggingface-hub>=0.31.2",
+  # RouteFinder 는 PyPI 배포를 확인하지 못해 Git 커밋으로 고정(ADR-0058 결정 11). rl4co 도 RouteFinder 가 쓰는 main 커밋으로 고정
+  "routefinder",
+  "rl4co",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+routefinder = { git = "https://github.com/ai4co/routefinder.git", rev = "fe0e45b6df118af03c5f42db8b93a351f7629131" } # v0.4.0
+rl4co = { git = "https://github.com/ai4co/rl4co.git", rev = "dbd18e7a06ef9c8e35f54ab93adf6136ceeffad0" }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["model: 실제 RouteFinder 가중치가 필요한 시험(가중치가 없으면 건너뜀)"]
