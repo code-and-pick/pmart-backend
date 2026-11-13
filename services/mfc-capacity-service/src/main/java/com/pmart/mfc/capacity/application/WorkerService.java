@@ -50,7 +50,13 @@ public class WorkerService {
       QualificationStore.@Nullable Qualification qualification,
       Set<String> effective,
       QualificationStore.@Nullable Day today,
-      boolean onBreak) {}
+      boolean onBreak) {
+
+    /** (0.13.0) 지금 고를 수 있는 PDA 업무 — {@link com.pmart.mfc.capacity.domain.WorkAreas#allowed}. */
+    public List<String> workAreas() {
+      return com.pmart.mfc.capacity.domain.WorkAreas.allowed(effective);
+    }
+  }
 
   public record Detail(View view, List<DutyRow> duties, List<StateChangeRow> states) {}
 

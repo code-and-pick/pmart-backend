@@ -408,6 +408,48 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * BR-52 R1·R3·R4(0.13.0): 본인이 자기 상세를 읽어 고를 수 있는 업무(workAreas)를 보고, 고른 업무 안에서만 새 작업을 받는다. 겹치는 유형이
+   * 없는 업무는 422 WORK_AREA_NOT_ALLOWED, 들고 있는 작업은 업무와 상관없이 그대로. 상세에 자격·고용 형태·유효 업무가 같이 온다(0.12.0 버그).
+   */
+  @Test
+  void nextTaskStaysWithinChosenWorkArea() {
+    moveOrders(List.of());
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    String w = "wa-" + s;
+    register(w, List.of("PICK", "RETURN"));
+    String pick = "T-WP-" + s;
+    String ret = "T-WR-" + s;
+    tasks(
+        List.of(task(pick, "PICK", "READY", 1, null, 10), task(ret, "RETURN", "READY", 1, null, 0)),
+        "READY",
+        "ASSIGNED",
+        "IN_PROGRESS");
+    String tw = TestJwt.operator(w, List.of("MFC_WORKER"), List.of(MFC));
+    String path = "/mfcs/" + MFC + "/workers/" + w;
+
+    Res me = send("GET", tw, path, null);
+    assertThat(me.status()).as(me.body().toString()).isEqualTo(200);
+    assertThat(me.body().path("workAreas").toString()).isEqualTo("[\"STOCK_MOVE\",\"PICK_PACK\"]");
+    assertThat(me.body().path("effectiveTaskTypes").toString()).contains("PICK").contains("RETURN");
+    assertThat(me.body().path("employmentType").asString()).isEqualTo("REGULAR");
+    assertThat(me.body().path("qualification").path("taskTypes").toString()).contains("PICK");
+    assertThat(me.body().path("onBreak").asBoolean()).isFalse();
+
+    Res denied = send("POST", tw, path + "/next-tasks", Map.of("workArea", "INBOUND"));
+    assertThat(denied.status()).isEqualTo(422);
+    assertThat(denied.body().path("code").asString()).isEqualTo("WORK_AREA_NOT_ALLOWED");
+
+    // 재고 이동을 고르면 더 급한 PICK 이 있어도 복귀
+    Res moved = send("POST", tw, path + "/next-tasks", Map.of("workArea", "STOCK_MOVE"));
+    assertThat(moved.status()).as(moved.body().toString()).isEqualTo(201);
+    assertThat(moved.body().path("taskId").asString()).isEqualTo(ret);
+    // 들고 있는 작업은 다른 업무를 골라도 그대로
+    Res held = send("POST", tw, path + "/next-tasks", Map.of("workArea", "PICK_PACK"));
+    assertThat(held.status()).isEqualTo(200);
+    assertThat(held.body().path("taskId").asString()).isEqualTo(ret);
+  }
+
+  /**
    * 작업자 쪽 2단계: 일일크루는 그날 근무 등록한 날만(그날 업무 = 유효 자격, 기본 PICK·PACK), 업무는 자격 안, 자격에서 빠진 유형·만료 자격은 배정 조건에서
    * 빠짐, 정규직은 근무 등록 대상 아님.
    */

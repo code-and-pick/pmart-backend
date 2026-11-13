@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -601,6 +601,10 @@ paths:
     get:
       tags: [workers]
       summary: 작업자 한 명 — 지금 업무 + 업무 이력·상태 이력 (0.4.0)
+      description: |
+        그 센터 운영자(작업자 본인 포함) 또는 서비스 토큰. PDA 는 본인 토큰으로 자기 workerId(= 토큰 subject)를 불러 effectiveTaskTypes·workAreas·onBreak·displayName 으로
+        업무 선택 화면의 권한·휴게를 표시한다(BR-52 R3).
+        (0.13.0) 목록과 같은 작업자 값(employmentType·qualification·effectiveTaskTypes·workAreas·todayEnrollment·onBreak)을 모두 준다 — 0.12.0 까지 상세에서 빠져 있던 것을 고침.
       operationId: getWorker
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -629,6 +633,9 @@ paths:
         - MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 구분은 CDC 만).
         - (0.9.1) 응답 `detail` 에 받은 작업의 상세(상품·칸·LOT·수량·약속 시각)를 한 번에 — PICK·PACK·RETURN 은 mfc-fulfillment 작업 상세, REPLENISH·MOVE 는
           mfc-inbound 이동 지시에서 옮겨 적는다. 조회가 안 되면 `detail.available=false`(배정은 그대로 — 화면이 상세 API 를 직접 부른다).
+        - (0.13.0, BR-52 R1) 본문 `workArea`(작업자가 고른 업무)를 주면 **그 업무의 작업 유형 ∩ 유효 업무** 안에서만 새 작업을 배정한다.
+          겹치는 유형이 없으면 422 WORK_AREA_NOT_ALLOWED(PDA "권한이 없어요"). 생략하면 예전처럼 유효 업무 전체.
+          이미 들고 있는 작업은 고른 업무와 상관없이 그대로 돌려준다(한 번에 하나 — 업무가 다르면 화면이 안내).
       operationId: pullNextTask
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -636,6 +643,13 @@ paths:
         - { name: workerId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workArea: { $ref: '#/components/schemas/WorkArea' }
       responses:
         '200':
           description: 이미 들고 있는 작업
@@ -654,7 +668,7 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: WORKER_NOT_REGISTERED / WORKER_NOT_ACTIVE
+          description: WORKER_NOT_REGISTERED / WORKER_NOT_ACTIVE / DAILY_NOT_ENROLLED / WORK_AREA_NOT_ALLOWED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -1038,6 +1052,14 @@ components:
     WorkerState: { type: string, enum: [ACTIVE, SUSPENDED, LEFT] }
     TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH, MOVE], description: '(0.9.0) MOVE = 센터 관리자 지시 재고 이동(mfc-inbound 이동 지시), REPLENISH = 자동 선반 보충' }
     TemperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+    WorkArea:
+      type: string
+      enum: [INBOUND, INSPECTION, STOCK_MOVE, STOCK_COUNT, PICK_PACK]
+      description: |
+        (0.13.0, BR-52 R4 — 사용자 결정 2026-11-10) PDA 에서 작업자가 고르는 업무 = 작업 유형 묶음.
+        INBOUND 입고 = RECEIVE / INSPECTION 품질검사 = INSPECT / STOCK_MOVE 재고 이동 = PUTAWAY·REPLENISH·MOVE·RETURN /
+        STOCK_COUNT 재고 실사 = (아직 배정 가능한 작업 유형 없음) / PICK_PACK 피패킹 = PICK·PACK.
+        회수품 검사·회수품 반입·실사는 배정 가능한 작업 유형이 생기면(BR-52 R2·R12~R14) 묶음에 더한다. DISPATCH(배차 요청 — 점원)는 어느 업무에도 없다.
     WorkerDutyBody:
       type: object
       description: 업무 — 할 수 있는 작업 유형. 계정과 따로 버전으로 남긴다. temperatureZones 는 0.6.0 부터 MFC 에서 쓰지 않는다(사용자 2026-11-08 — MFC 는 온도대 출입 자격 없음, 구분은 CDC 만). 보내면 기록만.
@@ -1065,6 +1087,7 @@ components:
         employmentType: { $ref: '#/components/schemas/EmploymentType' }
         qualification: { $ref: '#/components/schemas/WorkerQualification' }
         effectiveTaskTypes: { type: array, items: { $ref: '#/components/schemas/TaskType' }, description: '(0.7.0) 지금 배정 조건 = 업무 ∩ 유효 자격(일일크루는 오늘 등록한 날의 업무)' }
+        workAreas: { type: array, items: { $ref: '#/components/schemas/WorkArea' }, description: '(0.13.0) 지금 고를 수 있는 업무 — 묶음의 작업 유형이 effectiveTaskTypes 와 하나라도 겹치는 업무(WorkArea 순서). 빠진 업무는 PDA 가 "권한이 없어요"' }
         todayEnrollment: { oneOf: [{ $ref: '#/components/schemas/DayEnrollment' }, { type: 'null' }] }
         onBreak: { type: boolean, description: '(0.8.0) 휴게 중 — 다음 작업 받기 409 ON_BREAK' }
         speedFactor: { type: number, description: '(0.11.0) 속도 배율 — 배정 추천에서 이 작업자의 작업 시간 = 추정 분 ÷ 배율(1.0 보통, 실데이터 없어 센터 관리자가 정함)' }

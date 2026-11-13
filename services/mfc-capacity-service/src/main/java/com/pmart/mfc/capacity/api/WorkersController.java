@@ -46,8 +46,16 @@ public class WorkersController implements WorkersApi {
   /** 다음 작업 받기(0.6.0) — 시스템이 하나씩 배정. */
   @Override
   public ResponseEntity<com.pmart.mfc.capacity.api.generated.model.Assignment> pullNextTask(
-      String mfcId, String workerId, String idempotencyKey, String xSourceSystem) {
-    var r = assignments.pullNext(mfcId, workerId);
+      String mfcId,
+      String workerId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.capacity.api.generated.model.@Nullable PullNextTaskRequest body) {
+    var r =
+        assignments.pullNext(
+            mfcId,
+            workerId,
+            body == null || body.getWorkArea() == null ? null : body.getWorkArea().getValue());
     var out = AssignmentsController.dto(r.assignment());
     out.setDetail(detail(assignments.detailOf(out.getTaskId(), out.getTaskType())));
     return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK).body(out);
@@ -128,6 +136,12 @@ public class WorkersController implements WorkersApi {
     out.setDisplayName(w.getDisplayName());
     out.setState(w.getState());
     out.setDuty(w.getDuty());
+    out.setEmploymentType(w.getEmploymentType());
+    out.setQualification(w.getQualification());
+    out.setEffectiveTaskTypes(w.getEffectiveTaskTypes());
+    out.setWorkAreas(w.getWorkAreas());
+    out.setTodayEnrollment(w.getTodayEnrollment());
+    out.setOnBreak(w.getOnBreak());
     out.setSpeedFactor(w.getSpeedFactor());
     out.setRegisteredBy(w.getRegisteredBy());
     out.setRegisteredAt(w.getRegisteredAt());
@@ -284,6 +298,10 @@ public class WorkersController implements WorkersApi {
       w.setQualification(q);
     }
     w.setEffectiveTaskTypes(v.effective().stream().map(TaskType::fromValue).toList());
+    w.setWorkAreas(
+        v.workAreas().stream()
+            .map(com.pmart.mfc.capacity.api.generated.model.WorkArea::fromValue)
+            .toList());
     w.setTodayEnrollment(v.today() == null ? null : day(v.today()));
     w.setOnBreak(v.onBreak());
     w.setRegisteredBy(v.worker().registeredBy());

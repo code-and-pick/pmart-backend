@@ -21,7 +21,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] 작업자 명단 ↔ 인사 연결(결정 3개 "추천대로") — PR #3, main `d46671c`(2026-11-13, LAN 미배포)
 - [x] 배차 자동 요청 제거(BR-51 "자동요청빼") — PR #4, main `d46671c`(LAN 미배포)
 - [x] **센터 관리자는 작업자와 별개**(사용자 2026-11-13, PR #3 검토 때) — 지금 코드는 MFC 센터 소속이면 등록 때 누구나 작업자로 만든다(센터 관리자 포함). **LAN 배포 전에 고친다.** `EmployeeRegistered` 에는 역할이 없다(권한은 승인 뒤 — ADR-0056 결정 4) → 예: 등록 때가 아니라 그 센터 `MFC_WORKER` 권한이 붙을 때(`GrantApplied`, `platform.auth.v1`) 만들기, 또는 등록 사건에 직무 구분을 더해 달라고 platform 에 요청(`service-requests/hr-service.md`). 방식은 PC 3 이 정해 PR 설명에. — **방식(PC 3, 2026-11-13)**: 그 센터 `MFC_WORKER` 권한 반영(`GrantApplied`) 때 작업자 생성, 권한 기간 밖이면 SUSPENDED(센터 이동도 권한으로 — 인사 소속 변경 사건은 안 씀). PR(브랜치 `mfc/worker-by-grant`), LAN 배포 전 설정 저장소 구독 2개 필요
-- [ ] 작업자 상세 `GET /mfcs/{mfcId}/workers/{workerId}` 응답에 자격(`qualification`)·고용 형태·유효 업무가 비어 온다 — `WorkersController.getWorker` 가 `WorkerDetail` 로 옮길 때 그 항목을 빠뜨림(목록 `GET …/workers` 에는 있음, 2026-11-13 PC 1 발견)
+- [x] 작업자 상세 `GET /mfcs/{mfcId}/workers/{workerId}` 응답에 자격(`qualification`)·고용 형태·유효 업무가 비어 온다 — `WorkersController.getWorker` 가 `WorkerDetail` 로 옮길 때 그 항목을 빠뜨림(목록 `GET …/workers` 에는 있음, 2026-11-13 PC 1 발견) — 고침(PC 3, 브랜치 `mfc/pda-work-area`, 계약 0.13.0 — BR-52 R1·R3·R4 와 같이)
 - [ ] **mfc_app(클라이언트 mfc-app 영역, PC 3 담당 — 2026-11-13)**: `SUBJECT_BLOCKED`(로그아웃·정지 즉시 401) 안내 — **끝**(클라이언트 ca2ecf3), 남은 것 **실기기 로그인 확인**(로그인 마무리 기준 4 — `pc-split.md` §1-1) — `docs/handoff/clients/mfc-app/2026-11-13-clients-reply-mfc-app-login-and-https-build.md`. 실기기에는 LAN 루트 CA 설치 필요. 시험 계정은 `mfcw-*` 70명(`dev-on-other-pcs.md` §2)
 - [ ] 클라이언트 BR-52(PDA 업무 선택 배정)·BR-53(입고 수령 화면 값) 회신 — 백엔드 회신 없음(`other-pcs-docs.md` §2-2)
 
