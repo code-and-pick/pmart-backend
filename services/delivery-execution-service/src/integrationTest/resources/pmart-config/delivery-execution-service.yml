@@ -5,11 +5,11 @@ server:
 pmart:
   messaging:
     domain: delivery
-  # 수행료·정산(원문 §7.2, 사용자 결정 2026-11-13). 공휴일은 지급 예정일 계산에서 뺀다 — 운영이 목록을 넣는다(비면 주말만)
+  # 수행료·정산(원문 §7.2, 사용자 결정 2026-11-13). 지급 예정일은 주말·법정공휴일을 뺀다
   execution:
     confirm-after: PT5H
     payout-business-days: 3
-    public-holidays: []
+    public-holidays: [] # 비우면 법정공휴일(코드 KoreanPublicHolidays 2026~2027, 사용자 결정 2026-11-13) — 임시공휴일이 생기면 목록 전체를 넣는다
     confirm-interval: PT1M
 spring:
   servlet:

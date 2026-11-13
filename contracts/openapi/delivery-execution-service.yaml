@@ -620,7 +620,7 @@ components:
         adjustmentRef: { type: string }
         recordedAt: { type: string, format: date-time }
         confirmAt: { type: string, format: date-time, description: 수익 확정 시각 — 전달 완료 + 5시간(원문 §7.2, 0.3.0) }
-        payoutDate: { type: string, format: date, description: 지급 예정일 — 수행일(Asia/Seoul) + 3영업일(주말·설정된 공휴일 제외). 실제 지급은 외부 회계 }
+        payoutDate: { type: string, format: date, description: 지급 예정일 — 수행일(Asia/Seoul) + 3영업일(주말·법정공휴일 제외 — 사용자 결정 2026-11-13). 실제 지급은 외부 회계 }
         note: { type: string, description: 산정 불가 사유 등(calculable false 면 지원센터 조정 필요) }
   securitySchemes:
     bearerAuth:

@@ -32,6 +32,20 @@ class EarningRulesTest {
   }
 
   @Test
+  void statutoryHolidaysPushPayout() {
+    // 2026-09-23(수) 수행 → 추석(24·25·26) 건너 월(28)·화(29)·수(30)
+    assertThat(
+            EarningRules.payoutDate(LocalDate.of(2026, 9, 23), 3, KoreanPublicHolidays.Y2026_2027))
+        .isEqualTo(LocalDate.of(2026, 9, 30));
+    // 2026-07-16(목) 수행 → 제헌절(17 금) 건너 월(20)·화(21)·수(22)
+    assertThat(
+            EarningRules.payoutDate(LocalDate.of(2026, 7, 16), 3, KoreanPublicHolidays.Y2026_2027))
+        .isEqualTo(LocalDate.of(2026, 7, 22));
+    assertThat(KoreanPublicHolidays.Y2026_2027)
+        .contains(LocalDate.of(2026, 6, 3), LocalDate.of(2027, 2, 9), LocalDate.of(2027, 12, 27));
+  }
+
+  @Test
   void customerReasonsNeedTwoContactsAndCustodyFollowsGoodsLocation() {
     assertThat(ExecutionRules.enoughContacts("CUSTOMER_ABSENT", 1)).isFalse();
     assertThat(ExecutionRules.enoughContacts("CUSTOMER_ABSENT", 2)).isTrue();

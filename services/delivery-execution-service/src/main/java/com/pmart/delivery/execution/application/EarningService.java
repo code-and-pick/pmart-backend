@@ -65,6 +65,19 @@ public class EarningService {
       return;
     }
     LocalDate performedOn = completedAt.atZone(SEOUL).toLocalDate();
+    LocalDate payout =
+        EarningRules.payoutDate(performedOn, props.payoutBusinessDays(), props.holidays());
+    int lastYear =
+        props.publicHolidays().stream()
+            .mapToInt(LocalDate::getYear)
+            .max()
+            .orElse(Integer.MIN_VALUE);
+    if (payout.getYear() > lastYear) {
+      // 지급 예정일 해의 공휴일을 모른다 — 주말만 빼서 계산했다(해마다 법정공휴일 목록을 더한다)
+      log.warn(
+          "공휴일 목록에 {}년이 없음 — pmart.execution.public-holidays·KoreanPublicHolidays 에 더한다",
+          payout.getYear());
+    }
     boolean known = d.acceptedFee() != null;
     EarningRow e =
         new EarningRow(
@@ -80,7 +93,7 @@ public class EarningService {
             "PENDING_CONFIRMATION",
             performedOn,
             EarningRules.confirmAt(completedAt, props.confirmAfter()),
-            EarningRules.payoutDate(performedOn, props.payoutBusinessDays(), props.holidays()),
+            payout,
             known ? null : "수락 당시 금액을 모름 — 지원센터 조정",
             completedAt);
     record(e, completedAt);
