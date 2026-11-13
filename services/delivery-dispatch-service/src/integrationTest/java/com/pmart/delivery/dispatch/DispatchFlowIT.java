@@ -659,6 +659,103 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                     Map.of("status", "OK", "distanceM", 0, "durationSeconds", 0)))));
   }
 
+  @Test
+  void riderCancelsBeforePickupAndAnotherRiderIsOffered() {
+    String mfc = "MFC-D7";
+    String r1 = "RD-c1-" + UUID.randomUUID();
+    String r2 = "RD-c2-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true), rider(r2, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true), rider(r2, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}, r2, new double[] {37.4986, 127.0281}));
+    String deliveryId =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-7-" + UUID.randomUUID());
+    engine.tick();
+    Map<String, Object> o =
+        jdbc.queryForMap(
+            "SELECT offer_id, rider_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            deliveryId);
+    String first = (String) o.get("rider_id");
+    String other = first.equals(r1) ? r2 : r1;
+    assertThat(
+            body(respond(first, (String) o.get("offer_id"), "a-" + deliveryId, "ACCEPT"))
+                .path("outcome")
+                .asString())
+        .isEqualTo("ASSIGNED");
+
+    // 배정되지 않은 라이더는 취소할 수 없다
+    assertThat(cancel(other, deliveryId, "x-" + deliveryId).getStatusCode().value()).isEqualTo(403);
+    ResponseEntity<String> ok = cancel(first, deliveryId, "c-" + deliveryId);
+    assertThat(ok.getStatusCode().value()).isEqualTo(202);
+    assertThat(cancel(first, deliveryId, "c-" + deliveryId).getStatusCode().value())
+        .isEqualTo(202); // 같은 키
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("DISPATCHING");
+    JsonNode changed = outbox(deliveryId, "DeliveryAssignmentChanged").path("payload");
+    assertThat(changed.path("oldRiderId").asString()).isEqualTo(first);
+    assertThat(changed.path("newRiderId").isNull()).isTrue();
+    assertThat(changed.path("assignmentVersion").asInt()).isEqualTo(2);
+    JsonNode result =
+        body(
+            http.get()
+                .uri("/deliveries/{id}/assignment-cancellations/{r}", deliveryId, "c-" + deliveryId)
+                .header("Authorization", "Bearer " + TestJwt.rider(first))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(result.path("state").asString()).isEqualTo("CANCELLED_BEFORE_PICKUP");
+
+    // 재배차 — 취소한 라이더는 빼고 다른 라이더에게
+    engine.tick();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT rider_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+                String.class,
+                deliveryId))
+        .isEqualTo(other);
+
+    // 픽업 뒤는 지원센터로(422)
+    jdbc.update(
+        "UPDATE delivery SET state = 'PICKED_UP', rider_id = ? WHERE delivery_id = ?",
+        other,
+        deliveryId);
+    ResponseEntity<String> late = cancel(other, deliveryId, "p-" + deliveryId);
+    assertThat(late.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(late).path("code").asString()).isEqualTo("PICKED_UP_CASE_REQUIRED");
+  }
+
+  @Test
+  void longDispatchWaitRaisesOneDelayAlert() {
+    String mfc = "MFC-D8";
+    riders(mfc);
+    String deliveryId =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-8-" + UUID.randomUUID());
+    jdbc.update(
+        "UPDATE dispatch_attempt SET started_at = ? WHERE delivery_id = ?",
+        ago(25 * 60),
+        deliveryId);
+    engine.tick();
+    JsonNode delayed = outbox(deliveryId, "DispatchDelayed").path("payload");
+    assertThat(delayed.path("threshold").asInt()).isEqualTo(20);
+    assertThat(delayed.path("delayedMinutes").asInt()).isGreaterThanOrEqualTo(25);
+    engine.tick();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DispatchDelayed'",
+                Integer.class,
+                deliveryId))
+        .isEqualTo(1);
+  }
+
+  ResponseEntity<String> cancel(String rider, String deliveryId, String key) {
+    return http.post()
+        .uri("/deliveries/{id}/assignment-cancellations", deliveryId)
+        .headers(h -> riderHeaders(h, rider, key))
+        .body(Map.of("requestedBy", "RIDER", "reason", "RIDER_UNABLE"))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   // ---------- 도우미 ----------
 
   String readyShipment(String mfc, String shipment, String packageId) {

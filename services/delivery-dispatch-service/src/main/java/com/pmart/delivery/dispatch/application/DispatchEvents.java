@@ -84,6 +84,40 @@ public class DispatchEvents {
     publish("DeliveryCancelledBeforePickup", before, before.version() + 1L, system(), p);
   }
 
+  /** 재배정·배정 해제(newRiderId null = 해제). MFC 는 이것으로 이전 라이더 인계를 막는다(D-4·kickoff §4). */
+  public void assignmentChanged(
+      DeliveryRow before,
+      @Nullable String newRiderId,
+      int assignmentVersion,
+      String reason,
+      EventEnvelope.@Nullable Actor actor,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", before.deliveryId());
+    p.put("oldRiderId", before.riderId());
+    p.put("newRiderId", newRiderId);
+    p.put("assignmentVersion", assignmentVersion);
+    p.put("reason", reason);
+    p.put("changedAt", at.toString());
+    publish(
+        "DeliveryAssignmentChanged",
+        before,
+        before.version() + 1L,
+        actor == null ? system() : actor,
+        p);
+  }
+
+  /** 배차 지연 임계 초과(원문 §3.6 — MFC 관리자·고객센터 안내). */
+  public void delayed(DeliveryRow d, int delayedMinutes, int thresholdMinutes, Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", d.deliveryId());
+    p.put("orderId", d.orderId());
+    p.put("delayedMinutes", delayedMinutes);
+    p.put("threshold", thresholdMinutes);
+    p.put("detectedAt", at.toString());
+    publish("DispatchDelayed", d, d.version(), system(), p);
+  }
+
   public void failed(DeliveryRow before, String reason, int attempts, Instant at) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", before.deliveryId());

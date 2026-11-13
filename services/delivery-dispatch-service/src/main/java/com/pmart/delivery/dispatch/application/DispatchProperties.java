@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param lateWeight 출하 대기보다 늦게 도착하는 초에 주는 가중(설계값 — 원문 §3.1 "포장이 끝날 즈음 도착")
  * @param solverTimeLimit 한 번 계산 상한
  * @param pollAfterSec 라이더 앱 폴링 권장(초) — 계약 잠정 5초
+ * @param delayAlertAfter 배차 대기가 이만큼 넘으면 DispatchDelayed(원문 §3.6 "ex.20분" — 사용자 확인 필요)
  * @param bundleMaxExtra 알뜰배달 묶음에서 어느 배송이든 바로 갈 때보다 이만큼 넘게 늦어지면 묶지 않는다(설계값 20분 — 원문에 없음, 사용자 확인 필요)
  */
 @ConfigurationProperties(prefix = "pmart.dispatch")
@@ -40,6 +41,7 @@ public record DispatchProperties(
     @Nullable Duration solverTimeLimit,
     @Nullable Integer pollAfterSec,
     @Nullable Duration bundleMaxExtra,
+    @Nullable Duration delayAlertAfter,
     @Nullable Ai ai,
     @Nullable Urls urls) {
 
@@ -59,6 +61,7 @@ public record DispatchProperties(
     pollAfterSec = pollAfterSec == null ? 5 : pollAfterSec;
     bundleMaxExtra = bundleMaxExtra == null ? Duration.ofMinutes(20) : bundleMaxExtra;
     ai = ai == null ? new Ai(null, null) : ai;
+    delayAlertAfter = delayAlertAfter == null ? Duration.ofMinutes(20) : delayAlertAfter;
     urls = urls == null ? new Urls(null, null, null, null, null) : urls;
   }
 

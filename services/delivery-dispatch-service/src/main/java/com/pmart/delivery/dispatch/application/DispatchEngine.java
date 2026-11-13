@@ -109,6 +109,7 @@ public class DispatchEngine {
   public void tick() {
     Instant now = clock.instant();
     expireOffers(now);
+    alertDelays(now);
     Map<String, List<DispatchStore.Due>> byMfc = new LinkedHashMap<>();
     for (DispatchStore.Due d : store.dueAttempts(now, 50)) {
       byMfc.computeIfAbsent(d.mfcId(), k -> new ArrayList<>()).add(d);
@@ -143,6 +144,21 @@ public class DispatchEngine {
             if (store.liveOffersInAttempt(o.attemptId(), now) == 0) {
               store.searchAgain(o.attemptId(), now);
             }
+          }
+        });
+  }
+
+  /** 배차 지연 안내 — 첫 시도부터 delayAlertAfter 넘게 배차 대기면 한 번 DispatchDelayed(원문 §3.6). */
+  void alertDelays(Instant now) {
+    tx.executeWithoutResult(
+        s -> {
+          int threshold = (int) props.delayAlertAfter().toMinutes();
+          for (DispatchStore.Delayed x :
+              store.lockDelayed(now.minus(props.delayAlertAfter()), 100)) {
+            int minutes = (int) Duration.between(x.waitingSince(), now).toMinutes();
+            events.delayed(x.delivery(), minutes, threshold, now);
+            store.markDelayAlerted(x.delivery().deliveryId(), now);
+            log.warn("배송 {} 배차 지연 {}분(임계 {}분)", x.delivery().deliveryId(), minutes, threshold);
           }
         });
   }
@@ -214,7 +230,11 @@ public class DispatchEngine {
     List<Set<String>> allowedSets = new ArrayList<>();
     Set<String> union = new HashSet<>();
     for (Ready r : ready) {
-      Set<String> offered = store.offeredInRound(r.attempt().attemptId(), r.attempt().round());
+      Set<String> offered =
+          new HashSet<>(store.offeredInRound(r.attempt().attemptId(), r.attempt().round()));
+      if (r.attempt().excludedRiderId() != null) {
+        offered.add(r.attempt().excludedRiderId()); // 방금 배차취소한 라이더(원문 §5.4 다른 라이더 재배차)
+      }
       Set<String> ok = new HashSet<>();
       for (var e : straight.entrySet()) {
         if (e.getValue() <= r.radiusKm() * 1000.0 && !offered.contains(e.getKey())) {

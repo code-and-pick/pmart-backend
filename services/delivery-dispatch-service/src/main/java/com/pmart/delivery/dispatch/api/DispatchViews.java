@@ -151,6 +151,7 @@ class DispatchViews {
                     .containsAlcohol(p.alcohol())
                     .packageIds(p.ids()))
             .assignment(d.riderId() == null ? null : assignment(d))
+            .delayAlertedAt(time(d.delayAlertedAt()))
             .createdAt(time(d.createdAt()))
             .updatedAt(time(d.updatedAt()));
     if (d.arrivalDate() != null) {

@@ -57,7 +57,8 @@ public class DispatchStore {
       Instant createdAt,
       Instant updatedAt,
       @Nullable String bundleId,
-      @Nullable Integer stopSeq) {
+      @Nullable Integer stopSeq,
+      @Nullable Instant delayAlertedAt) {
 
     public boolean geoReady() {
       return mfcLat != null && dropLat != null && dropDistanceM != null;
@@ -84,7 +85,8 @@ public class DispatchStore {
       @Nullable String failureReason,
       boolean hadCandidate,
       boolean hadRejection,
-      boolean hadExpiry) {}
+      boolean hadExpiry,
+      @Nullable String excludedRiderId) {}
 
   public record OfferRow(
       String offerId,
@@ -355,6 +357,115 @@ public class DispatchStore {
         ts(now),
         ts(now),
         ts(now));
+  }
+
+  /** 재배차 시도 — 방금 취소한 라이더는 뺀다. */
+  public void insertAttempt(
+      String attemptId,
+      String deliveryId,
+      String trigger,
+      @Nullable String excludedRiderId,
+      Instant now) {
+    insertAttempt(attemptId, deliveryId, trigger, now);
+    jdbc.update(
+        "UPDATE dispatch_attempt SET excluded_rider_id = ? WHERE attempt_id = ?",
+        excludedRiderId,
+        attemptId);
+  }
+
+  /** 픽업 전 배정 해제 → 다시 배차 대기(원문 §5.4). */
+  public void unassign(String deliveryId, int assignmentVersion, Instant now) {
+    jdbc.update(
+        "UPDATE delivery SET state = 'DISPATCHING', rider_id = NULL, assignment_id = NULL,"
+            + " accepted_offer_id = NULL, assigned_at = NULL, bundle_id = NULL, stop_seq = NULL,"
+            + " assignment_version = ?, version = version + 1, updated_at = ? WHERE delivery_id = ?",
+        assignmentVersion,
+        ts(now),
+        deliveryId);
+  }
+
+  // ---------- 배차 취소 기록 ----------
+
+  public record CancellationRow(
+      String requestId,
+      String deliveryId,
+      String requestedBy,
+      String actor,
+      String reason,
+      String state,
+      @Nullable String previousRiderId,
+      @Nullable String reassignAttemptId,
+      Instant createdAt) {}
+
+  public void insertCancellation(
+      String requestId,
+      String deliveryId,
+      String requestedBy,
+      String actor,
+      String reason,
+      @Nullable String detail,
+      boolean reassign,
+      @Nullable String approvalRef,
+      String state,
+      @Nullable String previousRiderId,
+      @Nullable String reassignAttemptId,
+      Instant now) {
+    jdbc.update(
+        "INSERT INTO assignment_cancellation (request_id, delivery_id, requested_by, actor, reason,"
+            + " reason_detail, reassign, approval_ref, state, previous_rider_id, reassign_attempt_id,"
+            + " created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        requestId,
+        deliveryId,
+        requestedBy,
+        actor,
+        reason,
+        detail,
+        reassign,
+        approvalRef,
+        state,
+        previousRiderId,
+        reassignAttemptId,
+        ts(now));
+  }
+
+  public Optional<CancellationRow> cancellation(String deliveryId, String requestId) {
+    return first(
+        "SELECT * FROM assignment_cancellation WHERE delivery_id = ? AND request_id = ?",
+        rs ->
+            new CancellationRow(
+                rs.getString("request_id"),
+                rs.getString("delivery_id"),
+                rs.getString("requested_by"),
+                rs.getString("actor"),
+                rs.getString("reason"),
+                rs.getString("state"),
+                rs.getString("previous_rider_id"),
+                rs.getString("reassign_attempt_id"),
+                rs.getTimestamp("created_at").toInstant()),
+        deliveryId,
+        requestId);
+  }
+
+  // ---------- 배차 지연 안내 ----------
+
+  /** 배차 대기가 cutoff 전부터(첫 시도 시작) 이어지고 아직 안내하지 않은 배송(잠금). */
+  public record Delayed(DeliveryRow delivery, Instant waitingSince) {}
+
+  public List<Delayed> lockDelayed(Instant cutoff, int limit) {
+    return jdbc.query(
+        "SELECT d.*, (SELECT min(a.started_at) FROM dispatch_attempt a WHERE a.delivery_id ="
+            + " d.delivery_id) AS waiting_since FROM delivery d WHERE d.state = 'DISPATCHING' AND"
+            + " d.delay_alerted_at IS NULL AND (SELECT min(a.started_at) FROM dispatch_attempt a WHERE"
+            + " a.delivery_id = d.delivery_id) <= ? ORDER BY d.created_at LIMIT ? FOR UPDATE OF d SKIP"
+            + " LOCKED",
+        (rs, i) -> new Delayed(delivery(rs), rs.getTimestamp("waiting_since").toInstant()),
+        ts(cutoff),
+        limit);
+  }
+
+  public void markDelayAlerted(String deliveryId, Instant now) {
+    jdbc.update(
+        "UPDATE delivery SET delay_alerted_at = ? WHERE delivery_id = ?", ts(now), deliveryId);
   }
 
   public Optional<AttemptRow> openAttempt(String deliveryId) {
@@ -701,7 +812,8 @@ public class DispatchStore {
         rs.getTimestamp("created_at").toInstant(),
         rs.getTimestamp("updated_at").toInstant(),
         rs.getString("bundle_id"),
-        rs.getObject("stop_seq", Integer.class));
+        rs.getObject("stop_seq", Integer.class),
+        instant(rs, "delay_alerted_at"));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {
@@ -720,7 +832,8 @@ public class DispatchStore {
         rs.getString("failure_reason"),
         rs.getBoolean("had_candidate"),
         rs.getBoolean("had_rejection"),
-        rs.getBoolean("had_expiry"));
+        rs.getBoolean("had_expiry"),
+        rs.getString("excluded_rider_id"));
   }
 
   static OfferRow offer(ResultSet rs) throws SQLException {
