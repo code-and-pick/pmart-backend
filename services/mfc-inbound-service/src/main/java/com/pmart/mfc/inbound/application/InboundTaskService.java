@@ -171,6 +171,17 @@ public class InboundTaskService {
     return tasks.list(mfcId, state, type, receiptId);
   }
 
+  /** 작업 단건(0.8.0) — 그 센터 운영자만. */
+  @Transactional(readOnly = true)
+  public TaskRow get(String taskId) {
+    TaskRow t =
+        tasks
+            .find(taskId)
+            .orElseThrow(() -> PmartException.notFound(TASK_NOT_FOUND, "입고 작업이 없습니다: " + taskId));
+    requireOperator(t.mfcId());
+    return t;
+  }
+
   // ---------- 품질검사 ----------
 
   public ExecutionView inspect(

@@ -147,6 +147,7 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
     payload.put("version", version);
     payload.put("effectiveAt", Instant.now().toString());
     payload.put("saleState", "ON_SALE");
+    payload.put("internalName", "관리명 " + productId);
     send(productId, "ProductVersionPublished", "Product", productId, version, payload);
   }
 
@@ -204,6 +205,16 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(proj.body().path("shelfMinRemainingDays").asInt()).isEqualTo(5);
     assertThat(proj.body().path("shelfMaxDaysSinceManufacture").asInt()).isEqualTo(3);
     assertThat(proj.body().path("productVersion").asInt()).isEqualTo(1);
+    // 현장 표시용 상품명·바코드(0.15.0, BR-53 R8)
+    assertThat(proj.body().path("productName").asString()).isEqualTo("관리명 " + productId);
+    assertThat(proj.body().path("barcodes").path(0).asString()).isEqualTo("08801234567890");
+    // 일괄 조회: 없는 SKU 는 missing
+    Res batch = get(SERVICE, "/internal/skus?skus=" + sku + "," + newSku("E"));
+    assertThat(batch.status()).isEqualTo(200);
+    assertThat(batch.body().path("items").size()).isEqualTo(1);
+    assertThat(batch.body().path("items").path(0).path("productName").asString())
+        .isEqualTo("관리명 " + productId);
+    assertThat(batch.body().path("missing").size()).isEqualTo(1);
     assertThat(
             awaitProjection(inactive, b -> "INACTIVE".equals(b.path("state").asString())).status())
         .isEqualTo(200);

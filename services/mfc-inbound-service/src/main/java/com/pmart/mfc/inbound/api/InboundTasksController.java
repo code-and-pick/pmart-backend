@@ -9,7 +9,11 @@ import com.pmart.mfc.inbound.api.generated.model.PutawayInboundTaskRequest;
 import com.pmart.mfc.inbound.application.InboundTaskService;
 import com.pmart.mfc.inbound.application.InboundTaskService.ExecutionView;
 import com.pmart.mfc.inbound.application.InboundTaskService.InspectResult;
+import com.pmart.mfc.inbound.application.SkuLabels;
+import com.pmart.mfc.inbound.application.SkuLabels.Label;
 import com.pmart.mfc.inbound.infrastructure.InboundTaskStore.TaskRow;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,20 +23,27 @@ import org.springframework.web.bind.annotation.RestController;
 public class InboundTasksController implements InboundTasksApi {
 
   private final InboundTaskService service;
+  private final SkuLabels labels;
 
-  public InboundTasksController(InboundTaskService service) {
+  public InboundTasksController(InboundTaskService service, SkuLabels labels) {
     this.service = service;
+    this.labels = labels;
   }
 
   @Override
   public ResponseEntity<ListInboundTasks200Response> listInboundTasks(
       String mfcId, @Nullable String state, @Nullable String taskType, @Nullable String receiptId) {
+    List<TaskRow> rows = service.list(mfcId, state, taskType, receiptId);
+    Map<String, Label> names = labels.of(rows.stream().map(TaskRow::sku).toList());
     var out = new ListInboundTasks200Response();
-    out.setItems(
-        service.list(mfcId, state, taskType, receiptId).stream()
-            .map(InboundTasksController::dto)
-            .toList());
+    out.setItems(rows.stream().map(t -> dto(t, SkuLabels.get(names, t.sku()))).toList());
     return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<InboundTask> getInboundTask(String taskId) {
+    TaskRow t = service.get(taskId);
+    return ResponseEntity.ok(dto(t, SkuLabels.get(labels.of(List.of(t.sku())), t.sku())));
   }
 
   @Override
@@ -49,7 +60,8 @@ public class InboundTasksController implements InboundTasksApi {
                         r.getExpiryDate(),
                         r.getManufactureDate()))
             .toList();
-    return ResponseEntity.ok(dto(service.inspect(idempotencyKey, xSourceSystem, taskId, results)));
+    return ResponseEntity.ok(
+        dto(service.inspect(idempotencyKey, xSourceSystem, taskId, results), labels));
   }
 
   @Override
@@ -58,10 +70,11 @@ public class InboundTasksController implements InboundTasksApi {
     return ResponseEntity.ok(
         dto(
             service.putaway(
-                idempotencyKey, xSourceSystem, taskId, body.getToLocationCode(), body.getQty())));
+                idempotencyKey, xSourceSystem, taskId, body.getToLocationCode(), body.getQty()),
+            labels));
   }
 
-  static InboundTaskExecution dto(ExecutionView v) {
+  static InboundTaskExecution dto(ExecutionView v, SkuLabels labels) {
     var d = new InboundTaskExecution();
     d.setExecutionId(v.executionId());
     d.setTaskId(v.taskId());
@@ -69,11 +82,11 @@ public class InboundTasksController implements InboundTasksApi {
     d.setInventoryCommitId(v.commitId());
     d.setRejectReason(v.rejectReason());
     d.setCreatedTaskIds(v.createdTaskIds());
-    d.setTask(dto(v.task()));
+    d.setTask(dto(v.task(), SkuLabels.get(labels.of(List.of(v.task().sku())), v.task().sku())));
     return d;
   }
 
-  static InboundTask dto(TaskRow t) {
+  static InboundTask dto(TaskRow t, Label label) {
     var d = new InboundTask();
     d.setTaskId(t.taskId());
     d.setTaskType(InboundTask.TaskTypeEnum.fromValue(t.taskType()));
@@ -81,6 +94,8 @@ public class InboundTasksController implements InboundTasksApi {
     d.setReceiptId(t.receiptId());
     d.setParentTaskId(t.parentTaskId());
     d.setSku(t.sku());
+    d.setProductName(label.productName());
+    d.setBarcodes(new java.util.ArrayList<>(label.barcodes()));
     d.setLotId(t.lotId());
     d.setLocationCode(t.locationCode());
     d.setPlannedQty(t.plannedQty());

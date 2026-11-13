@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.14.1
+  version: 0.15.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -1228,6 +1228,38 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /internal/skus:
+    get:
+      tags: [skus]
+      summary: '[서비스→mfc-inventory] SKU 투영 일괄 조회 (최대 100건, 0.15.0)'
+      description: |
+        현장 화면의 상품명·바코드 표시용(mfc-inbound 입고 작업 — 클라이언트 BR-53 R8). 조회 사본이다. 상품 정본은 product-service.
+        투영이 없는 SKU 는 items 에서 빼고 missing 에 둔다.
+      operationId: listSkuProjections
+      parameters:
+        - name: skus
+          in: query
+          required: true
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 100
+            items: { $ref: '_common.yaml#/components/schemas/Sku' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, missing]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/SkuProjection' } }
+                  missing: { type: array, items: { type: string } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
   /internal/skus/{sku}:
     get:
       tags: [skus]
@@ -1798,6 +1830,8 @@ components:
         alcohol: { type: [boolean, 'null'] }
         shelfMinRemainingDays: { type: [integer, 'null'], description: '상품별 소비기한 보장 — 주문일 기준 최소 잔여일(ADR-0041). null 이면 보장 문구 없음(보관 유형 기본값을 쓴다)' }
         shelfMaxDaysSinceManufacture: { type: [integer, 'null'], description: '상품별 소비기한 보장 — 주문일 기준 제조 후 최대 경과일(ADR-0041). null 이면 보장 없음' }
+        productName: { type: [string, 'null'], description: '(0.15.0) 상품 관리용 명칭(ProductVersionPublished.internalName). 이 필드 추가 전에 받은 상품은 다음 상품 버전 발행까지 null' }
+        barcodes: { type: array, items: { type: string }, description: '(0.15.0) 활성 바코드(선행 0 보존). 모르면 빈 배열' }
         state: { type: string, enum: [ACTIVE, INACTIVE] }
         productVersion: { type: integer, description: 마지막으로 반영한 상품 버전(이보다 오래된 이벤트는 무시) }
         updatedAt: { type: string, format: date-time }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.13.0
+  version: 0.13.1
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -1050,7 +1050,7 @@ paths:
 components:
   schemas:
     WorkerState: { type: string, enum: [ACTIVE, SUSPENDED, LEFT] }
-    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH, MOVE], description: '(0.9.0) MOVE = 센터 관리자 지시 재고 이동(mfc-inbound 이동 지시), REPLENISH = 자동 선반 보충' }
+    TaskType: { type: string, enum: [PICK, PACK, RETURN, DISPATCH, RECEIVE, INSPECT, PUTAWAY, REPLENISH, MOVE], description: '(0.9.0) MOVE = 센터 관리자 지시 재고 이동(mfc-inbound 이동 지시), REPLENISH = 자동 선반 보충. (0.13.1) RECEIVE 의 taskId = mfc-inbound 입고 예정 trfId(BR-53 R9) — 다음 작업 받기는 아직 RECEIVE 를 주지 않는다(입고 예정 미구현), 수동 배정도 trfId 로' }
     TemperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
     WorkArea:
       type: string

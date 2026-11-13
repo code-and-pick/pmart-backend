@@ -7,6 +7,9 @@ import org.jspecify.annotations.Nullable;
  * product-service SKU 의 조회 사본(SkuIssued·ProductVersionPublished 투영). 정본이 아니다. SkuIssued 만 받은 동안은
  * 단위·중량 등이 비어 있다(0 으로 채우지 않는다).
  *
+ * <p>productName·barcodes: 현장 화면 표시용(관리용 명칭 internalName·활성 바코드, 0.15.0). 이 열 추가 전에 받은 상품은 다음 상품 버전
+ * 발행까지 null·빈 목록.
+ *
  * <p>shelfMinRemainingDays·shelfMaxDaysSinceManufacture: 상품별 소비기한 보장(ADR-0041, "주문일 기준 N일 이상
  * 남은"·"N일 이내 제조된"). null 이면 그 보장 없음.
  */
@@ -22,6 +25,8 @@ public record SkuProjection(
     @Nullable Boolean alcohol,
     @Nullable Integer shelfMinRemainingDays,
     @Nullable Integer shelfMaxDaysSinceManufacture,
+    @Nullable String productName,
+    java.util.List<String> barcodes,
     SkuState state,
     int productVersion,
     Instant updatedAt) {

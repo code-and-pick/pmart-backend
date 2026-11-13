@@ -22,16 +22,23 @@ public class InitialStockLoadsController implements InitialStockLoadsApi {
 
   private final InitialStockService loads;
   private final InboundTaskService tasks;
+  private final com.pmart.mfc.inbound.application.SkuLabels labels;
 
-  public InitialStockLoadsController(InitialStockService loads, InboundTaskService tasks) {
+  public InitialStockLoadsController(
+      InitialStockService loads,
+      InboundTaskService tasks,
+      com.pmart.mfc.inbound.application.SkuLabels labels) {
     this.loads = loads;
     this.tasks = tasks;
+    this.labels = labels;
   }
 
   @Override
   public ResponseEntity<ListInitialStockLoads200Response> listInitialStockLoads(String approvalId) {
     var out = new ListInitialStockLoads200Response();
-    out.setItems(loads.byApproval(approvalId).stream().map(InitialStockLoads::dto).toList());
+    var rows = loads.byApproval(approvalId);
+    var names = labels.of(rows.stream().flatMap(r -> r.lines().keySet().stream()).toList());
+    out.setItems(rows.stream().map(r -> InitialStockLoads.dto(r, names)).toList());
     return ResponseEntity.ok(out);
   }
 
