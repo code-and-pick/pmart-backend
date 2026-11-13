@@ -146,6 +146,14 @@ public class AssignmentService {
    * false), 없으면 업무 안의 담당 없는 READY 작업 중 가장 급한 것(PICK·PACK 약속 이른 순 → RETURN)을 SYSTEM 배정.
    */
   public Assigned pullNext(String mfcId, String workerId) {
+    return pullNext(mfcId, workerId, null);
+  }
+
+  /**
+   * (0.13.0, BR-52 R1) 고른 업무(workArea) 안에서만 새 작업 — 업무 묶음 ∩ 유효 업무가 비면 422 WORK_AREA_NOT_ALLOWED. 들고
+   * 있는 작업은 업무와 상관없이 돌려준다(한 번에 하나).
+   */
+  public Assigned pullNext(String mfcId, String workerId, @Nullable String workArea) {
     requireSelf(mfcId, workerId);
     String reject = workers.rejection(mfcId, workerId, "PICK", null);
     if (com.pmart.mfc.capacity.domain.WorkerRules.WORKER_NOT_REGISTERED.equals(reject)
@@ -199,7 +207,17 @@ public class AssignmentService {
           false,
           List.of());
     }
-    java.util.Set<String> duty = workers.taskTypes(mfcId, workerId);
+    java.util.Set<String> duty =
+        com.pmart.mfc.capacity.domain.WorkAreas.narrow(
+            workers.taskTypes(mfcId, workerId), workArea);
+    if (workArea != null && duty.isEmpty()) {
+      throw new PmartException(
+          com.pmart.mfc.capacity.domain.WorkAreas.WORK_AREA_NOT_ALLOWED,
+          org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+          "이 업무(" + workArea + ")를 할 수 있는 자격·업무가 없습니다.",
+          false,
+          List.of());
+    }
     List<Candidate> candidates = new java.util.ArrayList<>();
     tasks.stream()
         .filter(t -> "READY".equals(t.state()) && t.workerId() == null)
