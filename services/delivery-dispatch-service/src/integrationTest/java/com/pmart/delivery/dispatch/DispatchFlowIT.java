@@ -339,7 +339,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(listIds(normal)).doesNotContain(deliveryId); // 1km 밖
 
     jdbc.update(
-        "UPDATE dispatch_attempt SET stage_started_at = now() - interval '2 minutes', next_run_at = now() WHERE delivery_id = ?",
+        "UPDATE dispatch_attempt SET stage_started_at = ?, next_run_at = ? WHERE delivery_id = ?",
+        ago(120),
+        ago(0),
         deliveryId);
     engine.tick(); // 응답 대기만큼 머문 뒤 2단계(2km)
     assertThat(
@@ -390,12 +392,15 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
 
     // 같은 회차에는 거절한 라이더를 빼고 찾는다 → 마지막 단계까지 없으면 10분 뒤 재요청
     jdbc.update(
-        "UPDATE dispatch_attempt SET stage = 3, stage_started_at = now() - interval '2 minutes', next_run_at = now() WHERE delivery_id = ?",
+        "UPDATE dispatch_attempt SET stage = 3, stage_started_at = ?, next_run_at = ? WHERE delivery_id = ?",
+        ago(120),
+        ago(0),
         deliveryId);
     engine.tick();
     Map<String, Object> a =
         jdbc.queryForMap(
-            "SELECT stage, retry_count, round, next_run_at > now() + interval '9 minutes' AS later FROM dispatch_attempt WHERE delivery_id = ?",
+            "SELECT stage, retry_count, round, next_run_at > ? AS later FROM dispatch_attempt WHERE delivery_id = ?",
+            java.sql.Timestamp.from(Instant.now().plusSeconds(540)),
             deliveryId);
     assertThat(a.get("retry_count")).isEqualTo(1);
     assertThat(a.get("round")).isEqualTo(1);
@@ -404,7 +409,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
 
     // 재요청 회차에는 거절했던 라이더에게도 다시(원문 §3.5)
     jdbc.update(
-        "UPDATE dispatch_attempt SET next_run_at = now(), stage_started_at = now() WHERE delivery_id = ?",
+        "UPDATE dispatch_attempt SET next_run_at = ?, stage_started_at = ? WHERE delivery_id = ?",
+        ago(0),
+        ago(0),
         deliveryId);
     engine.tick();
     String second =
@@ -419,9 +426,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(rider);
 
     // 응답 없이 만료 → 마지막 재요청까지 다 썼으면 실패(거절이 있었으니 REPEATED_REJECTION)
-    jdbc.update(
-        "UPDATE dispatch_offer SET expires_at = now() - interval '1 second' WHERE offer_id = ?",
-        second);
+    jdbc.update("UPDATE dispatch_offer SET expires_at = ? WHERE offer_id = ?", ago(1), second);
     jdbc.update(
         "UPDATE dispatch_attempt SET retry_count = 2, stage = 3 WHERE delivery_id = ?", deliveryId);
     engine.tick(); // 만료 → 다시 탐색(후보 없음, 단계에 머묾)
@@ -430,7 +435,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT state FROM dispatch_offer WHERE offer_id = ?", String.class, second))
         .isEqualTo("EXPIRED");
     jdbc.update(
-        "UPDATE dispatch_attempt SET stage_started_at = now() - interval '2 minutes', next_run_at = now() WHERE delivery_id = ?",
+        "UPDATE dispatch_attempt SET stage_started_at = ?, next_run_at = ? WHERE delivery_id = ?",
+        ago(120),
+        ago(0),
         deliveryId);
     engine.tick();
     assertThat(
@@ -500,7 +507,49 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             "packages",
             List.of(
                 Map.of("packageId", packageId, "bagCount", 1, "weightG", 1000, "alcohol", false))));
-    return awaitDelivery(shipment);
+    String deliveryId = awaitDelivery(shipment);
+    // 출하 대기만으로는 배차하지 않는다 — 점원 요청만(BR-51, 사용자 2026-11-13 "자동요청빼")
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("CREATED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM dispatch_attempt WHERE delivery_id = ?",
+                Integer.class,
+                deliveryId))
+        .isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryCreated'",
+                Integer.class,
+                deliveryId))
+        .isZero();
+    send(
+        "DispatchRequested",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            mfc,
+            "trigger",
+            "MANUAL",
+            "estimatedPackMinutes",
+            1,
+            "estimatedReadyAt",
+            Instant.now().toString(),
+            "requestedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'DISPATCHING'");
+    assertThat(outbox(deliveryId, "DeliveryCreated").path("payload").path("shipmentId").asString())
+        .isEqualTo(shipment);
+    return deliveryId;
   }
 
   private List<String> listIds(String rider) {
@@ -657,6 +706,11 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
 
   private JsonNode body(ResponseEntity<String> r) {
     return mapper.readTree(r.getBody() == null ? "{}" : r.getBody());
+  }
+
+  /** 시험의 시각은 JVM 시계로(Docker DB 시계와 어긋날 수 있어 DB now() 를 쓰지 않는다). */
+  private static java.sql.Timestamp ago(long seconds) {
+    return java.sql.Timestamp.from(Instant.now().minusSeconds(seconds));
   }
 
   private ResponseDefinitionBuilder json(Object body) {

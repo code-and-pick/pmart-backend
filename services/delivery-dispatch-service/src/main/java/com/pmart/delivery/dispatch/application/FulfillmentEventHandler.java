@@ -23,8 +23,11 @@ import tools.jackson.databind.ObjectMapper;
  * MFC 사건(mfc.fulfillment.v1) → 배송. inbox 트랜잭션 안에서 부른다(외부 호출 없음).
  *
  * <ul>
- *   <li>{@code DispatchRequested}·{@code ShipmentReady} — 출고당 배송 하나(먼저 온 쪽이 만든다, kickoff §3). 만들 때
- *       DeliveryCreated(shipmentId 포함 — MFC 배정 투영)와 배차 시도(SEARCHING, 바로 판단).
+ *   <li>출고당 배송 하나. **배차는 점원 요청({@code DispatchRequested})으로만 시작한다**(사용자 2026-11-13 "자동요청빼", BR-51 —
+ *       mfc-fulfillment 0.4.11 은 READY 자동 요청을 내지 않는다). 요청이 오면 DISPATCHING +
+ *       DeliveryCreated(shipmentId — MFC 배정 투영) + 배차 시도(SEARCHING, 바로 판단).
+ *   <li>{@code ShipmentReady} 가 요청보다 먼저 오면 배송을 CREATED 로만 둔다(출하 대기·포장 목록 기록, 사건·배차 없음). 점원이 READY
+ *       뒤에 요청하면 그때 배차.
  *   <li>{@code PackingFinished} — 포장 목록(결품으로 줄어든 내용) 갱신.
  *   <li>{@code WorkStopResult} — 그 배송이 아는 포장이 모두 STOPPED 면 픽업 전 취소(cancel-vs-handover — 하나라도 인계·인계
  *       중이면 그대로). 포장을 아직 모르면 판정하지 않는다(경고).
@@ -79,6 +82,7 @@ public class FulfillmentEventHandler {
               null,
               null,
               null,
+              true,
               now);
       case "ShipmentReady" ->
           ensure(
@@ -90,6 +94,7 @@ public class FulfillmentEventHandler {
               instant(p.path("readyAt")),
               packages(p.path("packages")),
               p.path("deliveryMode").asString(null),
+              false,
               now);
       case "PackingFinished" -> {
         String shipmentId = p.path("shipmentId").asString();
@@ -113,6 +118,7 @@ public class FulfillmentEventHandler {
       @Nullable Instant readyAt,
       @Nullable String packagesJson,
       @Nullable String deliveryMode,
+      boolean requested,
       Instant now) {
     store.lockShipmentKey(shipmentId);
     var existing = store.lockByShipment(shipmentId);
@@ -129,6 +135,10 @@ public class FulfillmentEventHandler {
             deliveryMode,
             now);
       }
+      if (requested && "CREATED".equals(d.state())) {
+        store.setState(d.deliveryId(), "DISPATCHING", null, now);
+        startDispatch(d.deliveryId(), now);
+      }
       return;
     }
     String deliveryId = "DLV-" + UUID.randomUUID();
@@ -143,11 +153,22 @@ public class FulfillmentEventHandler {
         readyAt,
         pkgs,
         deliveryMode,
+        requested ? "DISPATCHING" : "CREATED",
         now);
+    if (requested) {
+      startDispatch(deliveryId, now);
+    } else {
+      log.info("배송 {} 기록 — 출고 {} 출하 대기, 점원 배차 요청 대기", deliveryId, shipmentId);
+    }
+  }
+
+  /** 점원 요청 → 배차 시작: 시도 + DeliveryCreated. */
+  private void startDispatch(String deliveryId, Instant now) {
     store.insertAttempt("ATT-" + UUID.randomUUID(), deliveryId, "AUTO", now);
-    DeliveryRow created = store.delivery(deliveryId).orElseThrow();
-    events.created(created, packageIds(pkgs));
-    log.info("배송 {} 생성 — 출고 {} 주문 {} MFC {}", deliveryId, shipmentId, orderId, mfcId);
+    DeliveryRow d = store.delivery(deliveryId).orElseThrow();
+    events.created(d, packageIds(d.packagesJson()));
+    log.info(
+        "배송 {} 배차 시작 — 출고 {} 주문 {} MFC {}", deliveryId, d.shipmentId(), d.orderId(), d.mfcId());
   }
 
   private void onStop(JsonNode p, Instant now) {
@@ -168,7 +189,10 @@ public class FulfillmentEventHandler {
         continue;
       }
       boolean allStopped = known.stream().allMatch(id -> "STOPPED".equals(verdicts.get(id)));
-      if (allStopped) {
+      if (allStopped && "CREATED".equals(d.state())) {
+        store.setState(
+            d.deliveryId(), "CANCELLED_BEFORE_PICKUP", "ORDER_CANCELLED", now); // 배차 전 — 알릴 배정 없음
+      } else if (allStopped) {
         transitions.cancelBeforePickup(d, "ORDER_CANCELLED", now);
         log.info("배송 {} 픽업 전 취소 — 모든 포장 STOPPED", d.deliveryId());
       } else {

@@ -154,15 +154,17 @@ public class DispatchStore {
       @Nullable Instant readyAt,
       String packagesJson,
       @Nullable String deliveryMode,
+      String state,
       Instant now) {
     jdbc.update(
         "INSERT INTO delivery (delivery_id, version, type, order_id, shipment_id, mfc_id, state,"
             + " request_trigger, estimated_ready_at, ready_at, packages, delivery_mode, created_at,"
-            + " updated_at) VALUES (?, 1, 'FORWARD', ?, ?, ?, 'DISPATCHING', ?, ?, ?, ?::jsonb, ?, ?, ?)",
+            + " updated_at) VALUES (?, 1, 'FORWARD', ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
         deliveryId,
         orderId,
         shipmentId,
         mfcId,
+        state,
         trigger,
         ts(estimatedReadyAt),
         ts(readyAt),
