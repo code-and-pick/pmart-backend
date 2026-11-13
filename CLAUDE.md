@@ -29,7 +29,7 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 
 ## PC 나눠 작업하기 (2026-11-13)
 - 영역: **platform**(PC 1 — 인증·HR·승인·게이트웨이·라이브러리·배포, 그 밖 서비스), **mfc**(PC 3), **delivery**(PC 5). 영역·서비스·계약 주인·규칙: `docs/operations/pc-split.md`. 배포는 PC 1 만.
-- 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만). handoff 파일 이름은 받는 앱 영역(`YYYY-MM-DD-<앱 영역>-<종류>-<주제>.md`)과 첫머리 `보낸 영역:`.
+- 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만, 2026-11-14 부터 — 2026-11-13 까지의 일지는 `docs/worklog/YYYY-MM-DD.md` 루트에 그대로 둔다). handoff 파일 이름은 받는 앱 영역(`YYYY-MM-DD-<앱 영역>-<종류>-<주제>.md`)과 첫머리 `보낸 영역:`.
 - 영역 인수인계: mfc `docs/mfc/HANDOVER.md`, rag `docs/rag/HANDOVER.md`.
 - PC 1 이 아닌 곳에서는 먼저 `docs/operations/dev-on-other-pcs.md` — 직원 토큰 받는 법(로컬 `dev-tokens`·LAN `staff_auth.py`), 시험 계정·비밀번호 파일, 없어진 auth-service 운영자 로그인.
 
