@@ -2,7 +2,7 @@ package com.pmart.delivery.dispatch.application;
 
 import com.pmart.common.web.PmartException;
 import com.pmart.delivery.dispatch.domain.AcceptRules;
-import com.pmart.delivery.dispatch.domain.AssignmentProblem;
+import com.pmart.delivery.dispatch.domain.BundleProblem;
 import com.pmart.delivery.dispatch.domain.FeeTable;
 import com.pmart.delivery.dispatch.domain.Geo;
 import com.pmart.delivery.dispatch.domain.OperatingHours;
@@ -43,7 +43,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       중심 직선 — 사용자 2026-11-13), 이번 회차에 이미 제안받지 않음.
  *   <li>라이더 → MFC 도로 소요(카카오모빌리티)로 {@link AssignmentProblem} → {@link AssignmentSolver}(OR-Tools
  *       CP-SAT).
- *   <li>짝지어진 배송은 제안(1분) + DispatchOfferSent. 못 지은 배송은 {@link SearchRules}(단계 머물기·다음 단계·재요청·실패).
+ *   <li>짝지어진 묶음은 배송마다 제안(1분, 같은 bundleId·방문 순서) + DispatchOfferSent. 못 지은 배송은 {@link
+ *       SearchRules}(단계 머물기·다음 단계·재요청·실패).
  * </ol>
  *
  * 일반 배차모드 라이더는 제안을 받지 않고 배달리스트에서 고른다({@link OfferService}). 상태 변경은 짧은 트랜잭션마다 행 잠금 아래에서 다시 확인한다.
@@ -121,10 +122,12 @@ public class DispatchEngine {
   void expireOffers(Instant now) {
     tx.executeWithoutResult(
         s -> {
+          Set<String> bundlesCounted = new HashSet<>();
           for (OfferRow o : store.lockExpired(now, 200)) {
             store.decideOffer(o.offerId(), "EXPIRED", now, null, null);
             store.markAttempt(o.attemptId(), false, false, true);
-            if (AcceptRules.expiryCountsAsRejection(o.viewedAt())) {
+            boolean firstOfBundle = o.bundleId() == null || bundlesCounted.add(o.bundleId());
+            if (firstOfBundle && AcceptRules.expiryCountsAsRejection(o.viewedAt())) {
               store.addRejection(o.riderId(), now);
             }
             if (store.liveOffersInAttempt(o.attemptId(), now) == 0) {
@@ -174,17 +177,18 @@ public class DispatchEngine {
     Set<String> busy = store.ridersWithLiveOffer(now);
     List<String> ids =
         eligible.stream().map(Upstreams.Rider::riderId).filter(id -> !busy.contains(id)).toList();
-    Set<String> full = new HashSet<>(store.ridersAtOrAbove(ids, props.maxActiveDeliveries()));
-    full.addAll(
-        store.ridersAtOrAbove(
-            eligible.stream()
-                .filter(Upstreams.Rider::oneAtATime)
-                .map(Upstreams.Rider::riderId)
-                .toList(),
-            1));
+    Map<String, Integer> active = store.activeCounts(ids);
     Map<String, Upstreams.Rider> byId = new HashMap<>();
     eligible.forEach(r -> byId.put(r.riderId(), r));
-    List<String> free = ids.stream().filter(id -> !full.contains(id)).toList();
+    Map<String, Integer> room = new HashMap<>();
+    for (String id : ids) {
+      int limit = byId.get(id).oneAtATime() ? 1 : props.maxActiveDeliveries();
+      int left = limit - active.getOrDefault(id, 0);
+      if (left > 0) {
+        room.put(id, left);
+      }
+    }
+    List<String> free = ids.stream().filter(room::containsKey).toList();
 
     Map<String, Geo> located = new HashMap<>();
     Map<String, Double> straight = new HashMap<>();
@@ -197,7 +201,7 @@ public class DispatchEngine {
     }
 
     // 시도마다 반경 안·이번 회차 미제안 라이더
-    List<Set<String>> allowed = new ArrayList<>();
+    List<Set<String>> allowedSets = new ArrayList<>();
     Set<String> union = new HashSet<>();
     for (Ready r : ready) {
       Set<String> offered = store.offeredInRound(r.attempt().attemptId(), r.attempt().round());
@@ -207,7 +211,7 @@ public class DispatchEngine {
           ok.add(e.getKey());
         }
       }
-      allowed.add(ok);
+      allowedSets.add(ok);
       union.addAll(ok);
     }
     List<String> riders =
@@ -216,7 +220,7 @@ public class DispatchEngine {
             .limit(30) // 거리 행렬 한 번에 30개까지
             .toList();
 
-    int[][] pickup = new int[riders.size()][ready.size()];
+    // 라이더 → MFC 도로 소요(카카오모빌리티)
     Upstreams.Leg[] legs = new Upstreams.Leg[riders.size()];
     if (!riders.isEmpty()) {
       Upstreams.Leg[][] m =
@@ -225,83 +229,182 @@ public class DispatchEngine {
         legs[i] = m[i][0];
       }
     }
-    int[] readyIn = new int[ready.size()];
-    for (int d = 0; d < ready.size(); d++) {
-      Instant at = ready.get(d).delivery().readyOrEstimate();
-      readyIn[d] = at == null ? 0 : (int) Math.max(0, Duration.between(now, at).toSeconds());
-      for (int r = 0; r < riders.size(); r++) {
-        pickup[r][d] =
-            legs[r].ok() && allowed.get(d).contains(riders.get(r)) ? legs[r].durationS() : -1;
+    List<Integer> usable = new ArrayList<>();
+    for (int i = 0; i < riders.size(); i++) {
+      if (legs[i].ok()) {
+        usable.add(i);
       }
     }
-    AssignmentProblem problem = new AssignmentProblem(pickup, readyIn, props.lateWeight());
-    AssignmentProblem.Solution sol =
-        riders.isEmpty() ? problem.greedy() : solver.solve(problem, props.solverTimeLimit());
+    int nr = usable.size();
+    int nd = ready.size();
+    int[] pickup = new int[nr];
+    int[] capacity = new int[nr];
+    boolean[][] allowed = new boolean[nr][nd];
+    for (int i = 0; i < nr; i++) {
+      String id = riders.get(usable.get(i));
+      pickup[i] = legs[usable.get(i)].durationS();
+      capacity[i] = room.get(id);
+      for (int d = 0; d < nd; d++) {
+        allowed[i][d] = allowedSets.get(d).contains(id);
+      }
+    }
+    int[] readyIn = new int[nd];
+    int[] direct = new int[nd];
+    boolean[] bundlable = new boolean[nd];
+    for (int d = 0; d < nd; d++) {
+      DeliveryRow row = ready.get(d).delivery();
+      Instant at = row.readyOrEstimate();
+      readyIn[d] = at == null ? 0 : (int) Math.max(0, Duration.between(now, at).toSeconds());
+      direct[d] = row.dropDurationS() == null ? 0 : row.dropDurationS();
+      bundlable[d] = "BUNDLED".equals(row.deliveryMode()); // 알뜰배달만 묶는다(원문 §5.3)
+    }
+    int[][] between = betweenDrops(ready, bundlable);
+    List<BundleProblem.Bundle> bundles =
+        BundleProblem.candidates(
+            direct,
+            between,
+            bundlable,
+            Math.min(3, props.maxActiveDeliveries()),
+            (int) props.bundleMaxExtra().toSeconds());
+    BundleProblem problem =
+        new BundleProblem(pickup, allowed, capacity, readyIn, bundles, props.lateWeight());
+    BundleProblem.Solution sol =
+        nr == 0 ? problem.greedy() : solver.solve(problem, props.solverTimeLimit());
 
-    for (int d = 0; d < ready.size(); d++) {
-      Ready r = ready.get(d);
-      int idx = sol.riderForDelivery()[d];
-      if (idx >= 0) {
-        String riderId = riders.get(idx);
-        offer(r, byId.get(riderId), legs[idx], sol.solver(), now);
-      } else {
-        noCandidate(r.attempt().attemptId(), r.delivery().deliveryId(), now);
+    boolean[] offered = new boolean[nd];
+    for (int b = 0; b < bundles.size(); b++) {
+      int ri = sol.riderForBundle()[b];
+      if (ri < 0) {
+        continue;
+      }
+      BundleProblem.Bundle bundle = bundles.get(b);
+      String riderId = riders.get(usable.get(ri));
+      List<Ready> members = new ArrayList<>();
+      for (int d : bundle.deliveries()) {
+        members.add(ready.get(d));
+        offered[d] = true;
+      }
+      offer(members, byId.get(riderId), legs[usable.get(ri)], sol.solver(), now);
+    }
+    for (int d = 0; d < nd; d++) {
+      if (!offered[d]) {
+        noCandidate(ready.get(d).attempt().attemptId(), ready.get(d).delivery().deliveryId(), now);
       }
     }
   }
 
+  /** 알뜰배달 고객 사이 도로 소요(카카오모빌리티). 알뜰배달이 2건 미만이면 부르지 않는다. 실패는 묶음 없이(1건씩) 계산. */
+  private int[][] betweenDrops(List<Ready> ready, boolean[] bundlable) {
+    int nd = ready.size();
+    int[][] between = new int[nd][nd];
+    for (int[] row : between) {
+      java.util.Arrays.fill(row, -1);
+    }
+    List<Integer> idx = new ArrayList<>();
+    for (int d = 0; d < nd; d++) {
+      if (bundlable[d]) {
+        idx.add(d);
+      }
+    }
+    if (idx.size() < 2) {
+      return between;
+    }
+    List<Integer> use = idx.subList(0, Math.min(idx.size(), 10)); // 묶음 후보는 한 번에 10건까지
+    List<Geo> drops =
+        use.stream()
+            .map(d -> new Geo(ready.get(d).delivery().dropLat(), ready.get(d).delivery().dropLng()))
+            .toList();
+    try {
+      Upstreams.Leg[][] m = upstreams.matrix(drops, drops);
+      for (int i = 0; i < use.size(); i++) {
+        for (int j = 0; j < use.size(); j++) {
+          if (i != j && m[i][j].ok()) {
+            between[use.get(i)][use.get(j)] = m[i][j].durationS();
+          }
+        }
+      }
+    } catch (PmartException e) {
+      log.warn("알뜰배달 고객 사이 도로 거리 조회 실패({}) — 이번 판단은 묶지 않는다", e.code());
+    }
+    return between;
+  }
+
+  /** 묶음(1~3건) 제안 — 배송마다 제안 한 줄, 같은 bundleId·방문 순서. 모두 아직 배차 대기·탐색 중일 때만(행 잠금, 배송 ID 순). */
   private void offer(
-      Ready r, Upstreams.Rider rider, Upstreams.Leg leg, String solverName, Instant now) {
+      List<Ready> members,
+      Upstreams.Rider rider,
+      Upstreams.Leg leg,
+      String solverName,
+      Instant now) {
     tx.executeWithoutResult(
         s -> {
-          DeliveryRow d = store.lockDelivery(r.delivery().deliveryId()).orElse(null);
-          AttemptRow a = store.lockAttempt(r.attempt().attemptId()).orElse(null);
-          if (d == null
-              || a == null
-              || !"DISPATCHING".equals(d.state())
-              || !"SEARCHING".equals(a.state())) {
-            return;
+          List<Ready> sorted =
+              members.stream()
+                  .sorted(Comparator.comparing((Ready m) -> m.delivery().deliveryId()))
+                  .toList();
+          Map<String, DeliveryRow> d = new HashMap<>();
+          Map<String, AttemptRow> a = new HashMap<>();
+          for (Ready m : sorted) {
+            DeliveryRow x = store.lockDelivery(m.delivery().deliveryId()).orElse(null);
+            AttemptRow y = store.lockAttempt(m.attempt().attemptId()).orElse(null);
+            if (x == null
+                || y == null
+                || !"DISPATCHING".equals(x.state())
+                || !"SEARCHING".equals(y.state())) {
+              return;
+            }
+            d.put(x.deliveryId(), x);
+            a.put(x.deliveryId(), y);
           }
-          OfferRow o =
-              new OfferRow(
-                  "OFR-" + UUID.randomUUID(),
-                  a.attemptId(),
-                  d.deliveryId(),
-                  rider.riderId(),
-                  a.round(),
-                  "AI_RECOMMENDED",
-                  r.radiusKm(),
-                  "SENT",
-                  now,
-                  now.plus(props.offerTimeout()),
-                  null,
-                  null,
-                  null,
-                  null,
-                  leg.distanceM(),
-                  leg.durationS(),
-                  FeeTable.estimate(rider.vehicleType(), d.dropDistanceM()),
-                  rider.vehicleType());
-          store.insertOffer(o);
-          store.updateAttempt(
-              a.attemptId(),
-              "OFFERING",
-              a.stage(),
-              a.stageStartedAt(),
-              a.retryCount(),
-              a.round(),
-              o.expiresAt(),
-              null,
-              null);
-          store.markAttempt(a.attemptId(), true, false, false);
-          events.offerSent(d, o);
+          String bundleId = members.size() > 1 ? "BDL-" + UUID.randomUUID() : null;
+          Instant expires = now.plus(props.offerTimeout());
+          int seq = 0;
+          for (Ready m : members) {
+            seq++;
+            DeliveryRow x = d.get(m.delivery().deliveryId());
+            AttemptRow y = a.get(m.delivery().deliveryId());
+            OfferRow o =
+                new OfferRow(
+                    "OFR-" + UUID.randomUUID(),
+                    y.attemptId(),
+                    x.deliveryId(),
+                    rider.riderId(),
+                    y.round(),
+                    "AI_RECOMMENDED",
+                    m.radiusKm(),
+                    "SENT",
+                    now,
+                    expires,
+                    null,
+                    null,
+                    null,
+                    null,
+                    leg.distanceM(),
+                    leg.durationS(),
+                    FeeTable.estimate(rider.vehicleType(), x.dropDistanceM()),
+                    rider.vehicleType(),
+                    bundleId,
+                    members.size(),
+                    seq);
+            store.insertOffer(o);
+            store.updateAttempt(
+                y.attemptId(),
+                "OFFERING",
+                y.stage(),
+                y.stageStartedAt(),
+                y.retryCount(),
+                y.round(),
+                expires,
+                null,
+                null);
+            store.markAttempt(y.attemptId(), true, false, false);
+            events.offerSent(x, o);
+          }
           log.info(
-              "제안 {} 배송 {} → 라이더 {} (단계 {}·반경 {}km, {})",
-              o.offerId(),
-              d.deliveryId(),
+              "제안 배송 {}건{} → 라이더 {} ({})",
+              members.size(),
+              bundleId == null ? "" : " 묶음 " + bundleId,
               rider.riderId(),
-              a.stage(),
-              r.radiusKm(),
               solverName);
         });
   }

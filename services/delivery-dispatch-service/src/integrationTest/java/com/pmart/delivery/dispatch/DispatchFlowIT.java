@@ -488,10 +488,184 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("CANCELLED");
   }
 
+  @Test
+  void bundledDeliveriesAreOfferedAsOneBundleAndAcceptedTogether() {
+    String mfc = "MFC-D5";
+    String rider = "RD-b-" + UUID.randomUUID();
+    riders(mfc, rider(rider, "AI_RECOMMENDED", true));
+    riderLookup(rider(rider, "AI_RECOMMENDED", true));
+    locations(Map.of(rider, new double[] {37.4985, 127.0280}));
+    String orderA = "ORD-A-" + UUID.randomUUID();
+    String orderB = "ORD-B-" + UUID.randomUUID();
+    bundledOrder(orderA, "IT-ROAD-A", 37.5006, 127.0360);
+    bundledOrder(orderB, "IT-ROAD-B", 37.5012, 127.0372);
+    // 고객 A ↔ B 120초(두 순서 모두)
+    for (String q :
+        List.of("37.5006,127.036;37.5012,127.0372", "37.5012,127.0372;37.5006,127.036")) {
+      up.stubFor(
+          get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+              .atPriority(0)
+              .withQueryParam("origins", equalTo(q))
+              .willReturn(json(square(120))));
+    }
+    String a = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-5a-" + orderA, orderA);
+    String b = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-5b-" + orderB, orderB);
+
+    engine.tick();
+
+    List<Map<String, Object>> offers =
+        jdbc.queryForList(
+            "SELECT offer_id, delivery_id, bundle_id, bundle_size, stop_seq, rider_id FROM dispatch_offer"
+                + " WHERE delivery_id IN (?, ?) AND state = 'SENT' ORDER BY stop_seq",
+            a,
+            b);
+    assertThat(offers).hasSize(2);
+    assertThat(offers.get(0).get("bundle_id"))
+        .isNotNull()
+        .isEqualTo(offers.get(1).get("bundle_id"));
+    assertThat(offers).allSatisfy(o -> assertThat(o.get("bundle_size")).isEqualTo(2));
+    assertThat(offers).allSatisfy(o -> assertThat(o.get("rider_id")).isEqualTo(rider));
+    assertThat(offers.stream().map(o -> o.get("stop_seq")).toList()).containsExactly(1, 2);
+
+    JsonNode mine =
+        body(
+            http.get()
+                .uri("/offers")
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(mine.path("items")).hasSize(2);
+    assertThat(mine.path("items").get(0).path("bundleSize").asInt()).isEqualTo(2);
+
+    String second = (String) offers.get(1).get("offer_id");
+    JsonNode ok = body(respond(rider, second, "k-" + second, "ACCEPT"));
+    assertThat(ok.path("outcome").asString()).isEqualTo("ASSIGNED");
+    for (String id : List.of(a, b)) {
+      Map<String, Object> d =
+          jdbc.queryForMap(
+              "SELECT state, rider_id, bundle_id, stop_seq FROM delivery WHERE delivery_id = ?",
+              id);
+      assertThat(d.get("state")).isEqualTo("ASSIGNED");
+      assertThat(d.get("rider_id")).isEqualTo(rider);
+      assertThat(d.get("bundle_id")).isEqualTo(offers.get(0).get("bundle_id"));
+      assertThat(outbox(id, "DeliveryAssigned").path("payload").path("riderId").asString())
+          .isEqualTo(rider);
+    }
+    JsonNode view =
+        body(
+            http.get()
+                .uri("/internal/deliveries/{id}/assignment", b)
+                .header("X-Source-System", "order-orchestration-service")
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(view.path("stopSequence").asInt())
+        .isEqualTo(
+            ((Number)
+                    jdbc.queryForObject(
+                        "SELECT stop_seq FROM delivery WHERE delivery_id = ?", Integer.class, b))
+                .intValue());
+  }
+
+  @Test
+  void rejectingABundleRejectsEveryDeliveryOnce() {
+    String mfc = "MFC-D6";
+    String rider = "RD-x-" + UUID.randomUUID();
+    riders(mfc, rider(rider, "AI_RECOMMENDED", true));
+    riderLookup(rider(rider, "AI_RECOMMENDED", true));
+    locations(Map.of(rider, new double[] {37.4985, 127.0280}));
+    String orderA = "ORD-C-" + UUID.randomUUID();
+    String orderB = "ORD-D-" + UUID.randomUUID();
+    bundledOrder(orderA, "IT-ROAD-C", 37.5020, 127.0300);
+    bundledOrder(orderB, "IT-ROAD-D", 37.5024, 127.0310);
+    for (String q : List.of("37.502,127.03;37.5024,127.031", "37.5024,127.031;37.502,127.03")) {
+      up.stubFor(
+          get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+              .atPriority(0)
+              .withQueryParam("origins", equalTo(q))
+              .willReturn(json(square(90))));
+    }
+    String a = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-6a-" + orderA, orderA);
+    String b = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-6b-" + orderB, orderB);
+    engine.tick();
+    String first =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            a);
+    JsonNode rej = body(respond(rider, first, "r-" + first, "REJECT"));
+    assertThat(rej.path("outcome").asString()).isEqualTo("REJECTED");
+    assertThat(rej.path("consecutiveRejections").asInt()).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM dispatch_offer WHERE delivery_id IN (?, ?) AND state = 'REJECTED'",
+                Integer.class,
+                a,
+                b))
+        .isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM dispatch_attempt WHERE delivery_id IN (?, ?) AND state = 'SEARCHING'",
+                Integer.class,
+                a,
+                b))
+        .isEqualTo(2);
+  }
+
+  private void bundledOrder(String orderId, String road, double lat, double lng) {
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/delivery-destination"))
+            .atPriority(1)
+            .willReturn(
+                json(
+                    Map.of(
+                        "orderId",
+                        orderId,
+                        "mfcId",
+                        "x",
+                        "status",
+                        "CONFIRMED",
+                        "deliveryMode",
+                        "BUNDLED",
+                        "roadAddress",
+                        road))));
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/address-geocodes"))
+            .atPriority(1)
+            .withQueryParam("query", equalTo(road))
+            .willReturn(
+                json(
+                    Map.of(
+                        "results",
+                        List.of(Map.of("lat", lat, "lng", lng, "jibunAddress", "서울 강남구 역삼동 1"))))));
+  }
+
+  private static Map<String, Object> square(int seconds) {
+    return Map.of(
+        "provider",
+        "KAKAO_MOBILITY",
+        "fallback",
+        false,
+        "rows",
+        List.of(
+            Map.of(
+                "elements",
+                List.of(
+                    Map.of("status", "OK", "distanceM", 0, "durationSeconds", 0),
+                    Map.of("status", "OK", "distanceM", 500, "durationSeconds", seconds))),
+            Map.of(
+                "elements",
+                List.of(
+                    Map.of("status", "OK", "distanceM", 500, "durationSeconds", seconds),
+                    Map.of("status", "OK", "distanceM", 0, "durationSeconds", 0)))));
+  }
+
   // ---------- 도우미 ----------
 
   private String readyShipment(String mfc, String shipment, String packageId) {
-    String order = "ORD-" + UUID.randomUUID();
+    return readyShipment(mfc, shipment, packageId, "ORD-" + UUID.randomUUID());
+  }
+
+  private String readyShipment(String mfc, String shipment, String packageId, String order) {
     send(
         "ShipmentReady",
         shipment,

@@ -1,14 +1,15 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
     취소된 주문에는 신규 배차를 차단한다. 픽업 후 배차 취소는 지원센터(case) 경로다.
     2026-11-13(ADR-0058·사용자 결정): 배차 방식은 AI 추천(서버가 제안)과 일반(배달리스트에서 골라 수락) 두 가지. 반경 단계는 라이더 탐색·제안 정책이고 반경은 MFC 중심 직선거리.
     도로 거리·시간은 delivery-tracking 거리 행렬(카카오모빌리티). AI 추천 계산은 Python AI 최적화 서버 전까지 OR-Tools 배정. 배차 가능 시간 08~24시(Asia/Seoul).
-    배송 생성은 MFC 사건(DispatchRequested·ShipmentReady, mfc.fulfillment.v1)으로 한다 — 출고(shipmentId)당 배송 하나.
+    배송 생성은 MFC 사건(DispatchRequested·ShipmentReady, mfc.fulfillment.v1)으로 한다 — 출고(shipmentId)당 배송 하나. 배차는 점원 요청(DispatchRequested)으로만 시작한다(BR-51).
+    알뜰배달(deliveryMode BUNDLED)은 같은 MFC 의 알뜰배달 1~3건을 한 라이더에게 묶어 제안한다(원문 §5.3, 사용자 2026-11-13 '묶음 배정으로 진행'). 묶음의 제안은 배송마다 한 줄이고 bundleId·stopSequence(방문 순서)가 같다 — 하나를 수락·거절하면 묶음 전체에 적용된다. 한집·예약배달은 묶지 않는다.
 servers:
   - url: /api/v1
 security:
@@ -124,6 +125,7 @@ paths:
       summary: 라이더 제안 응답 (ACCEPT | REJECT)
       description: |
         응답 대기 1분. 동시 수락은 1명만 ASSIGNED, 나머지는 LATE 분류 ALREADY_ASSIGNED.
+        묶음 제안(bundleId 있음)은 묶음 전체가 한 번에 판정된다 — 모두 배정되거나(ASSIGNED, 배송마다 DeliveryAssigned) 하나라도 안 되면 전체 LATE. 거절도 묶음 전체(연속 거절은 1회).
         늦은 수락은 200으로 응답하되 outcome=LATE와 lateReason(EXPIRED / ALREADY_ASSIGNED / ORDER_CANCELLED / INELIGIBLE)을 반환한다.
         거절 5회 연속 시 안내(consecutiveRejections). 라이더가 하나씩 배달하기 설정이고 진행 중 배송이 있으면 INELIGIBLE.
       operationId: respondToOffer
@@ -412,6 +414,9 @@ components:
         state: { type: string, enum: [SENT, ACCEPTED, REJECTED, EXPIRED, LATE, SEND_FAILED, SUPERSEDED] }
         viewedAt: { type: [string, 'null'], format: date-time, description: 라이더가 처음 상세를 연 시각(원문 §4.4), x-added-in: '2026-11-13' }
         source: { type: string, enum: [AI_RECOMMENDED, DELIVERY_LIST], description: 'AI 추천 제안 / 배달리스트 수락 기록', x-added-in: '2026-11-13' }
+        bundleId: { type: [string, 'null'], description: '알뜰배달 묶음 — 같은 값의 제안은 한 번에 수락·거절', x-added-in: '2026-11-13' }
+        bundleSize: { type: integer, minimum: 1, maximum: 3, description: '묶음 배송 수(묶음 아니면 1)', x-added-in: '2026-11-13' }
+        stopSequence: { type: integer, minimum: 1, description: '묶음 안 고객 방문 순서(1부터)', x-added-in: '2026-11-13' }
         summary:
           type: object
           description: 라이더 표시용 (타 고객 주소 비노출)
@@ -480,6 +485,8 @@ components:
         vehicleType: { type: string }
         state: { type: string, enum: [ASSIGNED, PICKED_UP, CANCELLED, COMPLETED] }
         assignedAt: { type: string, format: date-time }
+        bundleId: { type: [string, 'null'], description: 알뜰배달 묶음, x-added-in: '2026-11-13' }
+        stopSequence: { type: [integer, 'null'], description: 묶음 안 방문 순서, x-added-in: '2026-11-13' }
         pickedUpAt: { type: string, format: date-time, description: PackageHandedOver 수신 시각 }
         handoverIds: { type: array, items: { type: string } }
         cancelledAt: { type: string, format: date-time }

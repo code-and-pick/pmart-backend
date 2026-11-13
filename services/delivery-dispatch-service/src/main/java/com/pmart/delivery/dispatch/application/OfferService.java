@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -108,11 +109,16 @@ public class OfferService {
   public OfferView offer(String offerId) {
     String riderId = requireRider();
     OfferRow o = ownOffer(offerId, riderId);
-    store.markViewed(offerId, clock.instant());
+    Instant now = clock.instant();
+    // 묶음은 한 화면이라 묶음 전체를 확인한 것으로 본다(원문 §4.4 거절 횟수 판정)
+    for (OfferRow x : group(o)) {
+      store.markViewed(x.offerId(), now);
+    }
     OfferRow fresh = store.offer(offerId).orElse(o);
     return new OfferView(fresh, store.delivery(o.deliveryId()).orElseThrow());
   }
 
+  /** 제안 응답. 묶음(bundleId)은 묶음 전체를 한 번에 판정한다 — 모두 배정되거나 전부 LATE, 거절도 전체(연속 거절 1회). */
   public OfferResult respond(
       String offerId,
       String requestId,
@@ -137,56 +143,138 @@ public class OfferService {
             () -> {
               Instant now = clock.instant();
               OfferRow peek = store.offer(offerId).orElseThrow();
-              DeliveryRow d = store.lockDelivery(peek.deliveryId()).orElseThrow();
-              OfferRow o = store.lockOffer(offerId).orElseThrow();
-              if ("ACCEPTED".equals(o.state())) {
-                return result(o, "ASSIGNED", null, d.assignmentId(), now);
+              List<OfferRow> peekGroup = group(peek);
+              // 배송 행을 ID 순으로 잠근다(같은 묶음을 두 요청이 동시에 잡아도 교착 없음)
+              Map<String, DeliveryRow> deliveries = new HashMap<>();
+              peekGroup.stream()
+                  .map(OfferRow::deliveryId)
+                  .sorted()
+                  .forEach(id -> deliveries.put(id, store.lockDelivery(id).orElseThrow()));
+              List<OfferRow> offers =
+                  peekGroup.stream().map(x -> store.lockOffer(x.offerId()).orElseThrow()).toList();
+              OfferRow me =
+                  offers.stream()
+                      .filter(x -> x.offerId().equals(offerId))
+                      .findFirst()
+                      .orElseThrow();
+              if ("ACCEPTED".equals(me.state())) {
+                return result(
+                    me, "ASSIGNED", null, deliveries.get(me.deliveryId()).assignmentId(), now);
               }
-              if (!"SENT".equals(o.state())) {
+              OfferRow closed =
+                  offers.stream().filter(x -> !"SENT".equals(x.state())).findFirst().orElse(null);
+              if (closed != null) {
                 String late =
-                    "SUPERSEDED".equals(o.state())
-                        ? (Optional.ofNullable(o.lateReason()).orElse("ALREADY_ASSIGNED"))
-                        : "EXPIRED";
-                return result(o, "LATE", late, null, now);
+                    switch (closed.state()) {
+                      case "SUPERSEDED", "LATE" ->
+                          Optional.ofNullable(closed.lateReason()).orElse("ALREADY_ASSIGNED");
+                      default -> "EXPIRED";
+                    };
+                lateGroup(offers, late, now);
+                return result(me, "LATE", late, null, now);
+              }
+              if (!now.isBefore(me.expiresAt())) {
+                return expiredGroup(offers, me, now);
               }
               if ("REJECT".equals(response)) {
-                if (!now.isBefore(o.expiresAt())) {
-                  return expired(o, now);
+                for (OfferRow x : offers) {
+                  store.decideOffer(x.offerId(), "REJECTED", now, rejectReason, null);
+                  store.markAttempt(x.attemptId(), false, true, false);
                 }
-                store.decideOffer(offerId, "REJECTED", now, rejectReason, null);
-                store.markAttempt(o.attemptId(), false, true, false);
                 int n = store.addRejection(riderId, now);
-                if (store.liveOffersInAttempt(o.attemptId(), now) == 0) {
-                  store.searchAgain(o.attemptId(), now);
-                }
+                searchAgain(offers, now);
                 return new OfferResult(
                     offerId,
                     "REJECTED",
                     null,
-                    o.deliveryId(),
+                    me.deliveryId(),
                     null,
                     n,
                     AcceptRules.rejectionNotice(n, props.rejectionNotice()),
                     now);
               }
-              AcceptRules.Verdict v =
-                  AcceptRules.judge(
-                      d.state(),
-                      o.expiresAt(),
-                      now,
-                      snapshot(rider, riderId),
-                      props.maxActiveDeliveries());
-              if (!v.ok()) {
-                if (v.late() == AcceptRules.LateReason.EXPIRED) {
-                  return expired(o, now);
+              // 묶음 전체를 맡을 수 있어야 한다 — 지금 맡은 수 + (묶음 − 1) 로 한도를 본다
+              AcceptRules.RiderSnapshot snap =
+                  rider
+                      .map(
+                          r ->
+                              new AcceptRules.RiderSnapshot(
+                                  r.acceptsNewDispatch(),
+                                  r.oneAtATime(),
+                                  store.activeDeliveries(riderId) + offers.size() - 1))
+                      .orElse(null);
+              for (OfferRow x : offers) {
+                AcceptRules.Verdict v =
+                    AcceptRules.judge(
+                        deliveries.get(x.deliveryId()).state(),
+                        x.expiresAt(),
+                        now,
+                        snap,
+                        props.maxActiveDeliveries());
+                if (!v.ok()) {
+                  if (v.late() == AcceptRules.LateReason.EXPIRED) {
+                    return expiredGroup(offers, me, now);
+                  }
+                  lateGroup(offers, v.late().name(), now);
+                  return result(me, "LATE", v.late().name(), null, now);
                 }
-                store.decideOffer(offerId, "LATE", now, null, v.late().name());
-                return result(o, "LATE", v.late().name(), null, now);
               }
-              String assignmentId = transitions.assign(d, riderId, offerId, now);
-              return result(o, "ASSIGNED", null, assignmentId, now);
+              String myAssignment = null;
+              for (OfferRow x : offers) {
+                String assignmentId =
+                    transitions.assign(
+                        deliveries.get(x.deliveryId()),
+                        riderId,
+                        x.offerId(),
+                        x.bundleId(),
+                        x.stopSeq(),
+                        now);
+                if (x.offerId().equals(offerId)) {
+                  myAssignment = assignmentId;
+                }
+              }
+              return result(me, "ASSIGNED", null, myAssignment, now);
             })
         .value();
+  }
+
+  private List<OfferRow> group(OfferRow o) {
+    return o.bundleId() == null ? List.of(o) : store.bundleOffers(o.bundleId());
+  }
+
+  /** 묶음의 남은 SENT 제안을 LATE 로 닫고 그 시도들은 다시 탐색. */
+  private void lateGroup(List<OfferRow> offers, String reason, Instant now) {
+    for (OfferRow x : offers) {
+      if ("SENT".equals(x.state())) {
+        store.decideOffer(x.offerId(), "LATE", now, null, reason);
+      }
+    }
+    searchAgain(offers, now);
+  }
+
+  private OfferResult expiredGroup(List<OfferRow> offers, OfferRow me, Instant now) {
+    boolean counted = false;
+    for (OfferRow x : offers) {
+      if (!"SENT".equals(x.state())) {
+        continue;
+      }
+      store.decideOffer(x.offerId(), "EXPIRED", now, null, null);
+      store.markAttempt(x.attemptId(), false, false, true);
+      if (!counted && AcceptRules.expiryCountsAsRejection(x.viewedAt())) {
+        store.addRejection(x.riderId(), now);
+        counted = true;
+      }
+    }
+    searchAgain(offers, now);
+    return result(me, "LATE", "EXPIRED", null, now);
+  }
+
+  private void searchAgain(List<OfferRow> offers, Instant now) {
+    for (OfferRow x : offers) {
+      if (store.liveOffersInAttempt(x.attemptId(), now) == 0) {
+        store.searchAgain(x.attemptId(), now);
+      }
+    }
   }
 
   // ---------- 일반 배차모드 배달리스트 ----------
@@ -279,7 +367,10 @@ public class OfferService {
                       d.dropDistanceM() == null || vehicle == null
                           ? 0
                           : FeeTable.estimate(vehicle, d.dropDistanceM()),
-                      vehicle);
+                      vehicle,
+                      null,
+                      1,
+                      1);
               if (o.attemptId() == null) {
                 throw PmartException.notFound("DELIVERY_NOT_FOUND", "배차 대기 배송이 아닙니다.");
               }
@@ -287,25 +378,13 @@ public class OfferService {
               if (late != null) {
                 return result(o, "LATE", late, null, now);
               }
-              String assignmentId = transitions.assign(d, riderId, o.offerId(), now);
+              String assignmentId = transitions.assign(d, riderId, o.offerId(), null, 1, now);
               return result(o, "ASSIGNED", null, assignmentId, now);
             })
         .value();
   }
 
   // ---------- 공통 ----------
-
-  private OfferResult expired(OfferRow o, Instant now) {
-    store.decideOffer(o.offerId(), "EXPIRED", now, null, null);
-    store.markAttempt(o.attemptId(), false, false, true);
-    if (AcceptRules.expiryCountsAsRejection(o.viewedAt())) {
-      store.addRejection(o.riderId(), now);
-    }
-    if (store.liveOffersInAttempt(o.attemptId(), now) == 0) {
-      store.searchAgain(o.attemptId(), now);
-    }
-    return result(o, "LATE", "EXPIRED", null, now);
-  }
 
   private AcceptRules.@Nullable RiderSnapshot snapshot(
       Optional<Upstreams.Rider> rider, String riderId) {

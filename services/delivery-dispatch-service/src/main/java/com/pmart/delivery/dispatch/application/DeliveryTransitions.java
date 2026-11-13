@@ -5,6 +5,7 @@ import com.pmart.delivery.dispatch.infrastructure.DispatchStore.AttemptRow;
 import com.pmart.delivery.dispatch.infrastructure.DispatchStore.DeliveryRow;
 import java.time.Instant;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 
 /** 배송 상태 바꾸기(배정·픽업 전 취소·배차 실패) — 호출자 트랜잭션·배송 행 잠금 아래, 바뀐 사실과 사건을 함께 쓴다. */
@@ -19,12 +20,21 @@ public class DeliveryTransitions {
     this.events = events;
   }
 
-  /** 유효 수락 1건 확정(원문 §3.3). 나머지 제안은 SUPERSEDED(이미 배정). @return assignmentId */
-  public String assign(DeliveryRow d, String riderId, String offerId, Instant now) {
+  /**
+   * 유효 수락 1건 확정(원문 §3.3) — 알뜰배달 묶음이면 묶음 ID·방문 순서도. 나머지 제안은 SUPERSEDED(이미 배정). @return assignmentId
+   */
+  public String assign(
+      DeliveryRow d,
+      String riderId,
+      String offerId,
+      @Nullable String bundleId,
+      int stopSeq,
+      Instant now) {
     String assignmentId = "ASG-" + UUID.randomUUID();
     int version = d.assignmentVersion() + 1;
     store.decideOffer(offerId, "ACCEPTED", now, null, null);
     store.assign(d.deliveryId(), riderId, assignmentId, version, offerId, now);
+    store.setBundle(d.deliveryId(), bundleId, stopSeq);
     store.supersedeOpenOffers(d.deliveryId(), now, "ALREADY_ASSIGNED");
     store
         .openAttempt(d.deliveryId())

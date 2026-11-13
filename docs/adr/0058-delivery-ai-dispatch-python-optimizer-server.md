@@ -19,6 +19,10 @@
 7. **Spring 쪽은 계산 엔진을 포트 뒤에 둔다**(`application` 포트, `infrastructure` 에 AI 서버 어댑터·OR-Tools 어댑터). 알뜰배달의 방문 순서를 OR-Tools 로 계산하면 delivery-dispatch 는 ADR-0053 대상(JVM) — 넣는 커밋에서 ADR-0053 표·서비스 CLAUDE.md 를 고친다.
 8. Gradle 로 빌드하지 않는다(Python 은 자기 의존성 파일 + Docker 이미지). Gradle 쪽에 Maven 등 빌드 체계를 더하는 것이 아니다.
 
+## 덧붙임 (2026-11-13)
+- **알뜰배달은 묶음 배정**(사용자 "알뜰배달은 한건씩 배정하지 말고 묶음 배정으로 진행한다"): 같은 MFC 의 알뜰배달(BUNDLED) 1~3건을 한 라이더에게 묶어 제안(배송마다 제안, 같은 bundleId·방문 순서, 수락·거절은 묶음 전체). 지금 계산은 OR-Tools CP-SAT(라이더 ↔ 묶음) — 결정 3·7. 묶을지는 "라이더 → MFC 이동 한 번 절약 vs 뒤 고객 도착 지연"을 비용으로 비교, 어느 배송이든 바로 갈 때보다 20분 넘게 늦으면 안 묶음(설계값, 사용자 확인 필요). 한집·예약배달은 묶지 않는다.
+- Python AI 서버 세부의 **후보(추천 먼저)** — 사용자 결정 대기: 이름 `delivery-dispatch-optimizer` / 위치 `pmart-backend/ai-services/delivery-dispatch-optimizer/` / FastAPI + uvicorn + pydantic, uv, `python:3.12-slim` + PyTorch CPU / **RouteFinder 먼저**(ai4co, 관리 중, HF 가중치, 열린 경로·용량·시간창 변형) — GreedRL 은 2022년 이후 정체·CUDA 빌드 위험 / PC 5 CPU 로 시작 / 응답 없음(시간 초과 3초)이면 OR-Tools 배정으로 대신 + 경고.
+
 ## 구현 때 정할 것(남은 것)
 - 서버 이름·저장소 안 위치(예: `ai-services/delivery-dispatch-optimizer/`)·Python 웹 프레임워크·패키지 관리 도구 — 만들기 전에 정해 이 ADR 에 덧붙인다.
 - GreedRL·RouteFinder 중 무엇을 먼저(원문 "또는"), 모델 입력 형식·추가 학습·성능 검증(원문 §2.1 ③ "적용 작업").

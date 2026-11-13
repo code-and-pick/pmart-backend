@@ -55,7 +55,9 @@ public class DispatchStore {
       @Nullable Instant cancelledAt,
       @Nullable String cancelReason,
       Instant createdAt,
-      Instant updatedAt) {
+      Instant updatedAt,
+      @Nullable String bundleId,
+      @Nullable Integer stopSeq) {
 
     public boolean geoReady() {
       return mfcLat != null && dropLat != null && dropDistanceM != null;
@@ -102,7 +104,10 @@ public class DispatchStore {
       @Nullable Integer pickupDistanceM,
       @Nullable Integer pickupDurationS,
       int fee,
-      @Nullable String vehicleType) {}
+      @Nullable String vehicleType,
+      @Nullable String bundleId,
+      int bundleSize,
+      int stopSeq) {}
 
   private final JdbcTemplate jdbc;
 
@@ -451,7 +456,8 @@ public class DispatchStore {
     jdbc.update(
         "INSERT INTO dispatch_offer (offer_id, attempt_id, delivery_id, rider_id, round, source,"
             + " radius_km, state, sent_at, expires_at, decided_at, pickup_distance_m,"
-            + " pickup_duration_s, fee, vehicle_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            + " pickup_duration_s, fee, vehicle_type, bundle_id, bundle_size, stop_seq) VALUES (?, ?, ?, ?, ?,"
+            + " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         o.offerId(),
         o.attemptId(),
         o.deliveryId(),
@@ -466,7 +472,43 @@ public class DispatchStore {
         o.pickupDistanceM(),
         o.pickupDurationS(),
         o.fee(),
-        o.vehicleType());
+        o.vehicleType(),
+        o.bundleId(),
+        o.bundleSize(),
+        o.stopSeq());
+  }
+
+  /** 같은 묶음의 제안(방문 순서). */
+  public List<OfferRow> bundleOffers(String bundleId) {
+    return jdbc.query(
+        "SELECT * FROM dispatch_offer WHERE bundle_id = ? ORDER BY stop_seq",
+        (rs, i) -> offer(rs),
+        bundleId);
+  }
+
+  public void setBundle(String deliveryId, @Nullable String bundleId, int stopSeq) {
+    jdbc.update(
+        "UPDATE delivery SET bundle_id = ?, stop_seq = ? WHERE delivery_id = ?",
+        bundleId,
+        stopSeq,
+        deliveryId);
+  }
+
+  /** 라이더별 맡고 있는 배송 수(배정 ~ 픽업). */
+  public java.util.Map<String, Integer> activeCounts(Collection<String> riderIds) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    if (riderIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT rider_id, count(*) FROM delivery WHERE state IN ('ASSIGNED', 'PICKED_UP') AND rider_id IN ("
+            + in(riderIds.size())
+            + ") GROUP BY rider_id",
+        rs -> {
+          out.put(rs.getString(1), rs.getInt(2));
+        },
+        riderIds.toArray());
+    return out;
   }
 
   public Optional<OfferRow> offer(String offerId) {
@@ -657,7 +699,9 @@ public class DispatchStore {
         instant(rs, "cancelled_at"),
         rs.getString("cancel_reason"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("bundle_id"),
+        rs.getObject("stop_seq", Integer.class));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {
@@ -698,7 +742,10 @@ public class DispatchStore {
         rs.getObject("pickup_distance_m", Integer.class),
         rs.getObject("pickup_duration_s", Integer.class),
         rs.getInt("fee"),
-        rs.getString("vehicle_type"));
+        rs.getString("vehicle_type"),
+        rs.getString("bundle_id"),
+        rs.getInt("bundle_size"),
+        rs.getInt("stop_seq"));
   }
 
   private static @Nullable Instant instant(ResultSet rs, String col) throws SQLException {

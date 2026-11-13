@@ -78,6 +78,9 @@ class DispatchViews {
         .state(Offer.StateEnum.fromValue(o.state()))
         .viewedAt(time(o.viewedAt()))
         .source(Offer.SourceEnum.fromValue(o.source()))
+        .bundleId(o.bundleId())
+        .bundleSize(o.bundleSize())
+        .stopSequence(o.stopSeq())
         .summary(
             new OfferSummary()
                 .mfcId(d.mfcId())
@@ -197,6 +200,8 @@ class DispatchViews {
         .riderId(d.riderId())
         .state(state)
         .assignedAt(time(d.assignedAt()))
+        .bundleId(d.bundleId())
+        .stopSequence(d.stopSeq())
         .pickedUpAt(time(d.pickedUpAt()))
         .cancelledAt(time(d.cancelledAt()))
         .version(d.assignmentVersion());
