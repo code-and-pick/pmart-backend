@@ -35,10 +35,10 @@ delivery 영역(`docs/operations/pc-split.md` §1 — PC 5, 192.168.0.101)을 �
 ## 4. 남은 결정 (사용자 — 손대기 전에 확인)
 
 kickoff §6 "남은 결정"이 정본. 요약:
-- AI 배정 계산 엔진(원문은 Python GreedRL·RouteFinder, `tech-stack.md` 는 Python 을 별도 승인으로 둠)
+- ~~AI 배정 계산 엔진~~ — **결정 2026-11-13**: Python AI 최적화 서버(GreedRL·RouteFinder), Spring 이 계산 요청(ADR-0058). 서버 세부(이름·위치·프레임워크·장애 때 대체)는 ADR-0058 "구현 때 정할 것"
 - 라이더 앱 기반(`code-and-pick/PMart-Delivery-Test` 후보 — 검토 결과는 kickoff)
-- 카카오모빌리티 REST 키 등록(사용자가 별도 터미널에서 — 키를 채팅·`!` 명령으로 넣지 않는다)
-- 배차 가능 시간 09~24시 vs LAN 시험 센터 주문 08~24시 충돌
+- ~~카카오모빌리티 REST 키~~ — **2026-11-13 받음**: PC 5 `deploy/lan/.secrets/kakao-rest-api-key`(git 제외, 길찾기 호출 확인). LAN 설정(pmart-config `{cipher}`) 등록은 PC 1. 키를 문서·커밋·로그에 적지 않는다
+- ~~배차 가능 시간 충돌~~ — **결정 2026-11-13: PMart 배달 서비스 시간 08~24시**
 - CP-1(`CapacityReduced` 영향 주문 처리) — 사용자 결정 필요, 오배송 확인 사건 기록 주체(DD-2)
 
 ## 5. 토큰·시험

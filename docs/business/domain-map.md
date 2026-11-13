@@ -46,5 +46,5 @@
 | 주류 인증 | Delivery "라이더 신분증·서명" | OMS·Commerce `[확정 정책]` PG 인증 통합 | PG 인증 통합 |
 | 분할 기준 | Delivery "10kg 이상" | OMS "10,000g 초과" | 10,000g 초과 (정확히 10kg은 미분할) |
 | 재고 차감 시점 | Delivery "출고 시 차감 예시" | MFC IV-08 "실제 인계 시 H−q" | 인계 시 차감 |
-| 배차 가능 시간 | Delivery "09:00~24:00" | OMS "00:00~08:00 배송 없음, 08/09시 개시 차이 미확정" | `[결정 필요]` 운영값 |
+| 배차 가능 시간 | Delivery "09:00~24:00" | OMS "00:00~08:00 배송 없음, 08/09시 개시 차이 미확정" | **08:00~24:00**(사용자 2026-11-13 — PMart 배달 서비스 시간) |
 | Saga 방식 | CLAUDE.md "choreography 기본" | CLAUDE.md `order-orchestration-service` 존재, OMS A.1.15 사가 단계 추적 | 주문 사가는 orchestration, 전파는 choreography (ADR-0003) |

@@ -22,8 +22,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 5 — delivery 영역
 
-- [ ] 공통 절 전부(gh·포크·`./gradlew --stop` — 2026-11-13 기준 PC 1 에서 확인한 기록 없음)
-- [ ] `docs/delivery/HANDOVER.md` 읽기 — 첫 일은 DD-1(배차), 손대기 전 남은 결정 확인(§4)
+- [x] 공통 절 전부(gh·포크·`./gradlew --stop`) — 2026-11-13: 저장소 형제(`pmart-backend`·`pmart-clients`, 시뮬레이터는 delivery 에 불필요), gh `piaa1004` 로그인·포크 `piaa1004/pmart-backend`·`fork` remote, 비밀번호 파일 4개 `deploy/lan/.secrets/`(루트 `.secrets/` 없음), Gradle 제한 파일 있음·`--stop`, 루트 CA 설치 확인. 주의: gh 는 설치돼 있지만 PATH 에 없는 터미널이 있음(`C:\Program Files\GitHub CLI\gh.exe`)
+- [x] `docs/delivery/HANDOVER.md` 읽기 — 2026-11-13. 남은 결정 중 AI 엔진(ADR-0058)·배달 시간 08~24시·카카오 키는 사용자가 정함(kickoff §6). 남은 것: 라이더 앱 기반·CP-1·오배송 확인 기록 주체
 - [ ] 배송 쪽 직원 시험 계정은 없다 — 배송 관리 API 를 직원 토큰으로 시험해야 하면 PC 1 에 요청(인사팀 등록으로 만든다)
 - [ ] LAN 서비스가 많은 PC 다(남은 메모리 약 5GB, 2026-11-13) — 빌드·시험 중 LAN 서비스 상태가 나빠지면 PC 1 에 알린다
 
