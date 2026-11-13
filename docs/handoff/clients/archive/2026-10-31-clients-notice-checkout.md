@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] ⑥ 결제 진입(재고·작업 여력·슬롯 확보 → 결제창 정보) 안내 (2026-10-31)
 
-- 관련: `../2026-10-31-clients-notice-delivery-and-order-draft.md`(주문 초안), `2026-10-30-clients-notice-customer-payment.md`(결제 승인 요청)
+- 관련: `../customer-app/2026-10-31-clients-notice-delivery-and-order-draft.md`(주문 초안), `2026-10-30-clients-notice-customer-payment.md`(결제 승인 요청)
 - 계약 정본: `contracts/openapi/order-service.yaml`(`POST /order-drafts/{draftId}/checkouts`, `OrderDraft.payment`·`checkoutFailure`)
 - 범위: **결제 시작까지**. 결제 승인 뒤 주문 확정·자원 확정은 다음 단계(그 전까지 결제 승인이 되어도 주문은 확정 상태로 바뀌지 않는다).
 

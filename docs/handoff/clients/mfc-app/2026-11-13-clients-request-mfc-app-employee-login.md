@@ -3,7 +3,7 @@
 - 작성: pmart-backend, 2026-11-13
 - 대상: pmart-clients `apps/mfc_app`(Android, Flutter)
 - 근거: ADR-0056 "옮기는 순서" 6단계(mfc_app 로그인 새로), 결정 14 ③(PDA 무활동 30분), 계약 `contracts/openapi/employee-auth-service.yaml`, 설계 `docs/architecture/auth/employee-auth-structure.md`.
-- 앞 문서: `2026-11-12-clients-request-backoffice-employee-auth-login.md`(백오피스 — 같은 흐름. 그 문서 §8 "PDA 는 따로 요청한다"의 그 요청)
+- 앞 문서: `../archive/2026-11-12-clients-request-backoffice-employee-auth-login.md`(백오피스 — 같은 흐름. 그 문서 §8 "PDA 는 따로 요청한다"의 그 요청)
 - 지금 mfc_app: 직원 로그인 API 가 없어 토큰을 받지 못한다(`providers.dart` BR-02 주석 — 갱신은 늘 세션 만료). **이 요청으로 그 빈자리를 채운다.**
 - 백엔드 상태: **준비 끝, LAN 에서 돈다.** employee-auth-service 의 앱 `mfc` 가 등록돼 있고(복귀 `pmart-mfc://login`, SSO 없음, 무활동 30분), 2026-11-12 게이트웨이 HTTPS 로 PDA 흐름(Keycloak 화면 → 티켓 → 딥링크 복귀 → 교환)을 스크립트로 확인했다. 토큰 모양은 예전 운영자 토큰과 같아 **업무 API·계약은 바뀌지 않는다**(`typ=OPERATOR`, `sub=OP-…`, `roles`, `centers`).
 

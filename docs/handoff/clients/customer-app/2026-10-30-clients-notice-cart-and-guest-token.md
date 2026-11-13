@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] ④ 장바구니·비회원 토큰 안내 (2026-10-30)
 
-- 관련: `archive/2026-10-30-clients-reply-customer-app-priority.md` 의 ④(요청 2-2: 비회원 장바구니 → (a) 게스트 토큰, 사용자 승인), ADR-0022
+- 관련: `../archive/2026-10-30-clients-reply-customer-app-priority.md` 의 ④(요청 2-2: 비회원 장바구니 → (a) 게스트 토큰, 사용자 승인), ADR-0022
 - 계약 정본: `contracts/openapi/cart-service.yaml`, `contracts/openapi/auth-service.yaml`(guest-sessions)
 - 모든 변경 요청: `Idempotency-Key`(재시도 때 같은 값), `X-Source-System: customer-app`
 

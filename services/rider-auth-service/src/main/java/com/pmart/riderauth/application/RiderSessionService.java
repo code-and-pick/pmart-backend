@@ -33,6 +33,7 @@ public class RiderSessionService {
   private final RiderTokens tokens;
   private final RiderAuthProperties props;
   private final TransactionTemplate tx;
+  private final SessionBlocks blocks;
   private final Clock clock;
 
   public RiderSessionService(
@@ -40,11 +41,13 @@ public class RiderSessionService {
       RiderTokens tokens,
       RiderAuthProperties props,
       TransactionTemplate tx,
+      SessionBlocks blocks,
       Clock clock) {
     this.store = store;
     this.tokens = tokens;
     this.props = props;
     this.tx = tx;
+    this.blocks = blocks;
     this.clock = clock;
   }
 
@@ -62,6 +65,8 @@ public class RiderSessionService {
               SessionRow s = store.session(r.sessionId(), true).orElseThrow();
               if (r.usedAt() != null) {
                 store.revokeSession(s.sessionId(), "REFRESH_REUSED", now);
+                // 그 세션의 access token 도 게이트웨이에서 바로 막는다(2026-11-13)
+                blocks.block(s.riderId(), s.sessionId(), now, "TOKEN_REUSED");
                 log.warn("refresh token 재사용 감지: sessionId={}", s.sessionId());
                 reason[0] = "TOKEN_REUSED";
                 return null;
@@ -102,10 +107,14 @@ public class RiderSessionService {
     Instant now = clock.instant();
     tx.executeWithoutResult(
         status -> {
+          // 이미 나간 access token 도 바로 401 — 게이트웨이 Redis 차단 목록(2026-11-13)
+          String sid = jwt.getClaimAsString("sid");
           if (allDevices) {
             store.revokeAllSessions(jwt.getSubject(), "LOGOUT_ALL", now);
-          } else if (jwt.getClaimAsString("sid") != null) {
-            store.revokeSession(jwt.getClaimAsString("sid"), "LOGOUT", now);
+            blocks.block(jwt.getSubject(), null, now, "LOGOUT_ALL");
+          } else if (sid != null) {
+            store.revokeSession(sid, "LOGOUT", now);
+            blocks.block(jwt.getSubject(), sid, now, "LOGOUT");
           }
         });
   }

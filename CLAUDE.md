@@ -29,7 +29,7 @@ deploy/local/, lan/, remote/, helm/  # 로컬 인프라·LAN PC 배포·원격 �
 
 ## PC 나눠 작업하기 (2026-11-13)
 - 영역: **platform**(PC 1 — 인증·HR·승인·게이트웨이·라이브러리·배포, 그 밖 서비스), **mfc**(PC 3), **delivery**(PC 5). 영역·서비스·계약 주인·규칙: `docs/operations/pc-split.md`. 배포는 PC 1 만.
-- 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만, 2026-11-14 부터 — 2026-11-13 까지의 일지는 `docs/worklog/YYYY-MM-DD.md` 루트에 그대로 둔다). handoff 파일 이름은 받는 앱 영역(`YYYY-MM-DD-<앱 영역>-<종류>-<주제>.md`)과 첫머리 `보낸 영역:`.
+- 작업 일지는 **`docs/worklog/<영역>/YYYY-MM-DD.md`**(자기 영역 파일에만, 2026-11-14 부터 — 2026-11-13 까지의 일지는 `docs/worklog/YYYY-MM-DD.md` 루트에 그대로 둔다). 클라이언트 handoff 는 받는 앱 영역 폴더(`docs/handoff/clients/<앱 영역>/YYYY-MM-DD-<종류>-<주제>.md`, 여럿이면 `all/`, 끝나면 `archive/`)와 첫머리 `보낸 영역:`.
 - **PR**: 다른 PC 는 main 에 push 하지 않는다 — 포크에서 `<영역>/<주제>` 브랜치로 PR(바꾼 것·실행한 시험·영향 영역·공용 표 갱신 필요), PC 1 이 검토·병합·배포(순서 `docs/operations/dev-on-other-pcs.md` §0). PC 1 은 병합할 때 자기 일지 `## PR` 절에 한 줄(검토·배포 상태·후속 — `docs/worklog/README.md` 규칙 6), PR 기록 파일은 따로 두지 않는다.
 - 영역 인수인계: mfc `docs/mfc/HANDOVER.md`, delivery `docs/delivery/HANDOVER.md`, rag `docs/rag/HANDOVER.md`.
 - PC 1 이 아닌 곳에서는 먼저 `docs/operations/dev-on-other-pcs.md`(방법)와 `docs/operations/other-pcs-todo.md`(PC 별 할 일 체크리스트), 읽을 문서 지도 `docs/operations/other-pcs-docs.md` — 직원 토큰 받는 법(로컬 `dev-tokens`·LAN `staff_auth.py`), 시험 계정·비밀번호 파일, 없어진 auth-service 운영자 로그인.

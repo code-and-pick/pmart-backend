@@ -1,6 +1,6 @@
 # 백오피스 — 로그인 역할별 메뉴 (MFC 화면 포함)
 
-> 2026-11-09 사용자 결정: **기존 백오피스(pmart-clients `web/backoffice`) 하나에서 로그인 권한에 따라 메뉴가 바뀌는 방식**. 화면 구현은 클라이언트 몫 — 요청서 `docs/handoff/clients/2026-11-09-clients-request-backoffice-role-menus.md`.
+> 2026-11-09 사용자 결정: **기존 백오피스(pmart-clients `web/backoffice`) 하나에서 로그인 권한에 따라 메뉴가 바뀌는 방식**. 화면 구현은 클라이언트 몫 — 요청서 `docs/handoff/clients/backoffice/2026-11-09-clients-request-backoffice-role-menus.md`.
 > 아래 "임시 기본값"은 사용자 확인 전 내가 정한 것. 바뀌면 이 문서와 요청서를 고친다.
 
 ## 1. 원칙
@@ -38,7 +38,7 @@
 | 위치(칸) | 칸 등록·수정·닫기·폐지, 도면 좌표·치수 | mfc-location `/locations*` |
 | 운영 제한 | 접수 중지·수용 축소 등록·해제 | mfc-capacity `/operation-restrictions*` |
 
-- 화면 요청서는 이미 일부 있다: 입고 B1~B4(`2026-11-07-clients-request-mfc-inbound-screens.md`), 피킹·포장(`2026-11-07-clients-request-mfc-picking-packing-screens.md`), PDA 응답(`2026-11-08-clients-notice-pda-response-plan.md`).
+- 화면 요청서는 이미 일부 있다: 입고 B1~B4(`all/2026-11-07-clients-request-mfc-inbound-screens.md`), 피킹·포장(`all/2026-11-07-clients-request-mfc-picking-packing-screens.md`), PDA 응답(`mfc-app/2026-11-08-clients-notice-pda-response-plan.md`).
 
 ## 4. 근무 기본값 (같은 날 결정, mfc-capacity 0.9.3)
 - 근무를 따로 등록하지 않은 작업자 = **센터 직원 근무 시간표(center-master STAFF)** 를 근무로 본다(사용자 "풀타임 = 센터 운영시간"). 가짜 근무표는 작업자 메뉴의 근무 등록으로 넣는다(있으면 그것이 우선).

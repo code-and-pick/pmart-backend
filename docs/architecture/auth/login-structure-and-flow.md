@@ -159,7 +159,7 @@ Spring OAuth2 Client, Google 인가 코드 교환, Google access token 으로 �
 | 할 일 | 언제·누가 |
 |---|---|
 | 운영자 로그인 Keycloak 이전 — 계정 옮김·백오피스 배포 완료(2026-11-11). 백오피스 로그인 확인 뒤 auth-service 줄에서 `OPERATOR` 빼기 | 클라이언트 회신 뒤 (`keycloak-structure.md` §13) |
-| 라이더 앱 로그인 연동, 실제 Google 토큰으로 시험 | 클라이언트 (`docs/handoff/clients/2026-11-10-clients-notice-rider-google-login.md`) |
+| 라이더 앱 로그인 연동, 실제 Google 토큰으로 시험 | 클라이언트 (`docs/handoff/clients/rider-app/2026-11-10-clients-notice-rider-google-login.md`) |
 | rider-service 가입 구현 (RS-2) | rider-service 작업 때 |
 | 차단 목록 ⑤ — 운영자(auth-service)·Keycloak 직원은 동작(2026-11-11 LAN). 라이더 정지·고객 정지는 그 기능을 만들 때 | 나중 |
 | 웹 클라이언트 `client_secret` 삭제·재발급 | 사용자 (Google Cloud 콘솔) |

@@ -3,7 +3,7 @@
 - 보낸 영역: platform
 - 작성: pmart-backend, 2026-11-13
 - 대상: hr-backoffice(인사팀 백오피스)
-- 앞 문서: `2026-11-13-all-notice-area-plan-rag-backoffice.md` §2-2("웹메일 로그인을 Keycloak 으로 합칠지 — 결정 대기")
+- 앞 문서: `../all/2026-11-13-all-notice-area-plan-rag-backoffice.md` §2-2("웹메일 로그인을 Keycloak 으로 합칠지 — 결정 대기")
 
 사용자 결정 2026-11-13: **웹메일(Roundcube)을 Keycloak 로그인으로 합치지 않는다.**
 

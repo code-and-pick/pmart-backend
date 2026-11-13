@@ -48,7 +48,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.rider-auth.signing.ephemeral=true",
       "pmart.rider-auth.issuer=http://rider-auth.test",
       "pmart.rider-auth.google.client-ids=" + RiderSocialLoginIT.RIDER_WEB,
-      "pmart.rider-auth.max-failures=3"
+      "pmart.rider-auth.max-failures=3",
+      "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(RiderSocialLoginIT.FakeGoogle.class)
 class RiderSocialLoginIT extends PostgresContainerSupport {
@@ -249,6 +250,8 @@ class RiderSocialLoginIT extends PostgresContainerSupport {
     assertThat(refresh(rotated.body().get("refreshToken").asString(), device).status())
         .isEqualTo(401); // 세션이 폐기됨
     assertThat(currentSession(access).status()).isEqualTo(401);
+    // 재사용으로 끝낸 세션의 access token 도 게이트웨이에서 바로 막는다 — 세션 단위 SubjectBlocked(2026-11-13)
+    assertThat(blockFor(claims(access).path("sid").asString())).contains("TOKEN_REUSED");
 
     // 다른 세션은 로그아웃으로 끝낸다
     String access2 = again.body().get("tokens").get("accessToken").asString();
@@ -264,6 +267,25 @@ class RiderSocialLoginIT extends PostgresContainerSupport {
             .exchange((q, r) -> r.getStatusCode().value());
     assertThat(logout).isEqualTo(204);
     assertThat(currentSession(access2).status()).isEqualTo(401);
+    assertThat(blockFor(claims(access2).path("sid").asString()))
+        .contains("\"LOGOUT\"")
+        .contains("RIDER")
+        .contains("http://rider-auth.test")
+        .contains(riderId);
+  }
+
+  /** JWT 본문(서명 확인 없이 — 이 시험은 sid 만 읽는다). */
+  JsonNode claims(String jwt) {
+    return mapper.readTree(java.util.Base64.getUrlDecoder().decode(jwt.split("\\.")[1]));
+  }
+
+  /** 그 세션의 SubjectBlocked outbox 행(payload). */
+  String blockFor(String sid) {
+    return jdbc.queryForObject(
+        "SELECT payload::text FROM outbox_event WHERE topic = 'platform.subject-block.v1'"
+            + " AND payload -> 'payload' ->> 'sessionId' = ?",
+        String.class,
+        sid);
   }
 
   @Test

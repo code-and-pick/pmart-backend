@@ -25,7 +25,7 @@
 | 계약 | `contracts/openapi/ai-assistant-service.yaml`(1.1.0) |
 | 색인 대상 목록 | `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` |
 | 검색 평가 질문·정답 | `services/ai-assistant-service/src/integrationTest/resources/eval/questions.yml` |
-| 클라이언트 안내 | `docs/handoff/clients/2026-11-04-clients-request-ai-assistant.md`, `docs/handoff/clients/archive/2026-11-04-clients-reply-br44-br48.md`(BR-46) |
+| 클라이언트 안내 | `docs/handoff/clients/backoffice/2026-11-04-clients-request-ai-assistant.md`, `docs/handoff/clients/archive/2026-11-04-clients-reply-br44-br48.md`(BR-46) |
 | 서비스 지도 표기 | `docs/architecture/service-map.md`, `architecture-design.md`("1차 앞당김(ADR-0036)") |
 | 로컬 실행 | `deploy/local/ai-assistant/docker-compose.yml`(pgvector, 15433) |
 | 설정 | 설정 저장소 `ai-assistant-service{,-local,-lan}.yml`, 게이트웨이 `/api/v1/assistant/**` |

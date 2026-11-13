@@ -24,9 +24,17 @@ public class LoginsController implements LoginsApi {
       String deviceId,
       String codeChallenge,
       String codeChallengeMethod,
-      @Nullable String returnUri) {
+      @Nullable String returnUri,
+      @Nullable Boolean silent) {
     return ResponseEntity.status(HttpStatus.FOUND)
-        .location(logins.start(app, deviceId, codeChallenge, codeChallengeMethod, returnUri))
+        .location(
+            logins.start(
+                app,
+                deviceId,
+                codeChallenge,
+                codeChallengeMethod,
+                returnUri,
+                Boolean.TRUE.equals(silent)))
         .cacheControl(CacheControl.noStore())
         .build();
   }

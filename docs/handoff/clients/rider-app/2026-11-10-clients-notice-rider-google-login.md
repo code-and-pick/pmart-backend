@@ -53,7 +53,7 @@
 | 422 `CONFIG_REQUIRED` | 서버 설정 누락 | 백엔드에 알림 |
 
 ## 2. 고객 앱 — 바꿀 것 없음 + 정리 하나
-- 지금 방식 그대로: `serverClientId` = 고객용 웹 클라이언트 ID `…-p6akml03…`, ID 토큰을 `POST /auth/social-logins` 로 보낸다(2026-10-30 안내 `archive/2026-10-30-clients-notice-customer-google-login.md`).
+- 지금 방식 그대로: `serverClientId` = 고객용 웹 클라이언트 ID `…-p6akml03…`, ID 토큰을 `POST /auth/social-logins` 로 보낸다(2026-10-30 안내 `../archive/2026-10-30-clients-notice-customer-google-login.md`).
 - **백엔드 허용 aud 를 고객 웹 클라이언트 ID 하나로 줄였다**(2026-11-10, LAN 재배포 때 반영). `installed` 유형 ID(`…-29edshi9…`)를 aud 로 가진 토큰은 serverClientId 구조상 나오지 않으므로 앱 동작은 같다. 2026-10-30 안내의 "함께 받은 installed 유형 클라이언트도 백엔드가 허용한다" 문장은 더 이상 맞지 않다.
 - **ADR-0025(서버 인가 코드) 기각**: `google_token_source.dart` 의 `authorizeServer`/`serverAuthCode` 시험 코드(기본 꺼짐)는 쓰지 않는다 — 지워도 된다. `credentialType` 같은 새 필드는 생기지 않는다.
 - iOS 는 만들지 않는다(2026-10-31 결정) — 2026-10-30 안내의 iOS 절은 무시.

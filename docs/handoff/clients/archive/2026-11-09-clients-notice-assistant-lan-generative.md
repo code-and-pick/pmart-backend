@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 공지: 백오피스 정책 질문(운영자 RAG) LAN 배포·생성 답변 (2026-11-09)
 
-- 성격: **공지(백오피스, 선택 구현).** 2026-11-04 안내(`../2026-11-04-clients-request-ai-assistant.md`)의 API 그대로다 — 계약 변경 없음.
+- 성격: **공지(백오피스, 선택 구현).** 2026-11-04 안내(`../backoffice/2026-11-04-clients-request-ai-assistant.md`)의 API 그대로다 — 계약 변경 없음.
 - 결정: ADR-0051(운영자용·고객용 분리, LAN Ollama). 이 API 는 **운영자 전용**이다. 고객앱 질문은 별도 서비스(`customer-assistant-service`, 아직 없음)로 나중에 안내한다.
 
 ## 바뀐 것

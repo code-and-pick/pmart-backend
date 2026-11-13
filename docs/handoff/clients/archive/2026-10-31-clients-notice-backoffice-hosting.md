@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] 임시 백오피스 LAN 호스팅(PC4 Nginx) 안내 (2026-10-31)
 
-- 관련: `../2026-10-30-clients-notice-temp-backoffice-api.md` 0장 2번(CORS 출처 `http://d603-16`)
+- 관련: `../backoffice/2026-10-30-clients-notice-temp-backoffice-api.md` 0장 2번(CORS 출처 `http://d603-16`)
 - 백엔드가 PC4(`D603-16`) 80 포트에 Nginx(`backoffice-web`)를 띄웠다. 지금은 "빌드 없음" 안내 페이지가 나온다.
 
 ## 1. 클라이언트가 할 일

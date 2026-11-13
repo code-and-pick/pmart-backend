@@ -26,7 +26,7 @@
   - 같은 라이더·같은 배송 다시 찍기 = 확인 없이. 다른 라이더 = 409 `FENCE_EXPIRED_UNCONFIRMED`. 중지 = PENDING. 재포장 = 409. 재배정은 이전 라이더 허가를 끝내지 않음(이전 라이더 확정 409 `NOT_ASSIGNED`).
   - 점원 확인 `POST /packages/{id}/handover-checks`: `AT_STATION`(포장대에 있음 → 허가 해제) / `TAKEN_BY_RIDER`(없음 → 허가 라이더에게 인계 확정 — 내 추천, 사용자 이견 없음). 판정 `checkRequired`·`lastCheck`.
   - 사용자 덧붙임: **중도 고객 취소는 아주 예외 — 고객센터를 통해서만 제한적으로 허용**. 그래서 이 대기는 드문 경우다. 지금 고객 자율 취소는 상품 준비 시작(PreparationStarted) 전까지만, 그 뒤는 시스템 취소만 있고 고객센터 취소 경로는 아직 없음 → case-service 요청 R-2.
-  - 클라이언트 공지 `docs/handoff/clients/2026-11-08-clients-notice-handover-check.md`.
+  - 클라이언트 공지 `docs/handoff/clients/mfc-app/2026-11-08-clients-notice-handover-check.md`.
 
 ## D-2 판정 주체·운영 센터 유효시간
 - 문서(MFC Q-01): 판정 주체·토큰 유효시간·불명 복구 승인은 Q-01 결정. "결정 없이는 실제 통합 운영 차단".

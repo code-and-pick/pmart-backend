@@ -9,7 +9,7 @@
 
 - `gen:api`(`tools/web-tools/gen-api.mjs`)·`tools/gen_api.dart` 는 옆 폴더 `../pmart-backend/contracts` 를 읽는다. 다른 PC 에도 **pmart-backend 를 옆에 받아 두고 `git pull`** 한다.
 - 2026-11-13 백엔드 계약이 바뀌었다 → `gen:api` 뒤 아래가 깨진다:
-  - auth-service 운영자 로그인·계정 관리 삭제(`/auth/operator-logins`·`/operator-accounts`, `OperatorAccount`) — 백오피스의 옛 로그인 모드·운영자 계정 화면 코드는 지운다(알림 `2026-11-13-clients-notice-auth-operator-login-removed.md`).
+  - auth-service 운영자 로그인·계정 관리 삭제(`/auth/operator-logins`·`/operator-accounts`, `OperatorAccount`) — 백오피스의 옛 로그인 모드·운영자 계정 화면 코드는 지운다(알림 `../archive/2026-11-13-clients-notice-auth-operator-login-removed.md`).
 - 클라이언트 저장소 규칙(백엔드 파일은 읽기만, 회신은 `docs/handoff/`)은 그대로.
 
 ## 2. 실서버(LAN)에 붙어 시험할 때 — 직원 로그인
@@ -38,7 +38,7 @@
 
 ## 5. 지켜야 할 것 (지금 LAN 에 걸린 것)
 
-- **HTTPS**: 백오피스 `https://192.168.0.40`, 인사팀 `https://192.168.0.40:8444`(HTTP 80·8081 은 HTTPS 빌드가 오면 닫는다 — 사용자 결정). 웹 `lan` 빌드 API 주소는 `https://192.168.0.40:8443/api/v1` 로 옮긴다(알림 `2026-11-13-clients-notice-backoffice-https-csp-logout.md`). 브라우저 PC 와 PDA 에는 LAN 루트 CA(`pmart-backend/deploy/lan/tls/pmart-lan-root-ca.crt`)를 설치한다(PC 2~5 Windows 는 설치됨).
+- **HTTPS**: 백오피스 `https://192.168.0.40`, 인사팀 `https://192.168.0.40:8444`(HTTP 80·8081 은 HTTPS 빌드가 오면 닫는다 — 사용자 결정). 웹 `lan` 빌드 API 주소는 `https://192.168.0.40:8443/api/v1` 로 옮긴다(알림 `../archive/2026-11-13-clients-notice-backoffice-https-csp-logout.md`). 브라우저 PC 와 PDA 에는 LAN 루트 CA(`pmart-backend/deploy/lan/tls/pmart-lan-root-ca.crt`)를 설치한다(PC 2~5 Windows 는 설치됨).
 - **CSP**: 인라인 `<script>`·`eval`·인라인 `style="…"`(HTML)·외부 CDN·`dangerouslySetInnerHTML` 금지. 외부 출처가 필요하면 백엔드에 요청.
 - **로그아웃 즉시 차단**: 로그아웃한 세션 토큰은 바로 401 `SUBJECT_BLOCKED` — 401 이면 토큰을 지우고 로그인 화면(지금 처리 그대로).
 - 새 시험 직원은 인사팀 백오피스로 등록한다(사서함·계정·안내 메일 자동, 소속 센터 `MFC_WORKER` 자동 승인).

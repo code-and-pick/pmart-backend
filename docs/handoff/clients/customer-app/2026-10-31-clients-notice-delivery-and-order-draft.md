@@ -1,6 +1,6 @@
 # [pmart-backend → pmart-clients] ⑤ 배송 방식·예약 슬롯·주문 초안 안내 (2026-10-31)
 
-- 관련: `archive/2026-10-30-clients-reply-customer-app-priority.md` 의 ⑤, BR-13·14·21
+- 관련: `../archive/2026-10-30-clients-reply-customer-app-priority.md` 의 ⑤, BR-13·14·21
 - 계약 정본: `contracts/openapi/order-service.yaml`(delivery-options·order-drafts), `delivery-capacity-service.yaml`(slots), `delivery-serviceability-service.yaml`(delivery-conditions), `center-master-service.yaml`(centers·calendar)
 - 범위: **주문 초안까지**(사용자 결정). 결제 진입 `POST /order-drafts/{draftId}/checkouts`·주문 조회는 아직 501 — 자원 확보 사가 단계(⑥)에서 연다.
 - 모든 변경 요청: `Idempotency-Key`(재시도 때 같은 값), `X-Source-System: customer-app`

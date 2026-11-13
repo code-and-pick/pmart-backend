@@ -38,16 +38,18 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 
 ## 2. 클라이언트 영역 (pmart-clients — 앱 단위)
 
-| 영역 | 폴더 |
-|---|---|
-| **customer-app** | `apps/customer_app` |
-| **mfc-app** | `apps/mfc_app` |
-| **rider-app** | `apps/rider_app` |
-| **backoffice** | `web/backoffice` |
-| **hr-backoffice** | `web/hr-backoffice` |
-| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) |
+| 영역 | 폴더 | PC(클라이언트 알림 2026-11-13, 사용자 "mfc-app 은 PC3, rider-app은 PC5야") |
+|---|---|---|
+| **customer-app** | `apps/customer_app` | PC 1(위주) |
+| **mfc-app** | `apps/mfc_app` | **PC 3** — 백엔드 mfc 영역과 같은 PC |
+| **rider-app** | `apps/rider_app` | **PC 5** — 백엔드 delivery 영역과 같은 PC |
+| **backoffice** | `web/backoffice` | PC 2 가 시작하기 전까지 PC 1 |
+| **hr-backoffice** | `web/hr-backoffice` | 같음(PC 2 로 함께 옮길지 미정) |
+| **web-common** | `web/core`·`web/ui`·`tools/web-tools`(두 웹앱 공통 — 한 주인) | 같음 |
 
-클라이언트 저장소 규칙은 클라이언트가 정한다 — 백엔드는 `docs/handoff/clients/2026-11-13-all-notice-area-split.md` 로 같은 방식을 제안했다.
+- 클라이언트 정본: pmart-clients `docs/operations/pc-split.md` §1, `docs/handoff/2026-11-13-backend-client-area-pcs-decided.md`.
+
+클라이언트 저장소 규칙은 클라이언트가 정한다 — 백엔드는 `docs/handoff/clients/archive/2026-11-13-all-notice-area-split.md` 로 같은 방식을 제안했다.
 
 ## 3. 작업 일지 — 영역별 폴더
 
@@ -55,12 +57,13 @@ PC 2·PC 4 는 LAN 서비스를 돌리는 PC 다(2026-11-13 남은 메모리 PC 
 - 다른 영역에 영향을 준 일은 자기 일지에 `영향: mfc` 처럼 적는다(남의 일지에 쓰지 않는다).
 - 규칙은 그대로: 커밋 없이 일지만 쓰지 않고, 일지 없이 커밋하지 않는다(`docs/worklog/README.md`).
 
-## 4. handoff — 파일 이름에 받는 앱(영역)
+## 4. handoff — 받는 앱(영역) 폴더
 
-- 백엔드 → 클라이언트: `docs/handoff/clients/YYYY-MM-DD-<받는 앱 영역>-<종류>-<주제>.md`. 받는 앱 영역 = §2 의 이름, 여럿이면 `all`. 종류: request·reply·notice. 첫머리에 **`보낸 영역: platform|mfc|delivery`**.
-  - 예: `2026-11-14-mfc-app-reply-worker-login.md`(보낸 영역 mfc), `2026-11-14-backoffice-notice-grant-approval.md`(보낸 영역 platform).
+- 백엔드 → 클라이언트: `docs/handoff/clients/<받는 앱 영역>/YYYY-MM-DD-<종류>-<주제>.md`(2026-11-13 사용자 결정 — 클라이언트 제안과 같은 폴더 구조). 받는 앱 영역 = §2 의 이름, 여럿이면 `all/`, 처리 끝나면 `archive/`. 종류: request·reply·notice. 첫머리에 **`보낸 영역: platform|mfc|delivery`**. 규칙 `docs/handoff/clients/README.md`.
+  - 예: `mfc-app/2026-11-14-reply-worker-login.md`(보낸 영역 mfc), `backoffice/2026-11-14-notice-grant-approval.md`(보낸 영역 platform).
+  - 각 앱 담당 PC 는 자기 앱 폴더와 `all/` 만 본다. 클라이언트 → 백엔드는 `pmart-clients/docs/handoff/<앱 영역>/`.
 - 한 주제는 한 영역이 맡는다(같은 주제를 두 PC 가 따로 보내지 않는다). 인증·HR·배포·공통 계약은 platform.
-- 2026-11-13 까지의 파일은 이름 그대로(`…-clients-…`).
+- 2026-11-13 까지의 파일은 이름 그대로 폴더만 옮겼다(`…-clients-…`).
 - 시뮬레이터 handoff(`docs/handoff/simulator/`)는 mfc 영역이 맡는다.
 
 ## 5. 여럿이 고치는 표 — 합칠 때 PC 1 이 몰아서

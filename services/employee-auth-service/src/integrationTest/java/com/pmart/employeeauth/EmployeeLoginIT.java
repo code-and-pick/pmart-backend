@@ -446,6 +446,9 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     assertThat(cancelled.headers().firstValue("Location").orElseThrow())
         .isEqualTo("http://backoffice.test/auth/callback?error=IDP_ERROR");
     assertThat(b.get(base + "?state=" + state + "&code=x").statusCode()).isEqualTo(400);
+
+    // 화면 없는 확인(silent)은 SSO 앱만 — 공용 PDA(mfc)는 400
+    assertThat(b.get(startUrl("mfc", "d", v) + "&silent=true").statusCode()).isEqualTo(400);
   }
 
   @Test
@@ -599,6 +602,25 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
     assertThat(second.status()).isEqualTo(200);
     assertThat(second.body().path("operatorId").asText()).isEqualTo("OP-IT-SSO1");
 
+    // 2-1) 앱이 열릴 때 조용히 확인(silent, 2026-11-13) — prompt=none, 화면 없이 바로 티켓
+    String v2s = verifier();
+    String kcSilent =
+        b.get(startUrl("backoffice", "tab-2s", v2s) + "&returnUri=" + bo + "&silent=true")
+            .headers()
+            .firstValue("Location")
+            .orElseThrow();
+    assertThat(kcSilent).contains("prompt=none");
+    HttpResponse<String> silentKc = b.get(kcSilent);
+    assertThat(silentKc.statusCode()).as("화면 없이 콜백으로").isEqualTo(302);
+    URI back2s =
+        URI.create(
+            b.get(silentKc.headers().firstValue("Location").orElseThrow())
+                .headers()
+                .firstValue("Location")
+                .orElseThrow());
+    assertThat(back2s.toString()).startsWith(bo + "?ticket=");
+    assertThat(exchange(param(back2s, "ticket"), v2s, "tab-2s").status()).isEqualTo(200);
+
     // 3) 로그아웃 → Keycloak 로그아웃 주소 → 브라우저가 가면 확인 화면 없이 백오피스 로그인 화면으로
     Res out =
         withToken(
@@ -624,6 +646,18 @@ class EmployeeLoginIT extends PostgresKafkaContainerSupport {
                 Integer.class))
         .as("끝난 세션의 ID 토큰은 지운다")
         .isZero();
+
+    // 3-1) 로그아웃 뒤 조용히 확인 → Keycloak 세션 없음 → 앱에는 LOGIN_REQUIRED(오류 화면이 아니라 로그인 버튼)
+    String kcSilentOut =
+        b.get(startUrl("backoffice", "tab-3s", verifier()) + "&returnUri=" + bo + "&silent=true")
+            .headers()
+            .firstValue("Location")
+            .orElseThrow();
+    HttpResponse<String> noSession = b.get(kcSilentOut);
+    assertThat(noSession.statusCode()).as("화면 없이 콜백으로(login_required)").isEqualTo(302);
+    HttpResponse<String> backOut = b.get(noSession.headers().firstValue("Location").orElseThrow());
+    assertThat(backOut.headers().firstValue("Location").orElseThrow())
+        .isEqualTo(bo + "?error=LOGIN_REQUIRED");
 
     // 4) 그 뒤 새 로그인은 다시 비밀번호
     String kc3 =

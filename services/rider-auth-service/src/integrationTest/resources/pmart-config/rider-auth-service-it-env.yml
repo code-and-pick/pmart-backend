@@ -5,9 +5,6 @@ spring:
     username: ${PMART_DB_USERNAME}
     password: ${PMART_DB_PASSWORD}
 pmart:
-  # 시험 클래스패스에만 common-messaging(common-test 가 끌어옴)이 있어 domain 을 요구한다. 운영 앱은 Kafka 를 쓰지 않는다
-  messaging:
-    domain: platform
   rider-auth:
     issuer: ${PMART_RIDER_AUTH_ISSUER:http://rider-auth-service:8510}
 management:

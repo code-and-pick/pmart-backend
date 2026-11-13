@@ -12,6 +12,8 @@ dependencies {
     implementation(project(":libraries:common-web"))
     implementation(project(":libraries:common-observability"))
     implementation(project(":libraries:common-security"))
+    implementation(project(":libraries:common-messaging")) // SubjectBlocked 발행(outbox) — 로그아웃 즉시 차단, 2026-11-13
+    implementation(libs.bundles.service.kafka)
     implementation(libs.bundles.service.data)
     implementation(libs.bundles.service.observability)
 

@@ -33,6 +33,6 @@
 ## 결과
 - auth-service: 코드 변경 없음(이미 ID 토큰 검증). LAN 허용 aud 를 고객 웹 ID 하나로 줄였다(pmart-config `auth-service-lan.yml`). 계약 `providerToken` 설명에서 "인가 코드" 를 뺐다. ADR-0025 의 `credentialType`·`accepted-credentials`·client secret 환경변수는 만들지 않는다.
 - rider-auth-service(새, ADR-0054 E): 같은 방식으로 구현 — `pmart.rider-auth.google.client-ids` = 라이더 웹 ID, 자체 서명키(auth-service 와 다른 키, LAN `.secrets/rider-auth-signing-key.pem` → `{cipher}`), 발급자 표 `rider` 줄(`user-types: [RIDER]`).
-- 고객 앱: 지금 방식 그대로(`serverClientId` = 고객 웹 ID, ID 토큰 전달). ADR-0025 를 위해 넣었던 `authorizeServer` 시험 코드는 쓰지 않는다. 라이더 앱: `serverClientId` = 라이더 웹 ID 로 같은 방식(클라이언트 안내 `docs/handoff/clients/2026-11-10-clients-notice-rider-google-login.md`).
+- 고객 앱: 지금 방식 그대로(`serverClientId` = 고객 웹 ID, ID 토큰 전달). ADR-0025 를 위해 넣었던 `authorizeServer` 시험 코드는 쓰지 않는다. 라이더 앱: `serverClientId` = 라이더 웹 ID 로 같은 방식(클라이언트 안내 `docs/handoff/clients/rider-app/2026-11-10-clients-notice-rider-google-login.md`).
 - `nonce` 를 쓰지 않으므로 탈취된 ID 토큰을 만료(약 1시간) 전에 다시 보내는 공격은 기기별 실패 제한·짧은 수명에 기댄다(ADR-0025 가 막으려던 위험). 필요해지면 `nonce` 를 새 ADR 로 더한다.
 - 사용자가 대화에 올린 라이더 웹 클라이언트 JSON 파일에는 `client_secret` 이 들어 있다. 이 저장소·설정·비밀 폴더에 옮기지 않았다. 쓰지 않는 값이므로 Google Cloud 콘솔에서 secret 을 지우거나 재발급해 두면 안전하다(사용자 판단).

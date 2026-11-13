@@ -32,7 +32,9 @@ import org.springframework.web.util.UriComponentsBuilder;
  * <ul>
  *   <li>시작: 앱(app)·복귀 주소는 설정 허용 목록에서만. 앱이 준 codeChallenge(S256)를 시도에 묶어 둔다 — 티켓은 그 verifier 를 가진 쪽만
  *       바꾼다(브라우저 쿠키 없이도 시작한 쪽과 받는 쪽을 묶는다. 게이트웨이는 Cookie 헤더를 지운다).
- *   <li>Keycloak 쪽: state·nonce·PKCE(S256), {@code prompt=login}(공용 PDA 에서 앞사람 세션 재사용 금지).
+ *   <li>Keycloak 쪽: state·nonce·PKCE(S256), {@code prompt=login}(공용 PDA 에서 앞사람 세션 재사용 금지). SSO 앱의
+ *       조용한 확인 ({@code silent}, 2026-11-13)은 {@code prompt=none} — 세션이 없으면 Keycloak 이 {@code
+ *       login_required} 로 돌려보내고 앱에는 {@code LOGIN_REQUIRED}.
  *   <li>콜백: 코드 교환 → ID 토큰 검증 → Keycloak 세션 바로 끝냄(결정 14 ①) → Keycloak sub ↔ 운영자 ID 연결 → 직원 상태 확인 →
  *       티켓.
  *   <li>Keycloak 토큰은 여기서 쓰고 버린다(저장·로그·앱 전달 없음).
@@ -45,6 +47,14 @@ public class EmployeeLoginService {
   private static final java.time.ZoneId SEOUL = java.time.ZoneId.of("Asia/Seoul");
   private static final Pattern VERIFIER = Pattern.compile("^[A-Za-z0-9._~-]{43,128}$");
   private static final Pattern CHALLENGE = Pattern.compile("^[A-Za-z0-9_-]{43,128}$");
+
+  /** prompt=none 일 때 Keycloak 이 "화면이 필요하다"고 돌려보내는 오류(OIDC Core 3.1.2.6). */
+  private static final java.util.Set<String> SESSION_NEEDED =
+      java.util.Set.of(
+          "login_required",
+          "interaction_required",
+          "consent_required",
+          "account_selection_required");
 
   private static final Logger log = LoggerFactory.getLogger(EmployeeLoginService.class);
 
@@ -85,7 +95,8 @@ public class EmployeeLoginService {
       String deviceId,
       String codeChallenge,
       @Nullable String codeChallengeMethod,
-      @Nullable String returnUri) {
+      @Nullable String returnUri,
+      boolean silent) {
     EmployeeAuthProperties.Keycloak kc = props.keycloak();
     if (!kc.configured()) {
       throw PmartException.configRequired("pmart.employee-auth.keycloak");
@@ -98,6 +109,10 @@ public class EmployeeLoginService {
         returnUri == null || returnUri.isBlank() ? a.returnUris().getFirst() : returnUri;
     if (!a.returnUris().contains(target)) {
       throw badRequest("RETURN_URI_NOT_ALLOWED", "허용되지 않은 복귀 주소입니다.");
+    }
+    if (silent && !a.sso()) {
+      // 공용 PDA(결정 14 ①)는 남은 세션으로 들어가지 않는다 — 조용한 확인 자체를 받지 않는다
+      throw badRequest("SILENT_NOT_ALLOWED", "이 앱은 화면 없는 로그인 확인을 쓸 수 없습니다.");
     }
     if (codeChallengeMethod != null && !"S256".equals(codeChallengeMethod)) {
       throw badRequest("CHALLENGE_METHOD_NOT_SUPPORTED", "codeChallengeMethod 는 S256 만 됩니다.");
@@ -125,6 +140,9 @@ public class EmployeeLoginService {
     if (!a.sso()) {
       // 공용 PDA(결정 14 ①): Keycloak 세션이 남아 있어도 매번 비밀번호를 묻는다. SSO 앱(백오피스)은 남은 세션을 쓴다
       auth.queryParam("prompt", "login");
+    } else if (silent) {
+      // 화면 없이 남은 Keycloak 세션만 확인(OIDC prompt=none) — 없으면 error=login_required 로 콜백
+      auth.queryParam("prompt", "none");
     }
     return auth.queryParam("client_id", kc.clientId())
         .queryParam("response_type", "code")
@@ -152,6 +170,10 @@ public class EmployeeLoginService {
             .consumeAttempt(EmployeeTokens.hash(state), now)
             .orElseThrow(
                 () -> badRequest("LOGIN_STATE_INVALID", "로그인 시간이 지났거나 이미 처리되었습니다. 앱에서 다시 로그인하세요."));
+    if (error != null && SESSION_NEEDED.contains(error)) {
+      // silent(prompt=none)인데 Keycloak 세션이 없다 — 오류가 아니라 "로그인 버튼을 보여라"
+      return back(attempt, "error", "LOGIN_REQUIRED");
+    }
     if (error != null || code == null || code.isBlank()) {
       log.info("직원 로그인 중단(Keycloak 오류 응답) app={}", attempt.app());
       return back(attempt, "error", "IDP_ERROR");

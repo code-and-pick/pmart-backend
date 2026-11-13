@@ -1,7 +1,7 @@
 # 회신: mfc_app 로그인 질문 2건 + 백오피스 HTTPS 빌드 부탁
 
 - 작성: pmart-backend, 2026-11-13
-- 답하는 것: pmart-clients `docs/handoff/2026-11-13-backend-mfc-app-employee-login-reply.md`(`a766d36`), 그리고 `2026-11-13-clients-notice-backoffice-https-csp-logout.md` §1 의 다음 단계
+- 답하는 것: pmart-clients `docs/handoff/2026-11-13-backend-mfc-app-employee-login-reply.md`(`a766d36`), 그리고 `../archive/2026-11-13-clients-notice-backoffice-https-csp-logout.md` §1 의 다음 단계
 
 ## 1. mfc_app 질문
 

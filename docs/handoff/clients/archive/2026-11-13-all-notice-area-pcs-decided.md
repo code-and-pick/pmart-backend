@@ -3,7 +3,7 @@
 - 보낸 영역: platform
 - 작성: pmart-backend, 2026-11-13
 - 대상: pmart-clients 전체(`all`) — 특히 backoffice·hr-backoffice·web-common
-- 앞 문서: `2026-11-13-all-notice-area-plan-rag-backoffice.md`(그 문서 §1 표의 "PC 2 추천·PC 4 추천"을 이 문서가 바꾼다)
+- 앞 문서: `../all/2026-11-13-all-notice-area-plan-rag-backoffice.md`(그 문서 §1 표의 "PC 2 추천·PC 4 추천"을 이 문서가 바꾼다)
 - 백엔드 정본: pmart-backend `docs/operations/pc-split.md` §1-1
 
 ## 내용

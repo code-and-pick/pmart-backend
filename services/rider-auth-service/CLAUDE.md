@@ -5,7 +5,7 @@
 
 ## 계약
 - REST: `contracts/openapi/rider-auth-service.yaml` → `openApiGenerate` 가 `com.pmart.riderauth.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
-- 이벤트: 없음(Kafka 를 쓰지 않는다). 시험 클래스패스에만 common-messaging 이 있어 `rider-auth-service-it-env.yml` 에 `pmart.messaging.domain` 을 둔다.
+- 이벤트: 발행 `SubjectBlocked`(platform.subject-block.v1, outbox — `application/SessionBlocks`, 2026-11-13). 로그아웃 = 그 세션(`sessionId`, LOGOUT), 모든 기기 = 주체 전체(LOGOUT_ALL), refresh 재사용 = 그 세션(TOKEN_REUSED). 게이트웨이가 받아 이미 나간 access token 을 바로 401 `SUBJECT_BLOCKED`. 구독 없음. `pmart.messaging.domain: platform`(설정 저장소).
 
 ## 패키지
 `com.pmart.riderauth.{api, application, infrastructure}` — rider-service(`com.pmart.rider`)와 겹치지 않게. Controller 에 업무 규칙 금지.
@@ -36,6 +36,6 @@
 - `GET /api/v1/internal/jwks`(permit-path, 게이트웨이 비노출) — 게이트웨이·전 서비스가 발급자 표 `rider` 줄로 이 주소를 쓴다. 자기 토큰(로그아웃·현재 세션)도 같은 표로 검증하고, 서비스 안에서 `typ=RIDER`·`iss` 를 한 번 더 본다.
 
 ## 상태
-2026-11-10 구현(ADR-0054 ④): 로그인·결과 조회·갱신·로그아웃·현재 세션·JWKS. LAN 배치 2026-11-11(PC 5, ADR-0054 결정 J 전체 재배포).
+2026-11-10 구현(ADR-0054 ④): 로그인·결과 조회·갱신·로그아웃·현재 세션·JWKS. LAN 배치 2026-11-11(PC 5, ADR-0054 결정 J 전체 재배포). 2026-11-13 로그아웃·재사용 즉시 차단(SubjectBlocked — 사용자 "라이더 로그아웃즉시 차단도 해줘").
 - 나중: 라이더 정지(`RiderRestricted`, rider-service)를 받아 세션 끊기·차단 목록(ADR-0054 ⑤). 그 전까지 정지 라이더 차단은 rider-service 업무 상태가 맡는다.
 - 주체 비활성(`rider_account.state=DISABLED`)을 바꾸는 API 는 아직 없다.

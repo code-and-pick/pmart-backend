@@ -35,14 +35,14 @@ PC 1 이 아닌 PC(사람·Claude)가 **어떤 문서를 어떤 순서로** 읽�
 
 ## 2-2. handoff — 영역별 관련 파일
 
-클라이언트에 보낸 것 `docs/handoff/clients/`(남은 것만 — 끝난 것은 `archive/`), 클라이언트가 보낸 것 `pmart-clients/docs/handoff/` + 상태표 `pmart-clients/docs/backend-requests.md`(BR 번호, 읽기만).
+클라이언트에 보낸 것 `docs/handoff/clients/<앱 영역>/`·`all/`(남은 것만 — 끝난 것은 `archive/`, 2026-11-13 앱 영역 폴더), 클라이언트가 보낸 것 `pmart-clients/docs/handoff/<앱 영역>/`·`all/` + 상태표 `pmart-clients/docs/backend-requests.md`(BR 번호, 읽기만). 아래 경로는 `docs/handoff/clients/` 기준.
 
 | 영역 | 백엔드가 보낸 것(`docs/handoff/clients/`) | 클라이언트가 보낸 것·열린 질문 |
 |---|---|---|
-| mfc | `2026-11-07-clients-request-mfc-inbound-screens.md`, `2026-11-07-clients-request-mfc-picking-packing-screens.md`, `2026-11-07-clients-request-shelf-life-screens.md`, `2026-11-08-clients-notice-handover-check.md`, `2026-11-08-clients-notice-pda-response-plan.md`, `2026-11-09-clients-notice-assignment-plan-094.md`, `2026-11-09-clients-notice-plan-input.md`, `2026-11-09-clients-notice-worker-speed-and-plan-estimate.md`, `2026-11-13-clients-request-mfc-app-employee-login.md`, `2026-11-13-clients-reply-mfc-app-login-and-https-build.md` | `2026-11-10-backend-dispatch-manual-only.md`, `2026-11-10-backend-pda-work-areas.md`. **회신 없음: BR-51**(배차 요청은 점원만 — 백엔드 D-5 READY 자동 요청과 충돌, 사용자 확인 중), **BR-52**(PDA 업무 선택 배정), **BR-53**(입고 수령 화면 값). 시뮬레이터 handoff(`docs/handoff/simulator/`)는 1차에서 안 봄 |
-| delivery | `2026-11-10-clients-notice-rider-google-login.md`, `2026-10-31-clients-notice-delivery-and-order-draft.md`(배송 방식·슬롯 — §5 열린 것) | 라이더 앱 요청은 아직 없음 |
-| rag | `2026-11-04-clients-request-ai-assistant.md`(운영자 질문 화면 — 지금도 참조), `2026-11-09-clients-request-customer-chat-assistant.md`(고객 앱 채팅 — 화면 아직 없음) | |
-| backoffice(나중) | `2026-11-09-clients-request-backoffice-role-menus.md`, `2026-11-09-clients-request-customer-inquiry-page.md`, `2026-11-13-*hr-backoffice*`·`*backoffice*` 파일들 | BR-25(상품 이미지 표시) |
+| mfc | `all/2026-11-07-clients-request-mfc-inbound-screens.md`, `all/2026-11-07-clients-request-mfc-picking-packing-screens.md`, `all/2026-11-07-clients-request-shelf-life-screens.md`, `mfc-app/2026-11-08-clients-notice-handover-check.md`, `mfc-app/2026-11-08-clients-notice-pda-response-plan.md`, `backoffice/2026-11-09-clients-notice-assignment-plan-094.md`, `backoffice/2026-11-09-clients-notice-plan-input.md`, `backoffice/2026-11-09-clients-notice-worker-speed-and-plan-estimate.md`, `mfc-app/2026-11-13-clients-request-mfc-app-employee-login.md`, `mfc-app/2026-11-13-clients-reply-mfc-app-login-and-https-build.md` | `2026-11-10-backend-dispatch-manual-only.md`, `2026-11-10-backend-pda-work-areas.md`. **회신 없음: BR-51**(배차 요청은 점원만 — 백엔드 D-5 READY 자동 요청과 충돌, 사용자 확인 중), **BR-52**(PDA 업무 선택 배정), **BR-53**(입고 수령 화면 값). 시뮬레이터 handoff(`docs/handoff/simulator/`)는 1차에서 안 봄 |
+| delivery | `rider-app/2026-11-10-clients-notice-rider-google-login.md`, `customer-app/2026-10-31-clients-notice-delivery-and-order-draft.md`(배송 방식·슬롯 — §5 열린 것) | 라이더 앱 요청은 아직 없음 |
+| rag | `backoffice/2026-11-04-clients-request-ai-assistant.md`(운영자 질문 화면 — 지금도 참조), `customer-app/2026-11-09-clients-request-customer-chat-assistant.md`(고객 앱 채팅 — 화면 아직 없음) | |
+| backoffice(나중) | `backoffice/2026-11-09-clients-request-backoffice-role-menus.md`, `all/2026-11-09-clients-request-customer-inquiry-page.md`, `hr-backoffice/`·`backoffice/` 폴더 | BR-25(상품 이미지 표시) |
 
 ## 3. 필요할 때
 

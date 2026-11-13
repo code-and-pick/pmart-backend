@@ -58,7 +58,7 @@ mfc 영역(`docs/operations/pc-split.md` §1 — PC 3)을 받는 사람·Claude 
 | MFC 승인 번호 실제 검증(AP-1) — 지금 `RECORD_ONLY`(LAN 만) | 운영 전 필수, Q-11 | `service-requests/approval-service.md` |
 | 반품 클레임·회수비·검수 뒤 환불(CL-1), 결품 고객 안내(N-1), 인계 → 주문 상태(O-1) | 대기 | `service-requests/claim-service.md`·`notification-service.md`·`order-service.md` |
 | **작업자 명단 ↔ 인사(hr-service, 2026-11-13 새로)** | **결정·구현 2026-11-13**(사용자 "추천대로" + "센터 관리자는 작업자와 별개"): 그 센터 `MFC_WORKER` 권한(`GrantApplied`)이 붙을 때 작업자 생성, 퇴사·정지 자동 반영, 고용 형태 정본 인사, 권한 기간 밖이면 배정 안 됨(센터 이동). mfc-capacity V14·V15. LAN 은 PC 1 이 설정 저장소에 구독 바인딩 2개를 넣고 배포해야 켜짐. 권한 조기 회수 사건 요청 EA-1 | `services/mfc-capacity-service/CLAUDE.md`, `service-requests/employee-auth-service.md` |
-| PDA 앱(mfc_app) 직원 로그인 | 클라이언트 구현 끝(a766d36), 실기기 확인 대기 | 클라이언트 handoff `2026-11-13-clients-request-mfc-app-employee-login.md` |
+| PDA 앱(mfc_app) 직원 로그인 | 클라이언트 구현 끝(a766d36), 실기기 확인 대기 | 클라이언트 handoff `mfc-app/2026-11-13-clients-request-mfc-app-employee-login.md` |
 
 ## 5. 남은 일 (mfc 영역)
 

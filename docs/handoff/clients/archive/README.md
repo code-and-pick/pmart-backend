@@ -12,6 +12,6 @@
 판정 근거: 클라이언트 BR 상태표·클라이언트 git log·소스 확인·11-10 이후 백엔드 handoff.
 
 - 끝남 31개: 10-24 br05-start-503 / 10-30 customer-addresses·customer-google-login·customer-payment·home-and-search·public-browse-and-test-data·reply-br27-google-login·reply-customer-app-priority / 10-31 checkout·google-profile·order-cancel·product-availability·reply-address-geocoding·request-google-server-auth-code-test / 11-02 reply-br34·br35·br37·request-seed-v1-baseline·request-session-expiry / 11-03 price-import-batch·reply-br39·reply-br40-br43 / 11-04 reply-br44-br48 / 11-05 search-changes / 11-06 request-backoffice-lan-api-base·request-customer-home-stale-price / 11-07 fulfillment-auto-cancel / 11-09 assistant-lan-generative·center-manager-term·handoff-folder-moved·pick-visit-order
-- 대체됨 2개: 10-31 backoffice-hosting → `11-06-…-backoffice-lan-api-base`·`../2026-11-13-all-reply-https-builds-published-http-closed.md`(HTTPS), 11-02 toss-customer-key → `11-02-…-reply-br34-payment-widget-config`
+- 대체됨 2개: 10-31 backoffice-hosting → `11-06-…-backoffice-lan-api-base`·`2026-11-13-all-reply-https-builds-published-http-closed.md`(HTTPS), 11-02 toss-customer-key → `11-02-…-reply-br34-payment-widget-config`
 
 남긴 20개(아직 할 일)는 바로 위 폴더 — MFC·백오피스 화면 요청(11-07~11-09), 보류 항목(BR-06 폴링·BR-03 쿠키·연락처), 백엔드 회신이 없는 클라이언트 질문(BR-50·51·52·53 등) 관련.

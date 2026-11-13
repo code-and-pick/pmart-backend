@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/SubjectBlocked.v1.json",
   "title": "SubjectBlocked",
-  "description": "주체 차단(ADR-0054 ⑤): 이 주체가 blockedBefore 이전에 받은 토큰은 만료 전이라도 쓰지 못한다. 발행 auth(운영자 계정 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계 — ADR-0054 결정 M; 나중에 고객 정지·rider-service 라이더 정지), employee-auth-service(직원 정지·퇴사 — hr-service 사건·관리 경로, ADR-0056, issuer = employee-auth-service). 로그아웃·refresh 재사용 때 세션 하나만 막는 sessionId 가 있는 사건도 같다(employee-auth-service·auth-service, 2026-11-13). 구독 api-gateway(Redis 차단 목록). 토픽 platform.subject-block.v1, 키 = 주체. 해제 사건은 없다 — 다시 쓸 수 있게 되면 새로 받은 토큰(iat > blockedBefore)이 통과한다. 단계 ①",
+  "description": "주체 차단(ADR-0054 ⑤): 이 주체가 blockedBefore 이전에 받은 토큰은 만료 전이라도 쓰지 못한다. 발행 auth(운영자 계정 비활성·비밀번호 초기화, Keycloak 직원 관리 기록 중계 — ADR-0054 결정 M; 나중에 고객 정지·rider-service 라이더 정지), employee-auth-service(직원 정지·퇴사 — hr-service 사건·관리 경로, ADR-0056, issuer = employee-auth-service). 로그아웃·refresh 재사용 때 세션 하나만 막는 sessionId 가 있는 사건도 같다(employee-auth-service·auth-service·rider-auth-service, 2026-11-13). 구독 api-gateway(Redis 차단 목록). 토픽 platform.subject-block.v1, 키 = 주체. 해제 사건은 없다 — 다시 쓸 수 있게 되면 새로 받은 토큰(iat > blockedBefore)이 통과한다. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
