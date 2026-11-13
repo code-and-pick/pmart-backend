@@ -320,6 +320,40 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         "SELECT count(*) FROM delivery WHERE delivery_id = '"
             + deliveryId
             + "' AND state = 'PICKED_UP'");
+
+    // 전달 완료(delivery-execution) → CLOSED — 라이더 "진행 중" 수에서 빠진다(PC 1 검토 H2)
+    String completed =
+        EventEnvelopeFixtures.envelope("DeliveryCompleted")
+            .from("delivery-execution-service")
+            .aggregate("Delivery", deliveryId, 5)
+            .payload(
+                Map.of(
+                    "deliveryId",
+                    deliveryId,
+                    "orderId",
+                    order,
+                    "riderId",
+                    rider,
+                    "lines",
+                    List.of(Map.of("orderLineId", "L-1", "qty", 1)),
+                    "method",
+                    "CONTACTLESS",
+                    "evidenceRef",
+                    Map.of("evidenceId", "EVD-1", "kind", "PHOTO"),
+                    "deliveredAt",
+                    Instant.now().toString()))
+            .buildJson();
+    kafka.send("delivery.delivery.v1", deliveryId, completed).join();
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'CLOSED'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE rider_id = ? AND state IN ('ASSIGNED', 'PICKED_UP')",
+                Integer.class,
+                rider))
+        .isZero();
   }
 
   @Test

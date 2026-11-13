@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
+    0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송. 실패·도움요청·회수·수행료·정정은 아직 501.
     배정(dispatch), 인계 fence·재고(mfc), 주문 완료 판단(order), 환불(claim/payment), 위치(tracking)는 소유하지 않는다.
     시간 경과 자동완료 없음 [확정]. 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 [확정]. GPS·버튼만으로 픽업 확정 금지(PackageHandedOver 근거 필요).
     완료 후 사고 신고는 기존 완료를 유지하고 사건을 별도로 올린다. 지급 실행은 외부 회계.
@@ -111,6 +112,45 @@ paths:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /deliveries/{deliveryId}/evidence-photos:
+    post:
+      tags: [execution]
+      summary: 전달 증빙 사진 올리기 (전달 완료 전, 배정 라이더 본인)
+      description: |
+        원문 §6.2 — 사진 업로드 성공 → 전달 완료. 별도 파일 서비스가 없어 이 서비스가 비공개 S3 호환 저장소(ADR-0016)에 둔다.
+        JPEG·PNG·WEBP(파일 앞부분으로 판정), 10MB 이하. 고객 도착(ARRIVED_AT_CUSTOMER) 또는 픽업 완료(PICKED_UP) 상태에서만.
+        돌려준 photoRef 를 전달 완료 evidence.photoRefs 에 넣는다. 사진에 다른 고객·신분증·출입 비밀번호가 보이지 않게 찍는 것은 라이더 앱 안내.
+      operationId: uploadEvidencePhoto
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: 저장
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EvidencePhoto' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: PHOTO_INVALID (형식·크기)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /deliveries/{deliveryId}/completions:
     post:
@@ -403,7 +443,8 @@ components:
   schemas:
     ExecutionState:
       type: string
-      enum: [ASSIGNED, ARRIVED_AT_STORE, PICKED_UP, ARRIVED_AT_CUSTOMER, COMPLETED, FAILED, SUSPENDED, RETURN_IN_PROGRESS, RETURN_PICKED_UP, RETURNED_TO_STORE, CANCELLED]
+      description: UNASSIGNED = 배송은 생겼지만 배정 전(또는 픽업 전 배차 취소로 다시 배차 대기, 0.2.0)
+      enum: [UNASSIGNED, ASSIGNED, ARRIVED_AT_STORE, PICKED_UP, ARRIVED_AT_CUSTOMER, COMPLETED, FAILED, SUSPENDED, RETURN_IN_PROGRESS, RETURN_PICKED_UP, RETURNED_TO_STORE, CANCELLED]
     SettlementState:
       type: string
       description: 지급 실행은 외부 회계. PAID는 회계 결과 반영
@@ -431,11 +472,19 @@ components:
               type: object
               required: [photoRefs, takenAt]
               properties:
-                photoRefs: { type: array, minItems: 1, items: { type: string }, description: file-service 업로드 완료 참조 }
+                photoRefs: { type: array, minItems: 1, items: { type: string }, description: 이 배송에 올린 증빙 사진 photoRef(POST …/evidence-photos, 같은 라이더) }
                 takenAt: { type: string, format: date-time }
                 placement: { type: string, enum: [HANDED_TO_CUSTOMER, FRONT_DOOR, SECURITY_OFFICE, DELIVERY_BOX, OTHER], description: 보관 장소 }
                 placementDetail: { type: string, maxLength: 200 }
                 substituteEvidenceCaseId: { type: string, description: 업로드 불가 시 지원센터 대체 증빙 사건 }
+    EvidencePhoto:
+      type: object
+      required: [photoRef, contentType, sizeBytes, uploadedAt]
+      properties:
+        photoRef: { type: string }
+        contentType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        sizeBytes: { type: integer }
+        uploadedAt: { type: string, format: date-time }
     Evidence:
       type: object
       properties:

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/DeliveryCompleted.v1.json",
   "title": "DeliveryCompleted",
-  "description": "사진 증빙 확인 후 서버 완료(자동 완료 없음). 실물 사실: 역순 수신도 폐기하지 않고 대사. 발행 delivery-execution. 구독 order, review, notification, claim, demand-planning, BI. 토픽 delivery.delivery.v1. 단계 ①",
+  "description": "사진 증빙 확인 후 서버 완료(자동 완료 없음). 실물 사실: 역순 수신도 폐기하지 않고 대사. 발행 delivery-execution. 구독 order, review, notification, claim, demand-planning, BI, delivery-dispatch. 토픽 delivery.delivery.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

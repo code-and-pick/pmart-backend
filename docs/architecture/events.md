@@ -119,9 +119,9 @@
 | `WorkAccepted` / `WorkRejected` | mfc-fulfillment | order-orchestration(6a 는 동기 응답으로 진행, 사건은 기록) | orderId, fulfillmentId, workVersion, sagaId, taskIds[], rejectReason?·retryable? | ConfirmOrder 결과(수락≠완료). 거절 사유 WorkRejectReason | ① |
 | `PreparationStarted` | mfc-fulfillment | order, delivery-dispatch(준비 예상) | orderId, fulfillmentId, startedAt, estimatedPackDuration | 실제 준비 시작 확정 | ① |
 | `LineShortageReported` | mfc-fulfillment | order-orchestration, case(동의 없음 시), mfc-quality(파손) | orderId, orderLineId, shortQty, reason(SHORT/DAMAGED/BLOCKED), alreadyHandedOverQty | 피킹 결품·파손 | ① |
-| `PackingFinished` | mfc-fulfillment | delivery-dispatch, commerce | shipmentId, packages[{packageId, bagCount, weight, volume, alcohol}] | 포장 완료(인계 아님) | ① |
+| `PackingFinished` | mfc-fulfillment | delivery-dispatch, delivery-execution(포장 목록 — 픽업 판정), commerce | shipmentId, packages[{packageId, bagCount, weight, volume, alcohol}] | 포장 완료(인계 아님) | ① |
 | `DispatchRequested` | mfc-fulfillment | delivery-dispatch(예정) | orderId, shipmentId, mfcId, trigger(MANUAL — 2026-11-13 BR-51 부터 새 요청은 MANUAL 만, AUTO_ON_READY 는 예전 기록), estimatedPackMinutes?, estimatedReadyAt | 배차 요청 — 점원이 포장 중 예상 시간과 함께, 없으면 출하 대기 때 자동(2026-11-08 D-5). 출고당 한 번 | ① |
-| `ShipmentReady` | mfc-fulfillment | delivery-dispatch, order | orderId, shipmentId, mfcId, readyAt, packages[], pickupLocation | 출하 대기(배차는 `DispatchRequested` 로 — D-5) | ① |
+| `ShipmentReady` | mfc-fulfillment | delivery-dispatch, delivery-execution(포장 목록 — 픽업 판정), order | orderId, shipmentId, mfcId, readyAt, packages[], pickupLocation | 출하 대기(배차는 `DispatchRequested` 로 — D-5) | ① |
 | `PackageHandedOver` | mfc-fulfillment | order, delivery-execution, delivery-dispatch, claim, demand-planning, BI | orderId, shipmentId, deliveryId, packageId, riderId, handoverId, inventoryCommitId, lines[], handedAt | QR 전수 스캔·fence·inventory 커밋 후 | ① |
 | `WorkStopResult` | mfc-fulfillment | order-orchestration, claim | orderId, stopRequestId, perPackage[{packageId, STOPPED/HANDOVER_IN_PROGRESS/HANDED_OVER}], notStartedLines[] (작업 지시 전 중지), claimId | 중지 요청 판정 | ① |
 | `PackageInvalidated` | mfc-fulfillment | delivery-dispatch, delivery-execution | packageId, newPackageId, reason | 재포장(구 라벨 무효) | ① |
@@ -198,7 +198,7 @@
 | `RiderArrivedAtStore` | delivery-execution | mfc-fulfillment(QR 활성), delivery-tracking | deliveryId, riderId, at | 가게 도착(인계 아님) | ① |
 | `PickupCompleted` | delivery-execution | order, delivery-tracking, notification, delivery-dispatch | deliveryId, packageIds[], handoverIds[], at | 모든 포장 `PackageHandedOver` 확인 후 | ① |
 | `RiderArrivedAtCustomer` | delivery-execution | notification | deliveryId, at | 고객 도착 | ① |
-| `DeliveryCompleted` | delivery-execution | order, review, notification, claim, demand-planning, BI | deliveryId, orderId, lines[{orderLineId, qty}], method(FACE/CONTACTLESS), evidenceRef, deliveredAt | 사진 증빙 확인 후 서버 완료(자동 완료 없음) | ① |
+| `DeliveryCompleted` | delivery-execution | order, review, notification, claim, demand-planning, BI, delivery-dispatch(배송 CLOSED — 라이더 진행 중 수에서 뺌) | deliveryId, orderId, lines[{orderLineId, qty}], method(FACE/CONTACTLESS), evidenceRef, deliveredAt | 사진 증빙 확인 후 서버 완료(자동 완료 없음) | ① |
 | `DeliveryFailed` | delivery-execution | order, claim, case, notification | deliveryId, reason, custody(RIDER/STORE), at | 전달 실패·중단 | ① |
 | `DeliveryIncidentRaised` | delivery-execution | case, rider, claim | incidentId, deliveryId, type(DAMAGE/MISDELIVERY/ABSENT/UNSAFE/STATUS_FIX), evidenceRef | 도움요청·사고 | ① |
 | `ReturnPickedUp` / `ReturnDelivered` | delivery-execution | claim, mfc-inbound | returnPickupId, claimId, lines[], at | 고객 수거 / 점포 반납 | ② |

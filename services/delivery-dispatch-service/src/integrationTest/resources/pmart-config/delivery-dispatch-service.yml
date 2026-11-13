@@ -42,8 +42,10 @@ spring:
   # 처음 켜기 전에 소비 그룹 시작 위치를 2026-11-10T00:30Z 로 맞춘다(kickoff §6)
   cloud:
     function:
-      definition: fulfillmentEvents
+      definition: fulfillmentEvents;executionEvents
     stream:
       bindings:
         fulfillmentEvents-in-0: # mfc-fulfillment DispatchRequested·ShipmentReady·PackingFinished·WorkStopResult·PackageHandedOver → 배송(DD-1)
           destination: mfc.fulfillment.v1
+        executionEvents-in-0: # delivery-execution DeliveryCompleted → 배송 CLOSED(진행 중 수에서 빠짐, H2)
+          destination: delivery.delivery.v1

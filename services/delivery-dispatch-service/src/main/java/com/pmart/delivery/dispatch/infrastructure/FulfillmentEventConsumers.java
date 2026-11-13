@@ -2,6 +2,7 @@ package com.pmart.delivery.dispatch.infrastructure;
 
 import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
+import com.pmart.delivery.dispatch.application.ExecutionEventHandler;
 import com.pmart.delivery.dispatch.application.FulfillmentEventHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,5 +19,14 @@ class FulfillmentEventConsumers {
   @Bean
   PmartEventConsumer fulfillmentEvents(EventConsumers consumers, FulfillmentEventHandler handler) {
     return consumers.of(e -> FulfillmentEventHandler.TYPES.contains(e.eventType()), handler::on);
+  }
+
+  /**
+   * delivery-execution 전달 완료(토픽 delivery.delivery.v1, 바인딩 {@code executionEvents-in-0}) → 배송
+   * CLOSED(H2). 이 서비스가 내는 사건도 같은 토픽이라 종류로 거른다.
+   */
+  @Bean
+  PmartEventConsumer executionEvents(EventConsumers consumers, ExecutionEventHandler handler) {
+    return consumers.of(e -> ExecutionEventHandler.TYPES.contains(e.eventType()), handler::on);
   }
 }

@@ -2,7 +2,9 @@
 
 delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현을 시작할 때 아래를 함께 넣는다.
 
-## DE-1. 픽업 완료 판단 (2026-11-08, 사용자 결정 D-6)
+## DE-1. 픽업 완료 판단 (2026-11-08, 사용자 결정 D-6) — **완료 2026-11-13**(계약 0.2.0, `PickupJudgement`)
+
+> 처리: 2·3·4 는 이 서비스가 한다 — PackageHandedOver(점원 확인 TAKEN_BY_RIDER 포함, 같은 규칙) + 출고 포장 목록(ShipmentReady·PackingFinished)으로 모든 포장이 인계됐을 때만 PICKED_UP, 버튼(`POST …/pickups`)은 확인만. 1(포장별 handover-commits 호출·409 다시 찍기 안내)은 라이더 앱 몫 — `docs/handoff/clients/rider-app/2026-11-13-notice-execution-apis.md`.
 
 - **결정**: 라이더 앱의 "픽업 완료" 버튼이 포장마다 MFC 인계 확정(`POST /api/v1/packages/{id}/handover-commits`)을 부르고, 배송 상태 PICKED_UP 은 **그 배송의 모든 포장 `PackageHandedOver` 가 왔을 때만** 바꾼다 — 버튼만 눌리고 재고는 안 넘어간 상태가 생기지 않게.
 - **MFC 가 주는 것(구현됨)**: 인계 허가·확정 API(6c, ADR-0047), `PackageHandedOver`(mfc.fulfillment.v1, packageId·shipmentId·deliveryId·riderId·inventoryCommitId·lines). 확정 응답이 UNKNOWN_RESULT 면 MFC 가 같은 인계 ID 로 다시 보내고, 결과는 사건으로 온다.
