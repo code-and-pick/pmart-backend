@@ -14,9 +14,9 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 ## PC 3 — mfc 영역 (GitHub YOO196)
 
 - [x] 포크 → PR → PC 1 병합 경로 시험 — PR #1 병합 `965e7e6`(2026-11-13)
-- [ ] **저장소 루트 `.secrets/` 사본 삭제**(PR #1 에서 발견. `deploy/lan/.secrets/` 쪽만 남긴다. 이제 `.gitignore` 가 막지만 사본은 지운다)
-- [ ] `git pull origin main`(`.gitignore`·이 문서·dev-on-other-pcs 갱신 받기)
-- [ ] `docs/mfc/HANDOVER.md` 읽기 — 시작 전 할 일(OR-Tools Docker 시험 등)·남은 일은 거기에
+- [x] **저장소 루트 `.secrets/` 사본 삭제**(PR #1 에서 발견. `deploy/lan/.secrets/` 쪽만 남긴다. 이제 `.gitignore` 가 막지만 사본은 지운다) — 2026-11-13 삭제(4개 파일이 `deploy/lan/.secrets/` 와 같음 확인 뒤)
+- [x] `git pull origin main`(`.gitignore`·이 문서·dev-on-other-pcs 갱신 받기) — 2026-11-13 `ddfa1f31`
+- [x] `docs/mfc/HANDOVER.md` 읽기 — 시작 전 할 일(OR-Tools Docker 시험 등)·남은 일은 거기에 — 2026-11-13 읽음, OR-Tools Docker 시험 `:services:mfc-capacity-service:test` 37/37 통과
 - 시뮬레이터는 1차 범위에서 하지 않는다(사용자 2026-11-13) — `pmart-mfc-simulation` 은 지금 받지 않아도 되고 `docs/simulator/` 도 지금은 안 읽어도 된다
 - [ ] 첫 MFC 작업 전: 작업자 명단 ↔ 인사(hr-service) 연결은 사용자 결정 3개 대기(`pc-split.md` §1-2) — 결정 전에는 손대지 않는다
 
