@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-serviceability-service
-  version: 0.1.1
+  version: 0.1.2
   description: |
     배송 권역(폴리곤)·담당 MFC 매핑 버전(본사 BO-07 승인 → 발효), 주소 정규화·판정, 배송 가능 조건의 정본. (docs/architecture/service-map.md §7, ADR-0007)
     센터 마스터(center-master), 슬롯(delivery-capacity), 고객 주소록(customer)은 소유하지 않는다.
@@ -195,15 +195,26 @@ paths:
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /internal/address-geocodes:
-    get:
+    post:
       tags: [internal]
-      summary: '[delivery-dispatch→serviceability] 주소 → 좌표 (토큰 없는 내부 호출) — 판정과 같은 정확 일치 변환, 공개 /address-geocodes 와 같은 응답·오류'
+      summary: '[delivery-dispatch→serviceability] 주소 → 좌표 (토큰 없는 내부 호출) — 판정과 같은 정확 일치 변환'
       description: |
         배차가 주문 배송지 도로명주소를 좌표로 바꾼다(MFC → 고객 도로 거리·배달료 — ADR-0023 대로 핀이 아닌 도로명주소 변환 좌표, 2026-11-13 DD-1). 저장하지 않고 주소는 로그에 남기지 않는다.
+        **주소는 본문으로 받는다**(URL 쿼리는 추적 기록 http.url 에 남는다 — PC 1 검토 H3, 2026-11-13). 응답·오류는 공개 /address-geocodes 와 같다. 조회지만 POST 라 공통 규칙대로 Idempotency-Key·X-Source-System 을 받는다(매 요청 새 값, 결과를 저장·재생하지 않음).
       x-added-in: '2026-11-13'
       operationId: searchAddressGeocodesInternal
       parameters:
-        - { name: query, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1, maxLength: 200 }
       responses:
         '200':
           description: 검색 결과(0건 가능)

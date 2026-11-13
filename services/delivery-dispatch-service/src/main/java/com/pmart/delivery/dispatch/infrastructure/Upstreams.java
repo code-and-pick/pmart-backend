@@ -8,9 +8,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.UUID;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
@@ -163,16 +165,22 @@ public class Upstreams {
 
   /** [출발지][도착지]. 카카오 오류는 tracking 이 422/429/503 으로 돌려주고 여기서는 그대로 올린다(직선거리 대체 없음). */
   public Leg[][] matrix(List<Geo> origins, List<Geo> destinations) {
-    String o = origins.stream().map(Geo::query).collect(Collectors.joining(";"));
-    String d = destinations.stream().map(Geo::query).collect(Collectors.joining(";"));
+    // 좌표는 본문으로(URL 쿼리는 추적 기록 http.url 에 남는다 — PC 1 검토 H3)
+    Map<String, Object> body =
+        Map.of(
+            "origins", origins.stream().map(Upstreams::point).toList(),
+            "destinations", destinations.stream().map(Upstreams::point).toList());
     JsonNode n =
         json(
             Downstream.call(
                 "delivery-tracking distance-matrix",
                 () ->
                     tracking
-                        .get()
-                        .uri("/api/v1/internal/distance-matrix?origins={o}&destinations={d}", o, d)
+                        .post()
+                        .uri("/api/v1/internal/distance-matrix")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .body(body)
                         .retrieve()
                         .body(String.class)));
     Leg[][] out = new Leg[origins.size()][destinations.size()];
@@ -246,14 +254,18 @@ public class Upstreams {
 
   /** 정확 일치 첫 결과. 0건이면 empty. 주소는 로그에 남기지 않는다. */
   public Optional<Place> geocode(String roadAddress) {
+    // 주소는 본문으로(URL 쿼리는 추적 기록에 남는다 — H3)
     JsonNode n =
         json(
             Downstream.call(
                 "serviceability geocode",
                 () ->
                     serviceability
-                        .get()
-                        .uri("/api/v1/internal/address-geocodes?query={q}", roadAddress)
+                        .post()
+                        .uri("/api/v1/internal/address-geocodes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .body(Map.of("query", roadAddress))
                         .retrieve()
                         .body(String.class)));
     JsonNode first = n.path("results").path(0);
@@ -276,6 +288,10 @@ public class Upstreams {
       return t[1] + " " + t[2];
     }
     return t.length == 2 ? t[1] : null;
+  }
+
+  private static Map<String, Object> point(Geo g) {
+    return Map.of("lat", g.lat(), "lng", g.lng());
   }
 
   private JsonNode json(@Nullable String body) {

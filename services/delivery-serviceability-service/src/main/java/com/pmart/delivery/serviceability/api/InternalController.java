@@ -33,7 +33,11 @@ public class InternalController implements InternalApi {
   /** 배차용 주소 → 좌표(2026-11-13 DD-1). 판정과 같은 정확 일치 변환. */
   @Override
   public ResponseEntity<com.pmart.delivery.serviceability.api.generated.model.AddressLookupResult>
-      searchAddressGeocodesInternal(String query) {
-    return ResponseEntity.ok(GeocodingController.view(service.geocodeExact(query)));
+      searchAddressGeocodesInternal(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.serviceability.api.generated.model.SearchAddressGeocodesInternalRequest
+              body) {
+    return ResponseEntity.ok(GeocodingController.view(service.geocodeExact(body.getQuery())));
   }
 }

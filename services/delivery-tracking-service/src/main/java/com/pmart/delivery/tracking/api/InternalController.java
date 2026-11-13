@@ -1,12 +1,13 @@
 package com.pmart.delivery.tracking.api;
 
-import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import com.pmart.delivery.tracking.api.generated.InternalApi;
 import com.pmart.delivery.tracking.api.generated.model.DeliveryEtaAsOf;
 import com.pmart.delivery.tracking.api.generated.model.DistanceMatrix;
+import com.pmart.delivery.tracking.api.generated.model.DistanceMatrixRequest;
 import com.pmart.delivery.tracking.api.generated.model.DistanceMatrixRowsInner;
 import com.pmart.delivery.tracking.api.generated.model.DistanceMatrixRowsInnerElementsInner;
+import com.pmart.delivery.tracking.api.generated.model.LatLng;
 import com.pmart.delivery.tracking.api.generated.model.ListRiderLocationsInternal200Response;
 import com.pmart.delivery.tracking.api.generated.model.RiderLocation;
 import com.pmart.delivery.tracking.application.RoutePlanner;
@@ -34,11 +35,10 @@ public class InternalController implements InternalApi {
 
   @Override
   public ResponseEntity<DistanceMatrix> getDistanceMatrix(
-      String origins,
-      String destinations,
-      @Nullable String vehicleType,
-      @Nullable OffsetDateTime departAt) {
-    var m = tracking.matrix(points(origins), points(destinations));
+      String idempotencyKey, String xSourceSystem, DistanceMatrixRequest body) {
+    @Nullable String vehicleType =
+        body.getVehicleType() == null ? null : body.getVehicleType().getValue();
+    var m = tracking.matrix(points(body.getOrigins()), points(body.getDestinations()));
     List<DistanceMatrixRowsInner> rows = new ArrayList<>();
     for (List<RoutePlanner.Leg> row : m.rows()) {
       rows.add(
@@ -89,25 +89,9 @@ public class InternalController implements InternalApi {
                     .toList()));
   }
 
-  /** "lat,lng;lat,lng". */
-  static List<RoutePlanner.Point> points(String raw) {
-    List<RoutePlanner.Point> out = new ArrayList<>();
-    for (String pair : raw.split(";")) {
-      if (pair.isBlank()) {
-        continue;
-      }
-      String[] ll = pair.split(",");
-      try {
-        double lat = Double.parseDouble(ll[0].trim());
-        double lng = Double.parseDouble(ll[1].trim());
-        if (ll.length != 2 || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-          throw new NumberFormatException();
-        }
-        out.add(new RoutePlanner.Point(lat, lng));
-      } catch (RuntimeException e) {
-        throw new PmartException(ErrorCode.VALIDATION_FAILED, "좌표 형식은 lat,lng;lat,lng 입니다.");
-      }
-    }
-    return out;
+  static List<RoutePlanner.Point> points(List<LatLng> raw) {
+    return raw.stream()
+        .map(p -> new RoutePlanner.Point(p.getLat().doubleValue(), p.getLng().doubleValue()))
+        .toList();
   }
 }

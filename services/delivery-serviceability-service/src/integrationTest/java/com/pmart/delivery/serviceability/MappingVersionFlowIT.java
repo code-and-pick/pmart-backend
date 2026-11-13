@@ -459,11 +459,15 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(quota.body().path("code").asString()).isEqualTo("QUOTA_EXCEEDED");
     assertThat(get(CUSTOMER, "/address-geocodes?query=").status()).isEqualTo(400);
 
-    // 배차용 내부 조회(2026-11-13): 토큰 없이 내부 호출, 판정과 같은 정확 일치(analyze_type=exact)
+    // 배차용 내부 조회(2026-11-13): 토큰 없이 내부 호출, 주소는 본문(추적 기록에 안 남게 — H3), 판정과 같은 정확
+    // 일치(analyze_type=exact)
     var internal =
-        http.get()
-            .uri("/internal/address-geocodes?query=IN-ROAD")
+        http.post()
+            .uri("/internal/address-geocodes")
+            .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
+            .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
             .header("X-Source-System", "delivery-dispatch-service")
+            .body(Map.of("query", "IN-ROAD"))
             .retrieve()
             .toEntity(String.class);
     assertThat(internal.getStatusCode().value()).isEqualTo(200);

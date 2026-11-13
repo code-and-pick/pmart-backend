@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -103,28 +103,24 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/distance-matrix:
-    get:
+    post:
       tags: [internal]
       summary: "[dispatch→tracking] 거리·이동시간 행렬 (출발지 × 도착지)"
       description: |
         카카오모빌리티 길찾기 API 의 도로 거리·예상 소요시간(원문 §2.1 ②, ADR-0058 결정 2 — 사용자 2026-11-13 '직선거리만으로 원래 기능을 대체하지 않는다').
         외부 조회가 안 되면 직선거리로 대신하지 않고 오류로 돌려준다: 키 미설정·거절 422 CONFIG_REQUIRED, 사용량 소진 429 QUOTA_EXCEEDED, 장애·시간 초과 503 DEPENDENCY_UNAVAILABLE.
         구간 하나가 길을 못 찾으면(카카오 결과 코드 ≠ 0, 반경 10km 밖 등) 그 칸만 status NO_ROUTE.
-        origins/destinations는 "lat,lng" 쌍을 세미콜론으로 구분한 문자열이며 각각 최대 30개. 도착지가 하나면 다중 출발지 길찾기 1번, 아니면 출발지마다 다중 목적지 길찾기 1번.
+        **좌표는 본문으로 받는다**(URL 쿼리는 추적 기록 http.url 에 남는다 — 라이더·고객 위치, PC 1 검토 H3 2026-11-13). origins·destinations 각각 최대 30개. 조회지만 POST 라 공통 규칙대로 Idempotency-Key·X-Source-System 을 받는다(매 요청 새 값, 저장·재생 없음). 도착지가 하나면 다중 출발지 길찾기 1번, 아니면 출발지마다 다중 목적지 길찾기 1번.
         카카오모빌리티 길찾기는 자동차 도로 기준이다 — vehicleType 은 받기만 하고 모든 수단에 같은 도로 경로를 쓴다(이륜·자전거 전용 경로 없음).
       operationId: getDistanceMatrix
       parameters:
-        - name: origins
-          in: query
-          required: true
-          description: 예 37.5665,126.9780;37.5651,126.9895
-          schema: { type: string }
-        - name: destinations
-          in: query
-          required: true
-          schema: { type: string }
-        - { name: vehicleType, in: query, schema: { type: string, enum: [MOTORCYCLE, BICYCLE, CAR, WALK] } }
-        - { name: departAt, in: query, schema: { type: string, format: date-time } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DistanceMatrixRequest' }
       responses:
         '200':
           description: OK
@@ -250,6 +246,20 @@ components:
         sentAt: { type: string, format: date-time }
         eta: { $ref: '#/components/schemas/DeliveryEta' }
         stage: { type: string }
+    LatLng:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+    DistanceMatrixRequest:
+      type: object
+      required: [origins, destinations]
+      properties:
+        origins: { type: array, minItems: 1, maxItems: 30, items: { $ref: '#/components/schemas/LatLng' } }
+        destinations: { type: array, minItems: 1, maxItems: 30, items: { $ref: '#/components/schemas/LatLng' } }
+        vehicleType: { type: string, enum: [MOTORCYCLE, BICYCLE, CAR, WALK] }
+        departAt: { type: string, format: date-time }
     DistanceMatrix:
       type: object
       properties:

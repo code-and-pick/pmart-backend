@@ -2,7 +2,6 @@ package com.pmart.delivery.dispatch;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -50,9 +49,12 @@ class AiDispatchIT extends DispatchFlowIT {
     bundledOrder(orderB, "AI-ROAD-B", 37.5034, 127.0306);
     for (String q : List.of("37.503,127.03;37.5034,127.0306", "37.5034,127.0306;37.503,127.03")) {
       up.stubFor(
-          get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+          post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
               .atPriority(0)
-              .withQueryParam("origins", equalTo(q))
+              .withRequestBody(
+                  matchingJsonPath("$.origins[0].lat", equalTo(q.split(";")[0].split(",")[0])))
+              .withRequestBody(
+                  matchingJsonPath("$.origins[1].lat", equalTo(q.split(";")[1].split(",")[0])))
               .willReturn(json(square(100))));
     }
     String a = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-a1-" + orderA, orderA);

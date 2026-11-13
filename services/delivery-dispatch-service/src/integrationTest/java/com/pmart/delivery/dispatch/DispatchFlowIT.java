@@ -3,6 +3,8 @@ package com.pmart.delivery.dispatch;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -106,7 +108,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                         "roadAddress",
                         "IT-ROAD"))));
     up.stubFor(
-        get(urlPathEqualTo("/api/v1/internal/address-geocodes"))
+        post(urlPathEqualTo("/api/v1/internal/address-geocodes"))
             .willReturn(
                 json(
                     Map.of(
@@ -121,12 +123,13 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                                 "서울 서초구 서초동 1-2"))))));
     // MFC → 고객(1,800m·400초), 라이더 → MFC(행마다 300초)
     up.stubFor(
-        get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
             .atPriority(1)
-            .withQueryParam("origins", equalTo(MFC_POINT))
+            .withRequestBody(matchingJsonPath("$.origins[0].lat", equalTo("37.4979")))
+            .withRequestBody(matchingJsonPath("$.origins[0].lng", equalTo("127.0276")))
             .willReturn(json(matrix(List.of(List.of(1800, 400))))));
     up.stubFor(
-        get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
             .atPriority(5)
             .willReturn(
                 json(matrix(List.of(List.of(900, 300), List.of(900, 300), List.of(900, 300))))));
@@ -503,9 +506,12 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     for (String q :
         List.of("37.5006,127.036;37.5012,127.0372", "37.5012,127.0372;37.5006,127.036")) {
       up.stubFor(
-          get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+          post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
               .atPriority(0)
-              .withQueryParam("origins", equalTo(q))
+              .withRequestBody(
+                  matchingJsonPath("$.origins[0].lat", equalTo(q.split(";")[0].split(",")[0])))
+              .withRequestBody(
+                  matchingJsonPath("$.origins[1].lat", equalTo(q.split(";")[1].split(",")[0])))
               .willReturn(json(square(120))));
     }
     String a = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-5a-" + orderA, orderA);
@@ -579,9 +585,12 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     bundledOrder(orderB, "IT-ROAD-D", 37.5024, 127.0310);
     for (String q : List.of("37.502,127.03;37.5024,127.031", "37.5024,127.031;37.502,127.03")) {
       up.stubFor(
-          get(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+          post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
               .atPriority(0)
-              .withQueryParam("origins", equalTo(q))
+              .withRequestBody(
+                  matchingJsonPath("$.origins[0].lat", equalTo(q.split(";")[0].split(",")[0])))
+              .withRequestBody(
+                  matchingJsonPath("$.origins[1].lat", equalTo(q.split(";")[1].split(",")[0])))
               .willReturn(json(square(90))));
     }
     String a = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-6a-" + orderA, orderA);
@@ -629,9 +638,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                         "roadAddress",
                         road))));
     up.stubFor(
-        get(urlPathEqualTo("/api/v1/internal/address-geocodes"))
+        post(urlPathEqualTo("/api/v1/internal/address-geocodes"))
             .atPriority(1)
-            .withQueryParam("query", equalTo(road))
+            .withRequestBody(matchingJsonPath("$.query", equalTo(road)))
             .willReturn(
                 json(
                     Map.of(

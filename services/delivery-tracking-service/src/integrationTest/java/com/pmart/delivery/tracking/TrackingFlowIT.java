@@ -138,12 +138,15 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                         List.of(route("0", 0, 872, 117), route("1", 104, 0, 0)))))); // 길 없음(반경 밖 등)
     JsonNode m =
         json(
-            http.get()
-                .uri(
-                    "/internal/distance-matrix?origins={o}&destinations={d}",
-                    "37.4979,127.0276;37.6,127.2",
-                    "37.5006,127.0360")
+            http.post()
+                .uri("/internal/distance-matrix")
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .header("X-Source-System", "delivery-dispatch-service")
+                .body(
+                    matrixBody(
+                        List.of(ll(37.4979, 127.0276), ll(37.6, 127.2)),
+                        List.of(ll(37.5006, 127.0360))))
                 .retrieve()
                 .body(String.class));
     assertThat(m.path("provider").asString()).isEqualTo("KAKAO_MOBILITY");
@@ -165,12 +168,15 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                 json(Map.of("routes", List.of(route("1", 0, 2311, 609), route("0", 0, 500, 90))))));
     JsonNode m2 =
         json(
-            http.get()
-                .uri(
-                    "/internal/distance-matrix?origins={o}&destinations={d}",
-                    "37.4979,127.0276",
-                    "37.5006,127.0360;37.49,127.02")
+            http.post()
+                .uri("/internal/distance-matrix")
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                 .header("X-Source-System", "delivery-dispatch-service")
+                .body(
+                    matrixBody(
+                        List.of(ll(37.4979, 127.0276)),
+                        List.of(ll(37.5006, 127.0360), ll(37.49, 127.02))))
                 .retrieve()
                 .body(String.class));
     assertThat(m2.path("rows").get(0).path("elements").get(0).path("distanceM").asInt())
@@ -193,13 +199,25 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
   }
 
   private int matrixStatus() {
-    return http.get()
-        .uri("/internal/distance-matrix?origins=37.49,127.02&destinations=37.50,127.03")
+    return http.post()
+        .uri("/internal/distance-matrix")
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
         .header("X-Source-System", "delivery-dispatch-service")
+        .body(matrixBody(List.of(ll(37.49, 127.02)), List.of(ll(37.50, 127.03))))
         .retrieve()
         .toEntity(String.class)
         .getStatusCode()
         .value();
+  }
+
+  private static Map<String, Object> matrixBody(
+      List<Map<String, Object>> origins, List<Map<String, Object>> destinations) {
+    return Map.of("origins", origins, "destinations", destinations);
+  }
+
+  private static Map<String, Object> ll(double lat, double lng) {
+    return Map.of("lat", lat, "lng", lng);
   }
 
   private ResponseEntity<String> upload(
