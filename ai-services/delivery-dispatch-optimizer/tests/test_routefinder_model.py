@@ -34,3 +34,29 @@ def test_two_nearby_customers_end_up_together(model):
     routes = model(mfc, pts, 3)
     together = [r for r in routes if 0 in r]
     assert 1 in together[0]
+
+
+def test_multistart_covers_every_customer_once_and_is_not_worse():
+    """출발점 n개 중 가장 싼 답 — 이 고정 예에서 한 번 풀기보다 비용이 크지 않다(탐욕 첫 고객이 n개 출발점 안에 있으면 늘 성립)."""
+    try:
+        import torch
+
+        from app.routefinder_model import RouteFinderModel, _normalize, checkpoint_path, route_cost
+
+        single = RouteFinderModel(checkpoint_path())
+        multi = RouteFinderModel(checkpoint_path(), multistart=True)
+    except Exception as e:  # noqa: BLE001
+        pytest.skip("RouteFinder 가중치를 쓸 수 없음: " + str(e))
+    rnd = random.Random(11)
+    mfc = (37.4979, 127.0276)
+    pts = [(37.48 + rnd.random() * 0.04, 127.01 + rnd.random() * 0.04) for _ in range(10)]
+    locs = torch.tensor([_normalize([mfc, *pts])])
+
+    def cost(routes):
+        actions = [a for r in routes for a in [*(i + 1 for i in r), 0]]
+        return float(route_cost(locs, torch.tensor([actions]), 2.0)[0])
+
+    m = multi(mfc, pts, 3)
+    assert sorted(i for r in m for i in r) == list(range(10))
+    assert all(1 <= len(r) <= 3 for r in m)
+    assert cost(m) <= cost(single(mfc, pts, 3)) + 1e-6

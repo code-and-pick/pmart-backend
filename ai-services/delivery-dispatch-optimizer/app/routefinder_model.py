@@ -69,7 +69,9 @@ def checkpoint_path() -> str:
 
 
 class RouteFinderModel:
-    def __init__(self, path: str):
+    """multistart: 고객마다 출발점을 바꿔 n개를 한꺼번에 풀고(배치 — 한 번 풀기의 약 1.3배 시간) route_cost 비용식으로 가장 싼 답을 고른다."""
+
+    def __init__(self, path: str, multistart: bool = False, route_cost: float = 2.0):
         import torch
         from routefinder.envs.mtvrp import MTVRPEnv
         from routefinder.models import RouteFinderPolicy
@@ -87,6 +89,8 @@ class RouteFinderModel:
         self._policy = policy.eval()
         self._env = MTVRPEnv()
         self._torch = torch
+        self._multistart = multistart
+        self._route_cost = route_cost
         torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
         log.info("RouteFinder 적재 %.1f초 (%s)", time.time() - t0, NAME)
 
@@ -122,10 +126,19 @@ class RouteFinderModel:
         )
         with torch.inference_mode():
             td = self._env.reset(td)
-            out = self._policy(td, self._env, phase="test", decode_type="greedy", return_actions=True)
+            if self._multistart and n > 1:
+                out = self._policy(
+                    td, self._env, phase="test", decode_type="multistart_greedy", num_starts=n, return_actions=True
+                )
+                acts = out["actions"]  # [n, 길이] — 출발 고객마다 한 줄
+                cost = route_cost(td["locs"].expand(acts.size(0), -1, -1), acts, self._route_cost)
+                best = acts[int(cost.argmin())]
+            else:
+                out = self._policy(td, self._env, phase="test", decode_type="greedy", return_actions=True)
+                best = out["actions"][0]
         routes: list[list[int]] = []
         cur: list[int] = []
-        for a in out["actions"][0].tolist():
+        for a in best.tolist():
             if a == 0:
                 if cur:
                     routes.append(cur)
@@ -135,6 +148,24 @@ class RouteFinderModel:
         if cur:
             routes.append(cur)
         return routes
+
+
+def route_cost(locs, actions, per_route: float):
+    """우리 비용(추가 학습 보상과 같다): Σ고객 도착(MFC 출발부터 누적 거리, 열린 경로) + per_route × 경로 수. 배치 [b]."""
+    import torch
+    from rl4co.utils.ops import gather_by_index, get_distance
+
+    go_from = torch.cat((torch.zeros_like(actions[:, :1]), actions[:, :-1]), dim=1)
+    go_to = actions
+    d = get_distance(gather_by_index(locs, go_from), gather_by_index(locs, go_to))
+    cum = torch.zeros(actions.size(0), device=locs.device)
+    arrivals = torch.zeros_like(cum)
+    for t in range(actions.size(1)):
+        at_customer = go_to[:, t] != 0
+        cum = torch.where(at_customer, cum + d[:, t], torch.zeros_like(cum))
+        arrivals = arrivals + torch.where(at_customer, cum, torch.zeros_like(cum))
+    routes = ((go_from == 0) & (go_to != 0)).sum(-1).float()
+    return arrivals + per_route * routes
 
 
 def _windows(torch, n: int, deadlines: Sequence[float] | None):

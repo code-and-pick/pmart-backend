@@ -26,13 +26,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import torch  # noqa: E402
-from rl4co.utils.ops import gather_by_index, get_distance, unbatchify  # noqa: E402
+from rl4co.utils.ops import unbatchify  # noqa: E402
 from routefinder.envs.mtvrp import MTVRPEnv  # noqa: E402
 from tensordict import TensorDict  # noqa: E402
 
 import evaluate  # noqa: E402
 from app import planner  # noqa: E402
-from app.routefinder_model import RouteFinderModel, _normalize, checkpoint_path  # noqa: E402
+from app.routefinder_model import RouteFinderModel, _normalize, checkpoint_path, route_cost  # noqa: E402
 
 MAX_SIZE = 3
 
@@ -45,21 +45,7 @@ class PmartEnv(MTVRPEnv):
         self.route_cost = route_cost
 
     def _get_reward(self, td: TensorDict, actions: torch.Tensor) -> torch.Tensor:
-        return -pmart_cost(td["locs"], actions, self.route_cost)
-
-
-def pmart_cost(locs: torch.Tensor, actions: torch.Tensor, route_cost: float) -> torch.Tensor:
-    go_from = torch.cat((torch.zeros_like(actions[:, :1]), actions[:, :-1]), dim=1)
-    go_to = actions
-    d = get_distance(gather_by_index(locs, go_from), gather_by_index(locs, go_to))
-    cum = torch.zeros(actions.size(0), device=locs.device)
-    arrivals = torch.zeros_like(cum)
-    for t in range(actions.size(1)):
-        at_customer = go_to[:, t] != 0
-        cum = torch.where(at_customer, cum + d[:, t], torch.zeros_like(cum))
-        arrivals = arrivals + torch.where(at_customer, cum, torch.zeros_like(cum))
-    routes = ((go_from == 0) & (go_to != 0)).sum(-1).float()
-    return arrivals + route_cost * routes
+        return -route_cost(td["locs"], actions, self.route_cost)
 
 
 def instance_tensors(rnd: random.Random, n: int):

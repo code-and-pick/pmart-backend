@@ -19,7 +19,7 @@ uv run pytest                # 규칙·API 시험 + 실제 모델 시험(-m mode
 uv run uvicorn app.main:app --port 8407
 docker build -t pmart/delivery-dispatch-optimizer:dev .   # 가중치를 이미지에 넣는다(실행 때 인터넷 불필요)
 ```
-환경변수: `OPTIMIZER_MODEL_PATH`(가중치 파일, 이미지 안 `/models/rf-transformer.ckpt`), `OPTIMIZER_DISABLE_MODEL=1`(시험), `LOG_LEVEL`.
+환경변수: `OPTIMIZER_MODEL_PATH`(가중치 파일, 이미지 안 `/models/rf-transformer.ckpt`), `OPTIMIZER_DISABLE_MODEL=1`(시험), `OPTIMIZER_MULTISTART`(기본 1 — 출발점 n개를 한꺼번에 풀고 가장 싼 답, 0 이면 한 번), `LOG_LEVEL`.
 
 ## 상태 (2026-11-13)
 - 구현·시험: pytest 10 통과(실제 가중치 시험 2 포함), Docker 이미지 빌드·실행 확인(상태 UP, 계산 7~8ms, 메모리 약 390MB). 이미지 **2.16GB**(두 단계 빌드 — 처음 5GB 는 uv 캐시·git 이 남았던 것. 가상환경 1.5GB 대부분 PyTorch).
@@ -28,4 +28,5 @@ docker build -t pmart/delivery-dispatch-optimizer:dev .   # 가중치를 이미�
 - dispatch 연결: `pmart.dispatch.ai.base-url`(비우면 OR-Tools 만), 시간 초과 3초, 실패·검증 실패는 OR-Tools 로 대신(지표 `pmart.dispatch.ai.fallback`·`pmart.dispatch.ai.dropped`).
 - LAN 배치는 PC 1(PC 5, 포트 8407, CPU). 아직 안 함.
 - **추가 학습(2026-11-13)** `tools/finetune.py`: 보상 = Σ고객 도착 + λ × 경로 수(공개 가중치는 경로 길이 합). λ 2.0·3000 단계·CPU 17분 → 덜 배정 −22% → −2%, 비용 차이 +8% 안팎 — 아직 OR-Tools 밑이라 LAN 은 계속 끔. 가중치 `models/`(git 제외, PC 5 만). 결과 `docs/delivery/ai-optimizer-evaluation.md` 끝 절.
-- 남은 것: 추론 다중 시작 고르기, 실제 카카오 도로 시간으로 재검증, 큰 MFC 크기 비교, GreedRL 비교.
+- **큰 MFC·다중 시작(2026-11-13)**: 20~40건에서 dispatch 와 같은 CP-SAT(1 작업자·2초)는 80~90% 시간 안에 해를 못 내 규칙 기반 해로 떨어지고, 추가 학습 RouteFinder 가 배정 +5~7%·비용 −9~12%(0.1초 안). 4~12건은 아직 OR-Tools 가 조금 낫다. 다중 시작 서버 기본 켬(`OPTIMIZER_MULTISTART`). 결과 평가 문서 끝 절.
+- 남은 것: AI 켜는 기준 결정(큰 MFC 만?), Java CP-SAT 로 큰 문제 직접 재기, 실제 카카오 도로 시간으로 재검증, GreedRL 비교.

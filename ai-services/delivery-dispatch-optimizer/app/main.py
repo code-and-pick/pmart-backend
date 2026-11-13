@@ -29,7 +29,8 @@ def load_model():
     try:
         from .routefinder_model import NAME, RouteFinderModel, checkpoint_path
 
-        return RouteFinderModel(checkpoint_path()), NAME
+        multistart = os.environ.get("OPTIMIZER_MULTISTART", "1") != "0"  # 출발점 n개 중 가장 싼 답(약 1.4배 시간, 2026-11-13 평가)
+        return RouteFinderModel(checkpoint_path(), multistart=multistart), NAME + (" multistart" if multistart else "")
     except Exception as e:  # noqa: BLE001 — 모델 없이도 떠서 503 으로 알린다
         log.error("RouteFinder 를 올리지 못함 — 계산 요청은 503: %s", e)
         return None, None
