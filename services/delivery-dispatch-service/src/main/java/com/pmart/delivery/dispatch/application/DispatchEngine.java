@@ -136,7 +136,9 @@ public class DispatchEngine {
             .forEach(
                 d ->
                     tx.executeWithoutResult(
-                        s -> store.postpone(d.attemptId(), now.plus(RETRY_LATER))));
+                        s ->
+                            store.postpone(
+                                d.attemptId(), later))); // 429 면 quota-backoff(PC 1 재검토 ②)
       }
     }
   }

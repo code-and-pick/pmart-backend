@@ -22,6 +22,15 @@ class FulfillmentEventConsumers {
   }
 
   /**
+   * order 주문 취소(토픽 order.order.v1, 바인딩 {@code orderEvents-in-0}) — scope FULL 이면 배송 취소·이후 배차 요청
+   * 차단(PC 1 재검토 ①: 피킹 전 중지는 전체·부분 구분 없이 오므로 주문 전체 여부는 이 사건으로). 다른 주문 사건은 버린다.
+   */
+  @Bean
+  PmartEventConsumer orderEvents(EventConsumers consumers, FulfillmentEventHandler handler) {
+    return consumers.of(e -> "OrderCancelled".equals(e.eventType()), handler::onOrderCancelled);
+  }
+
+  /**
    * delivery-execution 전달 완료(토픽 delivery.delivery.v1, 바인딩 {@code executionEvents-in-0}) → 배송
    * CLOSED(H2). 이 서비스가 내는 사건도 같은 토픽이라 종류로 거른다.
    */

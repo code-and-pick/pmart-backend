@@ -306,23 +306,42 @@ public class ExecutionService {
           if (c.substituteEvidenceCaseId() != null) {
             evidence.put("substituteEvidenceCaseId", c.substituteEvidenceCaseId());
           }
-          List<Map<String, Integer>> perPackage = new ArrayList<>();
+          // 포장마다 마지막 인계만(다시 인계한 포장·재배차 전 라이더 인계를 두 번 세지 않는다 — PC 1 재검토 ③).
+          // 인계 기록은 인계 시각 순이라 같은 포장의 뒤 기록이 앞 기록을 덮는다. 출고 포장 목록을 알면 그 포장만.
+          Map<String, HandoverRow> lastByPackage = new LinkedHashMap<>();
           for (HandoverRow h : store.handovers(deliveryId)) {
+            lastByPackage.put(h.packageId(), h);
+          }
+          Set<String> shipmentPackages = new java.util.HashSet<>();
+          if (d.shipmentId() != null) {
+            store
+                .shipmentPackages(d.shipmentId())
+                .ifPresent(
+                    json -> {
+                      for (var n : mapper.readTree(json)) {
+                        shipmentPackages.add(n.asString());
+                      }
+                    });
+          }
+          List<Map<String, Integer>> perPackage = new ArrayList<>();
+          for (HandoverRow h : lastByPackage.values()) {
+            if (!shipmentPackages.isEmpty() && !shipmentPackages.contains(h.packageId())) {
+              continue;
+            }
             Map<String, Integer> lines = new LinkedHashMap<>();
             for (var e : mapper.readTree(h.linesJson()).properties()) {
               lines.put(e.getKey(), e.getValue().asInt());
             }
             perPackage.add(lines);
           }
+          List<Map<String, Object>> delivered = ExecutionRules.deliveredLines(perPackage);
+          if (delivered.isEmpty()) {
+            // 계약 lines minItems 1 — 인계 수량을 모르면 완료를 내지 않는다(인계 사건에는 줄이 반드시 있어 생기지 않아야 한다)
+            throw PmartException.invalidState("인계된 상품 수량을 확인할 수 없습니다. 지원센터에 문의해 주세요.");
+          }
           store.completed(deliveryId, c.method(), mapper.writeValueAsString(evidence), now);
           store.history(deliveryId, "COMPLETED", now, "RIDER", evidenceId, now);
-          events.completed(
-              d,
-              ExecutionRules.deliveredLines(perPackage),
-              c.method(),
-              evidenceId,
-              c.takenAt(),
-              now);
+          events.completed(d, delivered, c.method(), evidenceId, c.takenAt(), now);
           earnings.completed(d, now); // 수락 당시 금액 → 확정 대기(사건 버전은 따로 올린다)
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });

@@ -54,7 +54,10 @@ class UserTypeAllowlistFileTest {
         String name = f.getFileName().toString();
         if (name.startsWith("_")
             || name.equals("redocly.yaml")
-            || name.equals("api-gateway.yaml")) {
+            || name.equals("api-gateway.yaml")
+            // AI 배차 계산 서버 — 게이트웨이에 열지 않는 내부 계산 서버(ADR-0058). /health 가 /api/v1/health 로 들어가지 않게(PC
+            // 1 재검토 ④)
+            || name.equals("delivery-dispatch-optimizer.yaml")) {
           continue;
         }
         Map<String, Object> doc;

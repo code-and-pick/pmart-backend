@@ -71,9 +71,10 @@ GET /api/v1/deliveries/{deliveryId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/assignment-cancellations/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/dispatch OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR
-GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId} RIDER
+GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR
 GET /api/v1/delivery-conditions CUSTOMER,GUEST
+GET /api/v1/delivery-list RIDER
 GET /api/v1/delivery-options CUSTOMER,GUEST
 GET /api/v1/dispatch-requests/{requestId} OPERATOR
 GET /api/v1/disposal-approvals/{disposalApprovalId} OPERATOR
@@ -99,6 +100,7 @@ GET /api/v1/inbound-promises OPERATOR
 GET /api/v1/inbound-promises/{trfId} OPERATOR
 GET /api/v1/inbound-promises/{trfId}/receipts/{receiptId} OPERATOR
 GET /api/v1/inbound-tasks OPERATOR
+GET /api/v1/inbound-tasks/{taskId} OPERATOR
 GET /api/v1/initial-stock-loads OPERATOR
 GET /api/v1/inquiries CUSTOMER,OPERATOR
 GET /api/v1/inquiries/{inquiryId} CUSTOMER,OPERATOR
@@ -281,12 +283,15 @@ POST /api/v1/customer-assistant/questions CUSTOMER
 POST /api/v1/deliveries/{deliveryId}/assignment-cancellations OPERATOR,RIDER
 POST /api/v1/deliveries/{deliveryId}/completions RIDER
 POST /api/v1/deliveries/{deliveryId}/customer-arrivals RIDER
+POST /api/v1/deliveries/{deliveryId}/evidence-photos RIDER
+POST /api/v1/deliveries/{deliveryId}/failure-decisions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/failures RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests RIDER
 POST /api/v1/deliveries/{deliveryId}/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/store-deliveries RIDER
 POST /api/v1/deliveries/{deliveryId}/store-arrivals RIDER
+POST /api/v1/delivery-list/{deliveryId}/acceptances RIDER
 POST /api/v1/dispatch-requests OPERATOR
 POST /api/v1/disposal-approvals OPERATOR
 POST /api/v1/disposal-approvals/{disposalApprovalId}/executions OPERATOR

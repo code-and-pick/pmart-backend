@@ -128,6 +128,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode picked = outbox(id, "PickupCompleted").path("payload");
     assertThat(picked.path("packageIds").size()).isEqualTo(2);
     assertThat(picked.path("handoverIds").toString()).contains("HO-1", "HO-2");
+    // 같은 포장을 다시 인계(재인계) — 완료 수량은 포장마다 마지막 인계만(두 번 세지 않는다, PC 1 재검토 ③)
+    handedOver(id, shipment, order, rider, "PKG-2", "HO-2B", Map.of("L-1", 1, "L-2", 3));
+    awaitSql("SELECT count(*) FROM package_handover WHERE handover_id = 'HO-2B'");
     assertThat(
             post(id, "pickups", rider, Map.of("handoverIds", List.of("HO-1", "HO-2")))
                 .getStatusCode()

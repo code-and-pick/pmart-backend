@@ -186,9 +186,14 @@ public class FulfillmentEventHandler {
     for (JsonNode pp : p.path("perPackage")) {
       verdicts.put(pp.path("packageId").asString(), pp.path("state").asString(""));
     }
-    boolean anyMoving = verdicts.values().stream().anyMatch(v -> !"STOPPED".equals(v));
     String orderId = p.path("orderId").asString();
-    if (!anyMoving) {
+    if (verdicts.isEmpty()) {
+      // 피킹 전 중지는 전체·부분 모두 perPackage=[] 로 온다(mfc WorkStopService) — 여기서는 주문 전체인지 모른다.
+      // 주문 전체 취소는 order 의 OrderCancelled(scope FULL)로 판단한다(onOrderCancelled, PC 1 재검토 ①, 사용자 (가)).
+      log.info("주문 {} 피킹 전 작업 중지 — 배송 판단은 주문 취소 사건(FULL)으로", orderId);
+      return;
+    }
+    if (verdicts.values().stream().allMatch("STOPPED"::equals)) {
       // 배차 요청이 이 판정보다 늦게 와도 배차하지 않게 남겨 둔다(키가 달라 순서 보장 없음 — H1)
       store.recordStoppedOrder(orderId, p.path("stopRequestId").asString(""), now);
     }
@@ -197,21 +202,44 @@ public class FulfillmentEventHandler {
         continue;
       }
       List<String> known = packageIds(d.packagesJson());
-      // 포장 전(목록 모름)이면 인계·인계 중 판정이 없을 때 전체 중지로 본다 — 포장 전에는 인계될 것이 없다(PC 1 검토 H1)
-      boolean allStopped =
-          known.isEmpty()
-              ? !anyMoving
-              : known.stream().allMatch(id -> "STOPPED".equals(verdicts.get(id)));
-      if (allStopped && "CREATED".equals(d.state())) {
-        store.setState(
-            d.deliveryId(), "CANCELLED_BEFORE_PICKUP", "ORDER_CANCELLED", now); // 배차 전 — 알릴 배정 없음
-      } else if (allStopped) {
-        transitions.cancelBeforePickup(d, "ORDER_CANCELLED", now);
-        log.info("배송 {} 픽업 전 취소 — 모든 포장 STOPPED", d.deliveryId());
+      if (known.isEmpty()) {
+        continue; // 이 배송의 포장을 모른다 — 주문 취소 사건으로 판단
+      }
+      if (known.stream().allMatch(id -> "STOPPED".equals(verdicts.get(id)))) {
+        cancel(d, "모든 포장 STOPPED", now);
       } else {
         log.info("배송 {} 작업 중지 판정에 인계·인계 중 포장 있음 — 배차 유지", d.deliveryId());
       }
     }
+  }
+
+  /**
+   * order 주문 취소(order.order.v1) — scope FULL 이면 주문 전체가 취소됐다: 픽업 전 배송은 취소하고, 나중에 온 배차 요청은 BLOCKED(멈춘
+   * 주문으로 기록). PARTIAL 은 남은 상품이 있어 배차를 그대로 둔다. 픽업한 배송은 그대로(회수는 claim·지원센터).
+   */
+  public void onOrderCancelled(EventEnvelope e) {
+    JsonNode p = e.payload();
+    if (!"FULL".equals(p.path("scope").asString(""))) {
+      return;
+    }
+    Instant now = clock.instant();
+    String orderId = p.path("orderId").asString();
+    store.recordStoppedOrder(orderId, "order-cancelled:" + e.eventId(), now);
+    for (DeliveryRow d : store.lockByOrder(orderId)) {
+      if (!CLOSED.contains(d.state())) {
+        cancel(d, "주문 전체 취소", now);
+      }
+    }
+  }
+
+  private void cancel(DeliveryRow d, String why, Instant now) {
+    if ("CREATED".equals(d.state())) {
+      store.setState(
+          d.deliveryId(), "CANCELLED_BEFORE_PICKUP", "ORDER_CANCELLED", now); // 배차 전 — 알릴 배정 없음
+    } else {
+      transitions.cancelBeforePickup(d, "ORDER_CANCELLED", now);
+    }
+    log.info("배송 {} 픽업 전 취소 — {}", d.deliveryId(), why);
   }
 
   private void onHandover(JsonNode p, Instant now) {

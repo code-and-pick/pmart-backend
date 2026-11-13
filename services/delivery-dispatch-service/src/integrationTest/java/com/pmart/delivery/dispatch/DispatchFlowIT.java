@@ -885,7 +885,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
 
   @Test
   void stopBeforePackingCancelsAndStopBeforeRequestBlocks() {
-    // 배차 요청 뒤 포장 전 중지(포장 목록 모름, 판정 비어 있음) → 전체 중지로 보고 취소(H1)
+    // 배차 요청 뒤 피킹 전 중지(perPackage 비어 있음) — 전체인지 부분인지 모르므로 배송은 그대로(PC 1 재검토 ①),
+    // 주문 전체 취소(OrderCancelled FULL)가 오면 취소, 부분 취소(PARTIAL)는 그대로
     String mfc = "MFC-D9";
     riders(mfc);
     String order = "ORD-" + UUID.randomUUID();
@@ -919,28 +920,33 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             "STOP-9",
             "perPackage",
             List.of(),
+            "notStartedLines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1)),
             "decidedAt",
             Instant.now().toString()));
+    orderCancelled(order, "PARTIAL");
+    awaitSql(
+        "SELECT count(*) FROM inbox_event WHERE event_type = 'OrderCancelled' AND aggregate_id = '"
+            + order
+            + "'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, d1))
+        .isEqualTo("DISPATCHING"); // 부분 중지·부분 취소 — 남은 상품은 배차
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM stopped_order WHERE order_id = ?", Integer.class, order))
+        .isZero();
+    orderCancelled(order, "FULL");
     awaitSql(
         "SELECT count(*) FROM delivery WHERE delivery_id = '"
             + d1
             + "' AND state = 'CANCELLED_BEFORE_PICKUP'");
 
-    // 중지가 배차 요청보다 먼저 오면 → 배송은 BLOCKED, DeliveryCreated 없음
+    // 주문 전체 취소가 배차 요청보다 먼저 오면 → 배송은 BLOCKED, DeliveryCreated 없음
     String order2 = "ORD-" + UUID.randomUUID();
     String shipment2 = "SHP-" + UUID.randomUUID();
-    send(
-        "WorkStopResult",
-        order2,
-        Map.of(
-            "orderId",
-            order2,
-            "stopRequestId",
-            "STOP-10",
-            "perPackage",
-            List.of(),
-            "decidedAt",
-            Instant.now().toString()));
+    orderCancelled(order2, "FULL");
     awaitSql("SELECT count(*) FROM stopped_order WHERE order_id = '" + order2 + "'");
     send(
         "DispatchRequested",
@@ -1326,6 +1332,27 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .body(Map.of("response", response))
         .retrieve()
         .toEntity(String.class);
+  }
+
+  void orderCancelled(String orderId, String scope) {
+    String json =
+        EventEnvelopeFixtures.envelope("OrderCancelled")
+            .from("order-service")
+            .aggregate("Order", orderId, scope.equals("FULL") ? 3 : 2)
+            .payload(
+                Map.of(
+                    "orderId",
+                    orderId,
+                    "scope",
+                    scope,
+                    "lines",
+                    List.of(Map.of("orderLineId", "L-1", "qty", 1)),
+                    "reason",
+                    "SHORTAGE",
+                    "cancelledAt",
+                    Instant.now().toString()))
+            .buildJson();
+    kafka.send("order.order.v1", orderId, json).join();
   }
 
   void send(String type, String key, Map<String, Object> payload) {
