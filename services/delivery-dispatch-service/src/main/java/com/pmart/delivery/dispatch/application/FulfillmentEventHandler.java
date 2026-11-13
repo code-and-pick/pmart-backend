@@ -134,13 +134,21 @@ public class FulfillmentEventHandler {
             packagesJson == null ? d.packagesJson() : packagesJson,
             deliveryMode,
             now);
+        recheckPickup(d.deliveryId(), now); // 포장 목록을 이제 알면 인계 기록으로 다시 판정(M4)
       }
       if (requested && "CREATED".equals(d.state())) {
-        store.setState(d.deliveryId(), "DISPATCHING", null, now);
-        startDispatch(d.deliveryId(), now);
+        if (store.orderStopped(orderId)) {
+          store.setState(
+              d.deliveryId(), "BLOCKED", "ORDER_CANCELLED", now); // 중지된 주문 — 배차하지 않는다(H1)
+          log.info("배송 {} 배차 요청 무시 — 주문 {} 작업 중지됨", d.deliveryId(), orderId);
+        } else {
+          store.setState(d.deliveryId(), "DISPATCHING", null, now);
+          startDispatch(d.deliveryId(), now);
+        }
       }
       return;
     }
+    boolean stopped = store.orderStopped(orderId);
     String deliveryId = "DLV-" + UUID.randomUUID();
     String pkgs = packagesJson == null ? "[]" : packagesJson;
     store.insertDelivery(
@@ -153,9 +161,11 @@ public class FulfillmentEventHandler {
         readyAt,
         pkgs,
         deliveryMode,
-        requested ? "DISPATCHING" : "CREATED",
+        stopped ? "BLOCKED" : requested ? "DISPATCHING" : "CREATED",
         now);
-    if (requested) {
+    if (stopped) {
+      log.info("배송 {} 기록만 — 주문 {} 작업 중지됨(배차 안 함)", deliveryId, orderId);
+    } else if (requested) {
       startDispatch(deliveryId, now);
     } else {
       log.info("배송 {} 기록 — 출고 {} 출하 대기, 점원 배차 요청 대기", deliveryId, shipmentId);
@@ -176,19 +186,22 @@ public class FulfillmentEventHandler {
     for (JsonNode pp : p.path("perPackage")) {
       verdicts.put(pp.path("packageId").asString(), pp.path("state").asString(""));
     }
-    for (DeliveryRow d : store.lockByOrder(p.path("orderId").asString())) {
+    boolean anyMoving = verdicts.values().stream().anyMatch(v -> !"STOPPED".equals(v));
+    String orderId = p.path("orderId").asString();
+    if (!anyMoving) {
+      // 배차 요청이 이 판정보다 늦게 와도 배차하지 않게 남겨 둔다(키가 달라 순서 보장 없음 — H1)
+      store.recordStoppedOrder(orderId, p.path("stopRequestId").asString(""), now);
+    }
+    for (DeliveryRow d : store.lockByOrder(orderId)) {
       if (CLOSED.contains(d.state())) {
         continue;
       }
       List<String> known = packageIds(d.packagesJson());
-      if (known.isEmpty()) {
-        log.warn(
-            "배송 {} 작업 중지 판정({}) — 포장을 아직 몰라 배차를 그대로 둔다(운영자 확인)",
-            d.deliveryId(),
-            p.path("stopRequestId").asString(""));
-        continue;
-      }
-      boolean allStopped = known.stream().allMatch(id -> "STOPPED".equals(verdicts.get(id)));
+      // 포장 전(목록 모름)이면 인계·인계 중 판정이 없을 때 전체 중지로 본다 — 포장 전에는 인계될 것이 없다(PC 1 검토 H1)
+      boolean allStopped =
+          known.isEmpty()
+              ? !anyMoving
+              : known.stream().allMatch(id -> "STOPPED".equals(verdicts.get(id)));
       if (allStopped && "CREATED".equals(d.state())) {
         store.setState(
             d.deliveryId(), "CANCELLED_BEFORE_PICKUP", "ORDER_CANCELLED", now); // 배차 전 — 알릴 배정 없음
@@ -213,10 +226,27 @@ public class FulfillmentEventHandler {
               Set<String> handed = new LinkedHashSet<>(stringList(d.handedOverJson()));
               handed.add(p.path("packageId").asString());
               List<String> known = packageIds(d.packagesJson());
-              boolean all = known.isEmpty() || handed.containsAll(known);
+              // 포장 목록을 모르면 픽업 완료로 바꾸지 않는다 — 목록(ShipmentReady)이 오면 다시 판정(D-6 모든 포장 인계 뒤, M4)
+              boolean all = !known.isEmpty() && handed.containsAll(known);
               boolean pickedUp = all && "ASSIGNED".equals(d.state());
               store.recordHandover(
                   deliveryId, mapper.writeValueAsString(new ArrayList<>(handed)), pickedUp, now);
+            });
+  }
+
+  private void recheckPickup(String deliveryId, Instant now) {
+    store
+        .lockDelivery(deliveryId)
+        .ifPresent(
+            d -> {
+              List<String> known = packageIds(d.packagesJson());
+              List<String> handed = stringList(d.handedOverJson());
+              if ("ASSIGNED".equals(d.state())
+                  && !known.isEmpty()
+                  && !handed.isEmpty()
+                  && handed.containsAll(known)) {
+                store.recordHandover(deliveryId, d.handedOverJson(), true, now);
+              }
             });
   }
 

@@ -713,6 +713,27 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 .retrieve()
                 .toEntity(String.class));
     assertThat(result.path("state").asString()).isEqualTo("CANCELLED_BEFORE_PICKUP");
+    // 결과는 요청한 본인·고객센터·그 센터 운영자만(L1) — 다른 라이더에게는 없는 것처럼
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/assignment-cancellations/{r}", deliveryId, "c-" + deliveryId)
+                .header("Authorization", "Bearer " + TestJwt.rider(other))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/assignment-cancellations/{r}", deliveryId, "c-" + deliveryId)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
 
     // 재배차 — 취소한 라이더는 빼고 다른 라이더에게
     engine.tick();
@@ -753,6 +774,264 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DispatchDelayed'",
                 Integer.class,
                 deliveryId))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void stopBeforePackingCancelsAndStopBeforeRequestBlocks() {
+    // 배차 요청 뒤 포장 전 중지(포장 목록 모름, 판정 비어 있음) → 전체 중지로 보고 취소(H1)
+    String mfc = "MFC-D9";
+    riders(mfc);
+    String order = "ORD-" + UUID.randomUUID();
+    String shipment = "SHP-" + UUID.randomUUID();
+    send(
+        "DispatchRequested",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            mfc,
+            "trigger",
+            "MANUAL",
+            "estimatedPackMinutes",
+            5,
+            "estimatedReadyAt",
+            Instant.now().toString(),
+            "requestedAt",
+            Instant.now().toString()));
+    String d1 = awaitDelivery(shipment);
+    send(
+        "WorkStopResult",
+        order,
+        Map.of(
+            "orderId",
+            order,
+            "stopRequestId",
+            "STOP-9",
+            "perPackage",
+            List.of(),
+            "decidedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + d1
+            + "' AND state = 'CANCELLED_BEFORE_PICKUP'");
+
+    // 중지가 배차 요청보다 먼저 오면 → 배송은 BLOCKED, DeliveryCreated 없음
+    String order2 = "ORD-" + UUID.randomUUID();
+    String shipment2 = "SHP-" + UUID.randomUUID();
+    send(
+        "WorkStopResult",
+        order2,
+        Map.of(
+            "orderId",
+            order2,
+            "stopRequestId",
+            "STOP-10",
+            "perPackage",
+            List.of(),
+            "decidedAt",
+            Instant.now().toString()));
+    awaitSql("SELECT count(*) FROM stopped_order WHERE order_id = '" + order2 + "'");
+    send(
+        "DispatchRequested",
+        shipment2,
+        Map.of(
+            "orderId",
+            order2,
+            "shipmentId",
+            shipment2,
+            "mfcId",
+            mfc,
+            "trigger",
+            "MANUAL",
+            "estimatedPackMinutes",
+            5,
+            "estimatedReadyAt",
+            Instant.now().toString(),
+            "requestedAt",
+            Instant.now().toString()));
+    String d2 = awaitDelivery(shipment2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, d2))
+        .isEqualTo("BLOCKED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryCreated'",
+                Integer.class,
+                d2))
+        .isZero();
+  }
+
+  @Test
+  void handoverBeforePackageListDoesNotMarkPickedUpUntilListArrives() {
+    String mfc = "MFC-D10";
+    String rider = "RD-m4-" + UUID.randomUUID();
+    riders(mfc, rider(rider, "AI_RECOMMENDED", true));
+    riderLookup(rider(rider, "AI_RECOMMENDED", true));
+    locations(Map.of(rider, new double[] {37.4985, 127.0280}));
+    String order = "ORD-" + UUID.randomUUID();
+    String shipment = "SHP-" + UUID.randomUUID();
+    send(
+        "DispatchRequested",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            mfc,
+            "trigger",
+            "MANUAL",
+            "estimatedPackMinutes",
+            5,
+            "estimatedReadyAt",
+            Instant.now().toString(),
+            "requestedAt",
+            Instant.now().toString()));
+    String deliveryId = awaitDelivery(shipment);
+    engine.tick();
+    String offer =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            deliveryId);
+    assertThat(body(respond(rider, offer, "a-" + offer, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    // 포장 두 개 중 하나 인계 — 목록을 아직 모르니 픽업 완료 아님(M4)
+    send(
+        "PackageHandedOver",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "deliveryId",
+            deliveryId,
+            "packageId",
+            "P-A-" + shipment,
+            "riderId",
+            rider,
+            "handoverId",
+            "HO-A",
+            "inventoryCommitId",
+            "IC-A",
+            "lines",
+            List.of(),
+            "handedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND handed_over_packages::text LIKE '%P-A-%'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("ASSIGNED");
+    // 목록이 오면(포장 2개) 아직 하나 남아 그대로, 나머지 인계 뒤 PICKED_UP
+    send(
+        "ShipmentReady",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            mfc,
+            "readyAt",
+            Instant.now().toString(),
+            "packages",
+            List.of(
+                Map.of("packageId", "P-A-" + shipment, "bagCount", 1),
+                Map.of("packageId", "P-B-" + shipment, "bagCount", 1))));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND ready_at IS NOT NULL");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("ASSIGNED");
+    send(
+        "PackageHandedOver",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "deliveryId",
+            deliveryId,
+            "packageId",
+            "P-B-" + shipment,
+            "riderId",
+            rider,
+            "handoverId",
+            "HO-B",
+            "inventoryCommitId",
+            "IC-B",
+            "lines",
+            List.of(),
+            "handedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'PICKED_UP'");
+  }
+
+  @Test
+  void sameRiderTwoListAcceptancesAtOnceRespectOneAtATime() throws Exception {
+    String mfc = "MFC-D11";
+    String rider = "RD-m1-" + UUID.randomUUID();
+    Map<String, Object> r = rider(rider, "NORMAL", true);
+    r.put("oneAtATime", true);
+    riders(mfc, r);
+    riderLookup(r);
+    locations(Map.of(rider, new double[] {37.4985, 127.0280}));
+    String a = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-11a-" + UUID.randomUUID());
+    String b = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-11b-" + UUID.randomUUID());
+    engine.tick(); // 좌표 준비
+    java.util.concurrent.ExecutorService pool =
+        java.util.concurrent.Executors.newFixedThreadPool(2);
+    try {
+      var fa =
+          pool.submit(
+              () ->
+                  body(
+                      http.post()
+                          .uri("/delivery-list/{id}/acceptances", a)
+                          .headers(h -> riderHeaders(h, rider, "m1a-" + a))
+                          .retrieve()
+                          .toEntity(String.class)));
+      var fb =
+          pool.submit(
+              () ->
+                  body(
+                      http.post()
+                          .uri("/delivery-list/{id}/acceptances", b)
+                          .headers(h -> riderHeaders(h, rider, "m1b-" + b))
+                          .retrieve()
+                          .toEntity(String.class)));
+      List<String> outcomes =
+          List.of(fa.get().path("outcome").asString(), fb.get().path("outcome").asString());
+      // 하나씩 배달하기 — 먼저 잡은 수락의 건수를 본 뒤라 둘째는 INELIGIBLE(M1)
+      assertThat(outcomes).containsExactlyInAnyOrder("ASSIGNED", "LATE");
+    } finally {
+      pool.shutdown();
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE rider_id = ? AND state = 'ASSIGNED'",
+                Integer.class,
+                rider))
         .isEqualTo(1);
   }
 

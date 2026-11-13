@@ -142,6 +142,8 @@ public class OfferService {
             OfferResult.class,
             () -> {
               Instant now = clock.instant();
+              // 같은 라이더의 수락은 줄을 세워 앞 수락의 건수를 본 뒤 판정한다(M1). 라이더 → 배송 순서로 잠근다
+              store.lockRider(riderId);
               OfferRow peek = store.offer(offerId).orElseThrow();
               List<OfferRow> peekGroup = group(peek);
               // 배송 행을 ID 순으로 잠근다(같은 묶음을 두 요청이 동시에 잡아도 교착 없음)
@@ -320,6 +322,7 @@ public class OfferService {
             OfferResult.class,
             () -> {
               Instant now = clock.instant();
+              store.lockRider(riderId); // M1
               DeliveryRow d = store.lockDelivery(peek.deliveryId()).orElseThrow();
               var attempt = store.openAttempt(d.deliveryId());
               AcceptRules.Verdict v =

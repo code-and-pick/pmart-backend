@@ -384,6 +384,29 @@ public class DispatchStore {
         deliveryId);
   }
 
+  // ---------- 라이더 잠금·멈춘 주문 ----------
+
+  /** 같은 라이더의 수락을 줄 세운다(트랜잭션 끝까지) — 진행 중 수를 센 뒤 배정하기까지 다른 수락이 끼지 못하게(PC 1 검토 M1). */
+  public void lockRider(String riderId) {
+    jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))", "dispatch-rider:" + riderId);
+  }
+
+  public void recordStoppedOrder(String orderId, String stopRequestId, Instant now) {
+    jdbc.update(
+        "INSERT INTO stopped_order (order_id, stop_request_id, stopped_at) VALUES (?, ?, ?)"
+            + " ON CONFLICT (order_id) DO NOTHING",
+        orderId,
+        stopRequestId,
+        ts(now));
+  }
+
+  public boolean orderStopped(String orderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM stopped_order WHERE order_id = ?", Integer.class, orderId);
+    return n != null && n > 0;
+  }
+
   // ---------- 배차 취소 기록 ----------
 
   public record CancellationRow(

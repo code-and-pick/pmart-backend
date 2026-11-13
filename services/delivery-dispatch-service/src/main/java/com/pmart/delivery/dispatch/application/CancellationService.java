@@ -154,10 +154,30 @@ public class CancellationService {
         .value();
   }
 
+  /**
+   * 배차 취소 결과 조회 — 요청한 본인, 그 센터 운영자(MFC 백오피스)·OPERATOR_ADMIN, 고객센터(CS_AGENT), 서비스(사가). 지원센터 역할이 생기면
+   * 더한다(사용자 2026-11-13 "백오피스에 권한이 있는 사람이나 고객센터 및 지원센터", PC 1 검토 L1). 볼 수 없으면 있는지도 알리지 않는다(404).
+   */
   public DispatchStore.CancellationRow result(String deliveryId, String requestId) {
-    return store
-        .cancellation(deliveryId, requestId)
-        .orElseThrow(() -> PmartException.notFound("CANCELLATION_NOT_FOUND", "배차 취소 요청이 없습니다."));
+    PmartPrincipal p =
+        PmartPrincipal.current().orElseThrow(() -> OfferService.forbidden("인증이 필요합니다."));
+    DispatchStore.CancellationRow c =
+        store
+            .cancellation(deliveryId, requestId)
+            .orElseThrow(
+                () -> PmartException.notFound("CANCELLATION_NOT_FOUND", "배차 취소 요청이 없습니다."));
+    String mfcId = store.delivery(deliveryId).map(DeliveryRow::mfcId).orElse("");
+    boolean ok =
+        switch (p.type()) {
+          case SERVICE -> true;
+          case OPERATOR ->
+              p.hasRole("OPERATOR_ADMIN") || p.hasRole("CS_AGENT") || p.canAccessCenter(mfcId);
+          default -> p.subject().equals(c.actor());
+        };
+    if (!ok) {
+      throw PmartException.notFound("CANCELLATION_NOT_FOUND", "배차 취소 요청이 없습니다.");
+    }
+    return c;
   }
 
   private static void authorize(PmartPrincipal p, DeliveryRow d, Cancel c) {
