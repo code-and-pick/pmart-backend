@@ -90,14 +90,17 @@ def score(req: PlanRequest, assignments) -> tuple[int, int, int]:
     return covered, total, bundled
 
 
-def ortools_plan(req: PlanRequest, time_limit: float = 2.0):
+def ortools_plan(req: PlanRequest, time_limit: float = 2.0, neighbors: int = 0):
     from ortools.sat.python import cp_model
 
     n = len(req.deliveries)
     direct = [d.direct_seconds for d in req.deliveries]
     cands: list[planner.Bundle] = [planner.Bundle((i,), (direct[i],)) for i in range(n)]
+    near = nearest(req, neighbors)
     for k in (2, 3):
         for sub in itertools.combinations(range(n), k):
+            if near is not None and not close(sub, near):
+                continue
             best = None
             for order in itertools.permutations(sub):
                 arr = planner.arrivals(req, order)
@@ -142,6 +145,26 @@ def ortools_plan(req: PlanRequest, time_limit: float = 2.0):
     ]
 
 
+def nearest(req: PlanRequest, k: int):
+    """dispatch BundleProblem.nearest 와 같다 — 고객마다 가까운(고객 → 고객 초) k 명. k ≤ 0 이면 None(제한 없음)."""
+    if k <= 0:
+        return None
+    n = len(req.deliveries)
+    out = []
+    for a in range(n):
+        others = sorted((b for b in range(n) if b != a and (req.between_seconds[a][b] or 0) >= 0), key=lambda b: (req.between_seconds[a][b], b))
+        out.append(set(others[:k]))
+    return out
+
+
+def close(sub, near) -> bool:
+    """2건: 한쪽이 다른 쪽 이웃. 3건: 한 고객 기준으로 나머지 둘이 이웃."""
+    if len(sub) == 2:
+        a, b = sub
+        return b in near[a] or a in near[b]
+    return any(all(o in near[x] for o in sub if o != x) for x in sub)
+
+
 def greedy(cands, costs) -> dict[int, int]:
     """dispatch BundleProblem.greedy 와 같은 규칙 — (배송당 비용, 큰 묶음 먼저, 묶음, 라이더) 순으로 겹치지 않게. {묶음: 라이더}."""
     cells = sorted(costs.items(), key=lambda kv: (kv[1] / cands[kv[0][1]].size, -cands[kv[0][1]].size, kv[0][1], kv[0][0]))
@@ -164,6 +187,7 @@ def main():
     ap.add_argument("--min-n", type=int, default=4, help="문제당 배송 수 최소")
     ap.add_argument("--max-n", type=int, default=12, help="문제당 배송 수 최대(큰 MFC 비교는 20~40)")
     ap.add_argument("--multistart", action="store_true", help="RouteFinder 를 출발점 n개로 풀고 가장 싼 답(app.routefinder_model.route_cost)")
+    ap.add_argument("--neighbors", type=int, default=0, help="OR-Tools 묶음 후보를 가까운 k 명으로(dispatch bundle-neighbors). 0 = 모든 조합")
     ap.add_argument("--ortools-limit", type=float, default=2.0, help="CP-SAT 시간 한도(초) — dispatch solver-time-limit 와 같게")
     args = ap.parse_args()
     from app.routefinder_model import RouteFinderModel, checkpoint_path
@@ -179,7 +203,7 @@ def main():
         ai = planner.plan(req, model)
         t_ai = (time.perf_counter() - t0) * 1000
         t0 = time.perf_counter()
-        ot = ortools_plan(req, args.ortools_limit)
+        ot = ortools_plan(req, args.ortools_limit, args.neighbors)
         t_ot = (time.perf_counter() - t0) * 1000
         rows.append((n, m, score(req, ai), score(req, ot), t_ai, t_ot))
     cov_ai = sum(r[2][0] for r in rows)
@@ -188,7 +212,7 @@ def main():
     gap = [(r[2][1] - r[3][1]) / r[3][1] * 100 for r in same_cov if r[3][1] > 0]
     worse_cov = sum(1 for r in rows if r[2][0] < r[3][0])
     better_cov = sum(1 for r in rows if r[2][0] > r[3][0])
-    print(f"문제 {len(rows)}개 (배송 {args.min_n}~{args.max_n}, multistart={args.multistart}, 라이더 배송/4~배송/2, 합성 도로 시간)")
+    print(f"문제 {len(rows)}개 (배송 {args.min_n}~{args.max_n}, multistart={args.multistart}, OR-Tools 이웃={args.neighbors}, 라이더 배송/4~배송/2, 합성 도로 시간)")
     print(f"배정 배송 수 합계: RouteFinder {cov_ai} / OR-Tools {cov_ot}")
     print(f"배정 수가 OR-Tools 보다 적은 문제 {worse_cov}개, 많은 문제 {better_cov}개")
     if gap:

@@ -32,6 +32,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param routeCacheTtl 라이더 → MFC 도로 시간을 다시 쓰는 시간(설계값 5분, 약 100m 칸)
  * @param deliveryPromise 배송 약속 — 한집·알뜰은 주문 확정 + 이 값(사용자 2026-11-13 "주문한지 50분 이내 전달"), 예약은 도착 시간대 끝
  * @param bundleMaxExtra 묶음 보조 상한(바로 갈 때보다 이만큼 넘게 늦으면 안 묶음) — 주 조건은 약속 시각(BundleProblem), 기본 50분
+ * @param bundleNeighbors 알뜰배달 묶음 후보를 고객마다 가까운 이만큼으로 줄인다(0 = 모든 조합). 기본 4 — 대기 20~40건에서 모든 조합은 후보가
+ *     수천 개라 CP-SAT 가 2초 안에 80~90% 못 풀고 규칙 기반으로 떨어졌다. 4 면 0건, 배정 +7~10%(2026-11-13 측정,
+ *     LargeMfcBenchmarkTest)
  */
 @ConfigurationProperties(prefix = "pmart.dispatch")
 public record DispatchProperties(
@@ -57,6 +60,7 @@ public record DispatchProperties(
     @Nullable Duration cancellationWindow,
     @Nullable Duration cancellationPenalty,
     @Nullable Duration listDelayPerCancellation,
+    @Nullable Integer bundleNeighbors,
     @Nullable Ai ai,
     @Nullable Urls urls) {
 
@@ -85,6 +89,7 @@ public record DispatchProperties(
     cancellationPenalty = cancellationPenalty == null ? Duration.ofMinutes(3) : cancellationPenalty;
     listDelayPerCancellation =
         listDelayPerCancellation == null ? Duration.ofMinutes(1) : listDelayPerCancellation;
+    bundleNeighbors = bundleNeighbors == null ? 4 : bundleNeighbors;
     urls = urls == null ? new Urls(null, null, null, null, null) : urls;
   }
 

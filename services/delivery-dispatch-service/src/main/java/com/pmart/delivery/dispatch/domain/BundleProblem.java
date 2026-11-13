@@ -284,7 +284,23 @@ public record BundleProblem(
       boolean[] bundlable,
       int maxSize,
       int maxExtraSeconds) {
+    return candidates(directSeconds, betweenSeconds, bundlable, maxSize, maxExtraSeconds, 0);
+  }
+
+  /**
+   * 후보 묶음 — {@code neighbors} 가 0 보다 크면 가까운 고객끼리만 묶는다(큰 MFC 에서 후보가 수천 개가 되어 CP-SAT 가 시간 안에 못 푸는 것을
+   * 막는다, 2026-11-13 측정): 2건은 한쪽이 다른 쪽의 가까운 {@code neighbors} 명 안, 3건은 한 고객 기준으로 나머지 둘이 그 안. 0 이면 모든
+   * 조합.
+   */
+  public static List<Bundle> candidates(
+      int[] directSeconds,
+      int[][] betweenSeconds,
+      boolean[] bundlable,
+      int maxSize,
+      int maxExtraSeconds,
+      int neighbors) {
     int n = directSeconds.length;
+    boolean[][] near = nearest(betweenSeconds, bundlable, neighbors);
     List<Bundle> out = new ArrayList<>();
     for (int d = 0; d < n; d++) {
       out.add(new Bundle(new int[] {d}, new int[] {directSeconds[d]}));
@@ -298,11 +314,19 @@ public record BundleProblem(
     List<int[]> subsets = new ArrayList<>();
     for (int i = 0; i < bundled.size(); i++) {
       for (int j = i + 1; j < bundled.size(); j++) {
-        if (maxSize >= 2) {
-          subsets.add(new int[] {bundled.get(i), bundled.get(j)});
+        int a = bundled.get(i);
+        int b = bundled.get(j);
+        if (maxSize >= 2 && (near == null || near[a][b] || near[b][a])) {
+          subsets.add(new int[] {a, b});
         }
         for (int k = j + 1; k < bundled.size() && maxSize >= 3; k++) {
-          subsets.add(new int[] {bundled.get(i), bundled.get(j), bundled.get(k)});
+          int c = bundled.get(k);
+          if (near == null
+              || (near[a][b] && near[a][c])
+              || (near[b][a] && near[b][c])
+              || (near[c][a] && near[c][b])) {
+            subsets.add(new int[] {a, b, c});
+          }
         }
       }
     }
@@ -334,6 +358,33 @@ public record BundleProblem(
       }
     }
     return out;
+  }
+
+  /** near[a][b] = b 가 a 의 가까운(고객 → 고객 도로 시간) 알뜰배달 {@code k} 명 안. k ≤ 0 이면 null(제한 없음). */
+  static boolean[][] nearest(int[][] betweenSeconds, boolean[] bundlable, int k) {
+    if (k <= 0) {
+      return null;
+    }
+    int n = bundlable.length;
+    boolean[][] near = new boolean[n][n];
+    for (int a = 0; a < n; a++) {
+      if (!bundlable[a]) {
+        continue;
+      }
+      final int from = a;
+      List<Integer> others = new ArrayList<>();
+      for (int b = 0; b < n; b++) {
+        if (b != a && bundlable[b] && betweenSeconds[a][b] >= 0) {
+          others.add(b);
+        }
+      }
+      others.sort(
+          Comparator.comparingInt((Integer b) -> betweenSeconds[from][b]).thenComparingInt(b -> b));
+      for (int i = 0; i < Math.min(k, others.size()); i++) {
+        near[a][others.get(i)] = true;
+      }
+    }
+    return near;
   }
 
   static List<int[]> permutations(int[] s) {
