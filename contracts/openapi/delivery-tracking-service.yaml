@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 어댑터 [결정 필요]), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
+    라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
     ETA 노출 범위는 점원 픽업지·배달지 둘 다, 고객 본인 배송지만. 타 고객 주소·전체 동선은 비노출. 산출 불가 시 "위치 확인 중/ETA 확인 중" 상태로 응답한다.
 servers:
@@ -107,8 +107,11 @@ paths:
       tags: [internal]
       summary: "[dispatch→tracking] 거리·이동시간 행렬 (출발지 × 도착지)"
       description: |
-        카카오모빌리티 어댑터 [결정 필요]. 외부 조회 실패 시 freshness UNAVAILABLE과 함께 직선거리 폴백(fallback=true)을 반환하며 dispatch는 이를 참고값으로만 쓴다.
-        origins/destinations는 "lat,lng" 쌍을 세미콜론으로 구분한 문자열이며 각각 최대 25개.
+        카카오모빌리티 길찾기 API 의 도로 거리·예상 소요시간(원문 §2.1 ②, ADR-0058 결정 2 — 사용자 2026-11-13 '직선거리만으로 원래 기능을 대체하지 않는다').
+        외부 조회가 안 되면 직선거리로 대신하지 않고 오류로 돌려준다: 키 미설정·거절 422 CONFIG_REQUIRED, 사용량 소진 429 QUOTA_EXCEEDED, 장애·시간 초과 503 DEPENDENCY_UNAVAILABLE.
+        구간 하나가 길을 못 찾으면(카카오 결과 코드 ≠ 0, 반경 10km 밖 등) 그 칸만 status NO_ROUTE.
+        origins/destinations는 "lat,lng" 쌍을 세미콜론으로 구분한 문자열이며 각각 최대 30개. 도착지가 하나면 다중 출발지 길찾기 1번, 아니면 출발지마다 다중 목적지 길찾기 1번.
+        카카오모빌리티 길찾기는 자동차 도로 기준이다 — vehicleType 은 받기만 하고 모든 수단에 같은 도로 경로를 쓴다(이륜·자전거 전용 경로 없음).
       operationId: getDistanceMatrix
       parameters:
         - name: origins
@@ -129,7 +132,34 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DistanceMatrix' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '429':
+          description: QUOTA_EXCEEDED — 카카오모빌리티 사용량 소진
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/rider-locations:
+    get:
+      tags: [internal]
+      summary: "[dispatch→tracking] 여러 라이더 마지막 위치 (서비스 토큰 없음 내부 호출)"
+      description: |
+        배차 후보 라이더들의 마지막 수신 위치를 한 번에 돌려준다(반경 판정은 dispatch — 직선, 사용자 2026-11-13). 위치가 없는 라이더는 빠진다.
+      x-added-in: '2026-11-13'
+      operationId: listRiderLocationsInternal
+      parameters:
+        - { name: riderIds, in: query, required: true, style: form, explode: false, schema: { type: array, minItems: 1, maxItems: 200, items: { type: string } } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RiderLocation' } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /internal/riders/{riderId}/location:
     get:
@@ -223,8 +253,8 @@ components:
     DistanceMatrix:
       type: object
       properties:
-        provider: { type: string, enum: [KAKAO_MOBILITY, STRAIGHT_LINE] }
-        fallback: { type: boolean, description: true면 직선거리 폴백 }
+        provider: { type: string, enum: [KAKAO_MOBILITY, STRAIGHT_LINE], description: '늘 KAKAO_MOBILITY(STRAIGHT_LINE 은 쓰지 않는다 — ADR-0058)' }
+        fallback: { type: boolean, description: '늘 false — 직선거리 대체 없음(ADR-0058, 2026-11-13)' }
         vehicleType: { type: string }
         rows:
           type: array
