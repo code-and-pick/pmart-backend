@@ -19,7 +19,7 @@
    | 서비스 | OR-Tools 용도 | 상태 |
    |---|---|---|
    | `mfc-capacity-service` | CP-SAT 작업 배정 추천, Routing 피킹 방문 순서 | 사용 중(LAN) |
-   | `delivery-dispatch-service` | 라이더 ↔ 배송 배정(ADR-0050) | OR-Tools 를 넣는 순간 대상 |
+   | `delivery-dispatch-service` | 라이더 ↔ 배송 배정(ADR-0050) — AI 추천 배차의 임시 계산(CP-SAT, ADR-0058) | **사용 중(2026-11-13, DD-1)** |
    | `transport-routing-service` | TMS 운송 경로(ADR-0050) | 서비스 없음 — 만들면 대상 |
    | (후보) replenishment 등 | 선형·정수계획 | OR-Tools 를 넣으면 대상 |
 3. **판정 규칙은 의존성이다**: 서비스 `build.gradle.kts` 에 `libs.ortools.java` 가 있으면 JVM. 새로 OR-Tools 를 넣는 서비스는 같은 커밋에서 이 ADR 의 표와 그 서비스 `CLAUDE.md` 에 적는다.

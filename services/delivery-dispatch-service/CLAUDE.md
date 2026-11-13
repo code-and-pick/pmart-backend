@@ -21,9 +21,16 @@
 로컬 포트 8404.
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 업무 로직 미구현 — 모든 엔드포인트는 501 UNSUPPORTED_ACTION.
+2026-11-13 DD-1 첫 묶음(계약 0.2.0, V2 — ADR-0058): MFC 사건 → 배송 생성 → AI 추천 제안·일반 배차모드 배달리스트 → 수락·배정 → 인계(PICKED_UP), 작업 중지 → 픽업 전 취소. 배차 요청 REST(`/dispatch-requests`)·배차 취소(`/assignment-cancellations`)·`POST /internal/deliveries` 는 501.
+- **구독** `fulfillmentEvents-in-0` ← mfc.fulfillment.v1(`FulfillmentEventHandler`): DispatchRequested·ShipmentReady(먼저 온 쪽이 배송을 만든다 — 출고당 하나, `shipment_id` 유일 + advisory lock), PackingFinished(포장 목록), WorkStopResult(배송이 아는 포장이 모두 STOPPED 면 픽업 전 취소 — 포장을 모르면 그대로·경고), PackageHandedOver(모든 포장 인계 → PICKED_UP). **처음 켜기 전 소비 그룹 시작 위치 2026-11-10T00:30Z**(kickoff §6).
+- **발행**(delivery.delivery.v1): DeliveryCreated(shipmentId, dropAddressRef = `order:<orderId>`)·DispatchOfferSent·DeliveryAssigned(assignmentVersion)·DeliveryCancelledBeforePickup·DispatchFailed. 주소·좌표는 싣지 않는다.
+- **판단 주기** `DispatchEngine`(`pmart.dispatch.tick-interval` 5초): 만료 제안 EXPIRED(상세를 열었으면 거절 횟수 — 원문 §4.4) → 차례 된 시도를 MFC 별로 → 배차 가능 시간(08~24시 Asia/Seoul — 사용자 2026-11-13) 밖이면 다음 시작까지 → 좌표 준비 한 번(center-master CM-1 MFC 좌표, order O-4 배송지 → serviceability 정확 일치 좌표, tracking 카카오모빌리티 MFC → 고객 도로 거리 — 실패는 `geo_error` + 30초 뒤, 주소 없음·변환 0건·길 없음은 SYSTEM_FAILURE) → 후보(rider 적격 + AI 추천 모드 + 살아 있는 제안 없음 + 맡은 배송 < 3(하나씩 배달이면 1) + tracking 위치 2분 안 + 그 시도 단계의 **직선 반경** + 이번 회차 미제안) → 라이더 → MFC 카카오 도로 시간 → `AssignmentProblem`(늦게 오면 2배) → `OrToolsAssignmentSolver`(CP-SAT, 네이티브를 못 올리면 규칙 기반 + ERROR) → 제안 1분 + DispatchOfferSent. 못 지으면 `SearchRules`: 단계 1분 머묾 → 다음 단계 → 3단계 뒤 재요청(10분 뒤, 최대 2회, 회차가 바뀌면 거절한 라이더에게도) → 실패(REPEATED_REJECTION/EXPIRED/NO_RIDER).
+- **라이더 API**(`OfferService`): `GET /offers`(만료 전 SENT, pollAfterSec — 신규배차 못 받으면 null), `GET /offers/{id}`(viewedAt), `POST /offers/{id}/responses`(배송 행 잠금 아래 `AcceptRules` — 한 명만, LATE 이유 4가지, 거절은 연속 거절 +1·5회 안내). 일반 배차모드 `GET /delivery-list`(내 위치 → MFC 직선거리 ≤ 그 배송 단계 반경), `POST /delivery-list/{id}/acceptances`(배차 이력에 source DELIVERY_LIST 제안 한 줄).
+- 예상 배달료 `domain/FeeTable` = 원문 §7.1 표(MFC → 고객 도로 거리, 구간 해석은 클래스 주석). 정산 수행료 정본은 execution.
+- 조회: `GET /deliveries/{id}/dispatch`(그 센터 운영자·OPERATOR_ADMIN·배정/제안받은 라이더 — 라이더에게는 자기 제안만), `GET /internal/deliveries/{id}/assignment`.
+- 아직 없음: 알뜰배달 묶음 배정·방문 순서(BUNDLED — 지금은 한 건씩), Python AI 최적화 서버 어댑터(ADR-0058), 라이더 단계(RS-1 정지·계약 종료 → 배정 풀기), 배차 취소·재배정 REST, 배차 지연 알림(DispatchDelayed 20분), 추가·분할 배차, 회수 배차(DD-2), 주류·보냉·용량 거르기.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
 
 ## 이미지 (ADR-0053)
-- OR-Tools(라이더 배정, ADR-0050)를 넣으면 **GraalVM Native 로 만들지 않고 JVM 으로 실행한다**. 넣는 커밋에서 ADR-0053 표를 갱신한다.
+- **OR-Tools 사용 중(2026-11-13, `libs.ortools.java` — CP-SAT 배정)** → GraalVM Native 로 만들지 않고 JVM 으로 실행한다(ADR-0053 표 갱신함). PC 5 Windows 에서 네이티브 로드 확인(`OrToolsAssignmentSolverTest`).

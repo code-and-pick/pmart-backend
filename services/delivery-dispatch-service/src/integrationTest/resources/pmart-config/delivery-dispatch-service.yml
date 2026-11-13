@@ -5,3 +5,29 @@ server:
 pmart:
   messaging:
     domain: delivery
+  # 배차(DD-1, 2026-11-13). 기본값 = 업무 원문(반경 1·2·3km 직선, 응답 1분, 재요청 2회·10분, 최대 3건, 연속 거절 5회) + 사용자 결정(배차 08~24시)
+  dispatch:
+    radii-km: [1.0, 2.0, 3.0]
+    offer-timeout: PT1M
+    retry-interval: PT10M
+    max-retries: 2
+    max-active-deliveries: 3
+    rejection-notice: 5
+    operating-start: '08:00'
+    operating-end: '24:00'
+    location-max-age: PT2M # 설계값 — 이보다 오래된 라이더 위치는 후보에서 뺀다
+    tick-interval: PT5S
+    late-weight: 2
+    solver-time-limit: PT2S
+    poll-after-sec: 5
+spring:
+  # 이벤트 소비(Spring Cloud Stream, ADR-0035): 함수(빈) 이름 → 토픽. 그룹·재시도·DLQ({토픽}.DLT)·커밋은 common-messaging 기본값.
+  # 함수를 더하거나 빼면 코드(PmartEventConsumer 빈)와 함께 바꾼다 — 빠지면 기동이 멈춘다. 바꾸면 재시작한다
+  # 처음 켜기 전에 소비 그룹 시작 위치를 2026-11-10T00:30Z 로 맞춘다(kickoff §6)
+  cloud:
+    function:
+      definition: fulfillmentEvents
+    stream:
+      bindings:
+        fulfillmentEvents-in-0: # mfc-fulfillment DispatchRequested·ShipmentReady·PackingFinished·WorkStopResult·PackageHandedOver → 배송(DD-1)
+          destination: mfc.fulfillment.v1
