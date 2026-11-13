@@ -655,7 +655,7 @@ public class DispatchEngine {
     }
   }
 
-  /** 배송 약속 — 예약은 도착 시간대 끝(Asia/Seoul), 한집·알뜰은 주문 확정 + deliveryPromise(50분). 모르면 null. */
+  /** 배송 약속 — 예약은 도착 시간대 끝(Asia/Seoul, 사용자 확인 2026-11-13), 한집·알뜰은 주문 확정 + deliveryPromise(50분). 모르면 null. */
   private @org.jspecify.annotations.Nullable Instant promise(Upstreams.Destination dest) {
     if ("SCHEDULED".equals(dest.deliveryMode())
         && dest.arrivalDate() != null
