@@ -7,11 +7,10 @@ import org.junit.jupiter.api.Test;
 class HrLinkRulesTest {
 
   @Test
-  void onlyMfcCenterAffiliationMakesWorker() {
-    assertThat(HrLinkRules.mfcOf("CENTER", "MFC-SEED-01")).isEqualTo("MFC-SEED-01");
-    assertThat(HrLinkRules.mfcOf("CENTER", "CDC-01")).isNull();
-    assertThat(HrLinkRules.mfcOf("HQ_DEPARTMENT", "MFC-SEED-01")).isNull();
-    assertThat(HrLinkRules.mfcOf(null, null)).isNull();
+  void onlyMfcCenters() {
+    assertThat(HrLinkRules.isMfc("MFC-SEED-01")).isTrue();
+    assertThat(HrLinkRules.isMfc("CDC-01")).isFalse();
+    assertThat(HrLinkRules.isMfc(null)).isFalse();
   }
 
   @Test
@@ -23,27 +22,40 @@ class HrLinkRulesTest {
   }
 
   @Test
-  void suspendAndLeaveAlwaysApply() {
-    assertThat(HrLinkRules.nextState("EmployeeSuspended", "ACTIVE", "sup-1"))
+  void desiredStateFromHrAndGrant() {
+    assertThat(HrLinkRules.desiredState("ACTIVE", true, true)).isEqualTo("ACTIVE");
+    assertThat(HrLinkRules.desiredState("ACTIVE", true, false))
+        .as("권한 기간 밖(시작 전·끝 — 센터 이동 뒤 예전 센터)")
         .isEqualTo("SUSPENDED");
-    assertThat(HrLinkRules.nextState("EmployeeLeft", "SUSPENDED", "sup-1")).isEqualTo("LEFT");
-    assertThat(HrLinkRules.nextState("EmployeeSuspended", "SUSPENDED", "sup-1")).isNull();
+    assertThat(HrLinkRules.desiredState("ACTIVE", false, false))
+        .as("센터 관리자가 직접 등록한 작업자 — 권한 기록 없음")
+        .isEqualTo("ACTIVE");
+    assertThat(HrLinkRules.desiredState(null, false, false)).isEqualTo("ACTIVE");
+    assertThat(HrLinkRules.desiredState("SUSPENDED", true, true)).isEqualTo("SUSPENDED");
+    assertThat(HrLinkRules.desiredState("LEFT", true, true)).isEqualTo("LEFT");
   }
 
   @Test
-  void reinstateOnlyUndoesHrSuspension() {
-    assertThat(HrLinkRules.nextState("EmployeeReinstated", "SUSPENDED", HrLinkRules.HR_ACTOR))
+  void goingDownAlwaysApplies() {
+    assertThat(HrLinkRules.transition("ACTIVE", "SUSPENDED", "sup-1")).isEqualTo("SUSPENDED");
+    assertThat(HrLinkRules.transition("SUSPENDED", "LEFT", "sup-1")).isEqualTo("LEFT");
+    assertThat(HrLinkRules.transition("SUSPENDED", "SUSPENDED", "sup-1")).isNull();
+  }
+
+  @Test
+  void goingUpOnlyUndoesAutomaticSuspension() {
+    assertThat(HrLinkRules.transition("SUSPENDED", "ACTIVE", HrLinkRules.HR_ACTOR))
         .isEqualTo("ACTIVE");
-    assertThat(HrLinkRules.nextState("EmployeeReinstated", "SUSPENDED", "sup-1"))
+    assertThat(HrLinkRules.transition("SUSPENDED", "ACTIVE", HrLinkRules.GRANT_ACTOR))
+        .isEqualTo("ACTIVE");
+    assertThat(HrLinkRules.transition("SUSPENDED", "ACTIVE", "sup-1"))
         .as("센터 관리자가 멈춘 작업자는 그대로")
-        .isNull();
-    assertThat(HrLinkRules.nextState("EmployeeReinstated", "ACTIVE", HrLinkRules.HR_ACTOR))
         .isNull();
   }
 
   @Test
   void leftIsFinal() {
-    assertThat(HrLinkRules.nextState("EmployeeReinstated", "LEFT", HrLinkRules.HR_ACTOR)).isNull();
-    assertThat(HrLinkRules.nextState("EmployeeSuspended", "LEFT", HrLinkRules.HR_ACTOR)).isNull();
+    assertThat(HrLinkRules.transition("LEFT", "ACTIVE", HrLinkRules.HR_ACTOR)).isNull();
+    assertThat(HrLinkRules.transition("LEFT", "SUSPENDED", HrLinkRules.HR_ACTOR)).isNull();
   }
 }
