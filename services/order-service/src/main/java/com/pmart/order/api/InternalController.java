@@ -84,7 +84,7 @@ public class InternalController implements InternalApi {
   /** 배차용 배송지(O-4, 2026-11-13) — 도로명주소·핀만, 수령인·연락처·출입 정보 없음. */
   @Override
   public ResponseEntity<DeliveryDestination> getOrderDeliveryDestination(String orderId) {
-    OrderService.OrderView v = orders.internal(orderId);
+    OrderService.OrderView v = orders.internalWithShipping(orderId);
     OrderRow o = v.order();
     var s = v.shipping();
     DeliveryDestination out =

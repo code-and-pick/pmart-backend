@@ -1016,6 +1016,8 @@ class DraftFlowIT extends PostgresKafkaContainerSupport {
     assertThat(dest.body().path("arrivalWindow").path("start").asString()).isEqualTo("10:00");
     assertThat(dest.body().has("receiverPhone")).isFalse();
     assertThat(dest.body().has("receiverName")).isFalse();
+    // 2026-11-14: 주문 당시 사본의 도로명주소가 실려야 한다(전에는 사본을 안 읽어 늘 null — 배차가 주소 없음으로 멈춤)
+    assertThat(dest.body().path("roadAddress").asString()).isEqualTo("부산광역시 부산진구 중앙대로 708");
     assertThat(get(svc, "/internal/orders/ORD-NOPE/delivery-destination").status()).isEqualTo(404);
 
     // 내부 주문 조회: 서비스만, 소유자·결제·행 수량

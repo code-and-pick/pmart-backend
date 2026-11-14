@@ -286,6 +286,15 @@ public class OrderService {
     return new OrderView(o, orders.lines(orderId), null);
   }
 
+  /**
+   * 배송 쪽 내부 조회 — 주문 당시 배송지 사본 포함(배차 좌표 O-4). {@link #internal} 은 사본을 싣지 않아(claim 용) 배차용 배송지의 도로명주소가
+   * 늘 비던 것을 2026-11-14 고침. 확정 전 주문 ID 는 404.
+   */
+  public OrderView internalWithShipping(String orderId) {
+    OrderView v = internal(orderId);
+    return new OrderView(v.order(), v.lines(), orders.shipping(orderId).orElse(null));
+  }
+
   private static OrderRules.LineQty qty(LineRow l) {
     return new OrderRules.LineQty(
         l.orderLineId(),
