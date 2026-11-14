@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
  * 라이더용 전달지(클라이언트 BR-24, 2026-11-14). 원문 "픽업 후: 주소·상세주소·연락" — <b>배정 라이더 본인</b>에게 <b>픽업 뒤 ~ 전달 완료
  * 전</b>(PICKED_UP·ARRIVED_AT_CUSTOMER·FAILURE_REPORTED)만 연다. 연락처는 고객 전화번호 그대로(안심번호 없음 — 사용자 결정
  * 2026-11-14). 매번 order 에서 읽고 저장·로그하지 않는다.
+ *
+ * <p>배송 유형은 보지 않는다 — 반품 회수(RETURN)도 연다. 반품 물품이 약속한 장소에 없으면 라이더가 고객에게 연락해야 한다(사용자 2026-11-14).
  */
 @Service
 public class DropInfoService {
