@@ -12,7 +12,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * 배송 수행 사건 발행(토픽 delivery.delivery.v1, 집계 Delivery, 호출자 트랜잭션 안 Outbox). 주소·좌표·사진 원본은 싣지 않는다.
- * aggregateVersion 은 이 서비스의 수행 버전(배차 버전과 다른 흐름).
+ * aggregateVersion 은 이 서비스의 수행 버전 — 같은 Delivery 의 배차 사건과 따로 오른다(발행 서비스마다, events.md §7 머리말
+ * 2026-11-14).
  */
 @Component
 public class ExecutionEvents {
@@ -115,7 +116,7 @@ public class ExecutionEvents {
   public void helpRequested(
       DeliveryRow d, ExecutionStore.HelpRow h, List<String> evidenceRefs, int version) {
     Map<String, Object> p = new LinkedHashMap<>();
-    p.put("incidentId", h.requestId());
+    p.put("incidentId", h.incidentId());
     p.put("deliveryId", d.deliveryId());
     p.put("riderId", h.riderId());
     p.put("type", "HELP_REQUEST");

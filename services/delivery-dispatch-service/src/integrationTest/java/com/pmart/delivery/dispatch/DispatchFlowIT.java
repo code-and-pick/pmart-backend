@@ -1207,6 +1207,57 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
         .isEqualTo("CANCELLED_BEFORE_PICKUP");
+    assertThat(outboxCount(deliveryId, "DeliveryCancelledBeforePickup")).isEqualTo(1);
+
+    // 점원 배차 요청 전(ShipmentReady 만 — CREATED, DeliveryCreated 를 낸 적 없음) 취소는 사건 없이(PC 1 검토 후속)
+    String order = "ORD-" + UUID.randomUUID();
+    String shipment = "SHP-" + UUID.randomUUID();
+    send(
+        "ShipmentReady",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            mfc,
+            "readyAt",
+            Instant.now().toString(),
+            "packages",
+            List.of(Map.of("packageId", "PKG-12c-" + shipment, "bagCount", 1))));
+    String created = awaitDelivery(shipment);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, created))
+        .isEqualTo("CREATED");
+    ResponseEntity<String> op2 =
+        http.post()
+            .uri("/deliveries/{id}/assignment-cancellations", created)
+            .header("Authorization", "Bearer " + TestJwt.operator("OP-M", List.of(), List.of(mfc)))
+            .header("Idempotency-Key", "oc-" + created)
+            .header("X-Source-System", "mfc-backoffice")
+            .body(
+                Map.of("requestedBy", "STORE_STAFF", "reason", "STORE_REQUEST", "reassign", false))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(op2.getStatusCode().value()).isEqualTo(202);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, created))
+        .isEqualTo("CANCELLED_BEFORE_PICKUP");
+    assertThat(outboxCount(created, "DeliveryCreated")).isZero();
+    assertThat(outboxCount(created, "DeliveryCancelledBeforePickup")).isZero();
+  }
+
+  int outboxCount(String deliveryId, String type) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = ?",
+            Integer.class,
+            deliveryId,
+            type);
+    return n == null ? 0 : n;
   }
 
   @Test

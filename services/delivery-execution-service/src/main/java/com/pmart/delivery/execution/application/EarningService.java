@@ -27,7 +27,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       불가.
  *   <li>실패 확정·운영자/주문 사유 배차 취소 → 산정 불가(지원센터 조정). 라이더 본인 배차 취소는 수행료 없음(만들지 않는다).
  *   <li>확정 시각(완료 + 5시간)이 지나면 CONFIRMED + RiderEarningRecorded. 지급(PAYING·PAID)은 외부 회계 — 아직 연결 없음.
- *   <li>배송당 하나 — 완료 중복·사건 재전달에도 한 번만(원문 §6.1 "완료 수익은 중복 클릭 시 한 번만").
+ *   <li>배정당 하나(배송·라이더·배정 버전) — 완료 중복·사건 재전달에도 한 번만(원문 §6.1 "완료 수익은 중복 클릭 시 한 번만"). 운영자 배차 취소(산정 불가)
+ *       뒤 같은 라이더가 다시 배정돼 완료하면 완료 수행료가 따로 생긴다(V4, PC 1 검토 후속).
  * </ul>
  *
  * 만들고 바꾸는 메서드는 호출자 트랜잭션 안에서(완료·실패 확정·사건 처리와 같은 트랜잭션).
@@ -96,7 +97,7 @@ public class EarningService {
             payout,
             known ? null : "수락 당시 금액을 모름 — 지원센터 조정",
             completedAt);
-    record(e, completedAt);
+    record(e, d.assignmentVersion(), completedAt);
   }
 
   /** 실패 확정·취소 — 원문에 금액 기준이 없어 산정 불가(지원센터 조정). */
@@ -122,11 +123,11 @@ public class EarningService {
             null,
             stage + " — 실패·취소 수행료 기준 없음(지원센터 조정)",
             at);
-    record(e, at);
+    record(e, d.assignmentVersion(), at); // 배정 해제 사건이면 d 는 바뀌기 전 행 — 옛 배정 버전
   }
 
-  private void record(EarningRow e, Instant at) {
-    if (store.insertEarning(e)) {
+  private void record(EarningRow e, int assignmentVersion, Instant at) {
+    if (store.insertEarning(e, assignmentVersion)) {
       events.earningRecorded(e, store.bumpVersion(e.deliveryId(), at), at);
       log.info(
           "배송 {} 수행료 기록 — {} {}", e.deliveryId(), e.calculable() ? "확정 대기" : "산정 불가", e.total());

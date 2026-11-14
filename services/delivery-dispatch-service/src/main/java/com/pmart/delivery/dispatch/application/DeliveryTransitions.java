@@ -51,6 +51,12 @@ public class DeliveryTransitions {
         .openAttempt(d.deliveryId())
         .ifPresent(a -> store.finishAttempt(a.attemptId(), "CANCELLED", null, now));
     store.setState(d.deliveryId(), "CANCELLED_BEFORE_PICKUP", reason, now);
+    if ("CREATED".equals(d.state())) {
+      // 점원 배차 요청 전(ShipmentReady 만) — DeliveryCreated 를 낸 적이 없어 구독자가 모르는 배송이다. 취소 사건도 내지 않는다(PC 1
+      // 검토
+      // 후속, 2026-11-14 — CancellationService reassign=false·주문 취소 둘 다 이 길).
+      return;
+    }
     events.cancelledBeforePickup(d, reason, now);
   }
 

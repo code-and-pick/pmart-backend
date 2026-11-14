@@ -3,6 +3,8 @@ package com.pmart.delivery.execution.infrastructure;
 import com.pmart.common.web.PmartException;
 import com.pmart.delivery.execution.application.EvidencePhotoStorage;
 import java.net.URI;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -23,6 +25,8 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(S3Properties.class)
 class EvidencePhotoStorageConfig {
+
+  private static final Logger log = LoggerFactory.getLogger(EvidencePhotoStorageConfig.class);
 
   @Configuration(proxyBeanMethods = false)
   @ConditionalOnExpression("!'${pmart.storage.s3.bucket:}'.isBlank()")
@@ -59,17 +63,29 @@ class EvidencePhotoStorageConfig {
         }
         client.createBucket(b -> b.bucket(bucket));
       }
-      return (key, bytes, contentType) -> {
-        try {
-          client.putObject(
-              r ->
-                  r.bucket(bucket)
-                      .key(key)
-                      .contentType(contentType)
-                      .contentLength((long) bytes.length),
-              RequestBody.fromBytes(bytes));
-        } catch (SdkException e) {
-          throw PmartException.dependencyUnavailable("증빙 사진 저장소에 연결할 수 없습니다.", e);
+      return new EvidencePhotoStorage() {
+        @Override
+        public void put(String key, byte[] bytes, String contentType) {
+          try {
+            client.putObject(
+                r ->
+                    r.bucket(bucket)
+                        .key(key)
+                        .contentType(contentType)
+                        .contentLength((long) bytes.length),
+                RequestBody.fromBytes(bytes));
+          } catch (SdkException e) {
+            throw PmartException.dependencyUnavailable("증빙 사진 저장소에 연결할 수 없습니다.", e);
+          }
+        }
+
+        @Override
+        public void delete(String key) {
+          try {
+            client.deleteObject(r -> r.bucket(bucket).key(key));
+          } catch (SdkException e) {
+            log.warn("증빙 사진 객체 {} 지우기 실패 — 주인 없는 객체로 남음: {}", key, e.toString());
+          }
         }
       };
     }

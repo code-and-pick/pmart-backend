@@ -120,6 +120,7 @@ public class FulfillmentEventHandler {
       @Nullable String deliveryMode,
       boolean requested,
       Instant now) {
+    store.lockOrderKey(orderId); // 작업 중지·주문 취소와 같은 잠금(주문 → 출고 순서)
     store.lockShipmentKey(shipmentId);
     var existing = store.lockByShipment(shipmentId);
     if (existing.isPresent()) {
@@ -187,6 +188,7 @@ public class FulfillmentEventHandler {
       verdicts.put(pp.path("packageId").asString(), pp.path("state").asString(""));
     }
     String orderId = p.path("orderId").asString();
+    store.lockOrderKey(orderId);
     if (verdicts.isEmpty()) {
       // 피킹 전 중지는 전체·부분 모두 perPackage=[] 로 온다(mfc WorkStopService) — 여기서는 주문 전체인지 모른다.
       // 주문 전체 취소는 order 의 OrderCancelled(scope FULL)로 판단한다(onOrderCancelled, PC 1 재검토 ①, 사용자 (가)).
@@ -224,6 +226,7 @@ public class FulfillmentEventHandler {
     }
     Instant now = clock.instant();
     String orderId = p.path("orderId").asString();
+    store.lockOrderKey(orderId);
     store.recordStoppedOrder(orderId, "order-cancelled:" + e.eventId(), now);
     for (DeliveryRow d : store.lockByOrder(orderId)) {
       if (!CLOSED.contains(d.state())) {
@@ -233,12 +236,7 @@ public class FulfillmentEventHandler {
   }
 
   private void cancel(DeliveryRow d, String why, Instant now) {
-    if ("CREATED".equals(d.state())) {
-      store.setState(
-          d.deliveryId(), "CANCELLED_BEFORE_PICKUP", "ORDER_CANCELLED", now); // 배차 전 — 알릴 배정 없음
-    } else {
-      transitions.cancelBeforePickup(d, "ORDER_CANCELLED", now);
-    }
+    transitions.cancelBeforePickup(d, "ORDER_CANCELLED", now); // CREATED(알린 적 없음)면 사건 없이
     log.info("배송 {} 픽업 전 취소 — {}", d.deliveryId(), why);
   }
 

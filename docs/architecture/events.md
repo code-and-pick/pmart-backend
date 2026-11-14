@@ -180,6 +180,8 @@
 
 ## 7. Last-mile Delivery
 
+> **`Delivery` aggregate 의 발행자는 둘**(2026-11-14, PC 1 PR #8 검토 후속): delivery-dispatch(생성·제안·배정·배차 취소·배차 실패·지연)와 delivery-execution(가게 도착·픽업 완료·고객 도착·완료·실패·도움요청·수행료). 같은 토픽(`delivery.delivery.v1`)·같은 키(deliveryId)지만 DB 가 달라 `aggregateVersion` 을 하나로 셀 수 없다 — **버전은 발행 서비스(`sourceSystem`)마다 따로 오른다**. 역순 폐기는 `(sourceSystem, aggregateId)` 안에서만 비교하고, 두 서비스 사건 사이 순서는 버전이 아니라 업무 값으로 판단한다(배정은 payload `assignmentVersion`, 실물 사실은 시각·상태). 지금 구독자는 모두 사건 종류로 거르고 버전을 서비스 사이에서 비교하지 않는다.
+
 | 이벤트 | 발행자 | 구독자 | 핵심 payload | 발생 조건 | 단계 |
 |---|---|---|---|---|---|
 | `ServiceabilityVersionApplied` | delivery-serviceability | order, customer, cart, approval | mappingVersion, effectiveAt, changedZones[] | 권역 매핑 발효(기존 주문 불변) | ① |

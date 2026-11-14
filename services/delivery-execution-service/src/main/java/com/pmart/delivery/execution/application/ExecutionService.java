@@ -225,7 +225,13 @@ public class ExecutionService {
         });
   }
 
-  /** 증빙 사진 올리기(원문 §6.2). 형식은 파일 앞부분으로, 10MB 이하. 원본은 비공개 저장소, 여기는 참조만. */
+  /**
+   * 증빙 사진 올리기(원문 §6.2). 형식은 파일 앞부분으로, 10MB 이하. 원본은 비공개 저장소, 여기는 참조만.
+   *
+   * <p>저장소 올리기는 DB 트랜잭션 밖에서 한다(PC 1 검토 후속, 2026-11-14 — 트랜잭션 안에서 올리면 느린 저장소가 배송 행 잠금을 붙잡고, 롤백되면 객체만
+   * 남는다). 순서: 잠금 없이 미리 확인 → 올리기 → 트랜잭션(멱등 기록 + 잠금 아래 다시 확인 + 참조 저장). 같은 요청(출처·키·라이더·배송·내용)은 같은 사진
+   * 참조·객체 키라 재시도가 객체를 새로 만들지 않고, 트랜잭션이 실패하면 올린 객체를 지운다.
+   */
   public Photo uploadPhoto(String deliveryId, String requestId, String source, byte[] bytes) {
     PmartPrincipal p = riderPrincipal();
     if (bytes.length == 0 || bytes.length > ExecutionRules.MAX_PHOTO_BYTES) {
@@ -239,29 +245,59 @@ public class ExecutionService {
       throw new PmartException(
           ErrorCode.DEPENDENCY_UNAVAILABLE, "증빙 사진 저장소가 설정되지 않았습니다. 지원센터에 대체 증빙을 요청해 주세요.");
     }
-    return idempotency
-        .execute(
-            new RequestKey(source, requestId, "uploadEvidencePhoto", p.subject()),
-            Map.of("deliveryId", deliveryId, "sha256", sha256(bytes)),
-            Photo.class,
-            () -> {
-              Instant now = clock.instant();
-              DeliveryRow d =
-                  store.lockDelivery(deliveryId).orElseThrow(ExecutionService::notFound);
-              requireRider(p, d);
-              if (!ExecutionRules.PHOTO_FROM.contains(d.state())) {
-                throw PmartException.invalidState(
-                    "픽업 뒤 전달 전에만 사진을 올릴 수 있습니다(지금 " + d.state() + ").");
-              }
-              String photoRef = "EVP-" + UUID.randomUUID();
-              String key = "deliveries/" + deliveryId + "/" + photoRef;
-              storage.put(key, bytes, contentType);
-              store.insertPhoto(
-                  new PhotoRow(
-                      photoRef, deliveryId, p.subject(), key, contentType, bytes.length, now));
-              return new Photo(photoRef, contentType, bytes.length, now);
-            })
-        .value();
+    String hash = sha256(bytes);
+    String photoRef =
+        "EVP-"
+            + UUID.nameUUIDFromBytes(
+                String.join("\n", source, requestId, p.subject(), deliveryId, hash)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    String key = "deliveries/" + deliveryId + "/" + photoRef;
+    // 트랜잭션 밖 — 이미 저장된 요청이면(재생) 올리지 않는다. 확인이 안 되면 올리지 않고 아래 트랜잭션이 같은 거절을 낸다.
+    boolean stored = store.photos(deliveryId).stream().anyMatch(x -> x.photoRef().equals(photoRef));
+    boolean uploaded =
+        !stored
+            && store
+                .delivery(deliveryId)
+                .filter(
+                    d ->
+                        p.subject().equals(d.riderId())
+                            && ExecutionRules.PHOTO_FROM.contains(d.state()))
+                .isPresent();
+    if (uploaded) {
+      storage.put(key, bytes, contentType);
+    }
+    try {
+      return idempotency
+          .execute(
+              new RequestKey(source, requestId, "uploadEvidencePhoto", p.subject()),
+              Map.of("deliveryId", deliveryId, "sha256", hash),
+              Photo.class,
+              () -> {
+                Instant now = clock.instant();
+                DeliveryRow d =
+                    store.lockDelivery(deliveryId).orElseThrow(ExecutionService::notFound);
+                requireRider(p, d);
+                if (!ExecutionRules.PHOTO_FROM.contains(d.state())) {
+                  throw PmartException.invalidState(
+                      "픽업 뒤 전달 전에만 사진을 올릴 수 있습니다(지금 " + d.state() + ").");
+                }
+                if (!uploaded) {
+                  // 미리 확인과 잠금 사이에 상태가 바뀌었다(드묾) — 올린 사진이 없으니 다시 보내 달라고 한다
+                  throw PmartException.versionConflict("배송 상태가 바뀌었습니다. 사진을 다시 올려 주세요.");
+                }
+                store.insertPhoto(
+                    new PhotoRow(
+                        photoRef, deliveryId, p.subject(), key, contentType, bytes.length, now));
+                return new Photo(photoRef, contentType, bytes.length, now);
+              })
+          .value();
+    } catch (RuntimeException e) {
+      if (uploaded
+          && store.photos(deliveryId).stream().noneMatch(x -> x.photoRef().equals(photoRef))) {
+        storage.delete(key); // 참조를 못 남겼다 — 주인 없는 객체를 남기지 않는다
+      }
+      throw e;
+    }
   }
 
   /** 전달 완료: 이 배송에 같은 라이더가 올린 사진 참조가 있어야 한다(자동 완료 없음) → DeliveryCompleted. */

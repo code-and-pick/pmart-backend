@@ -45,7 +45,17 @@ public class ExecutionStore {
       String stage,
       String state,
       @Nullable String caseId,
-      Instant createdAt) {}
+      Instant createdAt) {
+
+    /**
+     * 사건 번호(DeliveryIncidentRaised.incidentId) = 배송 ID + 요청 ID. 요청 ID 는 앱이 보낸 Idempotency-Key 라
+     * 배송마다만 유일하다(기본 키 (delivery_id, request_id)) — 그대로 쓰면 다른 배송의 도움요청과 겹칠 수 있다(PC 1 검토 후속,
+     * 2026-11-14).
+     */
+    public String incidentId() {
+      return deliveryId + ":" + requestId;
+    }
+  }
 
   public record EarningRow(
       String earningId,
@@ -462,14 +472,16 @@ public class ExecutionStore {
   // ---- 수행료
 
   /**
-   * @return 새로 만들었으면 true(배송당 하나 — 중복 완료·사건 재전달은 한 번만, 원문 §6.1·§9.7)
+   * @param assignmentVersion 이 수행료가 속한 배정(dispatch assignmentVersion) — 같은 라이더가 다시 배정돼도 따로(V4)
+   * @return 새로 만들었으면 true(배정당 하나 — 중복 완료·사건 재전달은 한 번만, 원문 §6.1·§9.7)
    */
-  public boolean insertEarning(EarningRow e) {
+  public boolean insertEarning(EarningRow e, int assignmentVersion) {
     return jdbc.update(
             "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable,"
                 + " rate_table_version, vehicle_type, distance_m, base_fee, total, settlement_state,"
-                + " performed_on, confirm_at, payout_date, note, recorded_at, updated_at) VALUES (?, ?,"
-                + " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (delivery_id, rider_id) DO NOTHING",
+                + " performed_on, confirm_at, payout_date, note, recorded_at, updated_at,"
+                + " assignment_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                + " ON CONFLICT (delivery_id, rider_id, assignment_version) DO NOTHING",
             e.earningId(),
             e.deliveryId(),
             e.riderId(),
@@ -485,14 +497,16 @@ public class ExecutionStore {
             e.payoutDate() == null ? null : java.sql.Date.valueOf(e.payoutDate()),
             e.note(),
             ts(e.recordedAt()),
-            ts(e.recordedAt()))
+            ts(e.recordedAt()),
+            assignmentVersion)
         > 0;
   }
 
   public Optional<EarningRow> earningOf(String deliveryId, String riderId) {
     return jdbc
         .query(
-            EARNING_SELECT + " WHERE delivery_id = ? AND rider_id = ?",
+            EARNING_SELECT
+                + " WHERE delivery_id = ? AND rider_id = ? ORDER BY recorded_at DESC LIMIT 1",
             this::mapEarning,
             deliveryId,
             riderId)

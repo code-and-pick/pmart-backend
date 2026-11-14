@@ -146,6 +146,14 @@ public class DispatchStore {
         orderId);
   }
 
+  /**
+   * 같은 주문의 배차 요청(배송 만들기)과 작업 중지·주문 취소를 줄 세운다(PC 1 검토 후속, 2026-11-14). 없으면 배차 요청이 "멈춘 주문 아님"을 본 뒤 아직
+   * 커밋 안 된 배송을 중지 처리가 못 보고 지나가, 둘 다 커밋된 뒤 멈춘 주문이 배차된다. 잡는 순서는 늘 주문 → 출고.
+   */
+  public void lockOrderKey(String orderId) {
+    jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))", "dispatch-order:" + orderId);
+  }
+
   /** 출고 하나에 배송 하나 — 같은 출고는 줄을 세운 뒤 다시 본다. */
   public void lockShipmentKey(String shipmentId) {
     jdbc.queryForList(

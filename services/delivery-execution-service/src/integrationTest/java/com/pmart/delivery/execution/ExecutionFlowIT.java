@@ -55,7 +55,17 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   static class MemoryPhotos {
     @Bean
     EvidencePhotoStorage evidencePhotoStorage() {
-      return (key, bytes, type) -> STORED.put(key, bytes);
+      return new EvidencePhotoStorage() {
+        @Override
+        public void put(String key, byte[] bytes, String type) {
+          STORED.put(key, bytes);
+        }
+
+        @Override
+        public void delete(String key) {
+          STORED.remove(key);
+        }
+      };
     }
   }
 
@@ -153,6 +163,15 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(photo).path("contentType").asString()).isEqualTo("image/jpeg");
     assertThat(STORED).containsKey("deliveries/" + id + "/" + photoRef);
     assertThat(upload(id, "RDR-OTHER", JPEG).getStatusCode().value()).isEqualTo(403);
+    // 저장소 올리기는 트랜잭션 밖(PC 1 검토 후속): 같은 키 재시도 → 같은 사진 참조·객체 하나, 같은 키·다른 사진 → 409 + 올린 객체 지움
+    String key = "photo-" + UUID.randomUUID();
+    String again = body(upload(id, rider, JPEG, key)).path("photoRef").asString();
+    assertThat(body(upload(id, rider, JPEG, key)).path("photoRef").asString()).isEqualTo(again);
+    byte[] other = java.util.Arrays.copyOf(JPEG, JPEG.length + 1);
+    long before = STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count();
+    assertThat(upload(id, rider, other, key).getStatusCode().value()).isEqualTo(409);
+    assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
+        .isEqualTo(before);
 
     assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
         .isEqualTo(200);
@@ -335,7 +354,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(raised.path("type").asString()).isEqualTo("HELP_REQUEST");
     assertThat(raised.path("category").asString()).isEqualTo("STORE_WAITING");
     assertThat(raised.path("stage").asString()).isEqualTo("PICKED_UP");
-    assertThat(raised.path("incidentId").asString()).isEqualTo(requestId);
+    assertThat(raised.path("incidentId").asString())
+        .isEqualTo(id + ":" + requestId); // 요청 ID(앱 Idempotency-Key)는 배송마다만 유일 — 배송 ID 를 붙인다
 
     JsonNode mine =
         body(
@@ -427,6 +447,83 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     awaitState(id, "CANCELLED");
     assertThat(post(id, "store-arrivals", "RDR-B", Map.of()).getStatusCode().value())
         .isEqualTo(409); // 취소된 배송 — 상태 전이 불가
+  }
+
+  @Test
+  void sameRiderReassignedAfterOperatorCancelStillEarnsOnCompletion() {
+    // 운영자 배차 취소(산정 불가 기록) 뒤 같은 라이더가 다시 배정돼 완료 → 완료 수행료가 따로 생긴다(V4, PC 1 검토 후속)
+    String id = "DLV-" + UUID.randomUUID();
+    String shipment = "SHP-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    created(id, shipment, order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    send(
+        "delivery.delivery.v1",
+        "DeliveryAssignmentChanged",
+        "Delivery",
+        id,
+        Map.of(
+            "deliveryId",
+            id,
+            "oldRiderId",
+            rider,
+            "assignmentVersion",
+            2,
+            "reason",
+            "CANCELLED_OPERATOR",
+            "changedAt",
+            Instant.now().toString()));
+    awaitState(id, "UNASSIGNED");
+    awaitSql("SELECT count(*) FROM rider_earning WHERE delivery_id = '" + id + "'");
+
+    assigned(id, order, rider, 3);
+    awaitSql(
+        "SELECT count(*) FROM execution_delivery WHERE delivery_id = '"
+            + id
+            + "' AND assignment_version = 3");
+    send(
+        "mfc.fulfillment.v1",
+        "ShipmentReady",
+        "Shipment",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            "MFC-1",
+            "readyAt",
+            Instant.now().toString(),
+            "packages",
+            List.of(Map.of("packageId", "PKG-" + id))));
+    handedOver(id, shipment, order, rider, "PKG-" + id, "HO-" + id, Map.of("L-1", 1));
+    awaitState(id, "PICKED_UP");
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photoRef = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "completions", rider, completion(List.of(photoRef), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+
+    List<Map<String, Object>> rows =
+        jdbc.queryForList(
+            "SELECT assignment_version, calculable, total, settlement_state FROM rider_earning"
+                + " WHERE delivery_id = ? ORDER BY assignment_version",
+            id);
+    assertThat(rows).hasSize(2);
+    assertThat(rows.get(0).get("assignment_version")).isEqualTo(1);
+    assertThat(rows.get(0).get("calculable")).isEqualTo(false);
+    assertThat(rows.get(1).get("assignment_version")).isEqualTo(3);
+    assertThat(rows.get(1).get("calculable")).isEqualTo(true);
+    assertThat(rows.get(1).get("total")).isEqualTo(3900);
+    assertThat(rows.get(1).get("settlement_state")).isEqualTo("PENDING_CONFIRMATION");
+    assertThat(view(id, rider).path("earning").path("settlementState").asString())
+        .isEqualTo("PENDING_CONFIRMATION"); // 배송 조회는 가장 최근 수행료
   }
 
   // ---- 도우미
@@ -602,6 +699,10 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   ResponseEntity<String> upload(String id, String rider, byte[] bytes) {
+    return upload(id, rider, bytes, UUID.randomUUID().toString());
+  }
+
+  ResponseEntity<String> upload(String id, String rider, byte[] bytes, String idempotencyKey) {
     LinkedMultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
     form.add(
         "file",
@@ -613,7 +714,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         });
     return http.post()
         .uri("/deliveries/{id}/evidence-photos", id)
-        .headers(h -> riderHeaders(h, rider))
+        .headers(
+            h -> {
+              riderHeaders(h, rider);
+              h.set("Idempotency-Key", idempotencyKey);
+            })
         .contentType(MediaType.MULTIPART_FORM_DATA)
         .body(form)
         .retrieve()

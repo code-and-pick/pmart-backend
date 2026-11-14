@@ -109,7 +109,7 @@ class ExecutionViews {
             .map(
                 h ->
                     new DeliveryExecutionIncidentsInner()
-                        .incidentId(h.requestId())
+                        .incidentId(h.incidentId())
                         .category(h.category())
                         .raisedAt(time(h.createdAt())))
             .toList());
