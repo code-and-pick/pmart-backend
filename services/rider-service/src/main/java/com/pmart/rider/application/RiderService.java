@@ -21,6 +21,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 라이더 가입·프로필·운행 상태·배차 설정(rider-service.yaml 0.2.0).
@@ -61,16 +62,33 @@ public class RiderService {
 
   public record SettingsChange(@Nullable Boolean oneAtATime, @Nullable String dispatchMode) {}
 
+  /** 계정 제한 바꾸기(RS-1). restriction NORMAL = 풀기. */
+  public record RestrictionChange(
+      String restriction,
+      String reason,
+      @Nullable Instant until,
+      List<String> evidenceRefs,
+      @Nullable String approvalRef) {}
+
+  /** 계정 제한 이력 + 지금 제한. */
+  public record Restrictions(Rider.Restriction current, List<RiderStore.RestrictionRow> items) {}
+
   private final RiderStore store;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
+  private final ObjectMapper json;
   private final Clock clock;
 
   public RiderService(
-      RiderStore store, RequestIdempotency idempotency, EventPublisher events, Clock clock) {
+      RiderStore store,
+      RequestIdempotency idempotency,
+      EventPublisher events,
+      ObjectMapper json,
+      Clock clock) {
     this.store = store;
     this.idempotency = idempotency;
     this.events = events;
+    this.json = json;
     this.clock = clock;
   }
 
@@ -244,9 +262,11 @@ public class RiderService {
 
   public List<Rider> eligible(
       String mfcId, @Nullable String vehicleType, List<String> exclude, int size) {
+    Instant now = clock.instant();
     return store
-        .eligible(mfcId, vehicleType, Math.max(1, Math.min(size, 200)) + exclude.size())
+        .eligible(mfcId, vehicleType, Math.max(1, Math.min(size, 200)) + exclude.size(), now)
         .stream()
+        .map(r -> r.asOf(now))
         .filter(r -> !exclude.contains(r.riderId()))
         .limit(Math.max(1, Math.min(size, 200)))
         .toList();
@@ -256,24 +276,147 @@ public class RiderService {
     return get(riderId);
   }
 
+  // ---------- 운영자: 계정 제한(RS-1) ----------
+
+  /**
+   * 계정 제한 걸기·바꾸기·풀기(RS-1, 사용자 2026-11-14 — 승인 화면 BO-20 전에는 운영자 API 로 바로). 행 버전 조건 갱신 + 이력 한 줄 +
+   * {@code RiderRestricted}(delivery.rider.v1 — 풀기는 restriction NORMAL) 한 트랜잭션. 제한이면 신규배차도 끈다(운행
+   * 상태는 그대로 — 픽업한 배송은 끝까지 전달, 사용자 2026-11-14). dispatch 가 사건을 받아 픽업 전 배정을 풀고 다시 배차한다.
+   */
+  @Transactional
+  public RiderStore.RestrictionRow changeRestriction(
+      String riderId,
+      String requestId,
+      String sourceSystem,
+      @Nullable Integer expectedVersion,
+      RestrictionChange c) {
+    PmartPrincipal p = requireRestrictionAdmin();
+    Rider.Restriction next;
+    try {
+      next = Rider.Restriction.valueOf(c.restriction());
+    } catch (IllegalArgumentException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "알 수 없는 제한입니다: " + c.restriction());
+    }
+    if (c.reason().isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "제한 사유를 적으세요.");
+    }
+    if (c.until() != null
+        && (next == Rider.Restriction.NORMAL || !c.until().isAfter(clock.instant()))) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "제한 끝(until)은 제한을 걸 때만, 지금보다 뒤로 적으세요.");
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("riderId", riderId);
+    body.put("change", c);
+    body.put("expectedVersion", String.valueOf(expectedVersion));
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "changeRiderRestriction", riderId),
+            body,
+            RiderStore.RestrictionRow.class,
+            () -> {
+              Instant now = clock.instant();
+              Rider r = locked(riderId, expectedVersion);
+              Rider.Restriction previous = r.restriction();
+              if (previous == Rider.Restriction.NORMAL && next == Rider.Restriction.NORMAL) {
+                throw PmartException.invalidState("제한이 걸려 있지 않습니다.");
+              }
+              store.updateRestriction(
+                  riderId,
+                  r.version(),
+                  next.name(),
+                  next == Rider.Restriction.NORMAL ? null : c.reason(),
+                  c.until());
+              RiderStore.RestrictionRow row =
+                  new RiderStore.RestrictionRow(
+                      requestId,
+                      riderId,
+                      next.name(),
+                      previous.name(),
+                      c.reason(),
+                      c.until(),
+                      json.writeValueAsString(c.evidenceRefs()),
+                      c.approvalRef(),
+                      p.subject(),
+                      now,
+                      r.version() + 1);
+              store.insertRestriction(row);
+              Map<String, Object> e = new LinkedHashMap<>();
+              e.put("riderId", riderId);
+              e.put("restriction", next.name());
+              e.put("previous", previous.name());
+              e.put("from", now.toString());
+              e.put("to", c.until() == null ? null : c.until().toString());
+              e.put("basis", c.reason());
+              e.put(
+                  "evidenceRefs",
+                  c.evidenceRefs().stream().map(id -> Map.of("evidenceId", id)).toList());
+              if (c.approvalRef() != null && !c.approvalRef().isBlank()) {
+                e.put("approvalRef", Map.of("approvalId", c.approvalRef()));
+              }
+              events.publish(
+                  "RiderRestricted",
+                  1,
+                  "Rider",
+                  riderId,
+                  r.version() + 1L,
+                  new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+                  e);
+              return row;
+            })
+        .value();
+  }
+
+  public Restrictions restrictions(String riderId) {
+    requireRestrictionAdmin();
+    Rider r = get(riderId);
+    return new Restrictions(r.restriction(), store.restrictions(riderId, 100));
+  }
+
   // ---------- 공통 ----------
 
   private Rider get(String riderId) {
     return store
         .find(riderId)
+        .map(r -> r.asOf(clock.instant()))
         .orElseThrow(() -> PmartException.notFound("RIDER_NOT_FOUND", "가입한 라이더가 아닙니다."));
   }
 
+  /** 행을 잠그고 기한 지난 제한은 NORMAL 로 본 사본(운행 판정·제한 바꾸기의 이전 값). */
   private Rider locked(String riderId, @Nullable Integer expectedVersion) {
     Rider r =
         store
             .lock(riderId)
+            .map(x -> x.asOf(clock.instant()))
             .orElseThrow(() -> PmartException.notFound("RIDER_NOT_FOUND", "가입한 라이더가 아닙니다."));
     if (expectedVersion != null && expectedVersion != r.version()) {
       throw PmartException.versionConflict(
           "라이더 정보가 바뀌었습니다(현재 버전 " + r.version() + "). 다시 조회한 뒤 바꾸세요.");
     }
     return r;
+  }
+
+  /** 계정 제한은 OPERATOR_ADMIN 만(배송·지원센터 역할이 아직 없다 — 생기면 더한다). */
+  private static PmartPrincipal requireRestrictionAdmin() {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(
+                () ->
+                    new PmartException(
+                        ErrorCode.FORBIDDEN.name(),
+                        HttpStatus.FORBIDDEN,
+                        "운영자만 계정 제한을 다룰 수 있습니다.",
+                        false,
+                        List.of()));
+    if (!p.hasRole("OPERATOR_ADMIN")) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN.name(),
+          HttpStatus.FORBIDDEN,
+          "계정 제한 권한(OPERATOR_ADMIN)이 없습니다.",
+          false,
+          List.of());
+    }
+    return p;
   }
 
   private static String requireRider() {

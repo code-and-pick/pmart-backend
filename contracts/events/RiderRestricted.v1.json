@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/RiderRestricted.v1.json",
   "title": "RiderRestricted",
-  "description": "계정 제한(증빙 기반). 발행 rider. 구독 delivery-dispatch, mfc-fulfillment(인계 차단), audit. 토픽 delivery.rider.v1. 단계 ①",
+  "description": "계정 제한(증빙 기반, 운영자 — RS-1 2026-11-14). 발행 rider. 구독 delivery-dispatch(픽업 전 배정 풀고 재배차, 픽업한 배송은 전달까지), audit. mfc-fulfillment 는 DeliveryAssignmentChanged 로 인계를 막는다(D-4). 토픽 delivery.rider.v1. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -30,7 +30,11 @@
             },
             "restriction": {
               "type": "string",
-              "description": "제한 종류 코드"
+              "description": "제한 종류 코드 NORMAL·DISPATCH_RESTRICTED·SUSPENDED·TERMINATED — NORMAL 은 제한 풀기(2026-11-14)"
+            },
+            "previous": {
+              "type": "string",
+              "description": "바꾸기 전 제한(2026-11-14 추가)"
             },
             "from": {
               "$ref": "_defs.v1.json#/$defs/DateTime"

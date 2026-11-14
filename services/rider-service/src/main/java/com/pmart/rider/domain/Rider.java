@@ -55,6 +55,44 @@ public record Rider(
     return deliveryAreas.stream().anyMatch(a -> a.mfcId().equals(mfcId));
   }
 
+  /** 지금 유효한 제한 — 기한({@code restrictionUntil})이 지났으면 NORMAL(RS-1, 기한 끝에 따로 사건은 내지 않는다). */
+  public Restriction restrictionAt(Instant now) {
+    return restrictionUntil != null && !restrictionUntil.isAfter(now)
+        ? Restriction.NORMAL
+        : restriction;
+  }
+
+  /** 기한이 지난 제한을 NORMAL 로 본 사본(응답·판정용). */
+  public Rider asOf(Instant now) {
+    if (restrictionAt(now) == restriction) {
+      return this;
+    }
+    return new Rider(
+        riderId,
+        version,
+        signupRequestId,
+        name,
+        phone,
+        vehicleType,
+        bankCode,
+        bankAccountNumber,
+        bankHolderName,
+        residenceRoad,
+        residenceDetail,
+        operatingStatus,
+        newDispatchEnabled,
+        operatingMfcId,
+        stateChangedAt,
+        oneAtATime,
+        dispatchMode,
+        Restriction.NORMAL,
+        null,
+        null,
+        lastHeartbeatAt,
+        joinedAt,
+        deliveryAreas);
+  }
+
   /** 새 배차를 받을 수 있는 상태(운행 중·신규배차 ON·제한 없음). */
   public boolean acceptsNewDispatch() {
     return operatingStatus == OperatingStatus.ON_DUTY

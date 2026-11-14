@@ -112,16 +112,17 @@ public class RiderStore {
         requestId);
   }
 
-  /** 운행 중·신규배차 ON·제한 없음·배달지역에 mfcId(적격 라이더 조회). */
-  public List<Rider> eligible(String mfcId, @Nullable String vehicleType, int limit) {
+  /** 운행 중·신규배차 ON·제한 없음(기한 지난 제한 포함)·배달지역에 mfcId(적격 라이더 조회). */
+  public List<Rider> eligible(String mfcId, @Nullable String vehicleType, int limit, Instant now) {
     List<Object> args = new ArrayList<>();
     StringBuilder sql =
         new StringBuilder(
             "SELECT "
                 + COLUMNS
                 + " FROM rider r WHERE r.operating_status = 'ON_DUTY' AND r.new_dispatch_enabled"
-                + " AND r.restriction = 'NORMAL' AND EXISTS (SELECT 1 FROM rider_delivery_area a"
-                + " WHERE a.rider_id = r.rider_id AND a.mfc_id = ?)");
+                + " AND (r.restriction = 'NORMAL' OR r.restriction_until <= ?) AND EXISTS (SELECT 1"
+                + " FROM rider_delivery_area a WHERE a.rider_id = r.rider_id AND a.mfc_id = ?)");
+    args.add(Timestamp.from(now));
     args.add(mfcId);
     if (vehicleType != null) {
       sql.append(" AND r.vehicle_type = ?");
@@ -185,6 +186,80 @@ public class RiderStore {
         mode,
         riderId,
         expectedVersion);
+  }
+
+  // ---------- 계정 제한(RS-1) ----------
+
+  /** 제한 이력 한 줄(V3). evidenceRefs 는 JSON 배열 문자열. */
+  public record RestrictionRow(
+      String requestId,
+      String riderId,
+      String restriction,
+      String previous,
+      String reason,
+      @Nullable Instant until,
+      String evidenceRefsJson,
+      @Nullable String approvalRef,
+      String changedBy,
+      Instant changedAt,
+      int riderVersion) {}
+
+  /** 제한을 바꾼다. NORMAL 이 아니면 신규배차도 끈다(운행 상태는 그대로 — 픽업한 배송 전달 중). */
+  public int updateRestriction(
+      String riderId,
+      int expectedVersion,
+      String restriction,
+      @Nullable String reason,
+      @Nullable Instant until) {
+    return jdbc.update(
+        "UPDATE rider SET version = version + 1, restriction = ?, restriction_reason = ?,"
+            + " restriction_until = ?, new_dispatch_enabled = CASE WHEN ? = 'NORMAL' THEN"
+            + " new_dispatch_enabled ELSE false END WHERE rider_id = ? AND version = ?",
+        restriction,
+        reason,
+        until == null ? null : Timestamp.from(until),
+        restriction,
+        riderId,
+        expectedVersion);
+  }
+
+  public void insertRestriction(RestrictionRow r) {
+    jdbc.update(
+        "INSERT INTO rider_restriction_history (request_id, rider_id, restriction, previous, reason,"
+            + " until_at, evidence_refs, approval_ref, changed_by, changed_at, rider_version)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        r.requestId(),
+        r.riderId(),
+        r.restriction(),
+        r.previous(),
+        r.reason(),
+        r.until() == null ? null : Timestamp.from(r.until()),
+        r.evidenceRefsJson(),
+        r.approvalRef(),
+        r.changedBy(),
+        Timestamp.from(r.changedAt()),
+        r.riderVersion());
+  }
+
+  public List<RestrictionRow> restrictions(String riderId, int limit) {
+    return jdbc.query(
+        "SELECT * FROM rider_restriction_history WHERE rider_id = ? ORDER BY changed_at DESC,"
+            + " rider_version DESC LIMIT ?",
+        (rs, i) ->
+            new RestrictionRow(
+                rs.getString("request_id"),
+                rs.getString("rider_id"),
+                rs.getString("restriction"),
+                rs.getString("previous"),
+                rs.getString("reason"),
+                instantOrNull(rs, "until_at"),
+                rs.getString("evidence_refs"),
+                rs.getString("approval_ref"),
+                rs.getString("changed_by"),
+                instant(rs, "changed_at"),
+                rs.getInt("rider_version")),
+        riderId,
+        limit);
   }
 
   // ---------- 읽기 ----------

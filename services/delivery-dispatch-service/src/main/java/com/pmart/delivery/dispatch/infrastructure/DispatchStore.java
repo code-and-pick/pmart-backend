@@ -411,6 +411,17 @@ public class DispatchStore {
 
   // ---------- 라이더 잠금·멈춘 주문 ----------
 
+  /** 라이더가 맡은(ASSIGNED·PICKED_UP) 배송과 그 라이더에게 간 SENT 제안의 배송 — 잠글 순서대로(배송 ID 순). RS-1. */
+  public List<String> deliveryIdsTouchingRider(String riderId) {
+    return jdbc.queryForList(
+        "SELECT delivery_id FROM delivery WHERE rider_id = ? AND state IN ('ASSIGNED', 'PICKED_UP')"
+            + " UNION SELECT delivery_id FROM dispatch_offer WHERE rider_id = ? AND state = 'SENT'"
+            + " ORDER BY 1",
+        String.class,
+        riderId,
+        riderId);
+  }
+
   /** 같은 라이더의 수락을 줄 세운다(트랜잭션 끝까지) — 진행 중 수를 센 뒤 배정하기까지 다른 수락이 끼지 못하게(PC 1 검토 M1). */
   public void lockRider(String riderId) {
     jdbc.queryForList("SELECT pg_advisory_xact_lock(hashtext(?))", "dispatch-rider:" + riderId);
@@ -720,6 +731,13 @@ public class DispatchStore {
         "SELECT * FROM dispatch_offer WHERE offer_id = ? FOR UPDATE",
         DispatchStore::offer,
         offerId);
+  }
+
+  public List<OfferRow> offersOfDelivery(String deliveryId) {
+    return jdbc.query(
+        "SELECT * FROM dispatch_offer WHERE delivery_id = ? ORDER BY sent_at",
+        (rs, i) -> offer(rs),
+        deliveryId);
   }
 
   public List<OfferRow> offersOfAttempt(String attemptId) {

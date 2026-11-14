@@ -13,7 +13,7 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
   4. 라이더 단계(D-4): 일시 중지·계약 종료 라이더의 배정을 풀고(`DeliveryAssignmentChanged`) 재배정. 신규배차 제한 라이더는 배정분 그대로.
 - **MFC 쪽 보충(delivery-dispatch 가 생기면)**: 없음. 필요하면 점원 화면에 라이더 ETA(`Shipment.riderEta`, 지금 비어 있음)를 delivery 사건으로 채운다.
 
-- **진행(2026-11-13, delivery PC 5 — DD-1 첫 묶음)**: 1(구독 → 배송 생성 DeliveryCreated·제안 DispatchOfferSent·수락 DeliveryAssigned)·2(ShipmentReady 먼저 와도 출고 하나 — 단 **배차는 점원 요청 DispatchRequested 로만 시작**, BR-51 2026-11-13: ShipmentReady 만 오면 CREATED 로 기록만)·3(WorkStopResult 모든 포장 STOPPED → DeliveryCancelledBeforePickup) 구현. 결품으로 줄어든 포장은 PackingFinished 로 목록만 갱신(조정 배차 없음). **4(라이더 단계 → 배정 풀기)는 아직** — RS-1(rider-service RiderRestricted) 뒤. 상세 `services/delivery-dispatch-service/CLAUDE.md`.
+- **진행(2026-11-13, delivery PC 5 — DD-1 첫 묶음)**: 1(구독 → 배송 생성 DeliveryCreated·제안 DispatchOfferSent·수락 DeliveryAssigned)·2(ShipmentReady 먼저 와도 출고 하나 — 단 **배차는 점원 요청 DispatchRequested 로만 시작**, BR-51 2026-11-13: ShipmentReady 만 오면 CREATED 로 기록만)·3(WorkStopResult 모든 포장 STOPPED → DeliveryCancelledBeforePickup) 구현. 결품으로 줄어든 포장은 PackingFinished 로 목록만 갱신(조정 배차 없음). 4(라이더 단계 → 배정 풀기)는 **2026-11-14 구현**(RS-1 — `RiderRestricted` 구독, 모든 단계 픽업 전 배정 풀고 재배차·픽업한 배송은 전달까지, 사용자 2026-11-14). 상세 `services/delivery-dispatch-service/CLAUDE.md`.
 
 ## DD-1 에 덧붙임 (2026-11-09 조사)
 - S3 취소 사가의 배차 취소 단계 — 모든 포장이 STOPPED 일 때만(`package-handover-contract.md`, `cancel-vs-handover.md`, orchestration `CancellationRules`).

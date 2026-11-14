@@ -26,6 +26,8 @@
 - 운행 상태 `domain/OperatingRules`: OFF_DUTY 면 신규배차 꺼짐, SUSPENDED·TERMINATED 운행 시작 403, DISPATCH_RESTRICTED 는 신규배차 ON 403, 기준 MFC 는 배달지역 안(비우면 첫 MFC). 변경마다 `RiderStateChanged`(delivery.rider.v1, mfcId 포함).
 - 버전 하나(행 version)가 프로필·운행·설정의 X-Expected-Version 기준.
 - 적격 라이더 = 운행 중·신규배차 ON·NORMAL·배달지역에 mfcId. 반경은 거르지 않는다(dispatch 가 tracking 위치로 직선 반경 — 사용자 2026-11-13). 용량·주류·연속 거절은 비움.
-- 아직 없음: 진행 중 배송 수(execution 사본 — 그래서 운행 중이면 수단 변경을 막는다), 계정 제한 변경(BO-20 승인)·`RiderRestricted`(RS-1), 마지막 통신 시각은 운행 상태 바꿀 때만.
+- **계정 제한(RS-1, 2026-11-14 — 계약 0.3.0, V3 `rider_restriction_history`)**: `POST /riders/{riderId}/restrictions`(restriction·reason 필수, until·evidenceRefs·approvalRef 선택, NORMAL = 풀기)·`GET …`(지금 제한 + 이력 최근 100). **OPERATOR_ADMIN 만**(배송·지원센터 역할 없음 — 생기면 `RiderService.requireRestrictionAdmin`). 승인 화면(BO-20) 전 임시 경로(사용자 2026-11-14 "승인 화면 구현 전에는 운영자 API"). 행 버전 조건 갱신 + 이력 + `RiderRestricted`(delivery.rider.v1, payload previous 포함, actor OPERATOR) 한 트랜잭션. 제한이면 `new_dispatch_enabled=false`, **운행 상태는 그대로**(픽업한 배송은 끝까지 전달 — 위치를 계속 보내게). `until` 이 지나면 `Rider.asOf` 가 NORMAL 로 본다(응답·운행 판정·적격 SQL — 기한 끝에 사건은 없음). `RiderStateChanged` 는 따로 내지 않는다.
+- dispatch 가 `RiderRestricted` 를 받아 모든 단계에서 픽업 전 배정을 풀고 재배차(사용자 2026-11-14 — D-4 변경). 컴플레인 누적 → 검토 대상 자동 등록은 RS-3(기준 미정).
+- 아직 없음: 진행 중 배송 수(execution 사본 — 그래서 운행 중이면 수단 변경을 막는다), 검토 대상 목록(RS-3), BO-20 승인 연동(`ApprovalDecided`), rider-auth 세션 끊기(ADR-0054 ⑤), 마지막 통신 시각은 운행 상태 바꿀 때만.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.

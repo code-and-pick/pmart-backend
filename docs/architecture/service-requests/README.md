@@ -18,7 +18,8 @@
 | [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052 | 대기(DD-1 뒤) |
 | [DE-1](delivery-execution-service.md) | delivery-execution | mfc-fulfillment | 픽업 완료 = 포장별 인계 확정, 모든 `PackageHandedOver` 뒤 PICKED_UP | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | 대기 |
-| [RS-1](rider-service.md) | rider | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 없음 | 대기 |
+| [RS-1](rider-service.md) | rider | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 결정됨(2026-11-14: 모든 단계 픽업 전 배정 재배차·픽업분은 완료, 승인 화면 전 운영자 API) | 구현(rider 0.3.0·dispatch, PR 대기) |
+| [RS-3](rider-service.md) | rider | case·백오피스 | 컴플레인 누적 → 제한 검토 대상 자동 등록 | 결정됨(2026-11-14: 시스템 등록·운영자 확인), 누적 기준 미정 | 대기 |
 | [RS-2](rider-service.md) | rider | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | 대기 |
 | [CP-1](delivery-capacity-service.md) | delivery-capacity | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | **필요**(#15) | 대기 |
 | [O-1](order-service.md) | order | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태 | 없음 | 대기 |

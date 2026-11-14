@@ -9,6 +9,13 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 - **설계상 그대로 둘 것**: MFC 는 라이더 단계를 직접 보지 않는다 — `DeliveryAssignmentChanged` 로만 막는다.
 - 라이더 앱의 QR → 인계 허가 → 확정 흐름은 rider 앱·delivery-execution(DE-1) 쪽.
 - 근거: `docs/business/flows/package-handover-contract.md`, `package-handover-decisions.md` D-4.
+- **구현(2026-11-14, delivery PC 5 — rider-service 0.3.0, V3)**: 운영자 `POST /riders/{riderId}/restrictions`(OPERATOR_ADMIN — 승인 화면 BO-20 전 임시, 사용자 2026-11-14)·`GET …`(이력) → `RiderRestricted`(풀기는 restriction NORMAL). 제한이면 신규배차 꺼짐·적격에서 빠짐, 운행 상태는 그대로. delivery-dispatch 가 구독해 **모든 단계에서 픽업 전 배정 풀고 재배차**(`DeliveryAssignmentChanged` reason `RIDER_RESTRICTED`)·남은 제안 LATE, **픽업한 배송은 끝까지 전달**(사용자 2026-11-14 — D-4 변경). `until` 지나면 제한 없음으로 본다(사건 없음). `RiderStateChanged` 는 따로 내지 않는다(`RiderRestricted` 가 신규배차 꺼짐을 뜻함).
+
+## RS-3. 컴플레인 누적 → 제한 검토 대상 등록 (2026-11-14 사용자)
+
+- **결정(사용자 2026-11-14)**: 컴플레인이 일정 기준 이상 누적되면 **시스템이 검토 대상으로 등록**하고, 백오피스 운영자가 확인 뒤 계정을 제한한다(RS-1 API). 자동 제재는 하지 않는다(원문 "후기로만 자동 제재하지 않음").
+- **정할 것(사용자)**: 누적 기준(건수·기간 — 예: 30일 3건), 셀 컴플레인 종류(고객 신고만? 오배송·파손 확정 사건?). 컴플레인 원천은 case-service(platform 영역 — 문의·사건 R-4).
+- **할 일(정해진 뒤)**: 누적을 셀 사건(case 쪽 확정 컴플레인 사건, 라이더 ID 포함) → rider 검토 대상 목록(`GET /riders/restriction-reviews` 등) → 운영자 확인 → RS-1 API.
 
 ## RS-2. 라이더 가입을 rider-auth-service 토큰으로 받기 (2026-11-10, ADR-0054 G·ADR-0055)
 

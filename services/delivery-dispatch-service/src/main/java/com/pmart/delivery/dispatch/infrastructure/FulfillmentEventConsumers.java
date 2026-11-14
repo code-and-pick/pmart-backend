@@ -4,6 +4,7 @@ import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
 import com.pmart.delivery.dispatch.application.ExecutionEventHandler;
 import com.pmart.delivery.dispatch.application.FulfillmentEventHandler;
+import com.pmart.delivery.dispatch.application.RiderEventHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -37,5 +38,14 @@ class FulfillmentEventConsumers {
   @Bean
   PmartEventConsumer executionEvents(EventConsumers consumers, ExecutionEventHandler handler) {
     return consumers.of(e -> ExecutionEventHandler.TYPES.contains(e.eventType()), handler::on);
+  }
+
+  /**
+   * rider 계정 제한(토픽 delivery.rider.v1, 바인딩 {@code riderEvents-in-0}, RS-1 2026-11-14) → 픽업 전 배정 풀고
+   * 재배차·남은 제안 닫기. 운행 상태 사건(RiderStateChanged)은 적격 조회로 보므로 버린다.
+   */
+  @Bean
+  PmartEventConsumer riderEvents(EventConsumers consumers, RiderEventHandler handler) {
+    return consumers.of(e -> RiderEventHandler.TYPES.contains(e.eventType()), handler::on);
   }
 }
