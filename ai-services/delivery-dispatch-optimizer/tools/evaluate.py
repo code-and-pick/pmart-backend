@@ -58,6 +58,35 @@ def build_pool(rnd: random.Random, size: int, road):
     return pts, [d.direct_seconds for d in req.deliveries], req.between_seconds
 
 
+POOL_FILE = Path(__file__).resolve().parents[1] / ".cache" / "kakao-pool.json"
+
+
+def save_pool(pool, path: Path) -> None:
+    import json
+
+    pts, direct, between = pool
+    path.write_text(json.dumps({"mfc": MFC, "points": pts, "direct": direct, "between": between}), "utf-8")
+
+
+def load_pool(path: Path):
+    import json
+
+    global MFC
+    d = json.loads(path.read_text("utf-8"))
+    MFC = tuple(d.get("mfc", MFC))  # 다른 MFC 둘레 묶음(일반화 확인)
+    return [tuple(p) for p in d["points"]], d["direct"], d["between"]
+
+
+def slice_pool(pool, spec: str | None):
+    """"a:b" — 점 a 번부터 b 번 앞까지만(학습·검증·평가 점을 나눈다)."""
+    if not spec:
+        return pool
+    a, b = (int(x) if x else None for x in spec.split(":"))
+    pts, direct, between = pool
+    idx = list(range(len(pts)))[a:b]
+    return [pts[i] for i in idx], [direct[i] for i in idx], [[between[i][j] for j in idx] for i in idx]
+
+
 def instance(rnd: random.Random, n: int, m: int, road=None, pool=None) -> PlanRequest:
     """road 가 없으면 합성 도로 시간(직선 × 1.3 ÷ 5m/s), 있으면 카카오 실제 도로 시간(tools/kakao_road.py). 길이 없는 점(강·공원 안 등)은 다시 뽑는다.
     pool(build_pool) 이 있으면 그 점들 중 n 개를 뽑아 받아 둔 도로 시간을 쓴다(카카오를 더 부르지 않음)."""
@@ -248,6 +277,8 @@ def main():
     ap.add_argument("--road", choices=["synthetic", "kakao"], default="synthetic", help="도로 시간 — 합성(직선×1.3÷5m/s) 또는 카카오 실제")
     ap.add_argument("--kakao-key-file", default=None, help="카카오모빌리티 REST 키 파일(또는 환경변수 KAKAO_MOBILITY_KEY)")
     ap.add_argument("--pool", type=int, default=0, help="카카오: 점 N 개 도로 시간을 한 번만 받고 문제마다 그 안에서 뽑기(build_pool). 0 = 문제마다 새 점")
+    ap.add_argument("--pool-file", default=None, help="카카오 점 묶음 파일 — 있으면 읽고(카카오 안 부름), 없으면 --pool 로 받아 저장")
+    ap.add_argument("--pool-slice", default=None, help="점 묶음 중 a:b 번 점만 쓴다(학습에 안 쓴 점으로 평가)")
     ap.add_argument("--max-calls", type=int, default=150, help="카카오 호출 상한(LAN 배차와 하루 1,000건을 나눠 쓴다) — 넘기 전에 멈춤")
     ap.add_argument("--neighbors", type=int, default=0, help="OR-Tools 묶음 후보를 가까운 k 명으로(dispatch bundle-neighbors). 0 = 모든 조합")
     ap.add_argument("--ortools-limit", type=float, default=2.0, help="CP-SAT 시간 한도(초) — dispatch solver-time-limit 와 같게")
@@ -261,12 +292,21 @@ def main():
 
         road = KakaoRoad.from_file(args.kakao_key_file, max_calls=args.max_calls)
     pool = None
-    if args.pool:
+    if args.pool_file and Path(args.pool_file).exists():
+        pool = load_pool(Path(args.pool_file))
+        print(f"점 묶음 {args.pool_file} — 점 {len(pool[0])}개(카카오 안 부름)")
+    elif args.pool:
         if road is None:
             raise SystemExit("--pool 은 --road kakao 와 함께")
         pool = build_pool(random.Random(args.seed + 1000), args.pool, road)
         road.save()
         print(f"점 {len(pool[0])}개 도로 시간 받음 — 카카오 호출 {road.calls}번(저장분 제외)")
+        if args.pool_file:
+            save_pool(pool, Path(args.pool_file))
+    if pool is not None:
+        pool = slice_pool(pool, args.pool_slice)
+        if args.pool_slice:
+            print(f"점 {args.pool_slice} 만 사용 — {len(pool[0])}개")
     rnd = random.Random(args.seed)
     rows = []
     for _ in range(args.instances):

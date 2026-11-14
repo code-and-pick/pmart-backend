@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import math
+
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -85,7 +87,10 @@ def bundles(req: PlanRequest, model: RouteModel | None) -> list[Bundle]:
     if len(pooled) >= 2 and req.max_bundle_size >= 2 and model is not None:
         mfc = (req.mfc.lat, req.mfc.lng)
         pts = [(req.deliveries[i].at.lat, req.deliveries[i].at.lng) for i in pooled]
-        routes = model(mfc, pts, req.max_bundle_size, deadlines=_deadlines(req, pooled, mfc, pts))
+        kwargs: dict = {"deadlines": _deadlines(req, pooled, mfc, pts)}
+        if getattr(model, "accepts_road", False):
+            kwargs["road"] = _road(req, pooled, mfc, pts)  # 다중 시작 답 고르기를 실제 도로 시간으로(2026-11-14)
+        routes = model(mfc, pts, req.max_bundle_size, **kwargs)
         seen: set[int] = set()
         for route in routes:
             order = [pooled[j] for j in route if 0 <= j < len(pooled) and pooled[j] not in seen]
@@ -100,8 +105,8 @@ def bundles(req: PlanRequest, model: RouteModel | None) -> list[Bundle]:
     return out
 
 
-def _deadlines(req: PlanRequest, pooled: list[int], mfc, pts) -> list[float] | None:
-    """지연 한도를 모델 시간창으로 — 고객 i 는 (바로 갈 때 + max_extra) 안에 도착. 도로 초 → 평면 거리: 직선 미터당 도로 초(중앙값)로 환산."""
+def _sec_per_unit(req: PlanRequest, pooled: list[int], mfc, pts) -> float | None:
+    """도로 초 → 모델 평면 거리([0,1]) 환산값 — 직선 미터당 도로 초(중앙값) × 평면 한 칸의 미터."""
     from .routefinder_model import normalized_span_m
 
     ratios = []
@@ -112,9 +117,44 @@ def _deadlines(req: PlanRequest, pooled: list[int], mfc, pts) -> list[float] | N
     if not ratios:
         return None
     ratios.sort()
-    sec_per_m = ratios[len(ratios) // 2]
-    span = normalized_span_m([mfc, *pts])
-    return [(req.deliveries[i].direct_seconds + req.max_extra_seconds) / sec_per_m / span for i in pooled]
+    return ratios[len(ratios) // 2] * normalized_span_m([mfc, *pts])
+
+
+def _deadlines(req: PlanRequest, pooled: list[int], mfc, pts) -> list[float] | None:
+    """지연 한도를 모델 시간창으로 — 고객 i 는 (바로 갈 때 + max_extra) 안에 도착. 도로 초 → 평면 거리: 직선 미터당 도로 초(중앙값)로 환산."""
+    from .routefinder_model import _normalize
+
+    k = _sec_per_unit(req, pooled, mfc, pts)
+    if k is None:
+        return None
+    locs = _normalize([mfc, *pts])
+    out = []
+    for a, i in enumerate(pooled):
+        limit = (req.deliveries[i].direct_seconds + req.max_extra_seconds) / k
+        # 모델은 평면 직선거리로 도착을 잰다 — 한도가 MFC 에서 바로 가는 거리보다 작으면 그 고객을 영영 못 가 디코딩이 끝나지 않는다
+        # (도로가 직선보다 유난히 짧은 고객 — 2026-11-14 카카오 점 묶음에서 1,576명 중 2명, 학습이 메모리 20GB 로 멈춤)
+        straight = math.dist(locs[0], locs[a + 1])
+        out.append(max(limit, straight * 1.05 + 1e-3))
+    return out
+
+
+NO_ROUTE_UNITS = 10.0  # 길 없는 구간 — 평면 폭(1)의 10배(고르지 않게)
+
+
+def _road(req: PlanRequest, pooled: list[int], mfc, pts) -> list[list[float]] | None:
+    """실제 도로 시간 행렬을 모델 평면 단위로 — [0]=MFC, [1..n]=pooled 고객. 고객 → MFC 는 0(열린 경로)."""
+    k = _sec_per_unit(req, pooled, mfc, pts)
+    if k is None:
+        return None
+    n = len(pooled)
+    out = [[0.0] * (n + 1) for _ in range(n + 1)]
+    for a, i in enumerate(pooled):
+        out[0][a + 1] = req.deliveries[i].direct_seconds / k
+        for b, j in enumerate(pooled):
+            if a != b:
+                s = req.between_seconds[i][j] if req.between_seconds else None
+                out[a + 1][b + 1] = NO_ROUTE_UNITS if s is None or s < 0 else s / k
+    return out
 
 
 def _meters(a, b) -> float:

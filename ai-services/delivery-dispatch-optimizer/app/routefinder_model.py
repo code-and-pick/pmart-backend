@@ -93,6 +93,8 @@ class RouteFinderModel:
         self._torch = torch
         self._multistart = multistart
         self._route_cost = route_cost
+        # planner 가 실제 도로 시간 행렬(평면 단위)을 넘긴다 — OPTIMIZER_ROAD_SELECT=0 이면 예전처럼 직선으로 고른다(비교용)
+        self.accepts_road = os.environ.get("OPTIMIZER_ROAD_SELECT", "1") != "0"
         torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
         log.info("RouteFinder 적재 %.1f초 (%s)", time.time() - t0, NAME)
 
@@ -102,6 +104,7 @@ class RouteFinderModel:
         points: Sequence[tuple[float, float]],
         max_size: int,
         deadlines: Sequence[float] | None = None,
+        road: Sequence[Sequence[float]] | None = None,
     ) -> list[list[int]]:
         """deadlines[i] = 고객 i 도착 한도를 [0,1] 평면 거리 단위로(속도 1). None 이면 시간창 없음."""
         torch = self._torch
@@ -133,7 +136,11 @@ class RouteFinderModel:
                     td, self._env, phase="test", decode_type="multistart_greedy", num_starts=n, return_actions=True
                 )
                 acts = out["actions"]  # [n, 길이] — 출발 고객마다 한 줄
-                cost = route_cost(td["locs"].expand(acts.size(0), -1, -1), acts, self._route_cost)
+                if road is not None:  # 실제 도로 시간으로 고른다(2026-11-14 — 직선보다 도로 기준이 dispatch 비용과 맞다)
+                    mat = torch.tensor([road], dtype=torch.float32).expand(acts.size(0), -1, -1)
+                    cost = road_route_cost(mat, acts, self._route_cost)
+                else:
+                    cost = route_cost(td["locs"].expand(acts.size(0), -1, -1), acts, self._route_cost)
                 best = acts[int(cost.argmin())]
             else:
                 out = self._policy(td, self._env, phase="test", decode_type="greedy", return_actions=True)
@@ -161,6 +168,24 @@ def route_cost(locs, actions, per_route: float):
     go_to = actions
     d = get_distance(gather_by_index(locs, go_from), gather_by_index(locs, go_to))
     cum = torch.zeros(actions.size(0), device=locs.device)
+    arrivals = torch.zeros_like(cum)
+    for t in range(actions.size(1)):
+        at_customer = go_to[:, t] != 0
+        cum = torch.where(at_customer, cum + d[:, t], torch.zeros_like(cum))
+        arrivals = arrivals + torch.where(at_customer, cum, torch.zeros_like(cum))
+    routes = ((go_from == 0) & (go_to != 0)).sum(-1).float()
+    return arrivals + per_route * routes
+
+
+def road_route_cost(road, actions, per_route: float):
+    """route_cost 와 같은 비용을 실제 도로 시간 행렬(평면 단위, [b, n+1, n+1] — 0 = MFC)로. 추가 학습 보상·다중 시작 고르기."""
+    import torch
+
+    go_from = torch.cat((torch.zeros_like(actions[:, :1]), actions[:, :-1]), dim=1)
+    go_to = actions
+    rows = torch.arange(actions.size(0), device=actions.device).unsqueeze(1)
+    d = road[rows, go_from, go_to]
+    cum = torch.zeros(actions.size(0), device=road.device)
     arrivals = torch.zeros_like(cum)
     for t in range(actions.size(1)):
         at_customer = go_to[:, t] != 0

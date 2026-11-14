@@ -92,6 +92,9 @@ class KakaoRoad:
                     raise SystemExit(f"카카오모빌리티 키 거절({e.code})") from None
                 if e.code == 400:
                     msg = e.read().decode("utf-8", "replace")[:300]  # 오류 문구만(키·좌표 아님)
+                    if '"code":-10' in msg.replace(" ", ""):
+                        self.save()
+                        raise SystemExit(f"카카오모빌리티 일 사용량 소진(400 code -10) — 이번 실행 {self.calls}번에서 멈춘다(받은 구간은 저장됨).") from None
                     raise SystemExit(f"카카오모빌리티 요청 오류 400 — 목적지 {len(dests)}개: {msg}") from None
                 if attempt == 2:
                     raise
