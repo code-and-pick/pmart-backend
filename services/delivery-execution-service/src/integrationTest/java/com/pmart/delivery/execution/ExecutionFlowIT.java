@@ -2,6 +2,7 @@ package com.pmart.delivery.execution;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
 import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
@@ -30,6 +31,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -47,6 +51,8 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.execution.confirm-interval=PT1H" // 확정 판단은 시험이 직접 부른다
     })
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
+@EnableWireMock(
+    @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.execution.urls.order"))
 class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   static final Map<String, byte[]> STORED = new ConcurrentHashMap<>();
@@ -77,6 +83,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired EarningService earnings;
 
+  @InjectWireMock("order")
+  WireMockServer orderApi;
+
   RestClient http;
 
   @BeforeEach
@@ -86,6 +95,98 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             .baseUrl("http://localhost:" + port + "/api/v1")
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
+  }
+
+  /** BR-24(사용자 2026-11-14): 배정 라이더에게 픽업 뒤 ~ 전달 완료 전만, 고객 전화번호 그대로, 저장 안 함(no-store). */
+  @Test
+  void dropInfoOnlyForAssignedRiderBetweenPickupAndCompletion() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    created(id, "SHP-" + UUID.randomUUID(), order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    Map<String, Object> drop = new java.util.LinkedHashMap<>();
+    drop.put("orderId", order);
+    drop.put("roadAddress", "서울 강남구 테헤란로 1");
+    drop.put("detailAddress", "101동 1001호");
+    drop.put("receiverName", "김고객");
+    drop.put("receiverPhone", "01012345678");
+    drop.put("entranceMethod", "PASSWORD");
+    drop.put("entranceNote", "#1234");
+    drop.put("deliveryNote", "문 앞에 두세요");
+    drop.put("geo", Map.of("lat", 37.5, "lng", 127.03));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(drop))));
+
+    // 픽업 전 409
+    ResponseEntity<String> early = dropInfo(id, rider);
+    assertThat(early.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(early).path("code").asString()).isEqualTo("DROP_INFO_CLOSED");
+
+    jdbc.update("UPDATE execution_delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", id);
+    ResponseEntity<String> ok = dropInfo(id, rider);
+    assertThat(ok.getStatusCode().value()).isEqualTo(200);
+    assertThat(ok.getHeaders().getCacheControl()).contains("no-store");
+    JsonNode d = body(ok);
+    assertThat(d.path("receiverPhone").asString()).isEqualTo("01012345678"); // 안심번호 아님
+    assertThat(d.path("detailAddress").asString()).isEqualTo("101동 1001호");
+    assertThat(d.path("entranceMethod").asString()).isEqualTo("PASSWORD");
+    assertThat(d.path("deliveryNote").asString()).isEqualTo("문 앞에 두세요");
+    assertThat(d.path("lat").asDouble()).isEqualTo(37.5);
+    // 다른 라이더는 있는지도 모른다(404), 운영자 토큰은 403
+    assertThat(dropInfo(id, "RDR-OTHER").getStatusCode().value()).isEqualTo(404);
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/drop-info", id)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-1", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+
+    // 실패 등록(확정 전)은 아직 진행 중 — 열림, 전달 완료 뒤 닫힘
+    jdbc.update(
+        "UPDATE execution_delivery SET state = 'FAILURE_REPORTED' WHERE delivery_id = ?", id);
+    assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(200);
+    jdbc.update("UPDATE execution_delivery SET state = 'COMPLETED' WHERE delivery_id = ?", id);
+    assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(409);
+
+    // 주문 당시 사본 없는 주문 → 404 DROP_INFO_NOT_FOUND, order 장애 → 503
+    jdbc.update("UPDATE execution_delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", id);
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(404)));
+    ResponseEntity<String> none = dropInfo(id, rider);
+    assertThat(none.getStatusCode().value()).isEqualTo(404);
+    assertThat(body(none).path("code").asString()).isEqualTo("DROP_INFO_NOT_FOUND");
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
+    assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(503);
+  }
+
+  ResponseEntity<String> dropInfo(String id, String rider) {
+    return http.get()
+        .uri("/deliveries/{id}/drop-info", id)
+        .header("Authorization", "Bearer " + TestJwt.rider(rider))
+        .retrieve()
+        .toEntity(String.class);
   }
 
   @Test

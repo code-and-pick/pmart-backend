@@ -1,12 +1,15 @@
 package com.pmart.order.api;
 
 import com.pmart.common.web.CommandResponse;
+import com.pmart.common.web.PmartException;
 import com.pmart.order.api.generated.InternalApi;
 import com.pmart.order.api.generated.model.ApplyLineQuantityChangeRequest;
 import com.pmart.order.api.generated.model.ArrivalWindow;
 import com.pmart.order.api.generated.model.ConfirmOrderRequest;
 import com.pmart.order.api.generated.model.DeliveryDestination;
 import com.pmart.order.api.generated.model.DeliveryDestinationGeo;
+import com.pmart.order.api.generated.model.DropInfo;
+import com.pmart.order.api.generated.model.DropInfoGeo;
 import com.pmart.order.api.generated.model.InternalOrder;
 import com.pmart.order.api.generated.model.InternalOrderLinesInner;
 import com.pmart.order.api.generated.model.OrderStatus;
@@ -79,6 +82,39 @@ public class InternalController implements InternalApi {
                     .toList()),
             xExpectedVersion);
     return ResponseEntity.ok(command(r));
+  }
+
+  /**
+   * 라이더용 전달지(O-5, 2026-11-14 — 클라이언트 BR-24). 공개 범위는 delivery-execution 이 판정. 사본 없으면 404. 개인정보 — 로그
+   * 금지.
+   */
+  @Override
+  public ResponseEntity<DropInfo> getOrderDropInfo(String orderId) {
+    OrderService.OrderView v = orders.internalWithShipping(orderId);
+    var s = v.shipping();
+    if (s == null) {
+      throw PmartException.notFound("DROP_INFO_NOT_FOUND", "주문 당시 배송지 사본이 없습니다.");
+    }
+    return ResponseEntity.ok(
+        new DropInfo()
+            .orderId(orderId)
+            .roadAddress(s.roadAddress())
+            .detailAddress(s.detailAddress())
+            .postalCode(s.postalCode())
+            .receiverName(s.receiverName())
+            .receiverPhone(s.receiverPhone())
+            .entranceMethod(
+                s.entranceMethod() == null
+                    ? null
+                    : DropInfo.EntranceMethodEnum.fromValue(s.entranceMethod()))
+            .entranceNote(s.entranceNote())
+            .deliveryNote(v.order().deliveryNote())
+            .geo(
+                s.lat() == null || s.lng() == null
+                    ? null
+                    : new DropInfoGeo()
+                        .lat(BigDecimal.valueOf(s.lat()))
+                        .lng(BigDecimal.valueOf(s.lng()))));
   }
 
   /** 배차용 배송지(O-4, 2026-11-13) — 도로명주소·핀만, 수령인·연락처·출입 정보 없음. */

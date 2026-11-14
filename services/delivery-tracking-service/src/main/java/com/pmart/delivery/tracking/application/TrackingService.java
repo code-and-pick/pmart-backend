@@ -83,6 +83,8 @@ public class TrackingService {
                   last = p.recordedAt();
                 }
               }
+              // 통신이 살아 있다는 표시(품질과 무관) — 위치 끊김 감지의 기준(RiderWatch)
+              store.touchSignal(riderId, now);
               return new Uploaded(sorted.size(), now);
             })
         .value();

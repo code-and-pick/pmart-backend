@@ -22,3 +22,10 @@
 - **요청한 곳**: delivery-dispatch(MFC → 고객 도로 거리·예상 배달료·알뜰배달 묶음 — ADR-0058, 원문 §2.1 ②).
 - **필요한 것**: `GET /internal/orders/{orderId}/delivery-destination`(토큰 없는 내부 호출) — 주문 당시 사본(BR-37)의 도로명주소·지도 핀, 배송 방식(SINGLE·BUNDLED·SCHEDULED), 예약 창, 상태. **수령인·연락처·출입 정보는 주지 않는다.** dispatch 는 도로명주소를 serviceability `/internal/address-geocodes`(정확 일치, ADR-0023)로 좌표로 바꾸고 좌표·동 이름만 저장한다(주소 원문 저장·로그 금지).
 - **한 것**: delivery 영역 PC 5 가 계약 0.2.2·`InternalController.getOrderDeliveryDestination`·`DraftFlowIT` 확인을 PR 에 넣었다(급해서 — `pc-split.md` §1 "급하면 PR 을 열되 그 영역 담당이 리뷰"). 표·사건 변경 없음.
+- **버그 고침(2026-11-14, PC 5)**: 구현이 `OrderService.internal`(claim 용 — 배송지 사본을 싣지 않음)을 써서 **roadAddress 가 늘 null** 이었다 → dispatch 가 모든 배송을 "주소 없음" SYSTEM_FAILURE(DISPATCH_FAILED)로 멈췄을 것(dispatch 시험은 order 를 WireMock 으로 고정해 못 잡음). `internalWithShipping` 으로 고치고 `DraftFlowIT` 에 도로명주소 확인 추가. **LAN 실배차 전에 배포 필요.**
+
+## O-5. 라이더용 전달지 (2026-11-14, delivery — 클라이언트 BR-24, **구현해 PR 에 넣음, platform 검토 필요**)
+- **요청한 곳**: delivery-execution(픽업 뒤 라이더에게 주소·상세·수령인·연락처·출입·요청사항 — 원문 수행 흐름 "픽업 후: 주소·상세주소·연락").
+- **결정(사용자 2026-11-14)**: 연락처는 **안심번호가 아니라 고객 전화번호**.
+- **필요한 것**: `GET /internal/orders/{orderId}/drop-info`(내부 호출) — 주문 당시 사본(BR-37) 전부 + `deliveryNote`. 공개 범위(배정 라이더 본인·픽업 뒤 ~ 완료 전)는 delivery-execution 이 판정, 게이트웨이에 열지 않는다. 사본 없으면 404.
+- **한 것**: PC 5 가 계약 0.2.4·`InternalController.getOrderDropInfo`·`DraftFlowIT` 확인을 PR 에 넣었다. 표·사건 변경 없음.

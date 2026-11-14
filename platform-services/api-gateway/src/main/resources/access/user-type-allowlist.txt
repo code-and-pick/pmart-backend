@@ -70,6 +70,7 @@ GET /api/v1/customer-assistant/recent-orders CUSTOMER
 GET /api/v1/deliveries/{deliveryId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/assignment-cancellations/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/dispatch OPERATOR,RIDER
+GET /api/v1/deliveries/{deliveryId}/drop-info RIDER
 GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR
 GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR

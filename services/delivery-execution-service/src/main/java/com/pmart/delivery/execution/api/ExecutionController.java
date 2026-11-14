@@ -8,6 +8,7 @@ import com.pmart.delivery.execution.api.generated.model.CompletionRequestAllOfEv
 import com.pmart.delivery.execution.api.generated.model.CreateHelpRequestRequest;
 import com.pmart.delivery.execution.api.generated.model.DecideFailureRequest;
 import com.pmart.delivery.execution.api.generated.model.DeliveryExecution;
+import com.pmart.delivery.execution.api.generated.model.DropInfo;
 import com.pmart.delivery.execution.api.generated.model.EvidencePhoto;
 import com.pmart.delivery.execution.api.generated.model.ExecutionState;
 import com.pmart.delivery.execution.api.generated.model.GetHelpRequest200Response;
@@ -15,15 +16,19 @@ import com.pmart.delivery.execution.api.generated.model.ReportFailureRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportPickupRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportStoreArrival200Response;
 import com.pmart.delivery.execution.api.generated.model.TransitionRequest;
+import com.pmart.delivery.execution.application.DropInfoService;
 import com.pmart.delivery.execution.application.ExecutionService;
 import com.pmart.delivery.execution.application.FailureDecisionService;
 import com.pmart.delivery.execution.application.HelpRequestService;
+import com.pmart.delivery.execution.infrastructure.OrderClient;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,16 +45,19 @@ public class ExecutionController implements ExecutionApi {
   private final FailureDecisionService failures;
   private final HelpRequestService helps;
   private final ExecutionViews views;
+  private final DropInfoService dropInfos;
 
   public ExecutionController(
       ExecutionService service,
       FailureDecisionService failures,
       HelpRequestService helps,
-      ExecutionViews views) {
+      ExecutionViews views,
+      DropInfoService dropInfos) {
     this.service = service;
     this.failures = failures;
     this.helps = helps;
     this.views = views;
+    this.dropInfos = dropInfos;
   }
 
   @Override
@@ -153,6 +161,30 @@ public class ExecutionController implements ExecutionApi {
   @Override
   public ResponseEntity<DeliveryExecution> getDeliveryExecution(String deliveryId) {
     return ResponseEntity.ok(views.delivery(service.view(deliveryId)));
+  }
+
+  /** 라이더용 전달지(BR-24) — 개인정보라 응답을 저장하지 않게 no-store. */
+  @Override
+  public ResponseEntity<DropInfo> getDeliveryDropInfo(String deliveryId) {
+    OrderClient.DropInfo d = dropInfos.dropInfo(deliveryId);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .body(
+            new DropInfo()
+                .deliveryId(deliveryId)
+                .roadAddress(d.roadAddress())
+                .detailAddress(d.detailAddress())
+                .postalCode(d.postalCode())
+                .receiverName(d.receiverName())
+                .receiverPhone(d.receiverPhone())
+                .entranceMethod(
+                    d.entranceMethod() == null
+                        ? null
+                        : DropInfo.EntranceMethodEnum.fromValue(d.entranceMethod()))
+                .entranceNote(d.entranceNote())
+                .deliveryNote(d.deliveryNote())
+                .lat(d.lat() == null ? null : BigDecimal.valueOf(d.lat()))
+                .lng(d.lng() == null ? null : BigDecimal.valueOf(d.lng())));
   }
 
   @Override

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.3.1
+  version: 0.3.2
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -36,6 +36,30 @@ paths:
               schema: { $ref: '#/components/schemas/DeliveryExecution' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/drop-info:
+    get:
+      tags: [execution]
+      summary: 라이더용 전달지 (픽업 뒤 ~ 전달 완료 전, 배정 라이더 본인 — 클라이언트 BR-24)
+      description: |
+        주소·상세주소·우편번호·수령인·**고객 전화번호**(안심번호 아님 — 사용자 결정 2026-11-14)·출입 방법·출입 메모·배송 요청사항·지도 핀. 원천은 order 주문 당시 사본(O-5) — 이 서비스는 저장·로그하지 않는다(매번 order 에서 읽음, `Cache-Control: no-store`).
+        열리는 때: 상태 PICKED_UP·ARRIVED_AT_CUSTOMER·FAILURE_REPORTED(아직 진행 중). 그 전(픽업 전)·뒤(전달 완료·실패 확정·취소)는 409 DROP_INFO_CLOSED. 배정 라이더가 아니면 404(있는지 알리지 않음).
+        주문 당시 사본이 없는 주문(2026-11-02 이전)은 404 DROP_INFO_NOT_FOUND. order 를 못 부르면 503.
+      x-added-in: '2026-11-14'
+      operationId: getDeliveryDropInfo
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DropInfo' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /deliveries/{deliveryId}/store-arrivals:
     post:
@@ -499,6 +523,23 @@ paths:
 
 components:
   schemas:
+    DropInfo:
+      type: object
+      x-added-in: '2026-11-14'
+      description: 라이더용 전달지(order 주문 당시 사본 O-5). 개인정보 — 앱도 화면 밖에 남기지 않는다(전달 완료 뒤 지움)
+      required: [deliveryId, roadAddress, detailAddress, receiverName, receiverPhone]
+      properties:
+        deliveryId: { type: string }
+        roadAddress: { type: string }
+        detailAddress: { type: string }
+        postalCode: { type: [string, 'null'] }
+        receiverName: { type: string }
+        receiverPhone: { type: string, description: 고객 전화번호(안심번호 아님 — 사용자 결정 2026-11-14) }
+        entranceMethod: { type: [string, 'null'], enum: [FREE, PASSWORD, CALL, OTHER, null], description: 'FREE 자유 출입, PASSWORD 공동현관 비밀번호, CALL 호출, OTHER 기타' }
+        entranceNote: { type: [string, 'null'], description: 출입 메모(비밀번호일 수 있다) }
+        deliveryNote: { type: [string, 'null'], description: 배송 요청사항 }
+        lat: { type: [number, 'null'], description: 지도 핀(참고) }
+        lng: { type: [number, 'null'] }
     ExecutionState:
       type: string
       description: |

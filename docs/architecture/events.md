@@ -209,7 +209,7 @@
 | `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, earningId, feeBasis, rateVersion, status, calculable, payoutDate | 수행료 근거(환불과 독립) — 완료 때 확정 대기·5시간 뒤 확정, 실패·취소는 산정 불가(2026-11-13) | ① |
 | `SettlementStateChanged` | delivery-execution | notification | riderId, periodId, state | 정산 상태 | ② |
 | `DeliveryEtaUpdated` | delivery-tracking | order(고객 조회), mfc-fulfillment(점원), notification(지연) | deliveryId, etaPickup?, etaDrop, basis, staleness | ETA 갱신 | ① |
-| `RiderLocationStale` | delivery-tracking | delivery-dispatch, case | riderId, lastSeenAt | 위치 단절 | ① |
+| `RiderLocationStale` | delivery-tracking(2026-11-14 구현, 토픽 delivery.tracking.v1) | delivery-dispatch, case(둘 다 구독 전) | riderId, deliveryId, lastSeenAt, detectedAt | 위치 단절 — 진행 중 배송(배정 ~ 완료 전)이 있는 라이더 위치가 3분 넘게 없음, 끊김 한 번에 한 번(사용자 2026-11-14) | ① |
 
 ## 8. Platform & Support
 

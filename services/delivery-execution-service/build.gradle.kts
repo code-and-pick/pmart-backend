@@ -24,4 +24,5 @@ dependencies {
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 Outbox 행 확인
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // order 전달지(O-5) 응답 고정
 }

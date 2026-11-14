@@ -18,6 +18,7 @@
 | [DD-2](delivery-dispatch-service.md) | delivery-dispatch | 사용자 | 확인된 오배송 회수 라이더 자동 배차(인근 다른 라이더) | ADR-0052 | 대기(DD-1 뒤) |
 | [DE-1](delivery-execution-service.md) | delivery-execution | mfc-fulfillment | 픽업 완료 = 포장별 인계 확정, 모든 `PackageHandedOver` 뒤 PICKED_UP | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
 | [TR-1](delivery-tracking-service.md) | delivery-tracking | mfc-fulfillment, order | `DeliveryEtaUpdated` (라이더 ETA) | 없음 | 대기 |
+| [TR-2](delivery-tracking-service.md) | delivery-tracking | dispatch·case | 위치 끊김(배달 중 3분)·위치 보존 30일 | 결정됨(2026-11-14) | 구현(PC 5 — PR 대기), 받는 쪽 구독 전 |
 | [RS-1](rider-service.md) | rider | delivery-dispatch | 라이더 단계 사건(제한·중지·종료) | 결정됨(2026-11-14: 모든 단계 픽업 전 배정 재배차·픽업분은 완료, 승인 화면 전 운영자 API) | 구현(rider 0.3.0·dispatch, PR 대기) |
 | [RS-3](rider-service.md) | rider | case·백오피스 | 컴플레인 누적 → 제한 검토 대상 자동 등록 | 결정됨(2026-11-14: 같은 종류(신고·오배송·파손) 7일 안 3건 이상, 운영자 확인) | 구현(rider — PR 대기), case 발행 R-5 대기 |
 | [RS-2](rider-service.md) | rider | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | 대기 |
@@ -43,7 +44,8 @@
 | [SC-1](supply-planning.md) | replenishment, demand-planning(없음) | mfc-inbound, mfc-inventory, mfc-capacity | 예상량 기반 공급 요청 | **필요**(Q-15) | 보류 |
 | [CO-1](cdc-outbound-service.md) | cdc-outbound | mfc-inbound | 송장(TRF) 라벨 스캔 값 `TRF:{trfId}:{version}`(클라이언트 BR-53 R10) | 없음 | 대기 |
 | [CM-1](center-master-service.md) | center-master | delivery-dispatch | 내부 센터 조회(MFC 좌표) | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
-| [O-4](order-service.md) | order | delivery-dispatch | 배차용 배송지 조회 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) |
+| [O-4](order-service.md) | order | delivery-dispatch | 배차용 배송지 조회 | 없음 | **구현·LAN 배포**(2026-11-14, PR #8) — 도로명주소 늘 null 버그 고침 PR 대기(2026-11-14) |
+| [O-5](order-service.md) | order | delivery-execution | 라이더용 전달지(BR-24 — 고객 전화번호 그대로) | 결정됨(2026-11-14: 안심번호 대신 고객 전화번호) | 구현(PC 5 — PR 대기) |
 | [F-2](mfc-fulfillment-service.md) | mfc-fulfillment | delivery-dispatch | 피킹 시작 전 포장 소요시간 입력 → 배차 요청(사용자 확인 "피킹 시작 전") | 결정됨(2026-11-13) | 대기(mfc, PC 3) |
 
 ## 참고 (요청 아님 — 2026-11-09 조사)

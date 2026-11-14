@@ -314,7 +314,7 @@
 - **소유하지 않음**: 배송 상태 확정(execution; GPS만으로 픽업·전달 처리 금지).
 - **API**: 위치 수신, ETA 조회, 실시간 구독, 거리 행렬(dispatch).
 - **발행**: `DeliveryEtaUpdated`, `RiderLocationStale`.
-- **구독**: `DeliveryAssigned`, `PickupCompleted`, `DeliveryCompleted`.
+- **구독**: `DeliveryAssigned`·`DeliveryAssignmentChanged`·`DeliveryCancelledBeforePickup`·`DeliveryCompleted`·`DeliveryFailed`(진행 중 배송 → 위치 끊김 3분, 2026-11-14 구현). 위치 기록 보존 30일(사용자 2026-11-14).
 
 ---
 

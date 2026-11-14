@@ -11,14 +11,29 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxClockAhead 단말 시각이 서버보다 이만큼 넘게 앞서면 TIME_SKEW
  * @param kakaoMobility 카카오모빌리티 길찾기(ADR-0058). 키는 {@code
  *     delivery-tracking-service-<프로필>.yml}({cipher})에만 — 비면 거리 행렬이 CONFIG_REQUIRED(직선거리 대체 없음)
+ * @param staleAfter 진행 중 배송이 있는 라이더의 위치가 이만큼 안 오면 {@code RiderLocationStale} — 사용자 결정 2026-11-14
+ *     "배달 중 3분"(dispatch 후보 기준 2분보다 조금 길게)
+ * @param staleCheckInterval 끊김 판정 주기
+ * @param retention 위치 기록 보존 기간 — 사용자 결정 2026-11-14 "30일"(서버 수신 시각 기준)
+ * @param purgeInterval 보존 기간 지난 기록 지우기 주기
  */
 @ConfigurationProperties(prefix = "pmart.tracking")
 public record TrackingProperties(
-    @Nullable Double lowAccuracyM, @Nullable Duration maxClockAhead, KakaoMobility kakaoMobility) {
+    @Nullable Double lowAccuracyM,
+    @Nullable Duration maxClockAhead,
+    KakaoMobility kakaoMobility,
+    @Nullable Duration staleAfter,
+    @Nullable Duration staleCheckInterval,
+    @Nullable Duration retention,
+    @Nullable Duration purgeInterval) {
 
   public TrackingProperties {
     lowAccuracyM = lowAccuracyM == null ? 100.0 : lowAccuracyM;
     maxClockAhead = maxClockAhead == null ? Duration.ofMinutes(1) : maxClockAhead;
+    staleAfter = staleAfter == null ? Duration.ofMinutes(3) : staleAfter;
+    staleCheckInterval = staleCheckInterval == null ? Duration.ofSeconds(30) : staleCheckInterval;
+    retention = retention == null ? Duration.ofDays(30) : retention;
+    purgeInterval = purgeInterval == null ? Duration.ofHours(1) : purgeInterval;
     kakaoMobility =
         kakaoMobility == null ? new KakaoMobility(null, null, null, null, null) : kakaoMobility;
   }
