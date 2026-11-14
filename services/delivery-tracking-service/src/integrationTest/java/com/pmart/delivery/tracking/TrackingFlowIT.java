@@ -282,6 +282,14 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         rider);
     watch.checkStale();
     assertThat(staleCount(rider)).isEqualTo(2);
+    // 사건 버전 = 알림 횟수(갱신하며 읽음 — 겹치지 않음)
+    assertThat(
+            jdbc.queryForList(
+                "SELECT (payload->>'aggregateVersion')::int FROM outbox_event WHERE aggregateid = ?"
+                    + " AND type = 'RiderLocationStale' ORDER BY created_at",
+                Integer.class,
+                rider))
+        .containsExactly(1, 2);
 
     // 전달 완료 뒤에는 끊겨도 안 냄, 늦게 온 옛 배정 사건이 다시 열지 않는다
     deliveryEvent(
@@ -331,6 +339,130 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                 String.class,
                 delivery))
         .isEqualTo("CLOSED");
+  }
+
+  /**
+   * PC 1 PR #15 검토·사용자 2026-11-14: 감시 시작은 사건에 적힌 배정 시각(읽은 시각이 아님), 배정 뒤 5시간 지나면 끝 사건이 없어도 감시
+   * 끝("5시간이 지나면 감시 종료"), 배정 해제 뒤 늦게 온 옛 배정 사건은 다시 열지 않고 더 높은 버전 배정만 다시 연다.
+   */
+  @Test
+  void watchStartsAtAssignmentTimeEndsAfterFiveHoursAndIgnoresLateOldAssignment() {
+    // 6시간 전 배정 사건을 지금 읽음(옛 사건 재처리) — 지금 배정된 것처럼 되지 않고, 끊김 알림 없이 끝난다
+    String rider = "RD-ex-" + UUID.randomUUID();
+    String old = "DLV-ex-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        old,
+        Map.of(
+            "deliveryId",
+            old,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().minus(Duration.ofHours(6)).toString()));
+    awaitCount("SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '" + old + "'");
+    watch.checkStale();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM rider_active_delivery WHERE delivery_id = ?", String.class, old))
+        .isEqualTo("EXPIRED");
+    assertThat(staleCount(rider)).isZero();
+
+    // 배정 → 해제(RELEASED, 버전 2) → 늦게 온 옛 배정(버전 1)은 무시
+    String rider2 = "RD-rl-" + UUID.randomUUID();
+    String d2 = "DLV-rl-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "riderId",
+            rider2,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + d2
+            + "' AND state = 'ACTIVE'");
+    deliveryEvent(
+        "DeliveryAssignmentChanged",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "oldRiderId",
+            rider2,
+            "assignmentVersion",
+            2,
+            "reason",
+            "RIDER_RESTRICTED",
+            "changedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + d2
+            + "' AND state = 'RELEASED'");
+    deliveryEvent(
+        "DeliveryAssigned",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "riderId",
+            rider2,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    sleepMs(1500);
+    Map<String, Object> released =
+        jdbc.queryForMap(
+            "SELECT state, assignment_version FROM rider_active_delivery WHERE delivery_id = ?",
+            d2);
+    assertThat(released.get("state")).isEqualTo("RELEASED");
+    assertThat(released.get("assignment_version")).isEqualTo(2);
+    jdbc.update(
+        "INSERT INTO rider_signal (rider_id, last_received_at) VALUES (?, ?)",
+        rider2,
+        Timestamp.from(Instant.now().minus(Duration.ofMinutes(10))));
+    watch.checkStale();
+    assertThat(staleCount(rider2)).isZero();
+
+    // 더 높은 버전 새 배정은 다시 연다(시작 = 사건의 배정 시각)
+    Instant acceptedAt =
+        Instant.now()
+            .minus(Duration.ofMinutes(5))
+            .truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    deliveryEvent(
+        "DeliveryAssigned",
+        d2,
+        Map.of(
+            "deliveryId",
+            d2,
+            "riderId",
+            rider2,
+            "assignmentVersion",
+            3,
+            "acceptedAt",
+            acceptedAt.toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + d2
+            + "' AND state = 'ACTIVE'");
+    assertThat(
+            jdbc.queryForObject(
+                    "SELECT since FROM rider_active_delivery WHERE delivery_id = ?",
+                    Timestamp.class,
+                    d2)
+                .toInstant())
+        .isEqualTo(acceptedAt);
+    watch.checkStale();
+    assertThat(staleCount(rider2)).isEqualTo(1);
   }
 
   /** 사용자 2026-11-14 "보존기간은 30일": 서버 수신 30일 지난 위치 점은 지운다. */

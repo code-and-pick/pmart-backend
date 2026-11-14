@@ -48,7 +48,8 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.execution.confirm-interval=PT1H" // 확정 판단은 시험이 직접 부른다
+      "pmart.execution.confirm-interval=PT1H", // 확정 판단은 시험이 직접 부른다
+      "pmart.execution.photo-sweep-interval=PT1H" // 사진 정리도 시험이 직접 부른다
     })
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
 @EnableWireMock(
@@ -68,8 +69,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         }
 
         @Override
-        public void delete(String key) {
+        public boolean delete(String key) {
           STORED.remove(key);
+          return true;
         }
       };
     }
@@ -82,6 +84,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired EarningService earnings;
+  @Autowired com.pmart.delivery.execution.application.PhotoSweeper sweeper;
 
   @InjectWireMock("order")
   WireMockServer orderApi;
@@ -264,15 +267,40 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(photo).path("contentType").asString()).isEqualTo("image/jpeg");
     assertThat(STORED).containsKey("deliveries/" + id + "/" + photoRef);
     assertThat(upload(id, "RDR-OTHER", JPEG).getStatusCode().value()).isEqualTo(403);
-    // 저장소 올리기는 트랜잭션 밖(PC 1 검토 후속): 같은 키 재시도 → 같은 사진 참조·객체 하나, 같은 키·다른 사진 → 409 + 올린 객체 지움
+    // 저장소 올리기는 트랜잭션 밖(PC 1 검토 후속): 같은 키 재시도 → 같은 사진 참조·객체 하나
     String key = "photo-" + UUID.randomUUID();
     String again = body(upload(id, rider, JPEG, key)).path("photoRef").asString();
     assertThat(body(upload(id, rider, JPEG, key)).path("photoRef").asString()).isEqualTo(again);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM photo_upload WHERE delivery_id = ?", Integer.class, id))
+        .isZero(); // 참조를 저장한 트랜잭션이 올리는 중 기록을 지웠다
+    // 중복 요청 기록이 없어진 뒤 같은 요청을 다시 보내도 409 를 반복하지 않고 그 사진을 돌려준다(#12 후속)
+    jdbc.update("DELETE FROM request_record WHERE request_id = ?", key);
+    ResponseEntity<String> afterPurge = upload(id, rider, JPEG, key);
+    assertThat(afterPurge.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(body(afterPurge).path("photoRef").asString()).isEqualTo(again);
+    // 같은 키·다른 사진 → 409. 올린 객체는 바로 지우지 않고(동시 중복 요청이 같은 객체로 성공했을 수 있다) 5시간 뒤 참조가 없으면 지운다
+    // (사용자 2026-11-14 "5시간이 지나면 삭제")
     byte[] other = java.util.Arrays.copyOf(JPEG, JPEG.length + 1);
     long before = STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count();
     assertThat(upload(id, rider, other, key).getStatusCode().value()).isEqualTo(409);
     assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
+        .isEqualTo(before + 1);
+    sweeper.sweep(); // 아직 5시간 안 — 그대로
+    assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
+        .isEqualTo(before + 1);
+    jdbc.update(
+        "UPDATE photo_upload SET started_at = started_at - interval '6 hours' WHERE delivery_id = ?",
+        id);
+    sweeper.sweep();
+    assertThat(STORED.keySet().stream().filter(k -> k.startsWith("deliveries/" + id)).count())
         .isEqualTo(before);
+    assertThat(STORED).containsKey("deliveries/" + id + "/" + again); // 참조 있는 사진은 남는다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM photo_upload WHERE delivery_id = ?", Integer.class, id))
+        .isZero();
 
     assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
         .isEqualTo(200);

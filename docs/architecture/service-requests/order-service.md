@@ -27,5 +27,6 @@
 ## O-5. 라이더용 전달지 (2026-11-14, delivery — 클라이언트 BR-24, **구현해 PR 에 넣음, platform 검토 필요**)
 - **요청한 곳**: delivery-execution(픽업 뒤 라이더에게 주소·상세·수령인·연락처·출입·요청사항 — 원문 수행 흐름 "픽업 후: 주소·상세주소·연락").
 - **결정(사용자 2026-11-14)**: 연락처는 **안심번호가 아니라 고객 전화번호**.
+- **호출자 제한 없음(사용자 2026-11-14, PC 1 PR #15 검토 낮음 2 답)**: "주문, 배송정보관리, 배송 서비스 다 전화번호랑 공동현관 출입문 정보를 볼 수 있겠지. 애초에 고객앱에서 넘어온 정보니까" — `X-Source-System == delivery-execution-service` 같은 호출 서비스 검사는 넣지 않는다(내부 호출 신뢰 규칙 ADR-0026 그대로). 라이더에게 보이는 범위는 delivery-execution 이 판정.
 - **필요한 것**: `GET /internal/orders/{orderId}/drop-info`(내부 호출) — 주문 당시 사본(BR-37) 전부 + `deliveryNote`. 공개 범위(배정 라이더 본인·픽업 뒤 ~ 완료 전)는 delivery-execution 이 판정, 게이트웨이에 열지 않는다. 사본 없으면 404.
 - **한 것**: PC 5 가 계약 0.2.4·`InternalController.getOrderDropInfo`·`DraftFlowIT` 확인을 PR 에 넣었다. 표·사건 변경 없음.

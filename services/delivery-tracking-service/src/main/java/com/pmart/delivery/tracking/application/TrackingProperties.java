@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param staleCheckInterval 끊김 판정 주기
  * @param retention 위치 기록 보존 기간 — 사용자 결정 2026-11-14 "30일"(서버 수신 시각 기준)
  * @param purgeInterval 보존 기간 지난 기록 지우기 주기
+ * @param watchMaxAge 배정 시각부터 이만큼 지나면 끝 사건(완료·실패·취소)이 없어도 그 배송의 위치 감시를 끝낸다 — 사용자 결정 2026-11-14 "5시간이
+ *     지나면 감시 종료"(끝 사건을 놓치거나 정정만 된 배송이 영원히 감시되지 않게)
  */
 @ConfigurationProperties(prefix = "pmart.tracking")
 public record TrackingProperties(
@@ -25,7 +27,8 @@ public record TrackingProperties(
     @Nullable Duration staleAfter,
     @Nullable Duration staleCheckInterval,
     @Nullable Duration retention,
-    @Nullable Duration purgeInterval) {
+    @Nullable Duration purgeInterval,
+    @Nullable Duration watchMaxAge) {
 
   public TrackingProperties {
     lowAccuracyM = lowAccuracyM == null ? 100.0 : lowAccuracyM;
@@ -34,6 +37,7 @@ public record TrackingProperties(
     staleCheckInterval = staleCheckInterval == null ? Duration.ofSeconds(30) : staleCheckInterval;
     retention = retention == null ? Duration.ofDays(30) : retention;
     purgeInterval = purgeInterval == null ? Duration.ofHours(1) : purgeInterval;
+    watchMaxAge = watchMaxAge == null ? Duration.ofHours(5) : watchMaxAge;
     kakaoMobility =
         kakaoMobility == null ? new KakaoMobility(null, null, null, null, null) : kakaoMobility;
   }

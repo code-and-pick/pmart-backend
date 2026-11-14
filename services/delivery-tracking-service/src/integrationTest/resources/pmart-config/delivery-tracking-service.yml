@@ -11,6 +11,7 @@ pmart:
     stale-check-interval: PT30S
     retention: P30D
     purge-interval: PT1H
+    watch-max-age: PT5H # 배정 뒤 5시간 지나면 위치 감시 끝(사용자 결정 2026-11-14)
 spring:
   # 이벤트 소비(Spring Cloud Stream, ADR-0035): 함수(빈) 이름 → 토픽. 함수를 더하거나 빼면 코드(PmartEventConsumer 빈)와 함께 바꾼다 — 빠지면 기동이 멈춘다
   # 처음 켜기 전 소비 그룹 시작 위치 2026-11-10T00:30Z(dispatch·execution 과 같은 기준 — kickoff §6)

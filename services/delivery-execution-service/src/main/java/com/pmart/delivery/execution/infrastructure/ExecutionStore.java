@@ -353,6 +353,68 @@ public class ExecutionStore {
         ts(p.uploadedAt()));
   }
 
+  public Optional<PhotoRow> photo(String photoRef) {
+    return jdbc
+        .query(
+            "SELECT photo_ref, delivery_id, rider_id, object_key, content_type, size_bytes,"
+                + " uploaded_at FROM evidence_photo WHERE photo_ref = ?",
+            (rs, i) ->
+                new PhotoRow(
+                    rs.getString(1),
+                    rs.getString(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getString(5),
+                    rs.getInt(6),
+                    rs.getTimestamp(7).toInstant()),
+            photoRef)
+        .stream()
+        .findFirst();
+  }
+
+  // ---- 올리는 중 사진(V5 — 실패한 요청의 객체는 orphan-photo-after 뒤 PhotoSweeper 가 지운다)
+
+  /** 저장소에 올리기 전에(트랜잭션 밖, 바로 커밋). 같은 키 재시도면 시작 시각을 늦춘다. */
+  public void notePhotoUpload(String objectKey, String deliveryId, Instant now) {
+    jdbc.update(
+        "INSERT INTO photo_upload (object_key, delivery_id, started_at) VALUES (?, ?, ?) ON"
+            + " CONFLICT (object_key) DO UPDATE SET started_at = EXCLUDED.started_at",
+        objectKey,
+        deliveryId,
+        ts(now));
+  }
+
+  /** 참조를 저장했거나(같은 트랜잭션) 객체를 지웠으면 기록을 지운다. */
+  public void forgetPhotoUpload(String objectKey) {
+    jdbc.update("DELETE FROM photo_upload WHERE object_key = ?", objectKey);
+  }
+
+  public List<String> stalePhotoUploads(Instant before, int limit) {
+    return jdbc.queryForList(
+        "SELECT object_key FROM photo_upload WHERE started_at < ? ORDER BY started_at LIMIT ?",
+        String.class,
+        ts(before),
+        limit);
+  }
+
+  /** 아직 before 전에 시작한 기록이면 잠근다 — 그 사이 같은 요청이 다시 올리기 시작했으면(시작 시각 갱신) false. */
+  public boolean lockStalePhotoUpload(String objectKey, Instant before) {
+    return !jdbc.queryForList(
+            "SELECT object_key FROM photo_upload WHERE object_key = ? AND started_at < ? FOR UPDATE"
+                + " SKIP LOCKED",
+            String.class,
+            objectKey,
+            ts(before))
+        .isEmpty();
+  }
+
+  public boolean photoObjectReferenced(String objectKey) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM evidence_photo WHERE object_key = ?", Integer.class, objectKey);
+    return n != null && n > 0;
+  }
+
   public List<PhotoRow> photos(String deliveryId) {
     return jdbc.query(
         "SELECT photo_ref, delivery_id, rider_id, object_key, content_type, size_bytes, uploaded_at"

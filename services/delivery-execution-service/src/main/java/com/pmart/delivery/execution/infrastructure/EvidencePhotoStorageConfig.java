@@ -80,11 +80,13 @@ class EvidencePhotoStorageConfig {
         }
 
         @Override
-        public void delete(String key) {
+        public boolean delete(String key) {
           try {
             client.deleteObject(r -> r.bucket(bucket).key(key));
+            return true;
           } catch (SdkException e) {
-            log.warn("증빙 사진 객체 {} 지우기 실패 — 주인 없는 객체로 남음: {}", key, e.toString());
+            log.warn("증빙 사진 객체 {} 지우기 실패 — 다음 정리 때 다시: {}", key, e.toString());
+            return false;
           }
         }
       };

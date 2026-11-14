@@ -16,13 +16,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param publicHolidays 지급 예정일 계산에서 빼는 공휴일(Asia/Seoul). 설정하지 않으면 법정공휴일({@link KoreanPublicHolidays}
  *     — 사용자 결정 2026-11-13). 임시공휴일은 설정에 목록 전체로 넣는다
  * @param confirmInterval 확정 대기 → 확정 판단 주기
+ * @param orphanPhotoAfter 올리다 실패해 참조가 없는 증빙 사진 객체를 이만큼 지나면 지운다 — 사용자 결정 2026-11-14 "5시간이 지나면 삭제"(바로
+ *     지우지 않는 이유는 {@link PhotoSweeper})
+ * @param photoSweepInterval 참조 없는 사진 정리 주기
  */
 @ConfigurationProperties(prefix = "pmart.execution")
 public record ExecutionProperties(
     @Nullable Duration confirmAfter,
     @Nullable Integer payoutBusinessDays,
     @Nullable List<LocalDate> publicHolidays,
-    @Nullable Duration confirmInterval) {
+    @Nullable Duration confirmInterval,
+    @Nullable Duration orphanPhotoAfter,
+    @Nullable Duration photoSweepInterval) {
 
   public ExecutionProperties {
     confirmAfter = confirmAfter == null ? Duration.ofHours(5) : confirmAfter;
@@ -32,6 +37,8 @@ public record ExecutionProperties(
             ? List.copyOf(KoreanPublicHolidays.Y2026_2027)
             : List.copyOf(publicHolidays);
     confirmInterval = confirmInterval == null ? Duration.ofMinutes(1) : confirmInterval;
+    orphanPhotoAfter = orphanPhotoAfter == null ? Duration.ofHours(5) : orphanPhotoAfter;
+    photoSweepInterval = photoSweepInterval == null ? Duration.ofMinutes(10) : photoSweepInterval;
   }
 
   public Set<LocalDate> holidays() {

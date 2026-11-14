@@ -24,7 +24,10 @@ import tools.jackson.databind.JsonNode;
  *       완료·실패 확정 전까지(픽업 전 포함 — 가게로 가는 길도 본다).
  *   <li><b>끊김</b>: 진행 중 배송이 있는 라이더의 마지막 수신(품질과 무관)이 {@code stale-after}(3분, "배달 중 3분") 넘게 없으면
  *       {@code RiderLocationStale}(delivery.tracking.v1) — 끊김 한 번에 한 번. 다시 점이 오면 다음 끊김에 또 낸다. 기준 =
- *       마지막 수신과 배정 시각 중 늦은 것. 판정은 알림만 — 배정·상태는 바꾸지 않는다(dispatch·지원센터가 본다).
+ *       마지막 수신과 배정 시각(사건에 적힌 acceptedAt·changedAt) 중 늦은 것. 판정은 알림만 — 배정·상태는 바꾸지 않는다(dispatch·지원센터가
+ *       본다).
+ *   <li><b>감시 끝</b>: 완료·실패·픽업 전 취소 사건, 또는 배정 뒤 {@code watch-max-age}(5시간, 사용자 "5시간이 지나면 감시 종료"). 배정
+ *       해제는 RELEASED 로 남겨 늦게 온 옛 배정 사건이 다시 열지 않게 한다.
  *   <li><b>보존</b>: 위치 점은 서버 수신 뒤 {@code retention}(30일, 사용자 "보존기간은 30일") 지나면 지운다. 그동안 새 위치가 없는 라이더의
  *       마지막 위치·닫힌 배송 기록도.
  * </ul>
@@ -77,20 +80,43 @@ public class RiderWatch {
       case "DeliveryAssigned" -> {
         String rider = p.path("riderId").asString("");
         if (!rider.isBlank()) {
-          store.openDelivery(deliveryId, rider, p.path("assignmentVersion").asInt(0), now);
+          store.openDelivery(
+              deliveryId,
+              rider,
+              p.path("assignmentVersion").asInt(0),
+              eventTime(p, "acceptedAt", e.occurredAt(), now),
+              now);
         }
       }
       case "DeliveryAssignmentChanged" -> {
         int version = p.path("assignmentVersion").asInt(0);
         String rider = p.path("newRiderId").asString("");
         if (rider.isBlank()) {
-          store.releaseDelivery(deliveryId, version);
+          store.releaseDelivery(deliveryId, version, now);
         } else {
-          store.openDelivery(deliveryId, rider, version, now);
+          store.openDelivery(
+              deliveryId, rider, version, eventTime(p, "changedAt", e.occurredAt(), now), now);
         }
       }
       default -> store.closeDelivery(deliveryId, now); // 픽업 전 취소·완료·실패
     }
+  }
+
+  /**
+   * 감시 시작 = 사건에 적힌 배정 시각(소비한 시각이 아니다 — 옛 사건을 다시 읽어도 지금 배정된 것처럼 되지 않게, PC 1 PR #15 검토). 없으면 사건 시각,
+   * 서버보다 앞서면 지금.
+   */
+  private static Instant eventTime(JsonNode p, String field, Instant occurredAt, Instant now) {
+    Instant at = occurredAt;
+    String s = p.path(field).asString("");
+    if (!s.isBlank()) {
+      try {
+        at = Instant.parse(s);
+      } catch (java.time.format.DateTimeParseException ignored) {
+        // 사건 시각으로
+      }
+    }
+    return at == null || at.isAfter(now) ? now : at;
   }
 
   @Scheduled(
@@ -98,11 +124,18 @@ public class RiderWatch {
       fixedDelayString = "${pmart.tracking.stale-check-interval:PT30S}")
   public void checkStale() {
     Instant now = clock.instant();
-    for (LocationStore.Watch w : store.lockStale(now.minus(props.staleAfter()), 200)) {
+    // 배정 뒤 watch-max-age(5시간) 지난 감시는 끝 사건이 없어도 끝낸다 — 끊김 판정보다 먼저(사용자 2026-11-14)
+    int expired = tx.execute(s -> store.expireWatches(now.minus(props.watchMaxAge()), now));
+    if (expired > 0) {
+      log.info("배정 뒤 {} 지난 위치 감시 {}건 끝냄(끝 사건 없음)", props.watchMaxAge(), expired);
+    }
+    for (LocationStore.Watch w : store.staleCandidates(now.minus(props.staleAfter()), 200)) {
       tx.executeWithoutResult(
           s -> {
             Instant base = w.base();
-            if (!store.markAlerted(w.riderId(), base)) {
+            // 알림 횟수를 올리면서 읽는다 — 사건 버전(aggregateVersion)이 겹치지 않게(PC 1 PR #15 검토)
+            Integer count = store.markAlerted(w.riderId(), base);
+            if (count == null) {
               return;
             }
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -117,7 +150,7 @@ public class RiderWatch {
                     1,
                     "Rider",
                     w.riderId(),
-                    w.alertCount() + 1L,
+                    count.longValue(),
                     null,
                     EventEnvelope.EventSource.REAL,
                     payload),
