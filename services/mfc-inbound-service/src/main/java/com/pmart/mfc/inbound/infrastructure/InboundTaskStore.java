@@ -33,7 +33,9 @@ public class InboundTaskStore {
       int plannedQty,
       int doneQty,
       String state,
-      int version) {
+      int version,
+      @Nullable String assigneeId,
+      Instant createdAt) {
 
     public int remaining() {
       return plannedQty - doneQty;
@@ -52,7 +54,7 @@ public class InboundTaskStore {
 
   private static final String COLUMNS =
       "task_id, task_type, mfc_id, receipt_id, parent_task_id, sku, lot_id, location_code,"
-          + " planned_qty, done_qty, state, row_version";
+          + " planned_qty, done_qty, state, row_version, worker_id, created_at";
 
   private final JdbcTemplate jdbc;
   private final NamedParameterJdbcTemplate named;
@@ -135,6 +137,18 @@ public class InboundTaskStore {
             taskId)
         .stream()
         .findFirst();
+  }
+
+  /** 담당 투영(capacity AssignmentPublished) — 더 새 배정 버전만. 바뀌었으면 1. */
+  public int assign(String taskId, @Nullable String workerId, int assignmentVersion, Instant at) {
+    return jdbc.update(
+        "UPDATE inbound_task SET worker_id = ?, assignment_version = ?, updated_at = ?"
+            + " WHERE task_id = ? AND assignment_version < ?",
+        workerId,
+        assignmentVersion,
+        Timestamp.from(at),
+        taskId,
+        assignmentVersion);
   }
 
   /** 실행 반영분만큼 완료 수량을 늘린다(잔량 0 이면 COMPLETED). */
@@ -260,6 +274,8 @@ public class InboundTaskStore {
         rs.getInt("planned_qty"),
         rs.getInt("done_qty"),
         rs.getString("state"),
-        rs.getInt("row_version"));
+        rs.getInt("row_version"),
+        rs.getString("worker_id"),
+        rs.getTimestamp("created_at").toInstant());
   }
 }

@@ -47,6 +47,10 @@ public class InboundClient {
     }
   }
 
+  /** (0.14.0, BR-52 R2) 입고 작업(품질검사·적치) 사본 — READY 만. */
+  public record InboundTaskView(
+      String taskId, String taskType, @Nullable String assigneeId, @Nullable Instant createdAt) {}
+
   private final @Nullable RestClient client;
   private final ObjectMapper mapper;
 
@@ -74,7 +78,7 @@ public class InboundClient {
             () ->
                 client
                     .get()
-                    .uri("/api/v1/move-orders?mfcId={m}", mfcId)
+                    .uri("/api/v1/move-orders?mfcId={m}&withLabels=false", mfcId)
                     .headers(
                         h -> {
                           if (auth != null) {
@@ -104,6 +108,66 @@ public class InboundClient {
     return out;
   }
 
+  /** 열린(READY) 입고 작업 — 품질검사·적치(0.14.0). 상품명·바코드는 받지 않는다(동기 호출 2 hop). */
+  public List<InboundTaskView> openInboundTasks(String mfcId) {
+    if (client == null) {
+      return List.of();
+    }
+    String auth = currentAuthorization();
+    String raw =
+        Downstream.call(
+            INBOUND,
+            () ->
+                client
+                    .get()
+                    .uri("/api/v1/inbound-tasks?mfcId={m}&state=READY&withLabels=false", mfcId)
+                    .headers(
+                        h -> {
+                          if (auth != null) {
+                            h.set(HttpHeaders.AUTHORIZATION, auth);
+                          }
+                        })
+                    .retrieve()
+                    .body(String.class));
+    JsonNode n = raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+    List<InboundTaskView> out = new ArrayList<>();
+    for (JsonNode t : n.path("items")) {
+      String created = t.path("createdAt").asString(null);
+      String assignee = t.path("assigneeId").asString(null);
+      out.add(
+          new InboundTaskView(
+              t.path("taskId").asString(""),
+              t.path("taskType").asString(""),
+              assignee == null || assignee.isBlank() ? null : assignee,
+              created == null || created.isBlank() ? null : Instant.parse(created)));
+    }
+    return out;
+  }
+
+  /** 입고 작업 한 건 원문 — 다음 작업 받기 상세(0.14.0). */
+  public JsonNode inboundTask(String taskId) {
+    if (client == null) {
+      return mapper.createObjectNode();
+    }
+    String auth = currentAuthorization();
+    String raw =
+        Downstream.call(
+            INBOUND,
+            () ->
+                client
+                    .get()
+                    .uri("/api/v1/inbound-tasks/{t}?withLabels=false", taskId)
+                    .headers(
+                        h -> {
+                          if (auth != null) {
+                            h.set(HttpHeaders.AUTHORIZATION, auth);
+                          }
+                        })
+                    .retrieve()
+                    .body(String.class));
+    return raw == null ? mapper.createObjectNode() : mapper.readTree(raw);
+  }
+
   /** 이동 지시 한 건 원문 — 다음 작업 받기 상세(0.9.1). */
   public JsonNode moveOrder(String moveId) {
     if (client == null) {
@@ -116,7 +180,7 @@ public class InboundClient {
             () ->
                 client
                     .get()
-                    .uri("/api/v1/move-orders/{m}", moveId)
+                    .uri("/api/v1/move-orders/{m}?withLabels=false", moveId)
                     .headers(
                         h -> {
                           if (auth != null) {

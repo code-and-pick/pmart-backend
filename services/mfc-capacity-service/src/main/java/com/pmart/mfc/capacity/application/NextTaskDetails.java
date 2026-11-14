@@ -101,6 +101,26 @@ public final class NextTaskDetails {
                 null)));
   }
 
+  /** inbound GET /inbound-tasks/{id} 응답 → 상세(0.14.0, 한 줄 — 출발 칸 = 수령 위치, 남은 양 = 계획 − 완료). */
+  public static Detail fromInboundTask(JsonNode t) {
+    int qty = Math.max(0, t.path("plannedQty").asInt(0) - t.path("doneQty").asInt(0));
+    return new Detail(
+        true,
+        null,
+        false,
+        List.of(),
+        List.of(
+            new Line(
+                t.path("sku").asString(""),
+                null,
+                text(t, "lotId"),
+                null,
+                qty,
+                text(t, "locationCode"),
+                null,
+                null)));
+  }
+
   /** 이 주문 몫이 배정된 칸 우선, 없으면 첫 칸. */
   private static @Nullable String fromLocation(JsonNode locations) {
     String first = null;

@@ -678,6 +678,57 @@ class InitialStockLoadIT extends PostgresKafkaContainerSupport {
     assertThat(rej.body().path("applyStatus").asString()).isEqualTo("REJECTED");
     assertThat(rej.body().path("rejectReason").asString()).startsWith("TEMPERATURE_ZONE_MISMATCH");
     assertThat(rej.body().path("task").path("doneQty").asInt()).isZero();
+    assertThat(putB.path("createdAt").asString()).isNotBlank();
+    assertThat(putB.path("assigneeId").isNull()).isTrue();
+
+    // (0.9.0, BR-52 R2) 다음 작업 받기 배정(AssignmentPublished) → 담당 투영, 담당이 아니면 409 NOT_ASSIGNEE
+    String putBId = putB.path("taskId").asString();
+    String assigned =
+        EventEnvelopeFixtures.envelope("AssignmentPublished")
+            .from("mfc-capacity-service")
+            .aggregate("AssignmentPlan", "MANUAL:" + putBId, 1)
+            .payload(
+                Map.of(
+                    "planVersion",
+                    1,
+                    "mfcId",
+                    m,
+                    "assignments",
+                    List.of(
+                        Map.of("taskId", putBId, "workerId", "wrk-put", "assignmentVersion", 1))))
+            .buildJson();
+    kafka.send("mfc.capacity.v1", "MANUAL:" + putBId, assigned).join();
+    long until = System.currentTimeMillis() + 30_000;
+    String assignee = null;
+    while (System.currentTimeMillis() < until) {
+      assignee =
+          get(op(m), "/inbound-tasks/" + putBId + "?withLabels=false")
+              .body()
+              .path("assigneeId")
+              .asString(null);
+      if ("wrk-put".equals(assignee)) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(assignee).isEqualTo("wrk-put");
+    Res notMine =
+        post(
+            op(m),
+            "/inbound-tasks/" + putBId + "/putaways",
+            UUID.randomUUID().toString(),
+            Map.of("toLocationCode", "A-01-03", "qty", 2));
+    assertThat(notMine.status()).as(notMine.body().toString()).isEqualTo(409);
+    assertThat(notMine.body().path("code").asString()).isEqualTo("NOT_ASSIGNEE");
+    String worker = TestJwt.operator("wrk-put", List.of("MFC_WORKER"), List.of(m));
+    Res mine =
+        post(
+            worker,
+            "/inbound-tasks/" + putBId + "/putaways",
+            UUID.randomUUID().toString(),
+            Map.of("toLocationCode", "A-01-03", "qty", 2));
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(200);
+    assertThat(mine.body().path("task").path("state").asString()).isEqualTo("COMPLETED");
   }
 
   static Map<String, Object> entry(String lot, String quality, int delta) {

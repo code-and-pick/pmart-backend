@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.13.1
+  version: 0.14.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -626,13 +626,17 @@ paths:
         2026-11-08 사용자 결정: 현장 크루는 정규직이든 일일크루든 **시스템이 작업을 하나씩 배정**한다. 작업자 본인(토큰 주체 = workerId)이 부른다.
         - 이미 들고 있는 작업(이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업)이 있으면 그 배정을 200 으로 돌려준다(한 번에 하나).
         - 없으면 업무(작업 유형) 안의 **담당 없는 READY 작업** 중 가장 급한 것을 배정해 201(배정 출처 SYSTEM, `AssignmentPublished`).
-          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 자동 보충(REPLENISH)·긴급 이동 → 센터 관리자 이동(MOVE) → 취소품 복귀(RETURN)(사용자 결정 2026-11-08).
+          순서: 주문 작업(PICK·PACK — 출하 약속 이른 순) → 자동 보충(REPLENISH)·긴급 이동 → **품질검사(INSPECT) → 적치(PUTAWAY)** →
+          센터 관리자 이동(MOVE) → 취소품 복귀(RETURN)(사용자 결정 2026-11-08, 품질검사·적치 자리는 2026-11-14 — Q-08 전 임시 순서). 같은 유형은 먼저 만든 것부터.
           이동·보충은 mfc-inbound 이동 지시(담당 없음·아직 안 집음) — 조회가 안 되면 이동은 건너뛰고 나머지로.
+          (0.14.0, BR-52 R2) 품질검사·적치는 mfc-inbound 입고 작업(READY·담당 없음) — 조회가 안 되면 건너뛰고 나머지로. 배정되면 mfc-inbound 가
+          담당만 실행하게 한다(409 NOT_ASSIGNEE). RECEIVE 는 입고 예정(`/inbound-promises`)이 생긴 뒤에.
         - ACTIVE 가 아니면 422 WORKER_NOT_ACTIVE, 등록 근무가 있는데 지금이 근무 밖이면 409 OFF_SHIFT — (0.9.3, 사용자 결정 2026-11-09 "풀타임 = 센터 운영시간") 근무 등록이 없으면 center-master 직원 근무 시간표(STAFF) 밖이면 409 OFF_SHIFT, 시간표가 없으면 422 CONFIG_REQUIRED(상시 근무로 바꾸지 않음),
           줄 작업이 없으면 409 NO_TASK_AVAILABLE. 센터 관리자의 수동 배정(`POST /assignments`)은 예외 처리로 그대로 쓴다.
         - MFC 는 온도대 출입 자격이 없다(사용자 2026-11-08 — 구분은 CDC 만).
         - (0.9.1) 응답 `detail` 에 받은 작업의 상세(상품·칸·LOT·수량·약속 시각)를 한 번에 — PICK·PACK·RETURN 은 mfc-fulfillment 작업 상세, REPLENISH·MOVE 는
-          mfc-inbound 이동 지시에서 옮겨 적는다. 조회가 안 되면 `detail.available=false`(배정은 그대로 — 화면이 상세 API 를 직접 부른다).
+          mfc-inbound 이동 지시, (0.14.0) INSPECT·PUTAWAY 는 mfc-inbound 입고 작업(한 줄 — 출발 칸 = 수령 위치, 남은 양)에서 옮겨 적는다.
+          상품명·바코드는 상세에 없다 — 화면은 각 작업 조회(`/inbound-tasks/{id}`·`/move-orders/{id}`)의 productName·barcodes 를 쓴다. 조회가 안 되면 `detail.available=false`(배정은 그대로 — 화면이 상세 API 를 직접 부른다).
         - (0.13.0, BR-52 R1) 본문 `workArea`(작업자가 고른 업무)를 주면 **그 업무의 작업 유형 ∩ 유효 업무** 안에서만 새 작업을 배정한다.
           겹치는 유형이 없으면 422 WORK_AREA_NOT_ALLOWED(PDA "권한이 없어요"). 생략하면 예전처럼 유효 업무 전체.
           이미 들고 있는 작업은 고른 업무와 상관없이 그대로 돌려준다(한 번에 하나 — 업무가 다르면 화면이 안내).
@@ -1059,6 +1063,7 @@ components:
         (0.13.0, BR-52 R4 — 사용자 결정 2026-11-10) PDA 에서 작업자가 고르는 업무 = 작업 유형 묶음.
         INBOUND 입고 = RECEIVE / INSPECTION 품질검사 = INSPECT / STOCK_MOVE 재고 이동 = PUTAWAY·REPLENISH·MOVE·RETURN /
         STOCK_COUNT 재고 실사 = (아직 배정 가능한 작업 유형 없음) / PICK_PACK 피패킹 = PICK·PACK.
+        (0.14.0, BR-52 R2) INSPECTION·STOCK_MOVE(적치)는 다음 작업 받기가 실제 작업을 준다. INBOUND(RECEIVE)는 입고 예정이 생긴 뒤.
         회수품 검사·회수품 반입·실사는 배정 가능한 작업 유형이 생기면(BR-52 R2·R12~R14) 묶음에 더한다. DISPATCH(배차 요청 — 점원)는 어느 업무에도 없다.
     WorkerDutyBody:
       type: object

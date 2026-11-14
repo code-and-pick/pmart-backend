@@ -32,18 +32,30 @@ public class InboundTasksController implements InboundTasksApi {
 
   @Override
   public ResponseEntity<ListInboundTasks200Response> listInboundTasks(
-      String mfcId, @Nullable String state, @Nullable String taskType, @Nullable String receiptId) {
+      String mfcId,
+      @Nullable String state,
+      @Nullable String taskType,
+      @Nullable String receiptId,
+      @Nullable Boolean withLabels) {
     List<TaskRow> rows = service.list(mfcId, state, taskType, receiptId);
-    Map<String, Label> names = labels.of(rows.stream().map(TaskRow::sku).toList());
+    Map<String, Label> names =
+        Boolean.FALSE.equals(withLabels)
+            ? Map.of()
+            : labels.of(rows.stream().map(TaskRow::sku).toList());
     var out = new ListInboundTasks200Response();
     out.setItems(rows.stream().map(t -> dto(t, SkuLabels.get(names, t.sku()))).toList());
     return ResponseEntity.ok(out);
   }
 
   @Override
-  public ResponseEntity<InboundTask> getInboundTask(String taskId) {
+  public ResponseEntity<InboundTask> getInboundTask(String taskId, @Nullable Boolean withLabels) {
     TaskRow t = service.get(taskId);
-    return ResponseEntity.ok(dto(t, SkuLabels.get(labels.of(List.of(t.sku())), t.sku())));
+    return ResponseEntity.ok(
+        dto(
+            t,
+            Boolean.FALSE.equals(withLabels)
+                ? Label.UNKNOWN
+                : SkuLabels.get(labels.of(List.of(t.sku())), t.sku())));
   }
 
   @Override
@@ -102,6 +114,8 @@ public class InboundTasksController implements InboundTasksApi {
     d.setDoneQty(t.doneQty());
     d.setState(InboundTask.StateEnum.fromValue(t.state()));
     d.setVersion(t.version());
+    d.setAssigneeId(t.assigneeId());
+    d.setCreatedAt(t.createdAt().atOffset(java.time.ZoneOffset.UTC));
     return d;
   }
 }

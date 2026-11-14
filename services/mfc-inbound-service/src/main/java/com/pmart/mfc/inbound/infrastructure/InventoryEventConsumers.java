@@ -22,11 +22,20 @@ class InventoryEventConsumers {
     return consumers.of(returns::onQualityEvent);
   }
 
-  /** mfc-capacity 사건(mfc.capacity.v1, 바인딩 capacityEvents-in-0) — 이동 지시 담당 투영(작업자 쪽 4단계). */
+  /**
+   * mfc-capacity 사건(mfc.capacity.v1, 바인딩 capacityEvents-in-0) — 이동 지시(작업자 쪽 4단계)·입고 작업(0.9.0, BR-52
+   * R2) 담당 투영. taskId 가 어느 쪽에도 없으면 아무것도 안 바뀐다.
+   */
   @Bean
   PmartEventConsumer capacityEvents(
-      EventConsumers consumers, com.pmart.mfc.inbound.application.MoveOrderService moves) {
-    return consumers.of(moves::onCapacityEvent);
+      EventConsumers consumers,
+      com.pmart.mfc.inbound.application.MoveOrderService moves,
+      com.pmart.mfc.inbound.application.InboundTaskService tasks) {
+    return consumers.of(
+        e -> {
+          moves.onCapacityEvent(e);
+          tasks.onCapacityEvent(e);
+        });
   }
 
   @Bean

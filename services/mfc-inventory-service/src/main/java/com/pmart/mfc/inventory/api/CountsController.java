@@ -8,6 +8,7 @@ import com.pmart.mfc.inventory.api.generated.model.CreateCountSessionRequest;
 import com.pmart.mfc.inventory.api.generated.model.DecideCountSessionRequest;
 import com.pmart.mfc.inventory.api.generated.model.SubmitCountRequest;
 import com.pmart.mfc.inventory.application.CountService;
+import com.pmart.mfc.inventory.application.SkuProjector;
 import com.pmart.mfc.inventory.domain.CountRules.CountLine;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class CountsController implements CountsApi {
 
   private final CountService service;
+  private final SkuProjector skus;
 
-  public CountsController(CountService service) {
+  public CountsController(CountService service, SkuProjector skus) {
     this.service = service;
+    this.skus = skus;
   }
 
   @Override
@@ -75,8 +78,10 @@ public class CountsController implements CountsApi {
                 body.getNote())));
   }
 
-  private static CountSession dto(CountService.View v) {
+  private CountSession dto(CountService.View v) {
     var s = v.row();
+    // (0.16.0, BR-52 R19-1) 계수표 줄의 상품명·바코드 — 이 서비스의 SKU 사본(상품 사건 투영). 사본이 없으면 null·빈 배열
+    var names = skus.projections(v.book().stream().map(b -> b.sku()).distinct().toList());
     var out = new CountSession();
     out.setSessionId(s.sessionId());
     out.setMfcId(s.mfcId());
@@ -96,6 +101,12 @@ public class CountsController implements CountsApi {
                   var x = new CountSessionSheetInner();
                   x.setLocationCode(b.locationCode());
                   x.setSku(b.sku());
+                  var p = names.get(b.sku());
+                  x.setProductName(p == null ? null : p.productName());
+                  x.setBarcodes(
+                      p == null
+                          ? new java.util.ArrayList<>()
+                          : new java.util.ArrayList<>(p.barcodes()));
                   x.setLotId(b.lotId());
                   var lot = v.lots().get(b.lotId());
                   x.setExpiryDate(lot == null ? null : lot.expiryDate());

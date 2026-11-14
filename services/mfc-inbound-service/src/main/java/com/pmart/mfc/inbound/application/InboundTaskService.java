@@ -239,6 +239,7 @@ public class InboundTaskService {
     if (!type.equals(peek.taskType())) {
       throw PmartException.invalidState(taskId + " 는 " + peek.taskType() + " 작업입니다.");
     }
+    requireAssignee(peek, operator);
     ExecutionRow exec =
         tx.execute(
             s -> {
@@ -250,6 +251,7 @@ public class InboundTaskService {
                 return existing.get();
               }
               TaskRow t = tasks.lock(taskId).orElseThrow();
+              requireAssignee(t, operator);
               if (!"READY".equals(t.state())) {
                 throw PmartException.invalidState(taskId + " 는 이미 끝난 작업입니다(" + t.state() + ").");
               }
@@ -434,6 +436,33 @@ public class InboundTaskService {
             ? tasks.childTasks(task.taskId(), task.receiptId())
             : List.of(),
         task);
+  }
+
+  /** (0.9.0, BR-52 R2) 담당이 있으면 담당만 실행 — 이동 지시와 같다. 담당 없는 작업은 그 센터 운영자 누구나. */
+  private static void requireAssignee(TaskRow t, String operator) {
+    if (t.assigneeId() != null && !t.assigneeId().equals(operator)) {
+      throw new PmartException(
+          "NOT_ASSIGNEE",
+          HttpStatus.CONFLICT,
+          "담당(" + t.assigneeId() + ")만 실행합니다 — 배정은 다음 작업 받기·센터 관리자.",
+          false,
+          List.of());
+    }
+  }
+
+  /** capacity AssignmentPublished(mfc.capacity.v1, inbox 트랜잭션 안) — 입고 작업 담당 투영(더 새 배정 버전만). */
+  public void onCapacityEvent(com.pmart.common.messaging.EventEnvelope e) {
+    if (!"AssignmentPublished".equals(e.eventType())) {
+      return;
+    }
+    Instant at = clock.instant();
+    for (JsonNode a : e.payload().path("assignments")) {
+      String taskId = a.path("taskId").asString("");
+      String worker = a.path("workerId").asString(null);
+      if (tasks.assign(taskId, worker, a.path("assignmentVersion").asInt(0), at) > 0) {
+        log.info("입고 작업 {} 담당 {}", taskId, worker);
+      }
+    }
   }
 
   static String requireOperator(String mfcId) {

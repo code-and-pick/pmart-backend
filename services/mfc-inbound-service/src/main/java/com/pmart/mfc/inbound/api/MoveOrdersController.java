@@ -9,7 +9,11 @@ import com.pmart.mfc.inbound.api.generated.model.MoveOrder;
 import com.pmart.mfc.inbound.api.generated.model.PickUpMoveOrderRequest;
 import com.pmart.mfc.inbound.application.MoveOrderService;
 import com.pmart.mfc.inbound.application.MoveOrderService.Row;
+import com.pmart.mfc.inbound.application.SkuLabels;
+import com.pmart.mfc.inbound.application.SkuLabels.Label;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MoveOrdersController implements MovesApi {
 
   private final MoveOrderService service;
+  private final SkuLabels labels;
 
-  public MoveOrdersController(MoveOrderService service) {
+  public MoveOrdersController(MoveOrderService service, SkuLabels labels) {
     this.service = service;
+    this.labels = labels;
   }
 
   @Override
@@ -30,7 +36,7 @@ public class MoveOrdersController implements MovesApi {
       String idempotencyKey, String xSourceSystem, CreateMoveOrderRequest b) {
     return ResponseEntity.status(HttpStatus.CREATED)
         .body(
-            dto(
+            labeled(
                 service.create(
                     idempotencyKey,
                     xSourceSystem,
@@ -47,40 +53,53 @@ public class MoveOrdersController implements MovesApi {
 
   @Override
   public ResponseEntity<ListMoveOrders200Response> listMoveOrders(
-      String mfcId, @Nullable String state) {
+      String mfcId, @Nullable String state, @Nullable Boolean withLabels) {
+    List<Row> rows = service.list(mfcId, state);
+    Map<String, Label> names =
+        Boolean.FALSE.equals(withLabels)
+            ? Map.of()
+            : labels.of(rows.stream().map(Row::sku).toList());
     var out = new ListMoveOrders200Response();
-    out.setItems(service.list(mfcId, state).stream().map(MoveOrdersController::dto).toList());
+    out.setItems(rows.stream().map(r -> dto(r, SkuLabels.get(names, r.sku()))).toList());
     return ResponseEntity.ok(out);
   }
 
   @Override
-  public ResponseEntity<MoveOrder> getMoveOrder(String moveId) {
-    return ResponseEntity.ok(dto(service.find(moveId)));
+  public ResponseEntity<MoveOrder> getMoveOrder(String moveId, @Nullable Boolean withLabels) {
+    Row r = service.find(moveId);
+    return ResponseEntity.ok(Boolean.FALSE.equals(withLabels) ? dto(r, Label.UNKNOWN) : labeled(r));
   }
 
   @Override
   public ResponseEntity<MoveOrder> pickUpMoveOrder(
       String moveId, String idempotencyKey, String xSourceSystem, PickUpMoveOrderRequest b) {
     return ResponseEntity.ok(
-        dto(service.pickUp(idempotencyKey, moveId, b.getCartLocation(), b.getQty())));
+        labeled(service.pickUp(idempotencyKey, moveId, b.getCartLocation(), b.getQty())));
   }
 
   @Override
   public ResponseEntity<MoveOrder> dropMoveOrder(
       String moveId, String idempotencyKey, String xSourceSystem, DropMoveOrderRequest b) {
     return ResponseEntity.ok(
-        dto(service.drop(idempotencyKey, moveId, b.getToLocation(), b.getQty())));
+        labeled(service.drop(idempotencyKey, moveId, b.getToLocation(), b.getQty())));
   }
 
   @Override
   public ResponseEntity<MoveOrder> cancelMoveOrder(
       String moveId, String idempotencyKey, String xSourceSystem, CancelMoveOrderRequest b) {
-    return ResponseEntity.ok(dto(service.cancel(idempotencyKey, moveId, b.getReason())));
+    return ResponseEntity.ok(labeled(service.cancel(idempotencyKey, moveId, b.getReason())));
   }
 
-  static MoveOrder dto(Row r) {
+  /** (0.9.0, BR-52 R19-1) 상품명·바코드 — 조회 실패면 빈 값(SkuLabels). */
+  private MoveOrder labeled(Row r) {
+    return dto(r, SkuLabels.get(labels.of(List.of(r.sku())), r.sku()));
+  }
+
+  static MoveOrder dto(Row r, Label label) {
     var out = new MoveOrder();
     out.setMoveId(r.moveId());
+    out.setProductName(label.productName());
+    out.setBarcodes(new java.util.ArrayList<>(label.barcodes()));
     out.setKind(MoveOrder.KindEnum.fromValue(r.kind()));
     out.setMfcId(r.mfcId());
     out.setSku(r.sku());

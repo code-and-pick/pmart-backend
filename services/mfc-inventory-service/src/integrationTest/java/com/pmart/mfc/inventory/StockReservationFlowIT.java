@@ -2000,12 +2000,23 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
             + "' AND location_code = 'A-01-01' AND state = 'COUNT_LOCKED'",
         1);
 
+    // (0.16.0, BR-52 R19-1) 계수표 상품명·바코드 — SKU 사본(상품 사건 대신 열을 직접 채움, 선행 0 보존)
+    jdbc.update(
+        "UPDATE sku_projection SET product_name = ?, barcodes = ? WHERE sku = ?",
+        "실사 우유",
+        String.join("\n", "08801115114154", "8801115114154"),
+        sku);
     Res created = count(w1, "/count-sessions", Map.of("locationCodes", List.of("A-01-01")));
     assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
     String sid = created.body().path("sessionId").asString();
     String base = "/count-sessions/" + sid;
     assertThat(created.body().path("state").asString()).isEqualTo("COUNTING");
     assertThat(created.body().path("sheet").path(0).path("lotId").asString()).isEqualTo(lot);
+    assertThat(created.body().path("sheet").path(0).path("productName").asString())
+        .isEqualTo("실사 우유");
+    assertThat(created.body().path("sheet").path(0).path("barcodes").path(0).asString())
+        .isEqualTo("08801115114154");
+    assertThat(created.body().path("sheet").path(0).path("barcodes")).hasSize(2);
     assertThat(created.body().path("sheet").path(0).has("qty")).isFalse();
     assertThat(created.body().path("differences").isNull()).isTrue();
     // 같은 위치 두 번째 실사는 막는다

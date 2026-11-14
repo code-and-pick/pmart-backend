@@ -213,9 +213,42 @@ class MoveOrderIT extends PostgresKafkaContainerSupport {
     order.put("qty", 4);
     order.put("urgent", true);
     stub("/api/v1/internal/move-allocations", 201, alloc(4, 0, 0, "ACTIVE", null));
+    // 상품명·바코드(0.9.0, BR-52 R19-1) — mfc-inventory SKU 사본, 선행 0 보존
+    inv.stubFor(
+        WireMock.get(urlPathMatching("/api/v1/internal/skus"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "items",
+                                List.of(
+                                    Map.of(
+                                        "sku",
+                                        "E-00000019",
+                                        "productName",
+                                        "매일우유 900mL",
+                                        "barcodes",
+                                        List.of("08801155720019", "8801155720019"))),
+                                "missing",
+                                List.of())))));
     Res created = post(SUP, "/move-orders", order);
     assertThat(created.body().path("urgent").asBoolean()).isTrue();
+    assertThat(created.body().path("productName").asString()).isEqualTo("매일우유 900mL");
+    assertThat(created.body().path("barcodes").path(0).asString()).isEqualTo("08801155720019");
     String moveId = created.body().path("moveId").asString();
+    JsonNode listed =
+        get(WRK, "/move-orders?mfcId=" + MFC).body().path("items").findParents("moveId").stream()
+            .filter(n -> moveId.equals(n.path("moveId").asString()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(listed.path("barcodes")).hasSize(2);
+    // 서비스 간 조회(mfc-capacity)는 withLabels=false — inventory 를 부르지 않는다
+    JsonNode bare = get(WRK, "/move-orders/" + moveId + "?withLabels=false").body();
+    assertThat(bare.path("productName").isNull()).isTrue();
+    assertThat(bare.path("barcodes")).isEmpty();
     String json =
         EventEnvelopeFixtures.envelope("AssignmentPublished")
             .from("mfc-capacity-service")

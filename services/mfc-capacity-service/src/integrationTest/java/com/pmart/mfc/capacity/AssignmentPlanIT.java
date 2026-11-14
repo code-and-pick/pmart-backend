@@ -659,6 +659,113 @@ class AssignmentPlanIT extends PostgresKafkaContainerSupport {
     assertThat(d3.path("lines").path(0).path("toLocation").asString()).isEqualTo("A-S1-02-1-01");
   }
 
+  /**
+   * (0.14.0, BR-52 R2) 품질검사·적치(mfc-inbound 입고 작업)도 다음 작업 받기 후보 — 순서 자동 보충 → 품질검사 → 적치 → 센터 관리자
+   * 이동(사용자 2026-11-14), 같은 유형은 먼저 만든 것부터, 담당 있는 작업 제외, 들고 있는 입고 작업은 그대로, 업무 INSPECTION 은 품질검사만.
+   */
+  @Test
+  void nextTaskIncludesInspectionsAndPutawaysAfterReplenishment() {
+    String s = UUID.randomUUID().toString().substring(0, 6);
+    tasks(List.of(), "READY", "ASSIGNED", "IN_PROGRESS");
+    Instant base = Instant.now().minusSeconds(3600);
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/move-orders"))
+            .withQueryParam("mfcId", WireMock.equalTo(MFC))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "items",
+                                List.of(
+                                    move("MV-IM-" + s, "MOVE", false, 0, null, base),
+                                    move(
+                                        "MV-IR-" + s,
+                                        "REPLENISH",
+                                        false,
+                                        0,
+                                        null,
+                                        base.plusSeconds(50))))))));
+    List<Map<String, Object>> inbound =
+        List.of(
+            inboundTask("TSK-PUT-A-" + s, "PUTAWAY", null, base.plusSeconds(10)),
+            inboundTask("TSK-INS-B-" + s, "INSPECT", null, base.plusSeconds(30)),
+            inboundTask("TSK-INS-A-" + s, "INSPECT", null, base.plusSeconds(20)),
+            inboundTask("TSK-INS-X-" + s, "INSPECT", "someone", base));
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/inbound-tasks"))
+            .withQueryParam("mfcId", WireMock.equalTo(MFC))
+            .withQueryParam("state", WireMock.equalTo("READY"))
+            .withQueryParam("withLabels", WireMock.equalTo("false"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(Map.of("items", inbound)))));
+    Map<String, Object> insDetail =
+        new LinkedHashMap<>(inboundTask("TSK-INS-A-" + s, "INSPECT", null, base));
+    insDetail.putAll(
+        Map.of("sku", "E-7", "lotId", "LOT-R", "locationCode", "RCV-DOCK", "plannedQty", 6));
+    ful.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/inbound-tasks/TSK-INS-A-" + s))
+            .withQueryParam("withLabels", WireMock.equalTo("false"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(mapper.writeValueAsString(insDetail))));
+    // 업무 INSPECTION 만 고르면 보충이 앞에 있어도 품질검사
+    String insp = "in-" + s;
+    register(insp, List.of("INSPECT", "PUTAWAY", "REPLENISH", "MOVE"));
+    String inspTok = TestJwt.operator(insp, List.of("MFC_WORKER"), List.of(MFC));
+    Res first =
+        send(
+            "POST",
+            inspTok,
+            "/mfcs/" + MFC + "/workers/" + insp + "/next-tasks",
+            Map.of("workArea", "INSPECTION"));
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(201);
+    assertThat(first.body().path("taskId").asString()).isEqualTo("TSK-INS-A-" + s);
+    assertThat(first.body().path("taskType").asString()).isEqualTo("INSPECT");
+    JsonNode d = first.body().path("detail");
+    assertThat(d.path("available").asBoolean()).isTrue();
+    assertThat(d.path("lines").path(0).path("qty").asInt()).isEqualTo(6);
+    assertThat(d.path("lines").path(0).path("fromLocation").asString()).isEqualTo("RCV-DOCK");
+    // 아직 READY(끝나지 않음)라 다시 부르면 들고 있는 작업 그대로
+    Res again = send("POST", inspTok, "/mfcs/" + MFC + "/workers/" + insp + "/next-tasks", null);
+    assertThat(again.status()).isEqualTo(200);
+    assertThat(again.body().path("taskId").asString()).isEqualTo("TSK-INS-A-" + s);
+    // 업무를 안 고르면 순서대로: 보충 → 품질검사(남은 B) → 적치 → 센터 관리자 이동
+    List<String> order = new java.util.ArrayList<>();
+    for (int i = 0; i < 4; i++) {
+      String w = "ip" + i + "-" + s;
+      register(w, List.of("INSPECT", "PUTAWAY", "REPLENISH", "MOVE"));
+      String tok = TestJwt.operator(w, List.of("MFC_WORKER"), List.of(MFC));
+      Res r = send("POST", tok, "/mfcs/" + MFC + "/workers/" + w + "/next-tasks", null);
+      assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+      order.add(r.body().path("taskId").asString());
+    }
+    assertThat(order)
+        .containsExactly("MV-IR-" + s, "TSK-INS-B-" + s, "TSK-PUT-A-" + s, "MV-IM-" + s);
+  }
+
+  static Map<String, Object> inboundTask(
+      String id, String type, @Nullable String assignee, Instant created) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("taskId", id);
+    m.put("taskType", type);
+    m.put("state", "READY");
+    m.put("plannedQty", 1);
+    m.put("doneQty", 0);
+    if (assignee != null) {
+      m.put("assigneeId", assignee);
+    }
+    m.put("createdAt", created.toString());
+    return m;
+  }
+
   static Map<String, Object> move(
       String id,
       String kind,

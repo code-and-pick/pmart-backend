@@ -53,4 +53,21 @@ class NextTaskDetailsTest {
     assertThat(d.urgent()).isTrue();
     assertThat(d.lines().get(0).qty()).isEqualTo(3);
   }
+
+  /** (0.14.0, BR-52 R2) 입고 작업: 한 줄, 출발 칸 = 수령 위치, 남은 양 = 계획 − 완료. */
+  @Test
+  void inboundTaskRemainingIsPlannedMinusDone() {
+    var d =
+        NextTaskDetails.fromInboundTask(
+            mapper.readTree(
+                """
+                {"taskId":"TSK-PUT-1","taskType":"PUTAWAY","sku":"E-1","lotId":"L1","locationCode":"RCV-DOCK","plannedQty":5,"doneQty":2}
+                """));
+    assertThat(d.available()).isTrue();
+    assertThat(d.lines()).hasSize(1);
+    assertThat(d.lines().get(0).qty()).isEqualTo(3);
+    assertThat(d.lines().get(0).fromLocation()).isEqualTo("RCV-DOCK");
+    assertThat(d.lines().get(0).toLocation()).isNull();
+    assertThat(d.lines().get(0).lotId()).isEqualTo("L1");
+  }
 }

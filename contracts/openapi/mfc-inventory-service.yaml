@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -1604,6 +1604,8 @@ components:
             properties:
               locationCode: { type: string }
               sku: { type: string }
+              productName: { type: [string, 'null'], description: '(0.16.0, 클라이언트 BR-52 R19-1) 표시용 상품 관리용 명칭(SKU 사본). 모르면 null' }
+              barcodes: { type: array, items: { type: string }, description: '(0.16.0) 스캔 대조·라벨 재출력용 활성 바코드(선행 0 보존). 모르면 빈 배열' }
               lotId: { type: string }
               expiryDate: { type: [string, 'null'], format: date }
         differences:

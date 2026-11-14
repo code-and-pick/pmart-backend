@@ -104,9 +104,17 @@ public class AssignmentService {
     }
   }
 
-  /** 정해진 순서의 앞섬(배정 추천 미배정 벌점용) — 다음 작업 받기 순서와 같다. 긴급 이동은 보충과 같다. */
+  /**
+   * 정해진 순서의 앞섬(배정 추천 지연 벌점용, 클수록 급함). 배정 추천 입력은 주문 작업·이동뿐이라 0.13 값 그대로 둔다(같은 문제 = 같은 입력 지문). 긴급 이동은
+   * 보충과 같다.
+   */
   public static int priority(String taskType, boolean urgent) {
-    return 3 - Math.min(3, urgent ? rank("REPLENISH") : rank(taskType));
+    return switch (urgent ? "REPLENISH" : taskType) {
+      case "PICK", "PACK" -> 3;
+      case "REPLENISH" -> 2;
+      case "MOVE" -> 1;
+      default -> 0;
+    };
   }
 
   /** 받은 작업의 상세(0.9.1) — 읽지 못하면 available=false(배정은 그대로). */
@@ -118,6 +126,12 @@ public class AssignmentService {
         }
         return NextTaskDetails.fromMove(inbound.moveOrder(taskId));
       }
+      if (INBOUND_TASK_TYPES.contains(taskType)) {
+        if (inbound == null || !inbound.configured()) {
+          return NextTaskDetails.Detail.unavailable();
+        }
+        return NextTaskDetails.fromInboundTask(inbound.inboundTask(taskId));
+      }
       if (fulfillment == null) {
         return NextTaskDetails.Detail.unavailable();
       }
@@ -127,6 +141,9 @@ public class AssignmentService {
       return NextTaskDetails.Detail.unavailable();
     }
   }
+
+  /** (0.14.0, BR-52 R2) mfc-inbound 입고 작업으로 오는 유형. */
+  static final Set<String> INBOUND_TASK_TYPES = Set.of("INSPECT", "PUTAWAY");
 
   /** 다음 작업 후보(작업 지시·이동 지시 공통). */
   record Candidate(String taskId, String taskType, int rank, @Nullable Instant when) {}
@@ -192,6 +209,17 @@ public class AssignmentService {
     }
     java.util.Set<String> openMoves = new java.util.HashSet<>();
     moves.forEach(m -> openMoves.add(m.moveId()));
+    // 품질검사·적치(mfc-inbound 입고 작업, 0.14.0) — 조회가 안 되면 건너뛴다
+    List<com.pmart.mfc.capacity.infrastructure.InboundClient.InboundTaskView> inboundTasks =
+        List.of();
+    if (inbound != null && inbound.configured()) {
+      try {
+        inboundTasks = inbound.openInboundTasks(mfcId);
+      } catch (RuntimeException ex) {
+        log.warn("입고 작업 조회 실패 — 품질검사·적치는 건너뜀: {}", ex.getMessage());
+      }
+    }
+    inboundTasks.forEach(t -> openMoves.add(t.taskId()));
     // 한 번에 하나: 이 작업자의 ACTIVE 배정 중 아직 끝나지 않은 작업
     for (AssignmentRow a : store.list(mfcId, null, workerId, "ACTIVE", null)) {
       if (open.containsKey(a.taskId()) || openMoves.contains(a.taskId())) {
@@ -238,6 +266,13 @@ public class AssignmentService {
                         m.taskType(),
                         m.urgent() ? rank("REPLENISH") : rank(m.taskType()),
                         m.createdAt())));
+    inboundTasks.stream()
+        .filter(t -> t.assigneeId() == null)
+        .filter(t -> INBOUND_TASK_TYPES.contains(t.taskType()) && duty.contains(t.taskType()))
+        .forEach(
+            t ->
+                candidates.add(
+                    new Candidate(t.taskId(), t.taskType(), rank(t.taskType()), t.createdAt())));
     candidates.sort(
         java.util.Comparator.comparingInt(Candidate::rank)
             .thenComparing(
@@ -318,14 +353,19 @@ public class AssignmentService {
     return true;
   }
 
-  /** 다음 작업 우선순위: 주문 작업 → 복귀 → 그 밖(이동·보충은 다음 단계). */
+  /**
+   * 다음 작업 순서(작을수록 먼저): 주문 작업 → 자동 보충·긴급 이동 → 품질검사 → 적치 → 센터 관리자 이동 → 복귀(사용자 결정 2026-11-08, 품질검사·적치
+   * 자리는 2026-11-14 — Q-08 전 임시).
+   */
   static int rank(String taskType) {
     return switch (taskType) {
       case "PICK", "PACK" -> 0;
       case "REPLENISH" -> 1;
-      case "MOVE" -> 2;
-      case "RETURN" -> 3;
-      default -> 4;
+      case "INSPECT" -> 2;
+      case "PUTAWAY" -> 3;
+      case "MOVE" -> 4;
+      case "RETURN" -> 5;
+      default -> 6;
     };
   }
 
