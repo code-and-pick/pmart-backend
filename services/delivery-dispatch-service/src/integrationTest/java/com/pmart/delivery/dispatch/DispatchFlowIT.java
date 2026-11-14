@@ -16,6 +16,7 @@ import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
 import com.pmart.delivery.dispatch.application.DispatchEngine;
+import com.pmart.delivery.dispatch.infrastructure.DispatchStore;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -75,6 +76,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired DispatchEngine engine;
+  @Autowired DispatchStore store;
 
   @InjectWireMock("up")
   WireMockServer up;
@@ -1008,6 +1010,88 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT count(*) FROM restricted_rider WHERE rider_id = ?", Integer.class, r1))
         .isZero();
+  }
+
+  /**
+   * 포장을 일부만 넘겨받은 배송(모두 넘겨받기 전이라 아직 ASSIGNED)은 픽업한 배송처럼 다룬다 — 라이더 배차 취소는 422, 계정 제한도 배정을 풀지 않는다(PC 1
+   * PR #13 검토, 사용자 2026-11-14). 이미 결정된 제안은 다른 상태로 덮이지 않는다(만료 → LATE 덮어쓰기 막기).
+   */
+  @Test
+  void partlyHandedOverDeliveryIsTreatedAsPickedUp() {
+    String mfc = "MFC-D14";
+    String r1 = "RD-ph-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String partly = acceptedBy(r1, mfc);
+    String plain = acceptedBy(r1, mfc);
+    // 포장 두 개 중 하나만 넘겨받음 — 목록에는 아직 안 넘긴 포장이 있다
+    jdbc.update(
+        "UPDATE delivery SET packages = ?::jsonb, handed_over_packages = ?::jsonb WHERE"
+            + " delivery_id = ?",
+        "[{\"packageId\":\"P-1\",\"bagCount\":1},{\"packageId\":\"P-2\",\"bagCount\":1}]",
+        "[\"P-1\"]",
+        partly);
+
+    ResponseEntity<String> refused = cancel(r1, partly, "ph-" + partly);
+    assertThat(refused.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(refused).path("code").asString()).isEqualTo("PICKED_UP_CASE_REQUIRED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, partly))
+        .isEqualTo("ASSIGNED");
+
+    kafka
+        .send(
+            "delivery.rider.v1",
+            r1,
+            EventEnvelopeFixtures.envelope("RiderRestricted")
+                .from("rider-service")
+                .aggregate("Rider", r1, 3)
+                .payload(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "restriction",
+                        "SUSPENDED",
+                        "from",
+                        Instant.now().toString(),
+                        "basis",
+                        "고객 신고 확인"))
+                .buildJson())
+        .join();
+    awaitSql(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = '"
+            + plain
+            + "' AND type = 'DeliveryAssignmentChanged'");
+    // 넘겨받은 것이 없는 배송만 풀린다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, plain))
+        .isEqualTo("DISPATCHING");
+    Map<String, Object> kept =
+        jdbc.queryForMap("SELECT state, rider_id FROM delivery WHERE delivery_id = ?", partly);
+    assertThat(kept.get("state")).isEqualTo("ASSIGNED");
+    assertThat(kept.get("rider_id")).isEqualTo(r1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
+                    + " 'DeliveryAssignmentChanged'",
+                Integer.class,
+                partly))
+        .isZero();
+
+    // 응답 전(SENT) 제안만 결정된다 — 이미 결정(ACCEPTED·EXPIRED 등)된 제안은 그대로
+    String accepted =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'ACCEPTED'",
+            String.class,
+            partly);
+    assertThat(store.decideOffer(accepted, "LATE", Instant.now(), null, "INELIGIBLE")).isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM dispatch_offer WHERE offer_id = ?", String.class, accepted))
+        .isEqualTo("ACCEPTED");
   }
 
   /** 배송 하나를 만들어 그 라이더에게 제안 → 수락(ASSIGNED). 그 MFC 의 적격 라이더는 미리 그 한 명만. */

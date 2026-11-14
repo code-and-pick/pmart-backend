@@ -229,9 +229,15 @@ public class FulfillmentEventHandler {
     store.lockOrderKey(orderId);
     store.recordStoppedOrder(orderId, "order-cancelled:" + e.eventId(), now);
     for (DeliveryRow d : store.lockByOrder(orderId)) {
-      if (!CLOSED.contains(d.state())) {
-        cancel(d, "주문 전체 취소", now);
+      if (CLOSED.contains(d.state())) {
+        continue;
       }
+      if (d.handoverStarted()) {
+        // 일부 포장이 이미 라이더 손에 — 픽업한 배송처럼 그대로(회수는 claim·지원센터)
+        log.warn("배송 {} 주문 전체 취소 — 포장 일부가 이미 인계돼 배차 유지", d.deliveryId());
+        continue;
+      }
+      cancel(d, "주문 전체 취소", now);
     }
   }
 

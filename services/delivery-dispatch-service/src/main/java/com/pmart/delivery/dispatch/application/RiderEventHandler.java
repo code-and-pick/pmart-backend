@@ -23,7 +23,9 @@ import org.springframework.stereotype.Component;
  *   <li>모든 제한 단계(신규배차 제한·일시 중지·계약 종료)에서 <b>픽업 전 배정은 풀고 다시 배차</b> — 배정 해제 + 새 시도 REASSIGN(그 라이더는 뺀다)
  *       + {@code DeliveryAssignmentChanged}(newRiderId null, reason {@code RIDER_RESTRICTED}). MFC
  *       는 이 사건으로 그 라이더의 인계를 막는다(D-4).
- *   <li><b>픽업한 배송은 끝까지 전달</b>한다 — 그대로 둔다.
+ *   <li><b>픽업한 배송은 끝까지 전달</b>한다 — 그대로 둔다. 포장을 하나라도 넘겨받은 배송(묶음 여러 개 중 일부만 인계돼 아직 ASSIGNED)도 픽업한 것으로
+ *       본다(PC 1 PR #13 검토).
+ *   <li>응답 전 제안은 잠근 뒤 상태를 다시 본다 — 만료 처리가 먼저 커밋한 제안은 EXPIRED 그대로.
  *   <li>그 라이더에게 간 응답 전 제안은 LATE(INELIGIBLE)로 닫고 시도를 다시 찾게 한다. 새 제안은 rider 적격 조회가 막는다.
  *   <li>제한 사본({@code restricted_rider}, 기한 to)을 남긴다 — 수락(제안 응답·배달리스트)·제안 후보가 라이더 잠금 아래 다시 본다. rider
  *       조회는 트랜잭션 밖이라, 제한 직전에 조회한 수락이 이 처리 뒤에 들어와도 배정되지 않는다.
@@ -79,8 +81,14 @@ public class RiderEventHandler {
         if (!riderId.equals(o.riderId()) || !"SENT".equals(o.state())) {
           continue;
         }
-        store.lockOffer(o.offerId());
-        store.decideOffer(o.offerId(), "LATE", now, null, AcceptRules.LateReason.INELIGIBLE.name());
+        // 잠근 뒤 다시 본다 — 그 사이 만료 처리가 커밋했으면 EXPIRED 그대로(만료 처리가 시도를 이미 다시 찾게 했다)
+        boolean stillSent =
+            store.lockOffer(o.offerId()).map(x -> "SENT".equals(x.state())).orElse(false);
+        if (!stillSent
+            || !store.decideOffer(
+                o.offerId(), "LATE", now, null, AcceptRules.LateReason.INELIGIBLE.name())) {
+          continue;
+        }
         attempts.add(o.attemptId());
         closed++;
       }
@@ -97,7 +105,8 @@ public class RiderEventHandler {
       if (!riderId.equals(d.riderId())) {
         continue;
       }
-      if ("PICKED_UP".equals(d.state())) {
+      // 픽업한 배송, 그리고 포장을 하나라도 넘겨받은 배송(모두 넘겨받기 전이라 아직 ASSIGNED)은 끝까지 전달
+      if ("PICKED_UP".equals(d.state()) || d.handoverStarted()) {
         kept++;
         continue;
       }

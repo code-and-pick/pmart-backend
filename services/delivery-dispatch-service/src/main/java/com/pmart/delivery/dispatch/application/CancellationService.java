@@ -23,7 +23,8 @@ import org.springframework.stereotype.Service;
  *   <li>픽업 전(ASSIGNED): 배정을 풀고 상품은 점포에 남는다. reassign(기본 true)이면 다시 배차 대기 + 새 시도(REASSIGN, 취소한 라이더는
  *       뺀다) + {@code DeliveryAssignmentChanged}(newRiderId null — MFC 는 이전 라이더 인계를 막는다).
  *       reassign=false 면 {@code DeliveryCancelledBeforePickup}.
- *   <li>픽업 뒤(PICKED_UP): 422 PICKED_UP_CASE_REQUIRED — 지원센터가 상품 위치·회수·재인계를 확인한다(기록은 남긴다).
+ *   <li>픽업 뒤(PICKED_UP, 또는 포장을 하나라도 넘겨받은 ASSIGNED): 422 PICKED_UP_CASE_REQUIRED — 지원센터가 상품
+ *       위치·회수·재인계를 확인한다(기록은 남긴다).
  *   <li>요청자: 배정된 라이더 본인(RIDER), 그 센터 운영자·OPERATOR_ADMIN(OPERATOR — 사유 OPERATOR 면 approvalRef 필수),
  *       서비스(사가).
  *   <li>같은 키·같은 본문은 같은 결과(RequestIdempotency), X-Expected-Version 은 배송 버전.
@@ -100,7 +101,8 @@ public class CancellationService {
               if (expectedVersion != null && expectedVersion != d.version()) {
                 throw PmartException.versionConflict("배송이 바뀌었습니다(현재 버전 " + d.version() + ").");
               }
-              if ("PICKED_UP".equals(d.state())) {
+              // 포장을 하나라도 넘겨받았으면(일부만 인계 — 아직 ASSIGNED) 픽업 뒤와 같다: 배정을 풀면 넘겨받은 묶음이 라이더 손에 남는다
+              if ("PICKED_UP".equals(d.state()) || d.handoverStarted()) {
                 if (!store.insertCancellation(
                     requestId,
                     deliveryId,

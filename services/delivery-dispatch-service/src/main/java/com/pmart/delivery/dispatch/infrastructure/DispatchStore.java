@@ -66,6 +66,15 @@ public class DispatchStore {
       return mfcLat != null && dropLat != null && dropDistanceM != null;
     }
 
+    /**
+     * 포장을 하나라도 넘겨받았다. 모든 포장이 인계돼야 PICKED_UP 이라(D-6) 그 전에는 ASSIGNED 로 남지만, 이때부터는 픽업한 배송처럼 다룬다 — 배정을
+     * 풀거나 픽업 전 취소하면 넘겨받은 묶음이 그 라이더 손에 남는다(PC 1 PR #13 검토, 사용자 2026-11-14).
+     */
+    public boolean handoverStarted() {
+      String s = handedOverJson == null ? "" : handedOverJson.replaceAll("\\s", "");
+      return !s.isEmpty() && !"[]".equals(s) && !"null".equals(s);
+    }
+
     /** 출하 대기(실제 → 예상 → 없음). */
     public @Nullable Instant readyOrEstimate() {
       return readyAt != null ? readyAt : estimatedReadyAt;
@@ -843,20 +852,25 @@ public class DispatchStore {
         limit);
   }
 
-  public void decideOffer(
+  /**
+   * 응답 전(SENT) 제안만 결정한다 — 이미 만료·결정된 제안을 덮지 않는다(PC 1 PR #13 검토: 제한 처리가 만료 처리와 겹치면 EXPIRED 가 LATE 로
+   * 덮였다). @return 바꿨으면 true
+   */
+  public boolean decideOffer(
       String offerId,
       String state,
       Instant now,
       @Nullable String rejectReason,
       @Nullable String lateReason) {
-    jdbc.update(
-        "UPDATE dispatch_offer SET state = ?, decided_at = ?, reject_reason = ?, late_reason = ?"
-            + " WHERE offer_id = ?",
-        state,
-        ts(now),
-        rejectReason,
-        lateReason,
-        offerId);
+    return 1
+        == jdbc.update(
+            "UPDATE dispatch_offer SET state = ?, decided_at = ?, reject_reason = ?, late_reason = ?"
+                + " WHERE offer_id = ? AND state = 'SENT'",
+            state,
+            ts(now),
+            rejectReason,
+            lateReason,
+            offerId);
   }
 
   /** 배정이 정해지면 그 배송의 남은 제안은 SUPERSEDED. */

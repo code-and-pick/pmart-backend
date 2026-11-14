@@ -474,6 +474,13 @@ public class DispatchEngine {
       Instant now) {
     tx.executeWithoutResult(
         s -> {
+          // 라이더 잠금 아래 제한 사본을 다시 본다(RS-1, 사용자 2026-11-14 "제한된 계정에는 배차가 가면 안 된다") — 후보는 잠금 밖에서
+          // 골라 제한 처리와 겹칠 수 있다. 잠금 순서는 수락·제한 처리와 같다(라이더 → 배송 ID 순).
+          store.lockRider(rider.riderId());
+          if (store.restricted(rider.riderId(), now)) {
+            log.info("라이더 {} 계정 제한 — 제안 보내지 않음", rider.riderId());
+            return;
+          }
           List<Ready> sorted =
               members.stream()
                   .sorted(Comparator.comparing((Ready m) -> m.delivery().deliveryId()))
