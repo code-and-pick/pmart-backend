@@ -286,6 +286,55 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /riders/restriction-reviews:
+    get:
+      tags: [operator]
+      summary: 제한 검토 대상 목록 (컴플레인 누적 — RS-3, 최근 순 200)
+      description: |
+        case `RiderComplaintRecorded`(신고·오배송·파손)를 종류마다 세어 **7일 안 서로 다른 배송 3건 이상**이면 시스템이 연다(사용자 2026-11-14). 자동 제재는 없다 — 운영자가 확인 뒤 계정 제한(`POST /riders/{riderId}/restrictions`)을 걸고 검토를 닫는다.
+        라이더·종류마다 열린 검토는 하나 — 열려 있는 동안 온 같은 종류 컴플레인은 거기에 묶인다. 닫힌 검토에 묶인 컴플레인은 다시 세지 않는다.
+      operationId: listRiderRestrictionReviews
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [OPEN, RESTRICTED, DISMISSED], default: OPEN } }
+        - { name: riderId, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RestrictionReview' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /riders/restriction-reviews/{reviewId}/decisions:
+    post:
+      tags: [operator]
+      summary: 제한 검토 닫기 (RESTRICTED — 먼저 계정 제한을 건 뒤 / DISMISSED)
+      operationId: decideRiderRestrictionReview
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestrictionReviewDecision' }
+      responses:
+        '200':
+          description: 닫힌 검토
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RestrictionReview' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /internal/riders/eligible:
     get:
       tags: [internal]
@@ -367,6 +416,33 @@ components:
         changedBy: { type: string, description: 운영자 ID }
         changedAt: { type: string, format: date-time }
         version: { type: integer, description: 바꾼 뒤 라이더 버전 }
+    RestrictionReview:
+      type: object
+      x-added-in: '2026-11-14'
+      properties:
+        reviewId: { type: string }
+        riderId: { type: string }
+        complaintType: { type: string, enum: [REPORT, MISDELIVERY, DAMAGE], description: 'REPORT 신고, MISDELIVERY 오배송, DAMAGE 파손' }
+        state: { type: string, enum: [OPEN, RESTRICTED, DISMISSED] }
+        complaints:
+          type: array
+          items:
+            type: object
+            properties:
+              complaintId: { type: string }
+              deliveryId: { type: string }
+              recordedAt: { type: string, format: date-time }
+        openedAt: { type: string, format: date-time }
+        decidedBy: { type: string }
+        decidedAt: { type: string, format: date-time }
+        note: { type: string }
+    RestrictionReviewDecision:
+      type: object
+      x-added-in: '2026-11-14'
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [RESTRICTED, DISMISSED] }
+        note: { type: string, maxLength: 300, description: '확인 결과 메모(개인정보를 적지 않는다)' }
     RiderSignupRequest:
       type: object
       description: 'RS-2·ADR-0054 결정 G — 면허·주민번호 칸은 2026-11-13 뺐다(사용자 결정 2026-11-10, 가입 때 받지 않음)'

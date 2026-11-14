@@ -396,7 +396,7 @@ public class RiderService {
   }
 
   /** 계정 제한은 OPERATOR_ADMIN 만(배송·지원센터 역할이 아직 없다 — 생기면 더한다). */
-  private static PmartPrincipal requireRestrictionAdmin() {
+  static PmartPrincipal requireRestrictionAdmin() {
     PmartPrincipal p =
         PmartPrincipal.current()
             .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)

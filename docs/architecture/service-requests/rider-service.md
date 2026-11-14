@@ -14,8 +14,9 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 ## RS-3. 컴플레인 누적 → 제한 검토 대상 등록 (2026-11-14 사용자)
 
 - **결정(사용자 2026-11-14)**: 컴플레인이 일정 기준 이상 누적되면 **시스템이 검토 대상으로 등록**하고, 백오피스 운영자가 확인 뒤 계정을 제한한다(RS-1 API). 자동 제재는 하지 않는다(원문 "후기로만 자동 제재하지 않음").
-- **정할 것(사용자)**: 누적 기준(건수·기간 — 예: 30일 3건), 셀 컴플레인 종류(고객 신고만? 오배송·파손 확정 사건?). 컴플레인 원천은 case-service(platform 영역 — 문의·사건 R-4).
-- **할 일(정해진 뒤)**: 누적을 셀 사건(case 쪽 확정 컴플레인 사건, 라이더 ID 포함) → rider 검토 대상 목록(`GET /riders/restriction-reviews` 등) → 운영자 확인 → RS-1 API.
+- **기준(사용자 2026-11-14)**: "비슷한 종류의 컴플레인이 일주일 이내에 3건 이상", 종류는 "신고, 오배송, 파손 전부".
+- **구현(2026-11-14, rider 0.3.0, V4)**: case `RiderComplaintRecorded`(새 계약, platform.case.v1 — 발행은 case R-5 요청) 구독 `caseEvents-in-0` → 종류(REPORT·MISDELIVERY·DAMAGE)마다 **7일 안 서로 다른 배송 3건 이상**이면 검토 대상 OPEN(`ComplaintReviewRules`). 해석(설계): ① "비슷한 종류" = 세 종류 각각, ② 한 배송에 여러 번 온 컴플레인은 1건(같은 일을 여러 번 신고한 것과 여러 번 일어난 것을 가름), ③ 열린 검토가 있으면 같은 종류는 거기에 묶고, 닫힌 검토(RESTRICTED·DISMISSED)에 묶인 건은 다시 세지 않는다 — 운영자 확인 뒤에는 새로 3건이 쌓여야 다시 대상. 값은 설정 `pmart.rider.complaint-review.window`(P7D)·`threshold`(3).
+- 운영자: `GET /riders/restriction-reviews?state=OPEN`(OPERATOR_ADMIN), `POST /riders/restriction-reviews/{reviewId}/decisions`(RESTRICTED — 먼저 RS-1 로 제한을 걸었어야 409 아님 / DISMISSED). 검토 대상이 열릴 때 알림(사건)은 아직 없다 — 백오피스가 목록을 본다.
 
 ## RS-2. 라이더 가입을 rider-auth-service 토큰으로 받기 (2026-11-10, ADR-0054 G·ADR-0055)
 

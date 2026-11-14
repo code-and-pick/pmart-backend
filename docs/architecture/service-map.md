@@ -292,7 +292,7 @@
 - **소유하지 않음**: 특정 배송의 배정 권리(dispatch), 수행·정산(execution), 로그인·인증 토큰(rider-auth-service — 라이더 주체 `RD-…` = 토큰 `sub` = riderId), 간선기사(fleet).
 - **API**: 가입/프로필/상태 변경, 적격 라이더 조회(dispatch: 상태·권역·수단·제한·용량), 계정 제한 걸기·풀기·이력(운영자 — RS-1, 2026-11-14).
 - **발행**: `RiderStateChanged`, `RiderRestricted`, `RiderSupplyChanged`.
-- **구독**: `ApprovalDecided`(라이더 제한 BO-20 — 승인 화면 뒤, 지금은 운영자 API), 컴플레인 누적 사건(제한 검토 대상 — RS-3, 기준 미정). 반복 배차취소는 제재하지 않는다(dispatch 가 배차 알림 감소 — 사용자 2026-11-13).
+- **구독**: `ApprovalDecided`(라이더 제한 BO-20 — 승인 화면 뒤, 지금은 운영자 API), `RiderComplaintRecorded`(case — 같은 종류 7일 안 3건 이상이면 제한 검토 대상, RS-3 2026-11-14). 반복 배차취소는 제재하지 않는다(dispatch 가 배차 알림 감소 — 사용자 2026-11-13).
 
 ### delivery-dispatch-service `[1단계]`
 - **소유**: 배송(delivery; 주문 이행 계획→배송 단위, 독립 배송번호; 분할·회수·재배송 각각 별도 번호, 원주문 연결), 배차 요청(점원 배차요청 입력: 배송번호·점포·배송지·포장 소요시간·부피/무게/봉투 수·주류·예상 배달료), 배차 시도(`attemptId`)·제안(`offerId`)·응답(제안/수락·배정/거절/미응답 만료/전송 실패 구분), 반경 단계 탐색(1km→2km→3km `[외부 참고값]`), 응답 대기 1분, 동시 수락 1명 확정·나머지 "이미 배정", 재시도(최대 2회·10분 `[외부 참고값]`), 거절 5회 연속 안내, 추가·분할 배차(규격별 추가 라이더 기준), 배차 취소(픽업 전: 재배차 / 픽업 후: 지원센터 처리), 늦은 수락 분류(시간 만료/이미 배정/주문 취소/자격·용량 불충족), 취소 주문 신규 배차 차단, 회수·재배송 배차, AI 추천 배차 어댑터(3차), 배차 지연 임계 알림.
@@ -411,7 +411,7 @@
 - **소유**: Case/SubCase(총괄·하위, 병합 시 원ID 보존), Obligation(종류별 수량/금액 분리), ActionRequest(상대 commit/거래 ID 연결), EvidenceReference, ShiftHandover/CloseSnapshot(BO-27), 사건 상태(OPEN/ASSIGNED/ACTION_PENDING/MONITORING/RESOLUTION_REVIEW/CLOSED/REOPENED; 시간 경과 자동 종결 없음), 우선순위·SLA(승인 입력), CS 접수(접수≠명령, 동의 별도 기록), MFC 문제함(WK-12), 라이더 도움요청·고객 연락 기록(안심번호 `[외부 참고]`), 귀책·비용 결정 기록(지급은 회계).
 - **소유하지 않음**: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification).
 - **API**: 사건 생성/배정/이관/종결, 의무 등록/해소, CS 접수, 도움요청.
-- **발행**: `CaseOpened/Assigned/Transferred/Closed/Reopened`, `ObligationCreated/Resolved`, `ShiftHandoverCompleted`.
+- **발행**: `CaseOpened/Assigned/Transferred/Closed/Reopened`, `ObligationCreated/Resolved`, `ShiftHandoverCompleted`, `RiderComplaintRecorded`(라이더 컴플레인 — 신고·오배송·파손, rider 제한 검토 집계, R-5 2026-11-14 요청·구현 전).
 - **구독**: `ReconciliationRequired`, `PaymentResultUnknown`(장기), `DispatchFailed`, `DeliveryIncidentRaised`, `TransportIncidentRaised`, `LineShortageReported`(동의 없음), `ReceiptDiscrepancyReported`, `OutboundDiscrepancyRaised`, `QualityDecisionMade`(리콜), `IncidentResolution`(도메인 회신).
 
 ### center-master-service `[1단계 — 추가 제안, ADR-0004]`

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderComplaintRecorded.v1.json",
+  "title": "RiderComplaintRecorded",
+  "description": "라이더에 대한 컴플레인 기록(신고·오배송·파손 — RS-3, 사용자 2026-11-14). 발행 case(고객센터가 사건으로 기록할 때 — 구현 전, service-requests case R-5). 구독 rider(같은 종류 7일 안 3건 이상이면 제한 검토 대상 — 자동 제재 아님). 토픽 platform.case.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderComplaintRecorded"
+        },
+        "aggregateType": {
+          "const": "Case"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "complaintId",
+            "riderId",
+            "deliveryId",
+            "complaintType",
+            "recordedAt"
+          ],
+          "properties": {
+            "complaintId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "컴플레인 한 건의 ID(같은 ID 는 한 번만 센다)"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "그 배송을 수행한 라이더(case 가 dispatch 배정 조회로 채운다)"
+            },
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "complaintType": {
+              "type": "string",
+              "enum": [
+                "REPORT",
+                "MISDELIVERY",
+                "DAMAGE"
+              ],
+              "description": "REPORT 고객 신고(불친절·위험 운전 등), MISDELIVERY 오배송, DAMAGE 파손"
+            },
+            "source": {
+              "type": "string",
+              "description": "접수 경로(CUSTOMER_APP·CS_AGENT 등)"
+            },
+            "recordedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

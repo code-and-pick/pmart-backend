@@ -25,7 +25,9 @@ import org.springframework.stereotype.Component;
  *       는 이 사건으로 그 라이더의 인계를 막는다(D-4).
  *   <li><b>픽업한 배송은 끝까지 전달</b>한다 — 그대로 둔다.
  *   <li>그 라이더에게 간 응답 전 제안은 LATE(INELIGIBLE)로 닫고 시도를 다시 찾게 한다. 새 제안은 rider 적격 조회가 막는다.
- *   <li>풀기(restriction NORMAL)는 할 일이 없다 — 적격 조회가 다시 넣는다.
+ *   <li>제한 사본({@code restricted_rider}, 기한 to)을 남긴다 — 수락(제안 응답·배달리스트)·제안 후보가 라이더 잠금 아래 다시 본다. rider
+ *       조회는 트랜잭션 밖이라, 제한 직전에 조회한 수락이 이 처리 뒤에 들어와도 배정되지 않는다.
+ *   <li>풀기(restriction NORMAL)는 사본만 지운다 — 적격 조회가 다시 넣는다.
  * </ul>
  *
  * <p>잠금 순서는 수락과 같다(라이더 → 배송 ID 순 → 제안). inbox 트랜잭션 안. 다시 와도 이미 풀린 배정은 지나간다.
@@ -51,11 +53,20 @@ public class RiderEventHandler {
   public void on(EventEnvelope e) {
     String riderId = e.payload().path("riderId").asString("");
     String restriction = e.payload().path("restriction").asString("");
-    if (riderId.isBlank() || restriction.isBlank() || "NORMAL".equals(restriction)) {
+    if (riderId.isBlank() || restriction.isBlank()) {
       return;
     }
     Instant now = clock.instant();
     store.lockRider(riderId);
+    if ("NORMAL".equals(restriction)) {
+      store.clearRestricted(riderId);
+      log.info("라이더 {} 계정 제한 풀림", riderId);
+      return;
+    }
+    // 사본을 먼저 남긴다 — 이 처리 뒤 들어오는 수락(rider 조회가 제한 전이었어도)은 같은 잠금 아래 이것을 본다
+    String to = e.payload().path("to").asString(null);
+    store.markRestricted(
+        riderId, restriction, to == null || to.isBlank() ? null : Instant.parse(to), now);
     List<DeliveryRow> deliveries = new ArrayList<>();
     for (String id : store.deliveryIdsTouchingRider(riderId)) {
       store.lockDelivery(id).ifPresent(deliveries::add);

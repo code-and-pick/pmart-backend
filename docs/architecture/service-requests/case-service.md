@@ -57,3 +57,10 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   3. 지원센터 화면에서 전달 실패 확정·반려 — 결정은 delivery-execution `POST /api/v1/deliveries/{id}/failure-decisions`(CONFIRM·REJECT, note, custody)를 부른다(사건을 정본으로 두고 결정만 execution 에). 지원센터 역할이 생기면 execution 권한 검사(`Access.operatorCanSee` — 지금 OPERATOR_ADMIN·CS_AGENT·그 센터 운영자)에 더한다.
   4. 고객 연락(안심번호 5시간·시도 기록 — 원문 §9.1), 대체 장소 승인, 회수·취소 결정은 원문대로 case 쪽 — 결정 결과를 어디로 보낼지(claim 회수 승인 등)는 case-service 설계 때.
 - **case-service 가 생기면 요청한 쪽(delivery-execution)에서 바꿀 것**: `CaseOpened`·`CaseClosed` 구독 → `help_request.case_id`·state 갱신(지금 테이블·조회 칸은 있다).
+
+## R-5. 라이더 컴플레인 기록 → `RiderComplaintRecorded` 발행 (2026-11-14, 보낸 영역 delivery — RS-3)
+
+- **사용자 결정(2026-11-14)**: 라이더에 대한 컴플레인 — **신고·오배송·파손 전부** — 이 **같은 종류로 7일 안 3건 이상** 쌓이면 시스템이 제한 검토 대상으로 올리고, 백오피스 운영자가 확인 뒤 계정을 제한한다(자동 제재 없음).
+- **받는 쪽(구현됨, delivery PC 5 — rider-service 0.3.0)**: `RiderComplaintRecorded`(계약 `contracts/events/RiderComplaintRecorded.v1.json`, 토픽 platform.case.v1, aggregateType Case)를 받아 센다 — 종류마다 서로 다른 배송 3건, 같은 `complaintId` 는 한 번. 검토 목록·닫기는 rider `GET /riders/restriction-reviews`·`POST …/{reviewId}/decisions`.
+- **case 가 할 것**: 컴플레인을 사건으로 기록할 때(고객 앱 신고·상담원 접수·오배송·파손 확정) 한 건마다 발행 — `complaintId`(한 건 ID), `riderId`(그 배송 수행 라이더 — dispatch `GET /internal/deliveries/{id}/assignment` 로 채움), `deliveryId`, `complaintType`(REPORT 신고 / MISDELIVERY 오배송 / DAMAGE 파손), `recordedAt`, 있으면 `caseId`·`orderId`·`source`. 내용·고객 정보는 싣지 않는다.
+- **정할 것(case 구현 때)**: 고객 신고 접수 화면·API(지금 case 에는 일반 문의 `/inquiries` 만), 오배송·파손을 "확정"할 때 낼지 접수할 때 낼지. 사용자 결정은 "신고 포함 전부"라 접수 때 내도 된다(검토는 운영자가 한다).

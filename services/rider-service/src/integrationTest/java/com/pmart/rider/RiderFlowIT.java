@@ -2,9 +2,12 @@ package com.pmart.rider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,6 +20,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -38,6 +42,7 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired KafkaTemplate<String, String> kafka;
 
   RestClient http;
 
@@ -324,6 +329,135 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
             .toEntity(String.class);
     assertThat(on.getStatusCode().value()).isEqualTo(200);
     assertThat(eligibleIds("MFC-IT-1")).contains(rider);
+  }
+
+  /** RS-3(사용자 2026-11-14): 같은 종류 컴플레인 7일 안 서로 다른 배송 3건 이상 → 검토 대상, 운영자가 닫음. 자동 제재 없음. */
+  @Test
+  void repeatedComplaintsOpenAReviewForTheOperator() {
+    String rider = "RD-it-" + UUID.randomUUID();
+    assertThat(signup(rider, phone(), "k-" + rider).getStatusCode().value()).isEqualTo(201);
+    Instant now = Instant.now();
+    complaint("C1-" + rider, rider, "D1", "REPORT", now.minus(Duration.ofDays(6)));
+    complaint("C2-" + rider, rider, "D1", "REPORT", now.minus(Duration.ofDays(5))); // 같은 배송
+    complaint("C3-" + rider, rider, "D2", "REPORT", now.minus(Duration.ofDays(3)));
+    complaint("C4-" + rider, rider, "D3", "MISDELIVERY", now.minus(Duration.ofDays(2))); // 다른 종류
+    awaitComplaints(rider, 4);
+    assertThat(reviews(rider, "OPEN")).isEmpty(); // 신고는 배송 2곳뿐
+
+    complaint("C5-" + rider, rider, "D4", "REPORT", now);
+    complaint("C5-" + rider, rider, "D4", "REPORT", now); // 같은 컴플레인 다시 와도 한 번
+    awaitComplaints(rider, 5);
+    List<JsonNode> open = reviews(rider, "OPEN");
+    assertThat(open).hasSize(1);
+    JsonNode review = open.get(0);
+    assertThat(review.path("complaintType").asString()).isEqualTo("REPORT");
+    assertThat(review.path("complaints").valueStream().map(c -> c.path("complaintId").asString()))
+        .containsExactlyInAnyOrder("C1-" + rider, "C2-" + rider, "C3-" + rider, "C5-" + rider);
+    // 자동 제재 없음
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT restriction FROM rider WHERE rider_id = ?", String.class, rider))
+        .isEqualTo("NORMAL");
+
+    // 열린 동안 온 같은 종류는 거기에 묶인다
+    complaint("C6-" + rider, rider, "D5", "REPORT", now);
+    awaitComplaints(rider, 6);
+    assertThat(reviews(rider, "OPEN").get(0).path("complaints")).hasSize(5);
+
+    String reviewId = review.path("reviewId").asString();
+    // 제한을 걸지 않고 RESTRICTED 로 닫기 409, 센터 관리자 403
+    assertThat(
+            decide(reviewId, "d1-" + reviewId, "OPERATOR_ADMIN", "RESTRICTED")
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    assertThat(
+            decide(reviewId, "d2-" + reviewId, "MFC_SUPERVISOR", "DISMISSED")
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    ResponseEntity<String> dismissed =
+        decide(reviewId, "d3-" + reviewId, "OPERATOR_ADMIN", "DISMISSED");
+    assertThat(dismissed.getStatusCode().value()).isEqualTo(200);
+    assertThat(json(dismissed.getBody()).path("state").asString()).isEqualTo("DISMISSED");
+    assertThat(json(dismissed.getBody()).path("decidedBy").asString()).isEqualTo("OP-1");
+
+    // 닫힌 검토의 컴플레인은 다시 세지 않는다 — 새 1건으로는 대상 아님
+    complaint("C7-" + rider, rider, "D6", "REPORT", now);
+    awaitComplaints(rider, 7);
+    assertThat(reviews(rider, "OPEN")).isEmpty();
+    assertThat(reviews(rider, "DISMISSED")).hasSize(1);
+  }
+
+  private void complaint(String id, String rider, String delivery, String type, Instant at) {
+    String json =
+        EventEnvelopeFixtures.envelope("RiderComplaintRecorded")
+            .from("case-service")
+            .aggregate("Case", "CASE-" + id, 1)
+            .payload(
+                Map.of(
+                    "complaintId",
+                    id,
+                    "caseId",
+                    "CASE-" + id,
+                    "riderId",
+                    rider,
+                    "deliveryId",
+                    delivery + "-" + rider,
+                    "complaintType",
+                    type,
+                    "recordedAt",
+                    at.toString()))
+            .buildJson();
+    kafka.send("platform.case.v1", "CASE-" + id, json).join();
+  }
+
+  private void awaitComplaints(String rider, int n) {
+    long until = System.currentTimeMillis() + 30_000;
+    while (System.currentTimeMillis() < until) {
+      Integer c =
+          jdbc.queryForObject(
+              "SELECT count(*) FROM rider_complaint WHERE rider_id = ?", Integer.class, rider);
+      if (c != null && c >= n) {
+        // 같은 컴플레인 중복 사건까지 처리되게 잠깐 더
+        sleep(500);
+        return;
+      }
+      sleep(200);
+    }
+    throw new AssertionError("컴플레인 " + n + "건이 오지 않음");
+  }
+
+  private static void sleep(long ms) {
+    try {
+      Thread.sleep(ms);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+  }
+
+  private List<JsonNode> reviews(String rider, String state) {
+    JsonNode n =
+        json(
+            http.get()
+                .uri("/riders/restriction-reviews?state={s}&riderId={r}", state, rider)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-1", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .body(String.class));
+    return n.path("items").valueStream().toList();
+  }
+
+  private ResponseEntity<String> decide(String reviewId, String key, String role, String decision) {
+    return http.post()
+        .uri("/riders/restriction-reviews/{id}/decisions", reviewId)
+        .header("Authorization", "Bearer " + TestJwt.operator("OP-1", List.of(role), List.of()))
+        .header("Idempotency-Key", key)
+        .header("X-Source-System", "backoffice-web")
+        .body(Map.of("decision", decision, "note", "확인함"))
+        .retrieve()
+        .toEntity(String.class);
   }
 
   private ResponseEntity<String> restrict(

@@ -227,7 +227,10 @@ public class DispatchEngine {
         upstreams.eligibleRiders(mfcId, props.maxRadiusKm()).stream()
             .filter(r -> r.acceptsNewDispatch() && "AI_RECOMMENDED".equals(r.dispatchMode()))
             .toList();
-    Set<String> busy = store.ridersWithLiveOffer(now);
+    Set<String> busy = new java.util.HashSet<>(store.ridersWithLiveOffer(now));
+    // rider 적격 조회가 계정 제한 반영 전이어도 사본으로 뺀다(RS-1)
+    busy.addAll(
+        store.restrictedAmong(eligible.stream().map(Upstreams.Rider::riderId).toList(), now));
     List<String> ids =
         eligible.stream().map(Upstreams.Rider::riderId).filter(id -> !busy.contains(id)).toList();
     Map<String, Integer> active = store.activeCounts(ids);

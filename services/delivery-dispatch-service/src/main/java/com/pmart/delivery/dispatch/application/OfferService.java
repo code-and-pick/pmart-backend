@@ -196,12 +196,14 @@ public class OfferService {
                     now);
               }
               // 묶음 전체를 맡을 수 있어야 한다 — 지금 맡은 수 + (묶음 − 1) 로 한도를 본다
+              // rider 조회는 트랜잭션 밖 — 그 뒤 처리된 계정 제한은 잠금 아래 사본으로 다시 본다(RS-1)
+              boolean restricted = store.restricted(riderId, now);
               AcceptRules.RiderSnapshot snap =
                   rider
                       .map(
                           r ->
                               new AcceptRules.RiderSnapshot(
-                                  r.acceptsNewDispatch(),
+                                  r.acceptsNewDispatch() && !restricted,
                                   r.oneAtATime(),
                                   store.activeDeliveries(riderId) + offers.size() - 1))
                       .orElse(null);
@@ -285,7 +287,7 @@ public class OfferService {
     String riderId = requireRider();
     Instant now = clock.instant();
     Optional<Upstreams.Rider> rider = upstreams.rider(riderId);
-    if (rider.isEmpty() || !rider.get().acceptsNewDispatch()) {
+    if (rider.isEmpty() || !rider.get().acceptsNewDispatch() || store.restricted(riderId, now)) {
       return new DeliveryList(List.of(), now, null);
     }
     Optional<Upstreams.Location> loc = upstreams.location(riderId).filter(l -> fresh(l, now));
@@ -340,7 +342,11 @@ public class OfferService {
               var attempt = store.openAttempt(d.deliveryId());
               AcceptRules.Verdict v =
                   AcceptRules.judge(
-                      d.state(), null, now, snapshot(rider, riderId), props.maxActiveDeliveries());
+                      d.state(),
+                      null,
+                      now,
+                      snapshot(rider, riderId, now),
+                      props.maxActiveDeliveries());
               String late = v.ok() ? null : v.late().name();
               double radius =
                   attempt
@@ -403,13 +409,17 @@ public class OfferService {
 
   // ---------- 공통 ----------
 
+  /** 라이더 잠금 아래에서 부른다 — 트랜잭션 밖 rider 조회 뒤 처리된 계정 제한(사본)도 본다(RS-1). */
   private AcceptRules.@Nullable RiderSnapshot snapshot(
-      Optional<Upstreams.Rider> rider, String riderId) {
+      Optional<Upstreams.Rider> rider, String riderId, Instant now) {
+    boolean restricted = store.restricted(riderId, now);
     return rider
         .map(
             r ->
                 new AcceptRules.RiderSnapshot(
-                    r.acceptsNewDispatch(), r.oneAtATime(), store.activeDeliveries(riderId)))
+                    r.acceptsNewDispatch() && !restricted,
+                    r.oneAtATime(),
+                    store.activeDeliveries(riderId)))
         .orElse(null);
   }
 

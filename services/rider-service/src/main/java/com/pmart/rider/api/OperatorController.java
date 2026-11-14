@@ -2,9 +2,14 @@ package com.pmart.rider.api;
 
 import com.pmart.rider.api.generated.OperatorApi;
 import com.pmart.rider.api.generated.model.AccountRestriction;
+import com.pmart.rider.api.generated.model.ListRiderRestrictionReviews200Response;
 import com.pmart.rider.api.generated.model.ListRiderRestrictions200Response;
+import com.pmart.rider.api.generated.model.RestrictionReview;
+import com.pmart.rider.api.generated.model.RestrictionReviewComplaintsInner;
+import com.pmart.rider.api.generated.model.RestrictionReviewDecision;
 import com.pmart.rider.api.generated.model.RiderRestrictionChange;
 import com.pmart.rider.api.generated.model.RiderRestrictionRecord;
+import com.pmart.rider.application.ComplaintService;
 import com.pmart.rider.application.RiderService;
 import com.pmart.rider.infrastructure.RiderStore;
 import java.util.List;
@@ -19,10 +24,12 @@ import tools.jackson.databind.ObjectMapper;
 public class OperatorController implements OperatorApi {
 
   private final RiderService riders;
+  private final ComplaintService complaints;
   private final ObjectMapper json;
 
-  public OperatorController(RiderService riders, ObjectMapper json) {
+  public OperatorController(RiderService riders, ComplaintService complaints, ObjectMapper json) {
     this.riders = riders;
+    this.complaints = complaints;
     this.json = json;
   }
 
@@ -55,6 +62,55 @@ public class OperatorController implements OperatorApi {
         new ListRiderRestrictions200Response()
             .current(AccountRestriction.fromValue(r.current().name()))
             .items(r.items().stream().map(this::record).toList()));
+  }
+
+  @Override
+  public ResponseEntity<ListRiderRestrictionReviews200Response> listRiderRestrictionReviews(
+      String state, @Nullable String riderId) {
+    return ResponseEntity.ok(
+        new ListRiderRestrictionReviews200Response()
+            .items(
+                complaints.reviews(state, riderId).stream()
+                    .map(OperatorController::review)
+                    .toList()));
+  }
+
+  @Override
+  public ResponseEntity<RestrictionReview> decideRiderRestrictionReview(
+      String reviewId,
+      String idempotencyKey,
+      String xSourceSystem,
+      RestrictionReviewDecision body) {
+    return ResponseEntity.ok(
+        review(
+            complaints.decide(
+                reviewId,
+                idempotencyKey,
+                xSourceSystem,
+                body.getDecision().getValue(),
+                body.getNote())));
+  }
+
+  private static RestrictionReview review(ComplaintService.Review v) {
+    var r = v.review();
+    return new RestrictionReview()
+        .reviewId(r.reviewId())
+        .riderId(r.riderId())
+        .complaintType(RestrictionReview.ComplaintTypeEnum.fromValue(r.complaintType()))
+        .state(RestrictionReview.StateEnum.fromValue(r.state()))
+        .complaints(
+            v.complaints().stream()
+                .map(
+                    c ->
+                        new RestrictionReviewComplaintsInner()
+                            .complaintId(c.complaintId())
+                            .deliveryId(c.deliveryId())
+                            .recordedAt(RiderViews.time(c.recordedAt())))
+                .toList())
+        .openedAt(RiderViews.time(r.openedAt()))
+        .decidedBy(r.decidedBy())
+        .decidedAt(RiderViews.time(r.decidedAt()))
+        .note(r.decisionNote());
   }
 
   private RiderRestrictionRecord record(RiderStore.RestrictionRow r) {

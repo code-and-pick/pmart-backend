@@ -927,6 +927,10 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(kept.get("rider_id")).isEqualTo(r1);
     assertThat(
             jdbc.queryForObject(
+                "SELECT restriction FROM restricted_rider WHERE rider_id = ?", String.class, r1))
+        .isEqualTo("DISPATCH_RESTRICTED");
+    assertThat(
+            jdbc.queryForObject(
                 "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
                     + " 'DeliveryAssignmentChanged'",
                 Integer.class,
@@ -941,6 +945,20 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("LATE:INELIGIBLE");
     JsonNode late = body(respond(r1, openOffer, "late-" + offered, "ACCEPT"));
     assertThat(late.path("outcome").asString()).isEqualTo("LATE");
+    // rider 조회가 아직 제한 전(스텁은 NORMAL)이어도 배달리스트 수락은 잠금 아래 제한 사본을 보고 막힌다 — 겹친 수락이 배정되지 않음
+    JsonNode raced =
+        body(
+            http.post()
+                .uri("/delivery-list/{id}/acceptances", offered)
+                .headers(h -> riderHeaders(h, r1, "race-" + offered))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(raced.path("outcome").asString()).isEqualTo("LATE");
+    assertThat(raced.path("lateReason").asString()).isEqualTo("INELIGIBLE");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, offered))
+        .isNotEqualTo("ASSIGNED");
 
     // 다른 라이더에게 다시 배차
     riders(mfc, rider(r2, "AI_RECOMMENDED", true));
@@ -953,6 +971,43 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 assigned,
                 offered))
         .containsExactly(r2);
+
+    // 풀기(NORMAL) → 제한 사본 지움
+    kafka
+        .send(
+            "delivery.rider.v1",
+            r1,
+            EventEnvelopeFixtures.envelope("RiderRestricted")
+                .from("rider-service")
+                .aggregate("Rider", r1, 4)
+                .payload(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "restriction",
+                        "NORMAL",
+                        "from",
+                        Instant.now().toString(),
+                        "basis",
+                        "소명 확인"))
+                .buildJson())
+        .join();
+    long until = System.currentTimeMillis() + 30_000;
+    while (jdbc.queryForObject(
+                "SELECT count(*) FROM restricted_rider WHERE rider_id = ?", Integer.class, r1)
+            > 0
+        && System.currentTimeMillis() < until) {
+      try {
+        Thread.sleep(200);
+      } catch (InterruptedException ex) {
+        Thread.currentThread().interrupt();
+        break;
+      }
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM restricted_rider WHERE rider_id = ?", Integer.class, r1))
+        .isZero();
   }
 
   /** 배송 하나를 만들어 그 라이더에게 제안 → 수락(ASSIGNED). 그 MFC 의 적격 라이더는 미리 그 한 명만. */

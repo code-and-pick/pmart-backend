@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -410,6 +411,51 @@ public class DispatchStore {
   }
 
   // ---------- 라이더 잠금·멈춘 주문 ----------
+
+  /** 계정 제한 사본 기록(V7). until 이 null 이면 무기한. */
+  public void markRestricted(
+      String riderId, String restriction, @Nullable Instant until, Instant now) {
+    jdbc.update(
+        "INSERT INTO restricted_rider (rider_id, restriction, until_at, updated_at) VALUES (?, ?, ?,"
+            + " ?) ON CONFLICT (rider_id) DO UPDATE SET restriction = EXCLUDED.restriction, until_at"
+            + " = EXCLUDED.until_at, updated_at = EXCLUDED.updated_at",
+        riderId,
+        restriction,
+        ts(until),
+        ts(now));
+  }
+
+  public void clearRestricted(String riderId) {
+    jdbc.update("DELETE FROM restricted_rider WHERE rider_id = ?", riderId);
+  }
+
+  /** 지금 제한 중인가(기한 안). 수락은 라이더 잠금 아래 이것을 다시 본다. */
+  public boolean restricted(String riderId, Instant now) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM restricted_rider WHERE rider_id = ? AND (until_at IS NULL OR"
+                + " until_at > ?)",
+            Integer.class,
+            riderId,
+            ts(now));
+    return n != null && n > 0;
+  }
+
+  public Set<String> restrictedAmong(Collection<String> riderIds, Instant now) {
+    if (riderIds.isEmpty()) {
+      return Set.of();
+    }
+    String in = String.join(",", Collections.nCopies(riderIds.size(), "?"));
+    List<Object> args = new ArrayList<>(riderIds);
+    args.add(ts(now));
+    return new TreeSet<>(
+        jdbc.queryForList(
+            "SELECT rider_id FROM restricted_rider WHERE rider_id IN ("
+                + in
+                + ") AND (until_at IS NULL OR until_at > ?)",
+            String.class,
+            args.toArray()));
+  }
 
   /** 라이더가 맡은(ASSIGNED·PICKED_UP) 배송과 그 라이더에게 간 SENT 제안의 배송 — 잠글 순서대로(배송 ID 순). RS-1. */
   public List<String> deliveryIdsTouchingRider(String riderId) {
