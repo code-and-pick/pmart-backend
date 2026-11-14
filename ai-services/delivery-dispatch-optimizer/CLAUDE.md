@@ -30,5 +30,5 @@ docker build -t pmart/delivery-dispatch-optimizer:dev .   # 가중치를 이미�
 - LAN 배치는 PC 1(PC 5, 포트 8407, CPU). 아직 안 함.
 - **추가 학습(2026-11-13)** `tools/finetune.py`: 보상 = Σ고객 도착 + λ × 경로 수(공개 가중치는 경로 길이 합). λ 2.0·3000 단계·CPU 17분 → 덜 배정 −22% → −2%, 비용 차이 +8% 안팎 — 아직 OR-Tools 밑이라 LAN 은 계속 끔. 가중치 `models/`(git 제외, PC 5 만). 결과 `docs/delivery/ai-optimizer-evaluation.md` 끝 절.
 - **큰 MFC·다중 시작(2026-11-13)**: 20~40건에서 운영 CP-SAT(1 작업자·2초, 모든 조합)는 80~90% 해를 못 내 규칙 기반으로 떨어졌다 — 그때는 RouteFinder 가 나았지만, dispatch 에 **묶음 후보를 가까운 4명으로** 줄이자(`bundle-neighbors`) OR-Tools 가 큰 MFC 에서도 다시 앞선다(배정 같거나 많고 비용 6~8% 낮음). AI 는 계속 끔. 다중 시작은 서버 기본 켬(`OPTIMIZER_MULTISTART`). 결과 평가 문서 끝 두 절.
-- **실제 카카오 도로(2026-11-13)** `tools/evaluate.py --road kakao`(구간 저장 `.cache/`, git 제외): 작은 MFC 에서 RouteFinder 배정 −3%·비용 +11% — 합성 때보다 차이 큼. 큰 MFC 는 카카오 일 사용량 초과로 못 돌림(LAN tracking 과 같은 키 — 평가용 키 분리 권장).
-- 남은 것: 큰 MFC 카카오 비교, 라이더 수를 입력으로 넣는 학습(구조 변경), GreedRL 비교. 지금 AI 의 이점은 계산 시간뿐.
+- **실제 카카오 도로(2026-11-13)** `tools/evaluate.py --road kakao`(구간 저장 `.cache/`, git 제외): 작은 MFC 에서 RouteFinder 배정 −3%·비용 +11% — 합성 때보다 차이 큼. 큰 MFC(2026-11-14, `--pool 45` — 카카오 92번)는 RouteFinder 배정 −7.5%·비용 +18.5% — AI 계속 끔. 다중 목적지 길찾기는 하루 1,000건을 LAN 과 나눠 쓴다 — `--pool`·`--max-calls` 로 아껴 쓴다.
+- 남은 것: 라이더 수를 입력으로 넣는 학습(구조 변경), GreedRL 비교. 지금 AI 의 이점은 계산 시간뿐.

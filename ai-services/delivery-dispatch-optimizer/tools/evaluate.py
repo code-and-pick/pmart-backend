@@ -47,8 +47,28 @@ def point(rnd: random.Random):
     return (MFC[0] + rnd.uniform(-0.025, 0.025), MFC[1] + rnd.uniform(-0.03, 0.03))
 
 
-def instance(rnd: random.Random, n: int, m: int, road=None) -> PlanRequest:
-    """road 가 없으면 합성 도로 시간(직선 × 1.3 ÷ 5m/s), 있으면 카카오 실제 도로 시간(tools/kakao_road.py). 길이 없는 점(강·공원 안 등)은 다시 뽑는다."""
+def build_pool(rnd: random.Random, size: int, road):
+    """카카오 사용량 아끼기(2026-11-14): 점 size 개의 MFC → 점·점 ↔ 점 도로 시간을 한 번만 받아 두고 문제마다 그 안에서 뽑는다.
+
+    다중 목적지 길찾기는 하루 1,000건(요청 기준으로 보임 — 가격표 "요청 건당")이고 LAN 배차와 같은 키·같은 API 다. 호출 수 =
+    ceil(size/30) + size × ceil((size-1)/30) — 45 개면 2 + 90 = 92번. 문제 수를 늘려도 더 부르지 않는다(문제끼리 점을 나눠 쓴다).
+    """
+    req = instance(rnd, size, 2, road)
+    pts = [(d.at.lat, d.at.lng) for d in req.deliveries]
+    return pts, [d.direct_seconds for d in req.deliveries], req.between_seconds
+
+
+def instance(rnd: random.Random, n: int, m: int, road=None, pool=None) -> PlanRequest:
+    """road 가 없으면 합성 도로 시간(직선 × 1.3 ÷ 5m/s), 있으면 카카오 실제 도로 시간(tools/kakao_road.py). 길이 없는 점(강·공원 안 등)은 다시 뽑는다.
+    pool(build_pool) 이 있으면 그 점들 중 n 개를 뽑아 받아 둔 도로 시간을 쓴다(카카오를 더 부르지 않음)."""
+    if pool is not None:
+        pp, pd, pb = pool
+        idx = rnd.sample(range(len(pp)), min(n, len(pp)))
+        pts = [pp[i] for i in idx]
+        direct = [pd[i] for i in idx]
+        between = [[pb[i][j] for j in idx] for i in idx]
+        n = len(pts)
+        return _request(rnd, pts, direct, between, m)
     pts = [point(rnd) for _ in range(n)]
     if road is None:
         direct = [secs(MFC, p) for p in pts]
@@ -74,6 +94,10 @@ def instance(rnd: random.Random, n: int, m: int, road=None) -> PlanRequest:
             others = [pts[j] for j in range(n) if j != i]
             row = iter(road.seconds(pts[i], others))
             between.append([0 if i == j else next(row) for j in range(n)])
+    return _request(rnd, pts, direct, between, m)
+
+
+def _request(rnd: random.Random, pts, direct, between, m: int) -> PlanRequest:
     deliveries = [
         {
             "deliveryId": f"D{i}",
@@ -223,6 +247,8 @@ def main():
     ap.add_argument("--multistart", action="store_true", help="RouteFinder 를 출발점 n개로 풀고 가장 싼 답(app.routefinder_model.route_cost)")
     ap.add_argument("--road", choices=["synthetic", "kakao"], default="synthetic", help="도로 시간 — 합성(직선×1.3÷5m/s) 또는 카카오 실제")
     ap.add_argument("--kakao-key-file", default=None, help="카카오모빌리티 REST 키 파일(또는 환경변수 KAKAO_MOBILITY_KEY)")
+    ap.add_argument("--pool", type=int, default=0, help="카카오: 점 N 개 도로 시간을 한 번만 받고 문제마다 그 안에서 뽑기(build_pool). 0 = 문제마다 새 점")
+    ap.add_argument("--max-calls", type=int, default=150, help="카카오 호출 상한(LAN 배차와 하루 1,000건을 나눠 쓴다) — 넘기 전에 멈춤")
     ap.add_argument("--neighbors", type=int, default=0, help="OR-Tools 묶음 후보를 가까운 k 명으로(dispatch bundle-neighbors). 0 = 모든 조합")
     ap.add_argument("--ortools-limit", type=float, default=2.0, help="CP-SAT 시간 한도(초) — dispatch solver-time-limit 와 같게")
     args = ap.parse_args()
@@ -233,13 +259,20 @@ def main():
     if args.road == "kakao":
         from kakao_road import KakaoRoad
 
-        road = KakaoRoad.from_file(args.kakao_key_file)
+        road = KakaoRoad.from_file(args.kakao_key_file, max_calls=args.max_calls)
+    pool = None
+    if args.pool:
+        if road is None:
+            raise SystemExit("--pool 은 --road kakao 와 함께")
+        pool = build_pool(random.Random(args.seed + 1000), args.pool, road)
+        road.save()
+        print(f"점 {len(pool[0])}개 도로 시간 받음 — 카카오 호출 {road.calls}번(저장분 제외)")
     rnd = random.Random(args.seed)
     rows = []
     for _ in range(args.instances):
         n = rnd.randint(args.min_n, args.max_n)
         m = rnd.randint(max(2, n // 4), max(2, n // 2))
-        req = instance(rnd, n, m, road)
+        req = instance(rnd, n, m, road, pool)
         n = len(req.deliveries)
         t0 = time.perf_counter()
         ai = planner.plan(req, model)

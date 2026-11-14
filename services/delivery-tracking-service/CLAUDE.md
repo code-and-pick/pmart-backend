@@ -23,7 +23,7 @@
 ## 상태
 2026-11-13 DD-1 첫 묶음(계약 0.2.0, V2): 위치 배치 수신·내 마지막 위치·내부 라이더 위치(하나·여럿)·거리 행렬 구현. ETA·실시간 구독은 501(TR-1 — 사용자: 필요 없음/선택).
 - 위치: 단말 시각 순 저장, `domain/LocationQuality`(LOW_ACCURACY `pmart.tracking.low-accuracy-m` 기본 100m·TIME_SKEW 시계 앞섬 `max-clock-ahead` 1분 또는 시간 역전). 버리지 않고 표시만, 마지막 위치(`rider_latest_location`)는 더 늦은 정상 점만. 같은 라이더 업로드는 advisory lock 으로 줄 세움.
-- 거리 행렬 = 카카오모빌리티 길찾기(`infrastructure/KakaoMobilityClient`, ADR-0058) — 도착지 하나면 다중 출발지, 아니면 출발지마다 다중 목적지. **직선거리로 대신하지 않는다**: 키 없음·401/403 → 422 CONFIG_REQUIRED, 429 QUOTA_EXCEEDED, 5xx·시간 초과 503. 구간 결과 코드 ≠ 0 은 NO_ROUTE. 자동차 도로 기준(수단별 경로 없음).
+- 거리 행렬 = 카카오모빌리티 길찾기(`infrastructure/KakaoMobilityClient`, ADR-0058) — 도착지 하나면 다중 출발지, 아니면 출발지마다 다중 목적지. **직선거리로 대신하지 않는다**: 키 없음·401/403 → 422 CONFIG_REQUIRED, 429·400 code -10(카카오 일 사용량 초과의 실제 응답 — 2026-11-14) → 429 QUOTA_EXCEEDED(dispatch 가 quota-backoff 5분), 그 밖 4xx·5xx·시간 초과 503. 구간 결과 코드 ≠ 0 은 NO_ROUTE. 자동차 도로 기준(수단별 경로 없음).
 - 키 `pmart.tracking.kakao-mobility.rest-api-key` — pmart-config `delivery-tracking-service-<프로필>.yml` {cipher}(PC 1). 로컬은 환경변수로.
 - 아직 없음: 권역 밖(OUT_OF_ZONE) 판정, 갱신 지연 `RiderLocationStale`, 위치 보존 기간, ETA.
 

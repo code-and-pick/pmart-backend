@@ -196,6 +196,23 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         post(urlPathEqualTo("/v1/destinations/directions"))
             .willReturn(aResponse().withStatus(429)));
     assertThat(matrixStatus()).isEqualTo(429);
+    // 실제 일 사용량 초과 응답은 400 code -10 — 429 로(dispatch quota-backoff), 다른 400 은 그대로 503
+    kakao.stubFor(
+        post(urlPathEqualTo("/v1/destinations/directions"))
+            .willReturn(
+                aResponse()
+                    .withStatus(400)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"code\":-10,\"msg\":\"API limit has been exceeded\"}")));
+    assertThat(matrixStatus()).isEqualTo(429);
+    kakao.stubFor(
+        post(urlPathEqualTo("/v1/destinations/directions"))
+            .willReturn(
+                aResponse()
+                    .withStatus(400)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"code\":-2,\"msg\":\"bad request\"}")));
+    assertThat(matrixStatus()).isEqualTo(503);
   }
 
   private int matrixStatus() {

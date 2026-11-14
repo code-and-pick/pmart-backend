@@ -26,8 +26,8 @@ import tools.jackson.databind.JsonNode;
  * /v1/origins/directions}). 요약(summary)의 도로 거리(m)·소요시간(초)만 쓴다.
  *
  * <ul>
- *   <li>키 없음·401·403 → CONFIG_REQUIRED, 429 → QUOTA_EXCEEDED, 5xx·시간 초과·연결 오류 →
- *       DEPENDENCY_UNAVAILABLE. 직선거리로 대신하지 않는다(ADR-0058).
+ *   <li>키 없음·401·403 → CONFIG_REQUIRED, 429·400 code -10(일 사용량 초과) → QUOTA_EXCEEDED, 5xx·시간 초과·연결
+ *       오류 → DEPENDENCY_UNAVAILABLE. 직선거리로 대신하지 않는다(ADR-0058).
  *   <li>구간 결과 코드 ≠ 0(반경 밖·길 없음) → 그 칸만 NO_ROUTE.
  *   <li>키·좌표는 로그에 남기지 않는다(라이더·고객 위치).
  * </ul>
@@ -37,6 +37,9 @@ public class KakaoMobilityClient implements RoutePlanner {
 
   private static final Logger log = LoggerFactory.getLogger(KakaoMobilityClient.class);
   static final String KEY_PROPERTY = "pmart.tracking.kakao-mobility.rest-api-key";
+
+  /** 카카오모빌리티 오류 본문 code — API 사용량 초과. */
+  static final int QUOTA_CODE = -10;
 
   private final RestClient http;
   private final boolean configured;
@@ -129,7 +132,12 @@ public class KakaoMobilityClient implements RoutePlanner {
       throw new PmartException(ErrorCode.DEPENDENCY_UNAVAILABLE, "도로 거리를 지금 조회할 수 없습니다.");
     }
     int status = e.getStatusCode().value();
-    if (status == 429) {
+    // 일 사용량 초과는 429 가 아니라 400 {"code":-10,"msg":"API limit has been exceeded"} 로 온다(2026-11-13 PC 5
+    // 평가 중 실제
+    // 응답). 503 으로 두면 dispatch 가 30초마다 다시 부른다 — 429 로 바꿔 quota-backoff(5분)를 타게 한다.
+    boolean limit =
+        status == 400 && e.getBody() != null && e.getBody().path("code").asInt(0) == QUOTA_CODE;
+    if (status == 429 || limit) {
       log.warn("카카오모빌리티 사용량 소진(429)");
       throw new PmartException(
           "QUOTA_EXCEEDED",

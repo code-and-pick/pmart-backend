@@ -25,21 +25,22 @@ def _k(p) -> str:
 
 
 class KakaoRoad:
-    def __init__(self, key: str, pause: float = 0.1):
+    def __init__(self, key: str, pause: float = 0.1, max_calls: int | None = None):
         self._key = key
         self._pause = pause
         self.calls = 0
+        self._max_calls = max_calls  # 하루 1,000건(다중 목적지)을 LAN 배차와 나눠 쓴다 — 넘기 전에 멈춤
         CACHE.parent.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, list[int] | None] = json.loads(CACHE.read_text("utf-8")) if CACHE.exists() else {}
 
     @staticmethod
-    def from_file(path: str | None) -> KakaoRoad:
+    def from_file(path: str | None, max_calls: int | None = None) -> KakaoRoad:
         key = os.environ.get("KAKAO_MOBILITY_KEY")
         if not key and path:
             key = Path(path).read_text("utf-8").strip()
         if not key:
             raise SystemExit("카카오모빌리티 키가 없습니다(KAKAO_MOBILITY_KEY 또는 --kakao-key-file).")
-        return KakaoRoad(key)
+        return KakaoRoad(key, max_calls=max_calls)
 
     def save(self) -> None:
         CACHE.write_text(json.dumps(self._cache), "utf-8")
@@ -64,6 +65,9 @@ class KakaoRoad:
         return out
 
     def _call(self, origin, dests) -> list[list[int] | None]:
+        if self._max_calls is not None and self.calls >= self._max_calls:
+            self.save()
+            raise SystemExit(f"카카오 호출 상한 {self._max_calls}번에 닿아 멈춘다(받은 구간은 저장됨, --max-calls 로 조정).")
         body = {
             "origin": {"x": str(origin[1]), "y": str(origin[0])},
             "destinations": [{"x": str(d[1]), "y": str(d[0]), "key": str(i)} for i, d in enumerate(dests)],
