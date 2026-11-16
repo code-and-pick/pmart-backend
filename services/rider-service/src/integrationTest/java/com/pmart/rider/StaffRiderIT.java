@@ -113,6 +113,31 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
         .isEqualTo(rider);
   }
 
+  /** 쪽 넘김 — 2쪽부터 한 명씩 빠지던 것(건너뛸 수를 size+1 로 계산, PC 1 #17 검토). */
+  @Test
+  void staffSearchPagesWithoutSkippingRiders() {
+    List<String> mine = new java.util.ArrayList<>();
+    for (int i = 0; i < 5; i++) {
+      String rider = "RD-pg-" + UUID.randomUUID();
+      assertThat(signup(rider, phone(), "WALK").getStatusCode().value()).isEqualTo(201);
+      mine.add(rider);
+    }
+    List<String> all = ids(json(get(OPS, "/riders?vehicleType=WALK&size=50")));
+    assertThat(all).containsAll(mine);
+
+    List<String> paged = new java.util.ArrayList<>();
+    for (int page = 0; ; page++) {
+      JsonNode p = json(get(OPS, "/riders?vehicleType=WALK&size=2&page=" + page));
+      assertThat(p.path("page").asInt()).isEqualTo(page);
+      paged.addAll(ids(p));
+      if (!p.path("hasNext").asBoolean()) {
+        break;
+      }
+      assertThat(p.path("items")).hasSize(2);
+    }
+    assertThat(paged).containsExactlyElementsOf(all);
+  }
+
   @Test
   void riderOpsRestrictsWithVersionFromLookups() {
     String rider = "RD-st-" + UUID.randomUUID();
@@ -233,6 +258,10 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
   }
 
   private ResponseEntity<String> signup(String rider, String phone) {
+    return signup(rider, phone, "MOTORCYCLE");
+  }
+
+  private ResponseEntity<String> signup(String rider, String phone, String vehicleType) {
     return http.post()
         .uri("/riders/signups")
         .headers(
@@ -248,7 +277,7 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
                 "name",
                 "김라이더",
                 "vehicleType",
-                "MOTORCYCLE",
+                vehicleType,
                 "deliveryAreas",
                 List.of(Map.of("mfcId", "MFC-IT-1")),
                 "consents",
@@ -261,6 +290,12 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
     return "010"
         + String.format(
             "%08d", Math.abs(UUID.randomUUID().getLeastSignificantBits() % 100_000_000L));
+  }
+
+  private static List<String> ids(JsonNode page) {
+    List<String> out = new java.util.ArrayList<>();
+    page.path("items").forEach(n -> out.add(n.path("riderId").asString()));
+    return out;
   }
 
   private JsonNode json(ResponseEntity<String> r) {

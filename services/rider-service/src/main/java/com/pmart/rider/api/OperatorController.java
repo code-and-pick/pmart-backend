@@ -83,8 +83,8 @@ public class OperatorController implements OperatorApi {
                 blankToNull(operatingMfcId),
                 vehicleType == null ? null : vehicleType.getValue(),
                 "STATE_CHANGED_DESC".equals(sort)),
-            page,
-            size + 1);
+            size + 1, // 한 줄 더 읽어 다음 쪽이 있는지 본다
+            page * size); // 건너뛸 수는 쪽 크기 기준(page ≤ 1000, size ≤ 50 — 계약)
     boolean more = rows.size() > size;
     List<Rider> items = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(

@@ -62,10 +62,11 @@ public class StaffRiderService {
     this.clock = clock;
   }
 
-  public List<Rider> search(RiderStore.Search s, int page, int size) {
+  /** limit·offset 은 따로 받는다 — 다음 쪽 확인용으로 limit 을 하나 늘려도 건너뛸 수가 바뀌지 않게(PC 1 #17 검토). */
+  public List<Rider> search(RiderStore.Search s, int limit, int offset) {
     requireStaff();
     Instant now = clock.instant();
-    return store.search(s, now, size, page * size).stream().map(r -> r.asOf(now)).toList();
+    return store.search(s, now, limit, offset).stream().map(r -> r.asOf(now)).toList();
   }
 
   public Rider detail(String riderId) {
