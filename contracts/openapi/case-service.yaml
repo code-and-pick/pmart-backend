@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.10.0
+  version: 0.10.1
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -717,7 +717,12 @@ paths:
   /help-requests:
     post:
       tags: [intakes]
-      summary: 라이더 도움요청 (배송 중 문제·고객 연락 기록) → 사건 생성·연결
+      summary: '[사용 안 함] 라이더 도움요청 — 배송 수행 서비스가 받는다(R-4)'
+      deprecated: true
+      description: |
+        2026-11-16 정리(사용자 "진행해 줘"): **만들지 않는다.** 2026-11-13 사용자 결정 R-4 로 라이더 도움요청은 delivery-execution-service
+        `POST /api/v1/deliveries/{id}/help-requests` 가 받아 기록하고 `DeliveryIncidentRaised` 를 내며, case-service 는 그 사건으로 접수 건(RIDER_HELP)을 연다.
+        이 경로를 만들면 같은 도움요청이 두 곳에 기록된다. 계속 501.
       operationId: createHelpRequest
       x-pmart-user-types: [RIDER]
       parameters:
@@ -757,7 +762,8 @@ paths:
   /help-requests/{intakeId}:
     get:
       tags: [intakes]
-      summary: 도움요청 조회
+      summary: '[사용 안 함] 도움요청 조회 — delivery-execution GET /deliveries/{id}/help-requests/{requestId} 를 쓴다(R-4)'
+      deprecated: true
       operationId: getHelpRequest
       x-pmart-user-types: [RIDER, OPERATOR]
       x-pmart-user-types-note: "추정 — 구현 없음. 요청한 라이더 본인과 처리하는 운영자가 볼 것으로 봄"
