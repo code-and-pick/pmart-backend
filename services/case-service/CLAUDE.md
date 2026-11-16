@@ -62,7 +62,7 @@
   - **닫기는 열린 의무(OPEN·PARTIALLY_RESOLVED)가 있으면 409 OPEN_OBLIGATIONS**. 이력 OBLIGATION_CREATED·_ATTEMPTED·_RESOLVED, 이벤트 `ObligationCreated`·`ObligationResolved`(aggregate Obligation). 메모·근거는 표·이력에만(로그 금지).
 - **오배송 회수 진행(2026-11-16, 계약 0.8.1 — 사용자 "진행해", DD-2 연결)**: `CaseInboxService.onRecoveryProgress`. 기존 `deliveryEvents`(delivery.delivery.v1)에 `DeliveryCreated`·`ReturnPickedUp`·`ReturnDelivered` 를 더함(설정 변경 없음) — **purpose MISDELIVERY_RECOVERY + caseId 만**(일반 배송·고객 반품 회수는 버림, 사건이 없으면 로그만). 오배송 사건 refs 에 `recoveryDeliveryId`(한 번만), 이력 RECOVERY_CREATED·RECOVERY_PICKED_UP·RECOVERY_RETURNED. **상태 그대로 — 자동 종결 없음, 후속 처리(의무) 자동 해소 없음**(사람이 이력을 보고 처리).
 
-- **교대 인수인계(2026-11-16, 계약 0.9.0, V8 — 사용자 "진행해 줘", 업무 원문 BO-27 최대한 그대로)**: `ShiftHandoverService`·`ShiftHandoverStore`(표 `shift_handover`·`shift_handover_item`), `IntakesController`(CS 접수·도움요청 접수는 아직 501), `CaseInboxService.handOver`.
+- **교대 인수인계(2026-11-16, 계약 0.9.0, V8 — 사용자 "진행해 줘", 업무 원문 BO-27 최대한 그대로)**: `ShiftHandoverService`·`ShiftHandoverStore`(표 `shift_handover`·`shift_handover_item`), `IntakesController`(도움요청 접수는 만들지 않음 — CS 접수는 0.12.0), `CaseInboxService.handOver`.
   - 작성 `POST /shift-handovers`: 전임 본인(또는 관리자 — 전임 부재, fromOperatorId), group DELIVERY_OPS·ORDER_OPS 필수·centerId 선택, 건마다 **다음 조치 필수**·확인 기한 선택. 건은 열려 있고 **전임이 맡았고** 그 group 이어야(422 NOT_HANDOVERABLE), 다른 진행 중 인계서에 든 건 409 CASE_IN_HANDOVER(부분 유일 색인). 담당은 아직 그대로, 이력 HANDOVER_REQUESTED, 팀 열린 건 스냅샷(teamSnapshot ≤200).
   - 수락 `…/acceptances`: **후임 본인만**(관리자도 못 함), excludedCaseIds 는 EXCLUDED(전임 그대로 — 미인수). 그사이 바뀐 건 SKIPPED_CHANGED, 후임이 못 다루면 SKIPPED_NOT_ALLOWED, 나머지 ACCEPTED(담당 이동·이력 HANDED_OVER "전임 → 후임: 다음 조치"·CaseAssigned). COMPLETED + `ShiftHandoverCompleted`(openCases = 받은 건, notReceivedCases).
   - 취소 `…/cancellations`(수락 전, 전임·관리자 — 항목 CANCELLED 로 풀림), 조회·목록(전임·후임·관리자, `unreceived=true` = 수락 전이거나 빠진 건 있음 — 원문 "미인수 상신"). 기한 값 없음, **근무 확인 없음**(본사 근무표 없음 — 역할만), 알림 없음.
@@ -71,12 +71,12 @@
 
 - **오배송 재발송 연결(2026-11-16, 계약 0.11.2 — 사용자 "진행해 줘", PC 5·PC 1 재발송 #39~#41 과 잇기)**: `CaseInboxService.onReshipmentCreated`(`onRecoveryProgress` 에서 나눔). 배송 토픽 `DeliveryCreated` 중 purpose **MISDELIVERY_RESHIPMENT** + caseId → 오배송 사건 refs `reshipmentDeliveryId`(한 번만)·이력 RESHIPMENT_CREATED, 상태 그대로. 재발송 작업 사건(mfc.fulfillment.v1 — WorkAccepted·LineShortageReported 등, caseId 실림)은 구독하지 않는다(바인딩 변경 필요) — 진행은 bff 사건함의 재발송 배송 상태로 본다.
 
-## 다른 서비스의 요청
-- MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
-- **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).
-
 - **CS 접수(2026-11-16, 계약 0.12.0, V10 cs_intake — 사용자 "그래 일단 그대로 진행해", BO-11)**: `CsIntakeService`·`domain/CsIntakeRules`·`CsIntakeStore`, `IntakesController`. 상담원(CS_AGENT)·관리자가 전화·채팅·메일 연락을 남긴다(PHONE·CHAT·EMAIL 만, 연동 없음). **접수 ≠ 명령**(취소·환불 안 함, 동의는 기록만).
   - 회원만(customerRef 필수). subjectRef(주문)를 주면 order `GET /orders/lookups/{id}` 를 직원 토큰으로(`OrderClient.staffOrder` — customerId 만 읽음) → 없음 422 ORDER_NOT_FOUND, 다른 고객 422 CUSTOMER_ORDER_MISMATCH.
   - **본인 확인 방법 필수**(ORDER_DETAILS_MATCH — 주문 필요, APP_SIGNED_IN_CHAT — CHAT 만, OTHER — note 필수). 고객이 말한 값은 저장 안 함. **대리(PROXY)는 표시만** — 클레임을 막지 않는다(대리 정책 없음, 화면 경고).
   - 새 건 → 문의(origin **STAFF_INTAKE**): 고객 목록에서 빠지고 고객 상세 404, 답변해도 **InquiryAnswered 없음**. linkCaseId → 그 건(사건함에서 볼 수 있는 건 또는 문의 건)에 연결, 이력 CS_INTAKE_LINKED, 새 사건 없음.
   - 목록 `GET /cs-intakes?caseId|customerRef|subjectRef`(하나 이상), 문의 목록·상세에 channel·callerRelation(LEFT JOIN cs_intake). 이벤트 없음, 요약·메모 로그 금지.
+
+## 다른 서비스의 요청
+- MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
+- **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).
