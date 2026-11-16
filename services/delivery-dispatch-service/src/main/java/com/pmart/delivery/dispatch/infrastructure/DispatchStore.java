@@ -365,6 +365,16 @@ public class DispatchStore {
         deliveryId);
   }
 
+  /** 다시 배송 결제됨(ADR-0065 4단계) — 이미 풀렸으면 0. */
+  public int markReleased(String deliveryId, Instant now) {
+    return jdbc.update(
+        "UPDATE delivery SET released_at = ?, updated_at = ? WHERE delivery_id = ? AND released_at"
+            + " IS NULL",
+        ts(now),
+        ts(now),
+        deliveryId);
+  }
+
   /** 회수 배송 좌표: 픽업 = 회수지, 도착 = MFC, 거리·시간 = 회수지 → MFC(예상 배달료 기준). */
   public void saveRecoveryGeo(
       String deliveryId,

@@ -90,21 +90,32 @@ public class RecoveryHandler {
       log.info("오배송 확인 {} → 다시 배송 {}(원래 배송 {}, 고객 잘못)", caseId, id, originId);
       return;
     }
+    startRecovery(caseId, origin, now);
+  }
+
+  /**
+   * 잘못 간 상품을 MFC 로 가져오는 회수 배송(DD-2) — 같은 사건이면 하나(이미 있으면 그 ID). 호출자 트랜잭션·원래 배송 행 잠금 아래. 오배송 확인 사건과,
+   * 고객 잘못 다시 배송을 결제하지 않았을 때(ADR-0065 4단계) 쓴다.
+   *
+   * @return 회수 배송 ID
+   */
+  public String startRecovery(String caseId, DeliveryRow origin, Instant now) {
     String deliveryId = recoveryDeliveryId(caseId);
     if (!store.insertRecovery(
-        deliveryId, origin.orderId(), origin.mfcId(), caseId, originId, now)) {
-      log.info("오배송 확인 {} — 회수 배송 {} 이미 있음", caseId, deliveryId);
-      return;
+        deliveryId, origin.orderId(), origin.mfcId(), caseId, origin.deliveryId(), now)) {
+      log.info("오배송 {} — 회수 배송 {} 이미 있음", caseId, deliveryId);
+      return deliveryId;
     }
     // 원래 라이더는 뺀다(ADR-0052 "인근 다른 라이더") — 시도의 제외 라이더로
     store.insertAttempt("ATT-" + UUID.randomUUID(), deliveryId, "AUTO", origin.riderId(), now);
     events.created(store.delivery(deliveryId).orElseThrow(), List.of());
     log.info(
-        "오배송 확인 {} → 회수 배송 {} 배차 시작(원래 배송 {}, MFC {}, 원래 라이더 제외)",
+        "오배송 {} → 회수 배송 {} 배차 시작(원래 배송 {}, MFC {}, 원래 라이더 제외)",
         caseId,
         deliveryId,
-        originId,
+        origin.deliveryId(),
         origin.mfcId());
+    return deliveryId;
   }
 
   static String redeliveryDeliveryId(String caseId) {

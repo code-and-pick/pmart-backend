@@ -3,8 +3,12 @@ package com.pmart.delivery.dispatch.api;
 import com.pmart.common.web.PmartException;
 import com.pmart.delivery.dispatch.api.generated.InternalApi;
 import com.pmart.delivery.dispatch.api.generated.model.Assignment;
+import com.pmart.delivery.dispatch.api.generated.model.CancelRedeliveryRequest;
+import com.pmart.delivery.dispatch.api.generated.model.CreateDispatchRequest202Response;
 import com.pmart.delivery.dispatch.api.generated.model.GetRiderActiveDeliveries200Response;
+import com.pmart.delivery.dispatch.api.generated.model.ReleaseRedeliveryRequest;
 import com.pmart.delivery.dispatch.application.DeliveryQueries;
+import com.pmart.delivery.dispatch.application.RedeliveryCommands;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,10 +21,42 @@ public class InternalController implements InternalApi {
 
   private final DeliveryQueries queries;
   private final DispatchViews views;
+  private final RedeliveryCommands redelivery;
 
-  public InternalController(DeliveryQueries queries, DispatchViews views) {
+  public InternalController(
+      DeliveryQueries queries, DispatchViews views, RedeliveryCommands redelivery) {
     this.queries = queries;
     this.views = views;
+    this.redelivery = redelivery;
+  }
+
+  /** 오배송 다시 배송 결제됨 → 배차 풀기(ADR-0065 4단계, orchestration). 같은 요청은 같은 결과(행 상태로 멱등). */
+  @Override
+  public ResponseEntity<CreateDispatchRequest202Response> releaseRedelivery(
+      String idempotencyKey,
+      String xSourceSystem,
+      String deliveryId,
+      ReleaseRedeliveryRequest req) {
+    return ResponseEntity.ok(
+        applied(idempotencyKey, redelivery.release(deliveryId, req.getCaseId())));
+  }
+
+  /** 오배송 다시 배송 결제 안 됨 → 픽업 전 취소 + MFC 회수(ADR-0065 4단계). resultId = 회수 배송 ID. */
+  @Override
+  public ResponseEntity<CreateDispatchRequest202Response> cancelRedelivery(
+      String idempotencyKey, String xSourceSystem, String deliveryId, CancelRedeliveryRequest req) {
+    return ResponseEntity.ok(
+        applied(
+            idempotencyKey,
+            redelivery.cancel(deliveryId, req.getCaseId(), req.getReason().getValue())));
+  }
+
+  private static CreateDispatchRequest202Response applied(String requestId, String resultId) {
+    return new CreateDispatchRequest202Response()
+        .status(CreateDispatchRequest202Response.StatusEnum.APPLIED)
+        .requestId(requestId)
+        .resultId(resultId)
+        .occurredAt(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC));
   }
 
   @Override

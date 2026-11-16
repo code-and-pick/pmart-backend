@@ -2117,6 +2117,150 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 redelivery2))
         .isZero(); // 결제 전 배차 없음
+
+    // 4단계 — 결제 안 됨(30분·거절): 다시 배송 픽업 전 취소 + MFC 회수 배송
+    String origin3 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-rd3-" + UUID.randomUUID());
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    engine.tick();
+    Instant done3 = completedOrigin(mfc, r1, origin3);
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/riders/" + r1 + "/location-at"))
+            .withQueryParam("at", equalTo(done3.toString()))
+            .willReturn(
+                json(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "lat",
+                        37.512,
+                        "lng",
+                        127.0365,
+                        "recordedAt",
+                        done3.toString(),
+                        "quality",
+                        "GOOD"))));
+    String case3 = "CASE-" + UUID.randomUUID();
+    kafka
+        .send(
+            "platform.case.v1",
+            case3,
+            EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+                .from("case-service")
+                .aggregate("Case", case3, 1)
+                .payload(
+                    Map.of(
+                        "caseId",
+                        case3,
+                        "deliveryId",
+                        origin3,
+                        "riderId",
+                        r1,
+                        "confirmedBy",
+                        "OP-CS",
+                        "confirmedAt",
+                        Instant.now().toString(),
+                        "fault",
+                        "CUSTOMER",
+                        "resolution",
+                        "REDELIVER",
+                        "redeliveryDestinationId",
+                        "RDD-FAR"))
+                .buildJson())
+        .join();
+    awaitSql("SELECT count(*) FROM delivery WHERE case_id = '" + case3 + "'");
+    String redelivery3 =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE case_id = ?", String.class, case3);
+    engine.tick();
+    assertThat(outbox(redelivery3, "RedeliveryPaymentRequired").path("payload").path("fee").asInt())
+        .isEqualTo(9000);
+    JsonNode cancelled =
+        body(redeliveryCommand(redelivery3, "redelivery-cancellations", case3, "TIMED_OUT"));
+    String recovery3 = cancelled.path("resultId").asString();
+    assertThat(cancelled.path("status").asString()).isEqualTo("APPLIED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, redelivery3))
+        .isEqualTo("CANCELLED_BEFORE_PICKUP");
+    assertThat(
+            outbox(redelivery3, "DeliveryCancelledBeforePickup")
+                .path("payload")
+                .path("reason")
+                .asString())
+        .isEqualTo("MISDELIVERY_REDELIVERY_TIMED_OUT");
+    Map<String, Object> rec =
+        jdbc.queryForMap(
+            "SELECT type, purpose, origin_delivery_id FROM delivery WHERE delivery_id = ?",
+            recovery3);
+    assertThat(rec.get("type")).isEqualTo("RETURN");
+    assertThat(rec.get("purpose")).isEqualTo("MISDELIVERY_RECOVERY");
+    assertThat(rec.get("origin_delivery_id")).isEqualTo(origin3);
+    // 같은 요청 다시 → 같은 회수 배송, 결제 풀기는 409
+    assertThat(
+            body(redeliveryCommand(redelivery3, "redelivery-cancellations", case3, "TIMED_OUT"))
+                .path("resultId")
+                .asString())
+        .isEqualTo(recovery3);
+    assertThat(
+            redeliveryCommand(redelivery3, "redelivery-releases", case3, null)
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+
+    // 4단계 — 결제됨: 배차 풀기 → 근처 라이더(원래 기사도 됨, 일반 배달료), 약속 = 풀린 때 + 50분
+    locations(Map.of(r1, new double[] {37.5121, 127.0366}));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.destinations[0].lat", equalTo("37.512")))
+            .willReturn(json(matrix(List.of(List.of(30, 20))))));
+    assertThat(
+            body(redeliveryCommand(redelivery2, "redelivery-releases", case2, null))
+                .path("resultId")
+                .asString())
+        .isEqualTo(redelivery2);
+    engine.tick();
+    Map<String, Object> released =
+        jdbc.queryForMap(
+            "SELECT released_at, promised_at FROM delivery WHERE delivery_id = ?", redelivery2);
+    assertThat(released.get("released_at")).isNotNull();
+    assertThat(released.get("promised_at")).isNotNull();
+    Map<String, Object> paidOffer =
+        jdbc.queryForMap(
+            "SELECT rider_id, fee FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            redelivery2);
+    assertThat(paidOffer.get("rider_id")).isEqualTo(r1);
+    assertThat((Integer) paidOffer.get("fee")).isPositive();
+    assertThat(
+            redeliveryCommand(redelivery2, "redelivery-cancellations", case2, "DECLINED")
+                .getStatusCode()
+                .value())
+        .isEqualTo(409); // 이미 풀림
+  }
+
+  /** orchestration → dispatch 다시 배송 결제 명령(내부). 4xx 도 응답으로. */
+  ResponseEntity<String> redeliveryCommand(
+      String deliveryId,
+      String command,
+      String caseId,
+      @org.jspecify.annotations.Nullable String reason) {
+    Map<String, Object> b = new java.util.LinkedHashMap<>();
+    b.put("caseId", caseId);
+    if (reason != null) {
+      b.put("reason", reason);
+    }
+    return http.post()
+        .uri("/internal/deliveries/{id}/" + command, deliveryId)
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .header("X-Source-System", "order-orchestration-service")
+        .body(b)
+        .exchange(
+            (req, res) ->
+                ResponseEntity.status(res.getStatusCode())
+                    .body(
+                        new String(
+                            res.getBody().readAllBytes(),
+                            java.nio.charset.StandardCharsets.UTF_8)));
   }
 
   void misdeliveryConfirmed(
