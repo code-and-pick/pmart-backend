@@ -125,7 +125,7 @@ public class CaseInboxView {
       i.put("linkedRefs", refs);
 
       List<Map<String, Object>> linked = new ArrayList<>();
-      for (String d : ids(c, "DELIVERY", "deliveryId")) {
+      for (String d : ids(c, "DELIVERY", Set.of("deliveryId", "recoveryDeliveryId"))) {
         used.add(Source.EXECUTION);
         if (!deliveryOk.containsKey(d)) {
           JsonNode n = fetch(token, Source.EXECUTION, "/deliveries/{id}", d, failed, deliveryOk, d);
@@ -143,7 +143,7 @@ public class CaseInboxView {
                 deliveryOk.get(d),
                 now));
       }
-      for (String o : ids(c, "ORDER", "orderId")) {
+      for (String o : ids(c, "ORDER", Set.of("orderId"))) {
         used.add(Source.ORDER);
         if (!orderOk.containsKey(o)) {
           JsonNode n = fetch(token, Source.ORDER, "/orders/lookups/{id}", o, failed, orderOk, o);
@@ -224,15 +224,18 @@ public class CaseInboxView {
     return e;
   }
 
-  /** 사건이 가리키는 배송·주문 ID(대상이 그 종류면 subjectRef, 그 밖 refs). */
-  private static List<String> ids(JsonNode c, String subjectType, String refType) {
+  /**
+   * 사건이 가리키는 배송·주문 ID(대상이 그 종류면 subjectRef, 그 밖 refs — 배송은 오배송 회수 배송 recoveryDeliveryId 도, 0.5.1).
+   */
+  private static List<String> ids(JsonNode c, String subjectType, Set<String> refTypes) {
     List<String> out = new ArrayList<>();
     if (subjectType.equals(text(c, "subjectType")) && text(c, "subjectRef") != null) {
       out.add(text(c, "subjectRef"));
     }
     for (JsonNode r : c.path("refs")) {
       String id = text(r, "refId");
-      if (refType.equals(text(r, "refType")) && id != null && !out.contains(id)) {
+      String type = text(r, "refType");
+      if (type != null && refTypes.contains(type) && id != null && !out.contains(id)) {
         out.add(id);
       }
     }

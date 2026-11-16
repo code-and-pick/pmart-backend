@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.8.0
+  version: 0.8.1
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -881,7 +881,7 @@ components:
         refs:
           type: array
           x-added-in: '2026-11-16'
-          description: '관련 참조(0.4.0) — incidentId·deliveryId·orderId·riderId 등. RIDER_HELP·DELIVERY_INCIDENT 는 incidentId(= deliveryId:requestId)·deliveryId 가 늘 있고, 0.4.1(2026-11-16)부터 requestId(도움요청 단건 GET /deliveries/{deliveryId}/help-requests/{requestId})도 — 그 전에 열린 사건은 없다. RIDER_LOCATION_STALE·MISDELIVERY 에는 incidentId 가 없다. 0.6.0(2026-11-16): 같은 종류·같은 대상(subjectRef)의 닫힌 사건이 있을 때 새로 열린 사건에 previousCaseId(가장 최근 닫힌 것 하나) — 근거가 뒤집혔으면 그 사건을 재개(POST …/reopenings)'
+          description: '관련 참조(0.4.0) — incidentId·deliveryId·orderId·riderId 등. RIDER_HELP·DELIVERY_INCIDENT 는 incidentId(= deliveryId:requestId)·deliveryId 가 늘 있고, 0.4.1(2026-11-16)부터 requestId(도움요청 단건 GET /deliveries/{deliveryId}/help-requests/{requestId})도 — 그 전에 열린 사건은 없다. RIDER_LOCATION_STALE·MISDELIVERY 에는 incidentId 가 없다. 0.6.0(2026-11-16): 같은 종류·같은 대상(subjectRef)의 닫힌 사건이 있을 때 새로 열린 사건에 previousCaseId(가장 최근 닫힌 것 하나) — 근거가 뒤집혔으면 그 사건을 재개(POST …/reopenings) 0.8.1(2026-11-16 — DD-2 연결): 오배송 사건에 회수 배송이 생기면 recoveryDeliveryId(회수 배송 번호), 이력에 RECOVERY_CREATED·RECOVERY_PICKED_UP·RECOVERY_RETURNED(상태는 그대로, 자동 종결 없음)'
           items:
             type: object
             properties:

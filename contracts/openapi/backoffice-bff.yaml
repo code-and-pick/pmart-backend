@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.5.0
+  version: 0.5.1
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -161,7 +161,7 @@ paths:
       description: |
         0.5.0(2026-11-16 사용자 "1번부터 진행해"): case-service `GET /cases` 를 **호출한 직원의 토큰**으로 읽고(보이는 범위·정렬은 case 가 정한다 —
         state 비우면 열린 사건, 우선순위·기한 순, CLOSED 는 닫힌 시각 최근 순), 사건마다 연결된 배송(subjectType DELIVERY 또는 refs deliveryId)·
-        주문(subjectType ORDER 또는 refs orderId)의 **지금 상태**를 원천에서 읽어 `linked` 에 붙인다(delivery-execution `GET /deliveries/{id}`,
+        주문(subjectType ORDER 또는 refs orderId)의 **지금 상태**를(0.5.1 — 오배송 사건의 회수 배송 refs recoveryDeliveryId 도 배송으로) 원천에서 읽어 `linked` 에 붙인다(delivery-execution `GET /deliveries/{id}`,
         order `GET /orders/lookups/{id}` — 같은 ID 는 한 번만). 상태를 합치거나 해석하지 않는다.
         - 역할: 직원이면 누구나 부를 수 있고 case 의 판정(403·보이는 범위)을 그대로 따른다. case 가 응답하지 않으면 200 + 빈 items + unavailableSources.
         - 연결 원천 실패·403(예: 그 직원이 주문을 못 보는 역할)은 그 칸만 state null·confidence UNKNOWN 이고 unavailableSources 에 원천 이름. 404 는 state null·freshness CURRENT(없음).

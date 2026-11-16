@@ -173,6 +173,16 @@ public class CaseStore {
         caseId);
   }
 
+  /** 참조 바꾸기(회수 배송 번호 붙이기 — 2026-11-16 DD-2 연결). 상태는 그대로. */
+  public void replaceRefs(String caseId, List<Ref> refs, Instant at) {
+    jdbc.update(
+        "UPDATE case_record SET refs = ?::jsonb, version = version + 1, updated_at = ?"
+            + " WHERE case_id = ?",
+        mapper.writeValueAsString(refs),
+        ts(at),
+        caseId);
+  }
+
   /** 같은 종류·같은 대상의 가장 최근 닫힌 사건(0.6.0 — 새 사건의 previousCaseId). */
   public Optional<String> latestClosed(String kind, String subjectRef) {
     return jdbc

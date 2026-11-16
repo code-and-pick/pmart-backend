@@ -322,6 +322,60 @@ public class CaseInboxService {
     log.info("사건 열림 {} {} {}", c.caseId(), kind, subjectRef);
   }
 
+  /**
+   * 오배송 회수 진행(2026-11-16 사용자 "진행해" — DD-2 와 잇기): delivery-dispatch·execution 의 회수 배송 사건(purpose
+   * MISDELIVERY_RECOVERY, caseId 실림)을 그 오배송 사건에 — 회수 배송 번호를 refs {@code recoveryDeliveryId} 로,
+   * 생성·회수함·매장 반납을 이력으로. 사건 상태는 바꾸지 않고 자동으로 닫지 않는다(사건은 알림·기록). 후속 처리(의무)도 자동으로 해소하지 않는다. 다른 회수(고객
+   * 반품)·일반 배송은 버린다. 그 사건이 없으면 무시(로그만).
+   */
+  public void onRecoveryProgress(EventEnvelope e) {
+    JsonNode p = e.payload();
+    if (!"MISDELIVERY_RECOVERY".equals(text(p, "purpose"))) {
+      return;
+    }
+    String caseId = text(p, "caseId");
+    if (caseId == null) {
+      log.warn("회수 진행 {} — caseId 없음, 무시", e.eventType());
+      return;
+    }
+    var found = store.lock(caseId);
+    if (found.isEmpty()) {
+      log.warn("회수 진행 {} — 사건 {} 없음, 무시", e.eventType(), caseId);
+      return;
+    }
+    CaseRow c = found.get();
+    Instant now = now();
+    String recovery = text(p, "deliveryId");
+    if (recovery != null
+        && c.refs().stream()
+            .noneMatch(
+                r -> "recoveryDeliveryId".equals(r.refType()) && recovery.equals(r.refId()))) {
+      List<Ref> refs = new ArrayList<>(c.refs());
+      refs.add(new Ref("recoveryDeliveryId", recovery));
+      store.replaceRefs(caseId, refs, now);
+    } else {
+      store.touch(caseId, now);
+    }
+    String action;
+    String note;
+    switch (e.eventType()) {
+      case "DeliveryCreated" -> {
+        action = "RECOVERY_CREATED";
+        note = "회수 배송 " + orDash(recovery);
+      }
+      case "ReturnPickedUp" -> {
+        action = "RECOVERY_PICKED_UP";
+        note = "회수함 " + orDash(recovery);
+      }
+      default -> {
+        action = "RECOVERY_RETURNED";
+        note = "매장 반납 " + orDash(text(p, "mfcId"));
+      }
+    }
+    store.history(caseId, now, SYSTEM, action, null, null, note);
+    log.info("회수 진행 {} — 사건 {}", action, caseId);
+  }
+
   // ---------------------------------------------------------------- 직원 명령
 
   /** R-7: 오배송 확인 기록 → MISDELIVERY 사건 + MisdeliveryConfirmed(회수 배차 DD-2). */

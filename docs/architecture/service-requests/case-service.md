@@ -90,6 +90,7 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **case 가 할 것**: 상담원·지원센터의 오배송 확인 기록 API(배송 ID, 잘못 간 곳 — 주소·좌표는 개인정보라 사건에는 참조만, 확인 근거 사진·통화 메모 참조)와 사건 하나(예 `MisdeliveryConfirmed` — 이름·필드는 case 가 계약으로 정하고 delivery 에 알림). R-5 오배송 컴플레인(`RiderComplaintRecorded` MISDELIVERY)과는 별개 — 컴플레인은 라이더 검토용, 이 사건은 실물 회수용(같은 화면에서 둘 다 기록해도 된다).
 - **delivery 가 할 것(받은 뒤)**: dispatch 회수 배송(픽업지 = 오배송지, 도착지 = MFC) 만들기·인근 라이더 탐색(DD-2), execution 회수 수행(지금 501). MFC 새 발송(원주소)은 일반 배차로 따로.
 
+- **회수 진행 연결(2026-11-16, 보낸 영역 backoffice — case 0.8.1)**: dispatch·execution 의 회수 배송 사건(DeliveryCreated·ReturnPickedUp·ReturnDelivered, purpose MISDELIVERY_RECOVERY·caseId)을 받아 오배송 사건에 회수 배송 번호(recoveryDeliveryId)와 이력. 상태·후속 처리는 자동으로 바꾸지 않는다. delivery 쪽 할 일 없음(이미 caseId 를 싣는다).
 ## 배차 실패 → 사건함 (2026-11-16, 보낸 영역 backoffice — 사용자 요청 "배차 실패도 사건함으로")
 - **사용자 결정(같은 날)**: 받을 범위 **중간안** — 시스템 장애(자동 재배차 없음)는 첫 실패에, 라이더 없음·반복 거절·응답 만료(10분마다 자동 재배차)는 같은 배송의 **두 번째 실패부터**. 담당 **지원센터(RIDER_OPS)**, 처리 기한 **10분**(표시만).
 - 근거: 업무 원문 Delivery §3.6(배차 지연 시 MFC 관리자·고객센터 안내 — 상담원이 배송 쪽 사건을 볼 수 있다), 사건함 공통 결정(배송 쪽 = RIDER_OPS). 한계: MFC 관리자는 사건함이 없다(배차 취소는 MFC 백오피스).

@@ -1039,4 +1039,116 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .contains("OBLIGATION_CREATED", "OBLIGATION_RESOLVED");
     assertThat(send("GET", md, "/obligations/" + pickupId, null).status()).isEqualTo(404);
   }
+
+  /**
+   * 오배송 회수 진행(2026-11-16 — DD-2 연결): 회수 배송(purpose MISDELIVERY_RECOVERY) 생성·회수함·매장 반납을 그 오배송 사건에 —
+   * refs recoveryDeliveryId 와 이력, 상태 그대로(자동 종결 없음). 일반 배송·고객 반품 회수는 버린다.
+   */
+  @Test
+  void misdeliveryRecoveryProgressIsRecordedOnTheCase() throws Exception {
+    String deliveryId = "DLV-RC-" + UUID.randomUUID().toString().substring(0, 8);
+    String recovery = "RCV-" + deliveryId;
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String caseId =
+        send(
+                "POST",
+                cs,
+                "/cases",
+                Map.of(
+                    "kind", "MISDELIVERY",
+                    "subjectType", "DELIVERY",
+                    "subjectRef", deliveryId,
+                    "summary", "옆 동 전달"))
+            .body()
+            .path("caseId")
+            .asString();
+    String dispatchSvc = "delivery-dispatch-service";
+    String execution = "delivery-execution-service";
+    List<Map<String, Object>> lines = List.of(Map.of("orderLineId", "OL-1", "qty", 1));
+
+    // 버릴 것: 일반 배송 생성(caseId 가 실려 있어도 purpose 없음), 고객 반품 회수 반납
+    Map<String, Object> plain = new LinkedHashMap<>();
+    plain.put("deliveryId", "DLV-PLAIN-" + deliveryId);
+    plain.put("orderId", "ORD-1");
+    plain.put("shipmentId", "SHP-1");
+    plain.put("type", "FORWARD");
+    plain.put("mfcId", "MFC-1");
+    plain.put("dropAddressRef", "ADDR-REF-1");
+    plain.put("caseId", caseId);
+    publish("delivery.delivery.v1", "DeliveryCreated", "DLV-PLAIN", plain, dispatchSvc);
+    publish(
+        "delivery.delivery.v1",
+        "ReturnDelivered",
+        recovery,
+        Map.of(
+            "returnPickupId", "RP-0",
+            "lines", lines,
+            "deliveredAt", "2026-11-16T03:00:00Z",
+            "purpose", "CLAIM_RETURN",
+            "caseId", caseId),
+        execution);
+
+    // 회수 배송 생성 → 회수함 → 매장 반납
+    Map<String, Object> created = new LinkedHashMap<>(plain);
+    created.put("deliveryId", recovery);
+    created.put("type", "RETURN");
+    created.put("purpose", "MISDELIVERY_RECOVERY");
+    created.put("originDeliveryId", deliveryId);
+    publish("delivery.delivery.v1", "DeliveryCreated", recovery, created, dispatchSvc);
+    publish(
+        "delivery.delivery.v1",
+        "ReturnPickedUp",
+        recovery,
+        Map.of(
+            "returnPickupId", "RP-1",
+            "deliveryId", recovery,
+            "lines", lines,
+            "pickedUpAt", "2026-11-16T03:10:00Z",
+            "purpose", "MISDELIVERY_RECOVERY",
+            "caseId", caseId,
+            "originDeliveryId", deliveryId),
+        execution);
+    publish(
+        "delivery.delivery.v1",
+        "ReturnDelivered",
+        recovery,
+        Map.of(
+            "returnPickupId", "RP-1",
+            "deliveryId", recovery,
+            "mfcId", "MFC-1",
+            "lines", lines,
+            "deliveredAt", "2026-11-16T03:30:00Z",
+            "purpose", "MISDELIVERY_RECOVERY",
+            "caseId", caseId,
+            "originDeliveryId", deliveryId),
+        execution);
+
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'RECOVERY_RETURNED'",
+                caseId),
+        n -> n > 0);
+    JsonNode detail = send("GET", ops, "/cases/" + caseId, null).body();
+    assertThat(detail.path("state").asString()).as("상태 그대로 — 자동 종결 없음").isEqualTo("OPEN");
+    assertThat(detail.path("refs").toString()).contains("recoveryDeliveryId", recovery);
+    assertThat(detail.path("refs").toString()).doesNotContain("DLV-PLAIN");
+    assertThat(detail.path("history").findValuesAsString("action"))
+        .containsSubsequence("OPENED", "RECOVERY_CREATED", "RECOVERY_PICKED_UP", "RECOVERY_RETURNED");
+    assertThat(
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action LIKE 'RECOVERY_%'",
+                caseId))
+        .as("고객 반품 회수·일반 배송은 버림")
+        .isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT jsonb_array_length(refs) FROM case_record WHERE case_id = ?",
+                Integer.class,
+                caseId))
+        .as("회수 배송 번호는 한 번만")
+        .isEqualTo(2);
+  }
 }

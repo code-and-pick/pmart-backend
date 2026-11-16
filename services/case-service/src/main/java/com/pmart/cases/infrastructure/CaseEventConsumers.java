@@ -14,7 +14,8 @@ import org.springframework.context.annotation.Configuration;
  * <ul>
  *   <li>{@code deliveryEvents-in-0} = delivery.delivery.v1 — {@code
  *       DeliveryIncidentRaised}(R-4)·{@code DispatchFailed}(배차 실패, 2026-11-16 — delivery-dispatch 가
- *       같은 토픽에 낸다). 같은 토픽의 다른 배송 사건은 버린다.
+ *       같은 토픽에 낸다), 오배송 회수 진행 {@code DeliveryCreated·ReturnPickedUp·ReturnDelivered}(purpose
+ *       MISDELIVERY_RECOVERY 만 — DD-2, 2026-11-16). 같은 토픽의 다른 배송 사건은 버린다.
  *   <li>{@code trackingEvents-in-0} = delivery.tracking.v1 — {@code RiderLocationStale} 만(R-6).
  *   <li>{@code sagaEvents-in-0} = order.saga.v1, {@code paymentEvents-in-0} = order.payment.v1 —
  *       사가·결제 이상(R-3, 2026-11-16). 처음 켤 때 latest(지난 이상은 처리 대기 BO-12 에 이미 보인다).
@@ -28,7 +29,9 @@ class CaseEventConsumers {
     return consumers.of(
         e -> DELIVERY_TYPES.contains(e.eventType()),
         e -> {
-          if ("DispatchFailed".equals(e.eventType())) {
+          if (RECOVERY_TYPES.contains(e.eventType())) {
+            cases.onRecoveryProgress(e);
+          } else if ("DispatchFailed".equals(e.eventType())) {
             cases.onDispatchFailed(e);
           } else {
             cases.onDeliveryIncident(e);
@@ -56,7 +59,17 @@ class CaseEventConsumers {
   }
 
   private static final Set<String> DELIVERY_TYPES =
-      Set.of("DeliveryIncidentRaised", "DispatchFailed");
+      Set.of(
+          "DeliveryIncidentRaised",
+          "DispatchFailed",
+          "DeliveryCreated",
+          "ReturnPickedUp",
+          "ReturnDelivered");
+
+  /** 오배송 회수 진행(DD-2, 2026-11-16) — purpose MISDELIVERY_RECOVERY 만 사건에 잇는다. */
+  private static final Set<String> RECOVERY_TYPES =
+      Set.of("DeliveryCreated", "ReturnPickedUp", "ReturnDelivered");
+
   private static final Set<String> SAGA_TYPES =
       Set.of("ReconciliationRequired", "CompensationExecuted");
   private static final Set<String> PAYMENT_TYPES =

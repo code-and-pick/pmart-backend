@@ -60,6 +60,7 @@
   - 해소 `POST /obligations/{id}/resolutions`(evidence system·ref 필수 — 확인하지 않고 기록): FULFILLED·ATTEMPTED 는 담당 팀(DELIVERY_OPS = RIDER_OPS, CS = **CS_AGENT** — 상담원의 첫 쓰기 권한, ORDER_OPS = 관리자)·관리자, **WAIVED·FAILED 는 관리자만**(note 필수). ATTEMPTED 는 시도 기록(note 필수, 상태 그대로, ObligationResolved 없음). 부분 해소 — 의무에 있는 수량·금액만 받고(없는 값·빠진 값 400) 넘으면 409 QTY_EXCEEDS_OBLIGATION, 모두 채우면 RESOLVED. 끝난 의무 409.
   - 목록 `GET /obligations?owner=&state=&caseId=`(볼 수 있는 사건의 것만, 기본 열린 것, 기한·오래된 순), 단건(사건을 못 보면 404). 사건 상세 obligations·openObligationCount, 목록 openObligationCount.
   - **닫기는 열린 의무(OPEN·PARTIALLY_RESOLVED)가 있으면 409 OPEN_OBLIGATIONS**. 이력 OBLIGATION_CREATED·_ATTEMPTED·_RESOLVED, 이벤트 `ObligationCreated`·`ObligationResolved`(aggregate Obligation). 메모·근거는 표·이력에만(로그 금지).
+- **오배송 회수 진행(2026-11-16, 계약 0.8.1 — 사용자 "진행해", DD-2 연결)**: `CaseInboxService.onRecoveryProgress`. 기존 `deliveryEvents`(delivery.delivery.v1)에 `DeliveryCreated`·`ReturnPickedUp`·`ReturnDelivered` 를 더함(설정 변경 없음) — **purpose MISDELIVERY_RECOVERY + caseId 만**(일반 배송·고객 반품 회수는 버림, 사건이 없으면 로그만). 오배송 사건 refs 에 `recoveryDeliveryId`(한 번만), 이력 RECOVERY_CREATED·RECOVERY_PICKED_UP·RECOVERY_RETURNED. **상태 그대로 — 자동 종결 없음, 후속 처리(의무) 자동 해소 없음**(사람이 이력을 보고 처리).
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
