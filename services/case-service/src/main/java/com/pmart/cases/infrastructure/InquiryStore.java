@@ -88,7 +88,11 @@ public class InquiryStore {
    * @return size+1 개까지 — 호출 쪽이 다음 쪽 여부를 판단
    */
   public List<InquiryRow> page(
-      @Nullable String customerId, @Nullable String status, @Nullable String cursor, int size) {
+      @Nullable String customerId,
+      @Nullable String status,
+      @Nullable String orderId,
+      @Nullable String cursor,
+      int size) {
     StringBuilder sql = new StringBuilder("SELECT " + COLS + " FROM cs_inquiry WHERE 1=1");
     List<Object> args = new ArrayList<>();
     if (customerId != null) {
@@ -98,6 +102,10 @@ public class InquiryStore {
     if (status != null) {
       sql.append(" AND status = ?");
       args.add(status);
+    }
+    if (orderId != null) {
+      sql.append(" AND order_id = ?");
+      args.add(orderId);
     }
     if (cursor != null) {
       sql.append(

@@ -46,8 +46,11 @@ public class InquiriesController implements InquiriesApi {
 
   @Override
   public ResponseEntity<ListInquiries200Response> listInquiries(
-      Integer size, @Nullable String cursor, @Nullable InquiryStatus status) {
-    var page = service.list(status == null ? null : status.getValue(), cursor, size);
+      Integer size,
+      @Nullable String cursor,
+      @Nullable InquiryStatus status,
+      @Nullable String orderId) {
+    var page = service.list(status == null ? null : status.getValue(), orderId, cursor, size);
     var out = new ListInquiries200Response();
     out.setItems(page.items().stream().map(InquiriesController::summary).toList());
     var p = new ListCases200ResponsePage();

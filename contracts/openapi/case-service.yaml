@@ -454,13 +454,14 @@ paths:
     get:
       tags: [inquiries]
       summary: 문의 목록 (고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN = 전체)
-      description: 최근 접수 순. 고객 토큰은 본인 문의만, 운영자는 역할 CS_AGENT·OPERATOR_ADMIN 만(그 밖 403 — OPERATOR_ADMIN 은 보기만, 0.4.2). status 로 거른다.
+      description: 최근 접수 순. 고객 토큰은 본인 문의만, 운영자는 역할 CS_AGENT·OPERATOR_ADMIN 만(그 밖 403 — OPERATOR_ADMIN 은 보기만, 0.4.2). status 로 거른다. 0.5.0(2026-11-16 통합 조회) — orderId 로도 거른다(완전 일치, 고객은 여전히 본인 것만).
       operationId: listInquiries
       x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
         - { name: status, in: query, schema: { $ref: '#/components/schemas/InquiryStatus' } }
+        - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: '주문 ID 완전 일치(0.5.0 — 백오피스 통합 조회)', x-added-in: '2026-11-16' }
       responses:
         '200':
           description: OK

@@ -40,5 +40,7 @@
   - 표 `dispatch_failure_watch` 에 배송별 실패 횟수를 센다(이벤트 `attempts` 는 재배차 시도마다 다시 세서 못 쓴다). reason `SYSTEM_FAILURE`(자동 재배차 없음)는 첫 실패에, 그 밖은 두 번째 실패부터 `DISPATCH_FAILED` 사건. 배송마다 열린 사건 하나, 그 뒤 실패는 RECURRED 이력. 닫은 뒤 다시 실패하면 바로 새 사건(이미 두 번 넘음).
   - 배송 쪽 종류(DELIVERY_OPS) — RIDER_OPS 가 집고, CS_AGENT 는 보기, 기한 10분(표시만). 배차가 뒤에 성공해도 자동으로 닫지 않는다.
 
+- **문의를 주문으로 찾기(2026-11-16, 계약 0.5.0, V6 색인)**: `GET /inquiries?orderId=`(완전 일치) — 백오피스 통합 조회(bff)가 쓴다. 권한은 목록 그대로(고객 본인·CS_AGENT·OPERATOR_ADMIN).
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

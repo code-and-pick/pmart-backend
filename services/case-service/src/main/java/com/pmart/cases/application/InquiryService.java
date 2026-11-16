@@ -120,7 +120,8 @@ public class InquiryService {
   }
 
   /** 고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN = 전체(관리자는 보기만 — 2026-11-16 사용자 (가)). */
-  public Page list(@Nullable String status, @Nullable String cursor, int size) {
+  public Page list(
+      @Nullable String status, @Nullable String orderId, @Nullable String cursor, int size) {
     PmartPrincipal p = principal();
     String customerId = null;
     if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
@@ -128,7 +129,7 @@ public class InquiryService {
     } else if (!canRead(p)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "문의 목록을 볼 권한이 없습니다.");
     }
-    List<InquiryRow> rows = store.page(customerId, status, cursor, size);
+    List<InquiryRow> rows = store.page(customerId, status, blankToNull(orderId), cursor, size);
     boolean more = rows.size() > size;
     List<InquiryRow> items = more ? rows.subList(0, size) : rows;
     return new Page(List.copyOf(items), more ? items.get(items.size() - 1).inquiryId() : null);

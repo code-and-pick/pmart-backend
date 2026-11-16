@@ -189,6 +189,16 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
         getRequestedFor(urlPathEqualTo("/api/v1/orders/ORD-MINE"))
             .withHeader("Authorization", equalTo("Bearer " + meTok)));
 
+    // 0.5.0 통합 조회 — 주문으로 거른다(상담원·관리자)
+    String agent = TestJwt.operator("cs-2", List.of("CS_AGENT"), List.of());
+    Res byOrder = send("GET", agent, "/inquiries?orderId=ORD-MINE", null, null);
+    assertThat(byOrder.status()).isEqualTo(200);
+    assertThat(byOrder.body().path("items").findValuesAsString("inquiryId"))
+        .contains(ok.body().path("inquiryId").asString());
+    assertThat(byOrder.body().path("items").findValuesAsString("orderId")).containsOnly("ORD-MINE");
+    assertThat(send("GET", agent, "/inquiries?orderId=ORD-NONE", null, null).body().path("items"))
+        .isEmpty();
+
     Res notMine =
         send(
             "POST",
