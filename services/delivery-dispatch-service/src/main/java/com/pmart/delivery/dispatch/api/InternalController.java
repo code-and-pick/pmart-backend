@@ -5,7 +5,9 @@ import com.pmart.delivery.dispatch.api.generated.InternalApi;
 import com.pmart.delivery.dispatch.api.generated.model.Assignment;
 import com.pmart.delivery.dispatch.api.generated.model.CancelRedeliveryRequest;
 import com.pmart.delivery.dispatch.api.generated.model.CreateDispatchRequest202Response;
+import com.pmart.delivery.dispatch.api.generated.model.GetDeliveryRoutePoints200Response;
 import com.pmart.delivery.dispatch.api.generated.model.GetRiderActiveDeliveries200Response;
+import com.pmart.delivery.dispatch.api.generated.model.LatLng;
 import com.pmart.delivery.dispatch.api.generated.model.ReleaseRedeliveryRequest;
 import com.pmart.delivery.dispatch.application.DeliveryQueries;
 import com.pmart.delivery.dispatch.application.RedeliveryCommands;
@@ -67,6 +69,26 @@ public class InternalController implements InternalApi {
     }
     // 내부 조회에만 주문·센터(orchestration 재발송 사가가 배송으로 주문을 찾는다 — 2026-11-16)
     return ResponseEntity.ok(views.assignment(d).orderId(d.orderId()).mfcId(d.mfcId()));
+  }
+
+  /** TR-1: tracking ETA 계산용 픽업지·도착지 좌표(서비스 간, 저장·로그 금지 — no-store). */
+  @Override
+  public ResponseEntity<GetDeliveryRoutePoints200Response> getDeliveryRoutePoints(
+      String deliveryId) {
+    var d = queries.assignment(deliveryId);
+    Double pickupLat = d.pickupLat() != null ? d.pickupLat() : d.mfcLat();
+    Double pickupLng = d.pickupLat() != null ? d.pickupLng() : d.mfcLng();
+    if (pickupLat == null || pickupLng == null || d.dropLat() == null || d.dropLng() == null) {
+      throw PmartException.notFound("ROUTE_POINTS_NOT_READY", "배송 좌표가 아직 준비되지 않았습니다.");
+    }
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new GetDeliveryRoutePoints200Response()
+                .deliveryId(deliveryId)
+                .pickup(new LatLng().lat(pickupLat).lng(pickupLng))
+                .drop(new LatLng().lat(d.dropLat()).lng(d.dropLng()))
+                .pickupToDropS(d.dropDurationS()));
   }
 
   @Override

@@ -18,6 +18,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param purgeInterval 보존 기간 지난 기록 지우기 주기
  * @param watchMaxAge 배정 시각부터 이만큼 지나면 끝 사건(완료·실패·취소)이 없어도 그 배송의 위치 감시를 끝낸다 — 사용자 결정 2026-11-14 "5시간이
  *     지나면 감시 종료"(끝 사건을 놓치거나 정정만 된 배송이 영원히 감시되지 않게)
+ * @param eta 라이더 ETA 계산(TR-1) — {@link Eta}
+ * @param dispatchBaseUrl 배송 좌표(픽업지·도착지) 내부 조회 주소
  * @param locationAtWindow 정한 시각의 위치 점 찾기(DD-2 오배송 회수지 — 원래 라이더가 완료를 누른 곳) 앞뒤 허용 폭(설계값 3분 — 위치는 보통
  *     10~30초마다 온다)
  */
@@ -31,7 +33,9 @@ public record TrackingProperties(
     @Nullable Duration retention,
     @Nullable Duration purgeInterval,
     @Nullable Duration watchMaxAge,
-    @Nullable Duration locationAtWindow) {
+    @Nullable Duration locationAtWindow,
+    @Nullable Eta eta,
+    @Nullable String dispatchBaseUrl) {
 
   public TrackingProperties {
     lowAccuracyM = lowAccuracyM == null ? 100.0 : lowAccuracyM;
@@ -44,6 +48,23 @@ public record TrackingProperties(
     locationAtWindow = locationAtWindow == null ? Duration.ofMinutes(3) : locationAtWindow;
     kakaoMobility =
         kakaoMobility == null ? new KakaoMobility(null, null, null, null, null) : kakaoMobility;
+    eta = eta == null ? new Eta(null, null) : eta;
+    dispatchBaseUrl =
+        dispatchBaseUrl == null || dispatchBaseUrl.isBlank()
+            ? "http://delivery-dispatch-service:8404"
+            : dispatchBaseUrl;
+  }
+
+  /**
+   * 라이더 ETA(TR-1, 2026-11-16). 둘 다 있어야 켜진다 — 카카오 길찾기 사용량이 늘기 때문에 값이 없으면 계산하지 않는다(CONFIG 로 켬).
+   *
+   * @param interval 한 배송의 ETA 를 다시 계산하는 간격(라이더당 길찾기 한 번)
+   * @param minChange 직전에 낸 도착 예정과 이만큼 넘게 달라질 때만 {@code DeliveryEtaUpdated} 를 낸다(처음은 항상)
+   */
+  public record Eta(@Nullable Duration interval, @Nullable Duration minChange) {
+    public boolean enabled() {
+      return interval != null && minChange != null;
+    }
   }
 
   /**

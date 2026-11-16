@@ -210,7 +210,7 @@
 | `DeliveryStatusCorrected` | delivery-execution | order, audit, notification | deliveryId, from, to, operatorId, basis | 관리자 정정 | ① |
 | `RiderEarningRecorded` | delivery-execution | BI, (회계 어댑터) | deliveryId, riderId, earningId, feeBasis, rateVersion, status, calculable, payoutDate | 수행료 근거(환불과 독립) — 완료 때 확정 대기·5시간 뒤 확정, 실패·취소는 산정 불가(2026-11-13) | ① |
 | `SettlementStateChanged` | delivery-execution | notification | riderId, periodId, state | 정산 상태 | ② |
-| `DeliveryEtaUpdated` | delivery-tracking | order(고객 조회), mfc-fulfillment(점원), notification(지연) | deliveryId, etaPickup?, etaDrop, basis, staleness | ETA 갱신 | ① |
+| `DeliveryEtaUpdated` | delivery-tracking(2026-11-16 TR-1 구현 — `pmart.tracking.eta.*` 설정 있을 때만) | order(고객 조회), mfc-fulfillment(점원), notification(지연) — 모두 구독 전 | deliveryId, etaPickup?, etaDrop, basis(RIDER_TO_PICKUP+PICKUP_TO_DROP / RIDER_TO_DROP), staleness, computedAt | ETA 갱신(처음·min-change 넘게 바뀔 때) | ① |
 | `RiderLocationStale` | delivery-tracking(2026-11-14 구현, 토픽 delivery.tracking.v1) | case(지원센터 알림 — 구독 전, R-6). dispatch 는 받지 않는다(사용자 2026-11-15: 자동 배정 해제 없음) | riderId, deliveryId, lastSeenAt, detectedAt | 위치 단절 — 진행 중 배송(배정 ~ 완료 전)이 있는 라이더 위치가 3분 넘게 없음, 끊김 한 번에 한 번(사용자 2026-11-14) | ① |
 
 ## 8. Platform & Support

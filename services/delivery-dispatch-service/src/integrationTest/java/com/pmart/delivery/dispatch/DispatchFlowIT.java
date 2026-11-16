@@ -312,6 +312,17 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 .retrieve()
                 .toEntity(String.class));
     assertThat(internal.path("riderId").asString()).isEqualTo(rider);
+    // TR-1 tracking ETA — 픽업지(MFC)·도착지 좌표, 저장 금지
+    ResponseEntity<String> points =
+        http.get()
+            .uri("/internal/deliveries/{id}/route-points", deliveryId)
+            .header("X-Source-System", "delivery-tracking-service")
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(points.getHeaders().getCacheControl()).contains("no-store");
+    assertThat(body(points).path("pickup").path("lat").isNumber()).isTrue();
+    assertThat(body(points).path("drop").path("lat").isNumber()).isTrue();
+    assertThat(body(points).path("pickupToDropS").asInt()).isPositive();
     // 라이더가 맡은 배송(rider-auth 정지 라이더 로그인 끊기 시점, 0.3.3)
     JsonNode active =
         body(

@@ -51,13 +51,16 @@ import tools.jackson.databind.ObjectMapper;
       "spring.data.redis.url=",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.tracking.stale-check-interval=PT1H", // 시험이 직접 부른다
-      "pmart.tracking.purge-interval=PT1H"
+      "pmart.tracking.purge-interval=PT1H",
+      "pmart.tracking.eta-check-interval=PT1H", // 시험이 직접 부른다(TR-1)
+      "pmart.tracking.eta.interval=PT0S",
+      "pmart.tracking.eta.min-change=PT1M"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock(
-    @ConfigureWireMock(
-        name = "kakao",
-        baseUrlProperties = "pmart.tracking.kakao-mobility.base-url"))
+@EnableWireMock({
+  @ConfigureWireMock(name = "kakao", baseUrlProperties = "pmart.tracking.kakao-mobility.base-url"),
+  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.tracking.dispatch-base-url")
+})
 class TrackingFlowIT extends PostgresKafkaContainerSupport {
 
   /** Redis health indicator 가 포함되므로 실제 Redis 컨테이너(ServiceBootIT 와 같음). */
@@ -74,6 +77,11 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("kakao")
   WireMockServer kakao;
+
+  @InjectWireMock("dispatch")
+  WireMockServer dispatchApi;
+
+  @Autowired com.pmart.delivery.tracking.application.EtaService eta;
 
   RestClient http;
 
@@ -569,6 +577,91 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
             + deliveryId
             + "' AND state = 'CLOSED'");
+  }
+
+  /**
+   * TR-1: 진행 중 배송의 ETA — 픽업 전 라이더 → 픽업지 + 픽업지 → 도착지, 픽업 뒤 라이더 → 도착지. 처음은 내고, 1분 넘게 달라질 때만 다시 낸다.
+   */
+  @Test
+  void etaIsPublishedBeforeAndAfterPickupOnlyWhenItMoves() {
+    String rider = "RD-eta-" + UUID.randomUUID();
+    String delivery = "DLV-eta-" + UUID.randomUUID();
+    upload(
+        rider, "k-" + rider, List.of(point(37.5000, 127.0300, 10, Instant.now().minusSeconds(5))));
+    deliveryEvent(
+        "DeliveryAssigned",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND state = 'ACTIVE'");
+    dispatchApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                urlPathEqualTo("/api/v1/internal/deliveries/" + delivery + "/route-points"))
+            .willReturn(
+                json(
+                    Map.of(
+                        "deliveryId",
+                        delivery,
+                        "pickup",
+                        Map.of("lat", 37.5010, "lng", 127.0310),
+                        "drop",
+                        Map.of("lat", 37.5100, "lng", 127.0400),
+                        "pickupToDropS",
+                        600))));
+    kakao.stubFor(
+        post(urlPathEqualTo("/v1/destinations/directions"))
+            .willReturn(json(Map.of("routes", List.of(route("0", 0, 300, 120))))));
+    Instant before = Instant.now();
+    eta.tick();
+    List<Map<String, Object>> events = etaEvents(delivery);
+    assertThat(events).hasSize(1);
+    JsonNode first = json((String) events.get(0).get("payload")).path("payload");
+    assertThat(first.path("basis").asString()).isEqualTo("RIDER_TO_PICKUP+PICKUP_TO_DROP");
+    assertThat(Instant.parse(first.path("etaPickup").asString()))
+        .isBetween(before.plusSeconds(119), Instant.now().plusSeconds(121));
+    assertThat(Instant.parse(first.path("etaDrop").asString()))
+        .isBetween(before.plusSeconds(719), Instant.now().plusSeconds(721));
+    // 그대로면 다시 내지 않는다
+    eta.tick();
+    assertThat(etaEvents(delivery)).hasSize(1);
+    // 픽업 → 라이더 → 도착지(2분) — 10분 넘게 당겨져 다시 낸다
+    deliveryEvent(
+        "PickupCompleted",
+        delivery,
+        Map.of("deliveryId", delivery, "riderId", rider, "pickedUpAt", Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND picked_up_at IS NOT NULL");
+    eta.tick();
+    List<Map<String, Object>> after = etaEvents(delivery);
+    assertThat(after).hasSize(2);
+    JsonNode second = json((String) after.get(1).get("payload")).path("payload");
+    assertThat(second.path("basis").asString()).isEqualTo("RIDER_TO_DROP");
+    assertThat(second.has("etaPickup")).isFalse();
+    assertThat(after.get(1).get("topic")).isEqualTo("delivery.tracking.v1");
+    // 좌표는 한 번만 읽는다
+    dispatchApi.verify(
+        1,
+        com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
+            urlPathEqualTo("/api/v1/internal/deliveries/" + delivery + "/route-points")));
+  }
+
+  private List<Map<String, Object>> etaEvents(String delivery) {
+    return jdbc.queryForList(
+        "SELECT payload::text AS payload, topic FROM outbox_event WHERE aggregateid = ? AND type ="
+            + " 'DeliveryEtaUpdated' ORDER BY created_at, id",
+        delivery);
   }
 
   private void deliveryEvent(String type, String deliveryId, Map<String, Object> payload) {

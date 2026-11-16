@@ -185,6 +185,87 @@ public class LocationStore {
         Timestamp.from(before));
   }
 
+  /** 픽업 완료(PickupCompleted·회수 ReturnPickedUp) — 이제 ETA 는 라이더 → 도착지. */
+  public void markPickedUp(String deliveryId, Instant at) {
+    jdbc.update(
+        "UPDATE rider_active_delivery SET picked_up_at = COALESCE(picked_up_at, ?) WHERE"
+            + " delivery_id = ?",
+        Timestamp.from(at),
+        deliveryId);
+  }
+
+  /** ETA 계산 대상 — 감시 중이고 마지막 계산이 before 보다 이른 배송(라이더 순). */
+  public record EtaRow(
+      String deliveryId,
+      String riderId,
+      @Nullable Instant pickedUpAt,
+      @Nullable Double pickupLat,
+      @Nullable Double pickupLng,
+      @Nullable Double dropLat,
+      @Nullable Double dropLng,
+      @Nullable Integer pickupToDropS,
+      @Nullable Instant etaDrop) {}
+
+  public List<EtaRow> etaCandidates(Instant before, int limit) {
+    return jdbc.query(
+        "SELECT delivery_id, rider_id, picked_up_at, pickup_lat, pickup_lng, drop_lat, drop_lng,"
+            + " pickup_to_drop_s, eta_drop FROM rider_active_delivery WHERE state = 'ACTIVE' AND"
+            + " (eta_checked_at IS NULL OR eta_checked_at < ?) ORDER BY rider_id, delivery_id"
+            + " LIMIT ?",
+        (rs, n) ->
+            new EtaRow(
+                rs.getString("delivery_id"),
+                rs.getString("rider_id"),
+                instantOrNull(rs, "picked_up_at"),
+                rs.getObject("pickup_lat", Double.class),
+                rs.getObject("pickup_lng", Double.class),
+                rs.getObject("drop_lat", Double.class),
+                rs.getObject("drop_lng", Double.class),
+                rs.getObject("pickup_to_drop_s", Integer.class),
+                instantOrNull(rs, "eta_drop")),
+        Timestamp.from(before),
+        limit);
+  }
+
+  public void saveRoutePoints(
+      String deliveryId,
+      double pickupLat,
+      double pickupLng,
+      double dropLat,
+      double dropLng,
+      @Nullable Integer pickupToDropS) {
+    jdbc.update(
+        "UPDATE rider_active_delivery SET pickup_lat = ?, pickup_lng = ?, drop_lat = ?, drop_lng ="
+            + " ?, pickup_to_drop_s = ? WHERE delivery_id = ?",
+        pickupLat,
+        pickupLng,
+        dropLat,
+        dropLng,
+        pickupToDropS,
+        deliveryId);
+  }
+
+  public void etaChecked(String deliveryId, Instant now) {
+    jdbc.update(
+        "UPDATE rider_active_delivery SET eta_checked_at = ? WHERE delivery_id = ?",
+        Timestamp.from(now),
+        deliveryId);
+  }
+
+  /** 새 도착 예정을 적고 사건 버전을 올려 돌려준다(아직 감시 중일 때만 — 아니면 null). */
+  public @Nullable Integer etaPublished(String deliveryId, Instant etaDrop, Instant now) {
+    List<Integer> v =
+        jdbc.queryForList(
+            "UPDATE rider_active_delivery SET eta_drop = ?, eta_checked_at = ?, eta_version ="
+                + " eta_version + 1 WHERE delivery_id = ? AND state = 'ACTIVE' RETURNING"
+                + " eta_version",
+            Integer.class,
+            Timestamp.from(etaDrop),
+            Timestamp.from(now),
+            deliveryId);
+    return v.isEmpty() ? null : v.get(0);
+  }
+
   /** 완료·실패·픽업 전 취소 — 닫는다(늦게 온 배정 사건이 다시 열지 않게 행은 남김). */
   public void closeDelivery(String deliveryId, Instant at) {
     jdbc.update(

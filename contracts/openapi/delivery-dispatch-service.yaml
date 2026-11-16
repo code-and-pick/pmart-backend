@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.4.3
+  version: 0.4.4
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -16,6 +16,7 @@ info:
     0.4.1(2026-11-16, 오배송 재발송 — ADR-0052 결정 4, 사용자 "새상품 재배차 서비스 넣어" → "전부 PR로"): MFC 재발송 출고(DispatchRequested·ShipmentReady 의 purpose MISDELIVERY_RESHIPMENT·caseId)로 만든 배송은 type RESHIPMENT·purpose MISDELIVERY_RESHIPMENT·caseId. 배송 약속 = 오배송 확인(같은 사건 회수 배송이 생긴 때, 없으면 이 배송이 생긴 때) + 50분. 배차는 일반 배송과 같다(주소·배송 방식은 주문 그대로).
       내부 배정 조회 `GET /internal/deliveries/{id}/assignment` 에 orderId·mfcId(orchestration 재발송 사가가 배송으로 주문을 찾는다).
     0.4.2(2026-11-16, ADR-0065 고객 잘못): MisdeliveryConfirmed fault CUSTOMER·REDELIVER → 다시 배송(type RESHIPMENT, purpose MISDELIVERY_REDELIVERY, shipment `RDL-<caseId>`) — 픽업 = 잘못 둔 곳(회수와 같은 방법), 도착 = 상담원이 기록한 실제 집(order 내부 조회 → 좌표).
+      0.4.4(같은 날, TR-1): 내부 `GET /internal/deliveries/{id}/route-points`(픽업지·도착지 좌표, tracking ETA 계산 전용).
       0.4.3(같은 날, 4단계): 결제 대기 다시 배송을 orchestration 이 `POST /internal/deliveries/{id}/redelivery-releases`(결제됨 → 배차, 약속 = 풀린 때 + 50분) 또는 `…/redelivery-cancellations`(30분·거절 → 픽업 전 취소 + MFC 회수 배송)로 끝낸다.
       잘못 둔 곳 ↔ 실제 집 **직선 200m 미만**: 원래 기사에게 먼저 제안(배달료 0, 반경 상관없음) — 못 받거나 거절·만료면 근처 다른 라이더(일반 표). **200m 이상**: 결제 대기 — `RedeliveryPaymentRequired`(9,000원) 사건을 내고 결제 확인까지 배차하지 않는다(orchestration·고객 앱 결제는 4단계). 배달리스트에 안 나온다.
     알뜰배달(deliveryMode BUNDLED)은 같은 MFC 의 알뜰배달 1~3건을 한 라이더에게 묶어 제안한다(원문 §5.3, 사용자 2026-11-13 '묶음 배정으로 진행'). 묶음의 제안은 배송마다 한 줄이고 bundleId·stopSequence(방문 순서)가 같다 — 하나를 수락·거절하면 묶음 전체에 적용된다. 한집·예약배달은 묶지 않는다.
@@ -433,6 +434,34 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
+  /internal/deliveries/{deliveryId}/route-points:
+    get:
+      tags: [internal]
+      summary: "[tracking→dispatch] 배송의 픽업지·도착지 좌표 (ETA 계산 — TR-1, 0.4.4)"
+      description: |
+        delivery-tracking 이 ETA(DeliveryEtaUpdated)를 계산할 때만 쓴다(서비스 간 전용, 응답 저장 금지 — 진행 중 배송 동안만, 로그 금지).
+        pickup = 회수지·잘못 둔 곳(회수·다시 배송) 또는 MFC, drop = 고객 배송지(회수는 MFC), pickupToDropS = 픽업지 → 도착지 도로 시간(배차가 잰 값).
+        좌표가 아직 준비되지 않았으면 404 ROUTE_POINTS_NOT_READY.
+      operationId: getDeliveryRoutePoints
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveryId, pickup, drop]
+                properties:
+                  deliveryId: { type: string }
+                  pickup: { $ref: '#/components/schemas/LatLng' }
+                  drop: { $ref: '#/components/schemas/LatLng' }
+                  pickupToDropS: { type: integer, minimum: 0 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /internal/deliveries/{deliveryId}/assignment:
     get:
       tags: [internal]
@@ -450,6 +479,12 @@ paths:
 
 components:
   schemas:
+    LatLng:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
     DeliveryType:
       type: string
       enum: [FORWARD, RETURN, RESHIPMENT]
