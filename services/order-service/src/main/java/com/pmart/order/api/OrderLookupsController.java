@@ -137,6 +137,32 @@ public class OrderLookupsController implements OrderLookupsApi {
             .deliveryNote(r.deliveryNote()));
   }
 
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.RedeliveryDestination>
+      recordRedeliveryDestination(
+          String orderId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.order.api.generated.model.RedeliveryDestinationRequest body) {
+    var d =
+        service.recordRedeliveryDestination(
+            orderId,
+            idempotencyKey,
+            body.getDeliveryId(),
+            body.getRoadAddress(),
+            body.getDetailAddress(),
+            body.getPostalCode(),
+            body.getReason());
+    // 직원 응답에는 주소를 되돌려 주지 않는다
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(
+            new com.pmart.order.api.generated.model.RedeliveryDestination()
+                .destinationId(d.destinationId())
+                .orderId(d.orderId())
+                .deliveryId(d.deliveryId())
+                .recordedAt(d.recordedAt().atOffset(ZoneOffset.UTC)));
+  }
+
   private static StaffOrderSummary summary(StaffOrderService.Row r) {
     StaffSummary s = r.summary();
     return new StaffOrderSummary()

@@ -115,7 +115,11 @@ public class RefundService {
    * 결품 부분 환불 의도(ADR-0045, 호출자 트랜잭션 안). 금액 = 원주문 단가 × 수량 합, 봉투값·배달팁 없음(부분 취소). RefundIntentCreated 도
    * 함께.
    */
-  RefundRow createShortageRefund(ClaimRow c, long itemAmount, Instant now) {
+  /**
+   * @param itemAmount 상품값(단가 × 수량)
+   * @param amount 실제 환불액(공제 뒤 — ADR-0065)
+   */
+  RefundRow createShortageRefund(ClaimRow c, long itemAmount, long amount, Instant now) {
     String id = "RFI-" + UUID.randomUUID();
     RefundRow r =
         new RefundRow(
@@ -125,7 +129,7 @@ public class RefundService {
             c.paymentAttemptId(),
             "PARTIAL",
             "OUT_OF_STOCK",
-            itemAmount,
+            amount,
             itemAmount,
             0,
             0,

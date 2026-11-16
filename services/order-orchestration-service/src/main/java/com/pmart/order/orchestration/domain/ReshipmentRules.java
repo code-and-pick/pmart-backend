@@ -22,6 +22,9 @@ public final class ReshipmentRules {
   public static final String APPLY_SHORTAGE = "APPLY_SHORTAGE";
   public static final String REQUEST_REFUND = "REQUEST_REFUND";
 
+  /** 고객 잘못 오배송 회수 후 환불의 공제(원) — 업무 원문 Delivery §9.2 "회수재배송 9000원", ADR-0065(사용자 "상품값 − 9,000원"). */
+  public static final long CUSTOMER_FAULT_FEE = 9_000;
+
   /** 재고 부족으로 줄여 다시 예약하는 최대 횟수(설계값 — 재고가 그사이 계속 줄어드는 경우의 상한). */
   public static final int MAX_RESERVE_ATTEMPTS = 5;
 

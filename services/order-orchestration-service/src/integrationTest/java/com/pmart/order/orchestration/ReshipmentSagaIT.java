@@ -128,6 +128,24 @@ class ReshipmentSagaIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1"))));
   }
 
+  /** ADR-0065: 고객 잘못 + 환불 → 재고·작업 없이 전 줄 SHORTAGE, 환불에 회수비 9,000원 공제. */
+  @Test
+  void customerFaultRefundDeductsRecoveryFee() throws Exception {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String deliveryId = "DLV-" + UUID.randomUUID();
+    String caseId = "CASE-" + UUID.randomUUID();
+    orderOf(deliveryId, o);
+    participants(o);
+    confirmed(caseId, deliveryId, Instant.now(), "CUSTOMER", "REFUND");
+    ReshipmentRow s = await(caseId, "COMPLETED");
+    assertThat(s.mode()).isEqualTo("CUSTOMER_REFUND");
+    parts.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations")));
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds"))
+            .withRequestBody(matchingJsonPath("$.feeDeduction", WireMock.equalTo("9000")))
+            .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1"))));
+  }
+
   void confirmed(String caseId, String deliveryId, Instant at) {
     String json =
         EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")

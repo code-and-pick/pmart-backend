@@ -90,13 +90,15 @@ public class ReshipmentSagaService {
     }
     String caseId = p.path("caseId").asString("");
     String deliveryId = p.path("deliveryId").asString("");
-    // ADR-0065(2026-11-16): 고객 잘못은 이 사가가 아니다(다시 배송·9,000원 결제·상품값 − 9,000원 환불은 따로). 라이더·시스템 잘못(또는 귀책
-    // 없는 예전 사건)만 — 고객 선택 REFUND 면 전 품목 환불, 아니면 재발송
-    if ("CUSTOMER".equals(p.path("fault").asString(""))) {
-      log.info("오배송 확인 {} — 고객 잘못: 재발송 사가 아님", caseId);
+    // ADR-0065(2026-11-16): 라이더·시스템 잘못(또는 귀책 없는 예전 사건) — 고객 선택 REFUND 면 전 품목 환불, 아니면 재발송.
+    // 고객 잘못 — REFUND 면 회수 후 상품값 − 9,000원 환불(CUSTOMER_REFUND), 다시 배송(REDELIVER)은 이 사가가 아니다(배송·결제)
+    boolean customer = "CUSTOMER".equals(p.path("fault").asString(""));
+    boolean refund = "REFUND".equals(p.path("resolution").asString(""));
+    if (customer && !refund) {
+      log.info("오배송 확인 {} — 고객 잘못·다시 배송: 재발송 사가 아님", caseId);
       return;
     }
-    String mode = "REFUND".equals(p.path("resolution").asString("")) ? "REFUND" : "RESHIP";
+    String mode = customer ? "CUSTOMER_REFUND" : refund ? "REFUND" : "RESHIP";
     if (caseId.isBlank() || deliveryId.isBlank()) {
       log.warn("오배송 확인 사건 {} 에 caseId·deliveryId 가 없어 재발송 안 함", e.eventId());
       return;
@@ -197,7 +199,7 @@ public class ReshipmentSagaService {
               ok ->
                   store.step(
                       s.sagaId(),
-                      "REFUND".equals(s.mode())
+                      !"RESHIP".equals(s.mode())
                           ? ReshipmentRules.APPLY_SHORTAGE
                           : next(step, true, false),
                       now));
@@ -230,20 +232,30 @@ public class ReshipmentSagaService {
           handle(
               s,
               step,
-              participants.shortageRefund(
-                  key,
-                  Map.of(
-                      "orderId", s.orderId(),
-                      "lines", changes(shortLines),
-                      "reasonDetail",
-                          "REFUND".equals(s.mode())
-                              ? "오배송 환불(사건 " + s.caseId() + ")"
-                              : "오배송 재발송 재고 부족(사건 " + s.caseId() + ")",
-                      "sourceRef", s.sagaId())),
+              participants.shortageRefund(key, refundBody(s, shortLines)),
               now,
               ok -> finish(s, ok.body().path("claimId").asString(null), now));
       default -> throw new IllegalStateException("알 수 없는 단계 " + step);
     };
+  }
+
+  /** 환불 요청 — 고객 잘못이면 회수비 9,000원 공제(ADR-0065). */
+  private Map<String, Object> refundBody(ReshipmentRow s, List<Line> shortLines) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("orderId", s.orderId());
+    m.put("lines", changes(shortLines));
+    m.put(
+        "reasonDetail",
+        switch (s.mode()) {
+          case "CUSTOMER_REFUND" -> "오배송(고객 잘못) 회수 후 환불 — 회수비 공제(사건 " + s.caseId() + ")";
+          case "REFUND" -> "오배송 환불(사건 " + s.caseId() + ")";
+          default -> "오배송 재발송 재고 부족(사건 " + s.caseId() + ")";
+        });
+    m.put("sourceRef", s.sagaId());
+    if ("CUSTOMER_REFUND".equals(s.mode())) {
+      m.put("feeDeduction", ReshipmentRules.CUSTOMER_FAULT_FEE);
+    }
+    return m;
   }
 
   /** 배송 → 주문 → 보낼 줄. */
@@ -296,7 +308,7 @@ public class ReshipmentSagaService {
         o.path("mfcId").asString(),
         ReshipmentRules.shipmentId(orderId, s.caseId()),
         json(resend),
-        "REFUND".equals(s.mode()) ? json(resend) : "[]", // 환불 = 다시 보낼 줄 전부를 못 보내는 줄로
+        "RESHIP".equals(s.mode()) ? "[]" : json(resend), // 환불 = 다시 보낼 줄 전부를 못 보내는 줄로
         ReshipmentRules.RECORD_RESHIPMENT,
         now);
     log.info("오배송 재발송 사가 {} — 주문 {} {}줄 다시 보냄", s.sagaId(), orderId, resend.size());

@@ -306,6 +306,11 @@ paths:
                       qty: { type: integer, minimum: 1 }
                 reasonDetail: { type: string, maxLength: 1000 }
                 sourceRef: { type: string, description: 결품 사가 ID }
+                feeDeduction:
+                  type: integer
+                  minimum: 0
+                  x-added-in: '2026-11-16'
+                  description: '공제액(원) — 환불 = 단가 × 수량 − 공제(0 아래로 내려가지 않음). ADR-0065 고객 잘못 오배송 회수 후 환불은 회수비 9,000원. 환불액이 0 이면 환불 의도 없이 클레임을 바로 닫는다'
       responses:
         '201':
           description: 접수됨(환불 실행은 비동기)

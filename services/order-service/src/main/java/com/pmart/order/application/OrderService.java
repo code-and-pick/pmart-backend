@@ -414,6 +414,11 @@ public class OrderService {
       log.warn("전달 완료 사건 {} 에 주문·배송 ID 가 없어 무시", e.eventId());
       return;
     }
+    if ("MISDELIVERY_REDELIVERY".equals(p.path("purpose").asString(""))) {
+      // 오배송 다시 배송(ADR-0065) — 같은 상품을 옮긴 것이라 전달 수량은 이미 세었다
+      log.info("주문 {} 오배송 다시 배송 {} 완료 — 수량은 그대로", orderId, deliveryId);
+      return;
+    }
     progress(
         e,
         DELIVERY,

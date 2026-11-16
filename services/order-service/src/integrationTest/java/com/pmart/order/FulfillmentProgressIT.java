@@ -127,6 +127,42 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
                 orderId))
         .isZero();
     assertThat(status(orderId)).isEqualTo("COMPLETED");
+
+    // 오배송 다시 배송(ADR-0065) 완료는 수량에 다시 세지 않는다 — MISMATCH 도 남기지 않는다
+    String redelivery = "DLV-" + UUID.randomUUID();
+    deliveredWithPurpose(
+        orderId, redelivery, List.of(line(orderId + "-L1", 3)), "MISDELIVERY_REDELIVERY");
+    Thread.sleep(2000);
+    assertThat(qty(orderId + "-L1", "delivered_qty")).isEqualTo(6);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM order_fulfillment_fact WHERE source_ref = ?",
+                Integer.class,
+                redelivery))
+        .isZero();
+  }
+
+  private void deliveredWithPurpose(
+      String orderId, String deliveryId, List<Map<String, Object>> lines, String purpose)
+      throws Exception {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", deliveryId);
+    p.put("orderId", orderId);
+    p.put("riderId", "RD-1");
+    p.put("lines", lines);
+    p.put("method", "CONTACTLESS");
+    p.put("purpose", purpose);
+    p.put("deliveredAt", Instant.now().toString());
+    kafka
+        .send(
+            "delivery.delivery.v1",
+            deliveryId,
+            com.pmart.common.test.EventEnvelopeFixtures.envelope("DeliveryCompleted")
+                .from("delivery-execution-service")
+                .aggregate("Delivery", deliveryId, 5)
+                .payload(p)
+                .buildJson())
+        .get();
   }
 
   private org.springframework.http.ResponseEntity<String> change(

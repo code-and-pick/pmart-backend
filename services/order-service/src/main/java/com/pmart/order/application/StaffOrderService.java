@@ -77,13 +77,19 @@ public class StaffOrderService {
   private final OrderStore orders;
   private final FulfillmentIssueService issues;
   private final AuditClient audit;
+  private final com.pmart.order.infrastructure.RedeliveryDestinationStore destinations;
   private final Clock clock;
 
   public StaffOrderService(
-      OrderStore orders, FulfillmentIssueService issues, AuditClient audit, Clock clock) {
+      OrderStore orders,
+      FulfillmentIssueService issues,
+      AuditClient audit,
+      com.pmart.order.infrastructure.RedeliveryDestinationStore destinations,
+      Clock clock) {
     this.orders = orders;
     this.issues = issues;
     this.audit = audit;
+    this.destinations = destinations;
     this.clock = clock;
   }
 
@@ -202,6 +208,60 @@ public class StaffOrderService {
         wanted.contains(PiiField.ENTRANCE)
             ? o.deliveryNote()
             : null); // 배송 요청사항은 ENTRANCE 와 같이(ADR-0062)
+  }
+
+  /**
+   * 오배송 다시 배송 실제 집 주소 기록(ADR-0065, 2026-11-16 — 상담원 기록). 주문 배송지 사본은 바꾸지 않는다. 같은 직원·주문·키는 같은 ID.
+   * 주소·사유 로그 금지.
+   */
+  public com.pmart.order.infrastructure.RedeliveryDestinationStore.Destination
+      recordRedeliveryDestination(
+          String orderId,
+          String idempotencyKey,
+          String deliveryId,
+          String roadAddress,
+          @Nullable String detailAddress,
+          @Nullable String postalCode,
+          @Nullable String reason) {
+    PmartPrincipal p = requireStaff();
+    String problem = StaffOrderRules.reasonProblem(reason);
+    if (problem != null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, problem);
+    }
+    if (roadAddress == null
+        || roadAddress.isBlank()
+        || deliveryId == null
+        || deliveryId.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "배송 ID 와 도로명주소가 필요합니다.");
+    }
+    orders
+        .order(orderId)
+        .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
+    String id =
+        "RDD-"
+            + java.util.UUID.nameUUIDFromBytes(
+                (p.subject() + "\n" + orderId + "\n" + idempotencyKey)
+                    .getBytes(StandardCharsets.UTF_8));
+    var d =
+        new com.pmart.order.infrastructure.RedeliveryDestinationStore.Destination(
+            id,
+            orderId,
+            deliveryId.strip(),
+            roadAddress.strip(),
+            blankToNull(detailAddress),
+            blankToNull(postalCode),
+            Instant.now(clock));
+    destinations.insert(d, java.util.Objects.requireNonNull(reason).strip(), p.subject());
+    return destinations.find(orderId, id).orElse(d);
+  }
+
+  /** 내부 조회(dispatch·execution). */
+  public com.pmart.order.infrastructure.RedeliveryDestinationStore.Destination
+      redeliveryDestination(String orderId, String destinationId) {
+    return destinations
+        .find(orderId, destinationId)
+        .orElseThrow(
+            () -> PmartException.notFound("REDELIVERY_DESTINATION_NOT_FOUND", "다시 배송 주소가 없습니다."));
   }
 
   /** audit 기록 멱등 키: 직원·주문·클라이언트 키의 SHA-256(128자 상한 안). */

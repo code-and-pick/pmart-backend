@@ -466,6 +466,66 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
     audit.verify(0, postRequestedFor(urlPathEqualTo(AUDIT_PATH)));
   }
 
+  /** ADR-0065: 상담원이 다시 배송 실제 집 주소를 기록 → 내부 조회만 주소를 준다(직원 응답엔 없음), 같은 키는 같은 ID, 주문 사본은 그대로. */
+  @Test
+  void staffRecordsRedeliveryDestinationAndInternalReadsIt() {
+    String mfc = "MFC-RD-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId =
+        order("ACC-RD-" + UUID.randomUUID(), mfc, "COMPLETED", Instant.now(), "010-4444-5555");
+    Map<String, Object> body =
+        Map.of(
+            "deliveryId", "DLV-RD-1",
+            "roadAddress", "서울 강남구 테헤란로 2",
+            "detailAddress", "202동 1501호",
+            "reason", "고객 통화 — 동 호수 잘못 입력");
+    ResponseEntity<String> r = record(CS, orderId, "rk-1", body);
+    assertThat(r.getStatusCode().value()).as(r.getBody()).isEqualTo(201);
+    JsonNode d = mapper.readTree(r.getBody());
+    String id = d.path("destinationId").asString();
+    assertThat(id).startsWith("RDD-");
+    assertThat(d.has("roadAddress") && !d.path("roadAddress").isNull()).isFalse(); // 직원 응답엔 주소 없음
+    assertThat(
+            mapper
+                .readTree(record(CS, orderId, "rk-1", body).getBody())
+                .path("destinationId")
+                .asString())
+        .isEqualTo(id);
+    // 사유 없음 400, 고객 403, 없는 주문 404
+    assertThat(
+            record(CS, orderId, "rk-2", Map.of("deliveryId", "D", "roadAddress", "x"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    assertThat(record(TestJwt.customer("ACC-X"), orderId, "rk-3", body).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(record(CS, "ORD-none", "rk-4", body).getStatusCode().value()).isEqualTo(404);
+
+    JsonNode internal =
+        ok(
+            TestJwt.service("delivery-dispatch-service"),
+            "/internal/orders/" + orderId + "/redelivery-destinations/" + id);
+    assertThat(internal.path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 2");
+    assertThat(internal.path("detailAddress").asString()).isEqualTo("202동 1501호");
+    assertThat(internal.path("deliveryId").asString()).isEqualTo("DLV-RD-1");
+    assertThat(
+            status(
+                TestJwt.service("delivery-dispatch-service"),
+                "/internal/orders/ORD-other/redelivery-destinations/" + id))
+        .isEqualTo(404);
+  }
+
+  ResponseEntity<String> record(String token, String orderId, String key, Object body) {
+    return http.post()
+        .uri("/orders/lookups/{id}/redelivery-destinations", orderId)
+        .headers(h -> h.setBearerAuth(token))
+        .header("Idempotency-Key", key)
+        .header("X-Source-System", "backoffice-web")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   @Test
   void revealRecordsAuditThenReturnsOriginal() {
     String mfc = "MFC-LK-" + UUID.randomUUID().toString().substring(0, 8);

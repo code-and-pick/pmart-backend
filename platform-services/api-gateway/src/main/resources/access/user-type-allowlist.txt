@@ -386,6 +386,7 @@ POST /api/v1/operation-restrictions/{restrictionId}/resumes OPERATOR
 POST /api/v1/order-drafts CUSTOMER
 POST /api/v1/order-drafts/{draftId}/checkouts CUSTOMER
 POST /api/v1/orders/lookups/{orderId}/pii-reveals OPERATOR
+POST /api/v1/orders/lookups/{orderId}/redelivery-destinations OPERATOR
 POST /api/v1/orders/{orderId}/reservation-time-changes CUSTOMER
 POST /api/v1/packages/{packageId}/handover-authorizations RIDER
 POST /api/v1/packages/{packageId}/handover-checks OPERATOR

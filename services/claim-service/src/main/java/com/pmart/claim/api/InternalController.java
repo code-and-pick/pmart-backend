@@ -57,7 +57,8 @@ public class InternalController implements InternalApi {
                                 l.getOrderLineId(), l.getQty()))
                     .toList(),
                 body.getReasonDetail(),
-                body.getSourceRef()));
+                body.getSourceRef(),
+                body.getFeeDeduction() == null ? 0 : body.getFeeDeduction()));
     return ResponseEntity.status(HttpStatus.CREATED).body(ClaimMapping.claim(view));
   }
 

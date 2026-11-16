@@ -521,6 +521,50 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
 
+  /** ADR-0065: 공제 있는 부분 환불(고객 잘못 오배송 회수 후 상품값 − 9,000원). 공제가 상품값 이상이면 환불 없이 클레임을 바로 닫는다. */
+  @Test
+  void shortageRefundWithFeeDeduction() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, "CU-" + UUID.randomUUID(), "COMPLETED", 10); // 10개 모두 출고 전 취소로 반영됨(다시 보냄 뒤 취소)
+    paymentAccepts(orderId);
+    Res r =
+        shortageRefund(
+            "FD-1",
+            Map.of(
+                "orderId",
+                orderId,
+                "lines",
+                List.of(Map.of("orderLineId", orderId + "-L1", "qty", 6)),
+                "feeDeduction",
+                9000));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    // 1,900 × 6 = 11,400 − 9,000 = 2,400
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT amount || ' ' || item_amount FROM refund_intent WHERE claim_id = ?",
+                String.class,
+                r.body().path("claimId").asString()))
+        .isEqualTo("2400 11400");
+    Res zero =
+        shortageRefund(
+            "FD-2",
+            Map.of(
+                "orderId",
+                orderId,
+                "lines",
+                List.of(Map.of("orderLineId", orderId + "-L1", "qty", 4)),
+                "feeDeduction",
+                9000));
+    assertThat(zero.status()).isEqualTo(201);
+    assertThat(zero.body().path("state").asString()).isEqualTo("CLOSED"); // 7,600 − 9,000 → 0원
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM refund_intent WHERE claim_id = ?",
+                Integer.class,
+                zero.body().path("claimId").asString()))
+        .isZero();
+  }
+
   /** IV-09 2부(ADR-0045): 결품 부분 환불 — 단가 × 수량, 봉투·배달팁 없음, 출고 전 취소 누계 안에서만, 두 번 환불 안 함. */
   @Test
   void shortageRefundIsUnitPriceTimesQtyWithinCancelledQty() throws Exception {

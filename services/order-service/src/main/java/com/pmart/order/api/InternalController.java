@@ -33,9 +33,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalController implements InternalApi {
 
   private final OrderService orders;
+  private final com.pmart.order.application.StaffOrderService staff;
 
-  public InternalController(OrderService orders) {
+  public InternalController(
+      OrderService orders, com.pmart.order.application.StaffOrderService staff) {
     this.orders = orders;
+    this.staff = staff;
   }
 
   @Override
@@ -88,6 +91,23 @@ public class InternalController implements InternalApi {
    * 라이더용 전달지(O-5, 2026-11-14 — 클라이언트 BR-24). 공개 범위는 delivery-execution 이 판정. 사본 없으면 404. 개인정보 — 로그
    * 금지.
    */
+  @Override
+  public ResponseEntity<com.pmart.order.api.generated.model.RedeliveryDestination>
+      getRedeliveryDestination(String orderId, String destinationId) {
+    var d = staff.redeliveryDestination(orderId, destinationId);
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new com.pmart.order.api.generated.model.RedeliveryDestination()
+                .destinationId(d.destinationId())
+                .orderId(d.orderId())
+                .deliveryId(d.deliveryId())
+                .roadAddress(d.roadAddress())
+                .detailAddress(d.detailAddress())
+                .postalCode(d.postalCode())
+                .recordedAt(d.recordedAt().atOffset(java.time.ZoneOffset.UTC)));
+  }
+
   @Override
   public ResponseEntity<DropInfo> getOrderDropInfo(String orderId) {
     OrderService.OrderView v = orders.internalWithShipping(orderId);

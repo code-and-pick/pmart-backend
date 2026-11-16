@@ -271,11 +271,15 @@ public class ClaimService {
   public static final String OUT_OF_STOCK = "OUT_OF_STOCK";
 
   /** 결품 부분 환불 요청 행. */
+  /**
+   * @param feeDeduction 공제액(회수비 등 — ADR-0065 고객 잘못 오배송 9,000원). 환불 = 상품값 − 공제(0 이상)
+   */
   public record ShortageRefund(
       String orderId,
       List<ClaimRules.Requested> lines,
       @Nullable String reasonDetail,
-      @Nullable String sourceRef) {}
+      @Nullable String sourceRef,
+      long feeDeduction) {}
 
   /**
    * 품절 상품만 취소(CANCEL_OOS_ONLY) 의 부분 환불. 주문 수량 변경(SHORTAGE) 뒤에 부른다 — 요청 수량 ≤ 출고 전 취소 누계 − 이미 결품 환불한
@@ -327,13 +331,16 @@ public class ClaimService {
                   }
                   Instant now = clock.instant();
                   String id = "CLM-" + UUID.randomUUID();
+                  long items = amount;
+                  long refund = Math.max(0, items - Math.max(0, in.feeDeduction()));
+                  boolean nothing = refund == 0;
                   ClaimRow c =
                       new ClaimRow(
                           id,
                           in.orderId(),
                           order.path("accountId").asString(),
                           "CANCEL",
-                          "IN_PROGRESS",
+                          nothing ? "CLOSED" : "IN_PROGRESS",
                           OUT_OF_STOCK,
                           (in.reasonDetail() == null ? "결품" : in.reasonDetail())
                               + (in.sourceRef() == null ? "" : " [" + in.sourceRef() + "]"),
@@ -348,7 +355,7 @@ public class ClaimService {
                           null,
                           now,
                           now,
-                          null,
+                          nothing ? now : null,
                           now);
                   List<LineRow> rows = new ArrayList<>();
                   int n = 1;
@@ -367,8 +374,13 @@ public class ClaimService {
                   }
                   store.insert(c, rows);
                   events.claimOpened(c, rows);
-                  RefundRow refund = refunds.createShortageRefund(c, amount, now);
-                  String refundId = refund.refundIntentId();
+                  if (nothing) {
+                    // 공제가 상품값 이상 — 돌려줄 돈이 없다(ADR-0065)
+                    log.info("부분 환불 {} 주문 {} 공제 뒤 0원 — 환불 없이 닫음", id, in.orderId());
+                    return id;
+                  }
+                  RefundRow refundRow = refunds.createShortageRefund(c, items, refund, now);
+                  String refundId = refundRow.refundIntentId();
                   TransactionSynchronizationManager.registerSynchronization(
                       new TransactionSynchronization() {
                         @Override
@@ -376,7 +388,8 @@ public class ClaimService {
                           refunds.executeAsync(refundId);
                         }
                       });
-                  log.info("결품 부분 환불 {} 주문 {} {}원", id, in.orderId(), amount);
+                  log.info(
+                      "결품 부분 환불 {} 주문 {} {}원(공제 {})", id, in.orderId(), refund, items - refund);
                   return id;
                 })
             .value();
