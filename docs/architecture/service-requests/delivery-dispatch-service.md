@@ -36,3 +36,7 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **본 것**: LAN 시험 주문 `ORD-0e67de38-7acf-3e71-8a28-7aeadd986bb0` 의 배송 `DLV-74422b51-7820-457d-8dbf-9d66395010a2` — 백오피스 배송 상세에서 수행 "미배정", 배차 "배차 실패", 시도 "2026-11-14 02:05 · FAILED · 시스템 오류", 배정 라이더 없음. 그 뒤 다시 시도한 기록이 없다.
 - **궁금한 것**: 실패 원인(LAN 에 라이더가 없어서인지 — rider-service 확인 요청 참고 — 아니면 다른 오류인지), 다시 배차할 길(자동 재시도·운영자 재요청)이 있는지. 이 배송은 처리 대기(BO-12)·사건함 어디에도 나오지 않는다 — 배차 실패를 운영자가 볼 곳이 필요하면 알려 주면 사건함 종류(`DISPATCH_FAILED`, case 계약에 이름만 있음)로 받는 것을 사용자에게 묻겠다.
 - **갱신(같은 날)**: 사용자 결정으로 case 가 `DispatchFailed` 를 사건함(`DISPATCH_FAILED`, 지원센터·10분)으로 받는다 — 시스템 장애는 첫 실패, 그 밖은 두 번째 실패부터(`service-requests/case-service.md` 끝). dispatch 쪽 변경은 필요 없다. 원인·재배차 방법 질문은 그대로.
+- **회신(2026-11-16, PC 5)**:
+  - **원인**: 라이더가 없어서가 아니라 **배송지 주소가 비어 와서**다. 주문이 02:05(배차 가능 시간 08~24시 밖)에 들어와 08:00 에 첫 시도(AUTO) → order 배송지 조회(O-4)의 도로명주소가 늘 null 이던 버그로 좌표를 못 구해 `SYSTEM_FAILURE`(주소 없음). 시스템 장애는 자동 재요청 없이 DISPATCH_FAILED 로 멈춘다(dispatch 규칙 — 라이더 없음은 10분 뒤 자동 재요청). 버그는 #15(2026-11-15 배포)에서 고쳤다.
+  - **다시 배차할 길**: 운영자 `POST /api/v1/deliveries/{deliveryId}/assignment-cancellations` `reassign=true`(OPERATOR_ADMIN·RIDER_OPS, MFC 관리자는 자기 센터). DISPATCH_FAILED 도 이 길로 새 시도(REASSIGN)가 열린다.
+  - **이 배송은 끝났다**: 2026-11-16 13:35 PC 5 LAN 라이더 E2E(`deploy/lan/checks/rider_e2e.py`)가 위 길로 다시 배차 → 시험 라이더 `RD-claude-97fb21e37325` 수락 → 포장 QR 인계 → 픽업 → 전달 완료. 지금 배차 CLOSED, 수행 COMPLETED. 주문은 아직 PREPARING — order 가 인계·완료 사건을 받지 않아서다(O-1 대기).

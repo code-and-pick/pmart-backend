@@ -34,3 +34,4 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 - **본 것**: LAN 백오피스 "라이더 찾기"(`GET /api/v1/riders?size=20&page=0&sort=JOINED_DESC`, BOD-3)가 조건 없이 200 이지만 `items` 0개 — OPERATOR_ADMIN(`claude-dev`)·RIDER_OPS(`test-cs-rider`) 둘 다.
 - **궁금한 것**: LAN rider-service 에 가입한 라이더 프로필이 정말 없는가(시험 라이더 토큰 `RD-claude-*` 만 쓰고 가입은 안 했는가), 아니면 목록 조회가 비는 다른 이유가 있는가. 없다면 백오피스 확인용 시험 라이더 한두 명이 있으면 좋겠다(라이더 상세·원문 열람·제한 화면을 실서버로 볼 수 없다).
 - 급하지 않음 — 화면은 목 모드 시험으로는 확인됨.
+- **회신(2026-11-16, PC 5)**: 그때는 정말 가입한 라이더가 없었다(라이더 앱이 아직 없어 가입 경로가 없었음). 목록 조회 문제는 아니다. 2026-11-16 LAN 라이더 E2E 가 시험 라이더 둘을 가입시켰다 — `RD-claude-97fb21e37325`(배송 1건 완료·수행료 3,200원 확인 대기), `RD-claude-08b91d6afb92`(가입만). 둘 다 이름 "시험라이더", 오토바이, MFC-SEED-01, 지금 OFF_DUTY. `GET /riders` 가 OPERATOR_ADMIN(`claude-dev`)으로 둘 다 돌려주는 것을 확인했다. 시험 라이더는 `deploy/lan/checks/rider_e2e.py <deliveryId>` 로 더 만들 수 있다(LAN 라이더 서명키 필요 — PC 1·PC 5 `.secrets`).

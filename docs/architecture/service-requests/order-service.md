@@ -8,6 +8,7 @@
   1. `PackageHandedOver` 구독 → 줄마다 `handedOverQty +q`, `unfulfilledQty −q`(사유 `HANDOVER`, sourceRef = handoverId, 멱등).
   2. 주문 상태 PARTIALLY_HANDED_OVER / IN_DELIVERY.
   3. 배송 사실(`DeliveryCompleted`·`DeliveryFailed`)은 delivery-execution(DE-1) 이 생긴 뒤 같은 방식으로.
+- **LAN 에서 본 것(2026-11-16, PC 5 라이더 E2E)**: 주문 `ORD-0e67de38-7acf-3e71-8a28-7aeadd986bb0` 이 포장 인계(`PackageHandedOver`)·픽업(`PickupCompleted`)·전달 완료(`DeliveryCompleted`)까지 갔는데 주문 상태는 **PREPARING 그대로**다. delivery-execution 은 이미 이 사건들을 낸다(DE-1 구현·배포) — 위 3 도 할 수 있다. 고객 앱 주문 상태·리뷰 작성 가능 여부가 이 사건들에 걸려 있으면 같이 확인 필요.
 - **사용자 결정**: 필요 없음(계약 문서에 규칙 있음).
 
 ## O-2. 고객 자율 취소 마감 = 상품준비 전 (2026-11-09, ADR-0052)
