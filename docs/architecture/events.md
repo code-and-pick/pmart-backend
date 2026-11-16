@@ -234,7 +234,7 @@
 | `BatchRowResultRecorded` | approval | backoffice-bff, audit | batchId, fileHash, rowNo, result | 대량 변경 행별 결과 | ② |
 | `CaseOpened` / `CaseAssigned` / `CaseTransferred` / `CaseClosed` / `CaseReopened` | case(2026-11-16 Opened·Assigned·Closed 발행 구현 — 사건함 0.4.0, Reopened 0.6.0, Transferred 0.7.0) | notification, audit, backoffice-bff, delivery-execution(도움요청 caseId·상태 연결 — 구현 전, PC 5) | caseId, type, refs[{refType, refId}](incidentId·deliveryId·orderId·riderId …), assignee, priority, outcome(Closed) | 사건 생명주기 | ① |
 | `MisdeliveryConfirmed` | case(2026-11-16, R-7 — 직원 오배송 확인 `POST /cases` kind MISDELIVERY, 토픽 platform.case.v1, 키 caseId) | delivery-dispatch(회수 배차 DD-2 — 2026-11-16 구현: 회수 배송 RETURN·MISDELIVERY_RECOVERY + 원래 라이더 뺀 회수지 근처 라이더 제안) | caseId, deliveryId, riderId, confirmedBy, confirmedAt, evidenceRefs | 오배송 확인됨 → 인근 다른 라이더로 회수 배차 | ① |
-| `ObligationCreated` / `ObligationResolved` | case | backoffice-bff | obligationId, caseId, kind, qty/amount, ownerService | 의무 등록·해소 | ① |
+| `ObligationCreated` / `ObligationResolved` | case(2026-11-16 발행 구현 — 계약 0.8.0) | backoffice-bff | obligationId, caseId, kind, qty/amount, ownerService | 의무 등록·해소 | ① |
 | `ShiftHandoverCompleted` | case | audit | handoverId, from, to, openCases[] | 교대 | ② |
 | `NotificationDelivered` / `NotificationFailed` | notification | audit, BI | notificationId, channel, recipientRef, result | 발송 결과(읽음≠동의) | ① |
 | `AuditEntryRecorded` | 전 서비스 | audit | actor, action, targetRef, before/after ref, reason, result | 운영자 변경 명령 | ① |

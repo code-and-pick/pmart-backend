@@ -15,17 +15,21 @@ import com.pmart.cases.api.generated.model.EvidenceReference;
 import com.pmart.cases.api.generated.model.ListCases200Response;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ModelCase;
+import com.pmart.cases.api.generated.model.Obligation;
 import com.pmart.cases.api.generated.model.Priority;
 import com.pmart.cases.api.generated.model.ReopenCaseRequest;
 import com.pmart.cases.api.generated.model.TransferCaseRequest;
 import com.pmart.cases.application.CaseInboxService;
+import com.pmart.cases.application.ObligationService;
 import com.pmart.cases.domain.CaseRules;
+import com.pmart.cases.domain.ObligationRules;
 import com.pmart.cases.infrastructure.CaseStore.CaseRow;
 import com.pmart.common.web.PmartException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,9 +43,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class CasesController implements CasesApi {
 
   private final CaseInboxService cases;
+  private final ObligationService obligations;
 
-  public CasesController(CaseInboxService cases) {
+  public CasesController(CaseInboxService cases, ObligationService obligations) {
     this.cases = cases;
+    this.obligations = obligations;
   }
 
   @Override
@@ -71,9 +77,14 @@ public class CasesController implements CasesApi {
                 Boolean.TRUE.equals(overdue)),
             cursor,
             size);
+    Map<String, Integer> open =
+        obligations.openCounts(page.items().stream().map(CaseRow::caseId).toList());
     return ResponseEntity.ok(
         new ListCases200Response()
-            .items(page.items().stream().map(this::summary).toList())
+            .items(
+                page.items().stream()
+                    .map(c -> summary(c, open.getOrDefault(c.caseId(), 0)))
+                    .toList())
             .page(
                 new ListCases200ResponsePage()
                     .nextCursor(page.nextCursor())
@@ -178,7 +189,7 @@ public class CasesController implements CasesApi {
                 xExpectedVersion)));
   }
 
-  private CaseSummary summary(CaseRow c) {
+  private CaseSummary summary(CaseRow c, int openObligations) {
     return new CaseSummary()
         .caseId(c.caseId())
         .kind(CaseKind.fromValue(c.kind()))
@@ -189,7 +200,7 @@ public class CasesController implements CasesApi {
         .centerId(c.centerId())
         .assigneeId(c.assigneeId())
         .assigneeGroup(c.assigneeGroup())
-        .openObligationCount(0)
+        .openObligationCount(openObligations)
         .slaDueAt(odt(c.slaDueAt()))
         .overdue(cases.overdue(c))
         .summary(c.summary())
@@ -200,6 +211,8 @@ public class CasesController implements CasesApi {
 
   private ModelCase detail(CaseInboxService.Detail d) {
     CaseRow c = d.row();
+    List<Obligation> obls =
+        obligations.forCase(c.caseId()).stream().map(ObligationsController::toModel).toList();
     ModelCase m =
         new ModelCase()
             .caseId(c.caseId())
@@ -211,7 +224,15 @@ public class CasesController implements CasesApi {
             .centerId(c.centerId())
             .assigneeId(c.assigneeId())
             .assigneeGroup(c.assigneeGroup())
-            .openObligationCount(0)
+            .openObligationCount(
+                (int)
+                    obls.stream()
+                        .filter(
+                            o ->
+                                o.getState() != null
+                                    && ObligationRules.OPEN_STATES.contains(
+                                        o.getState().getValue()))
+                        .count())
             .slaDueAt(odt(c.slaDueAt()))
             .overdue(d.overdue())
             .summary(c.summary())
@@ -222,7 +243,7 @@ public class CasesController implements CasesApi {
             .sourceEventId(c.sourceEventId())
             .subCaseIds(List.of())
             .mergedFromCaseIds(List.of())
-            .obligations(List.of())
+            .obligations(obls)
             .actionRequests(List.of())
             .evidence(List.of())
             .history(

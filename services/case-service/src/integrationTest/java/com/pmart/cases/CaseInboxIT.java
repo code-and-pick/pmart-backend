@@ -850,4 +850,193 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .isEqualTo(200);
     assertThat(send("POST", admin, path, toAdmin).status()).as("닫힌 사건").isEqualTo(409);
   }
+
+  int obligationEvents(String obligationId, String type) {
+    return count(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = ?", obligationId, type);
+  }
+
+  /**
+   * 의무(0.8.0 — 2026-11-16 사용자 "고친 안으로 진행해 줘"): 등록은 사건 팀, 8종만, 해소는 담당 팀(상담원은 고객센터 의무)·관리자, 시도 기록은 상태
+   * 그대로, 면제·실패는 관리자만(사유), 부분 해소·초과 409, 열린 의무가 있으면 닫기 409, 닫힌 사건엔 등록 409, 팀 목록·열린 의무 수.
+   */
+  @Test
+  void obligationsBlockClosingUntilResolvedByOwningTeam() {
+    String deliveryId = "DLV-OB-" + UUID.randomUUID().toString().substring(0, 8);
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String caseId =
+        send(
+                "POST",
+                cs,
+                "/cases",
+                Map.of(
+                    "kind", "MISDELIVERY",
+                    "subjectType", "DELIVERY",
+                    "subjectRef", deliveryId,
+                    "summary", "옆집 전달"))
+            .body()
+            .path("caseId")
+            .asString();
+    String obl = "/cases/" + caseId + "/obligations";
+
+    // 등록
+    assertThat(send("POST", cs, obl, Map.of("kind", "CUSTOMER_CONTACT", "owner", "CS")).status())
+        .as("상담원은 사건을 다루지 않음")
+        .isEqualTo(403);
+    Res disposal = send("POST", ops, obl, Map.of("kind", "DISPOSAL"));
+    assertThat(disposal.status()).isEqualTo(422);
+    assertThat(disposal.body().path("code").asString()).isEqualTo("UNSUPPORTED_KIND");
+    Res pickup = send("POST", ops, obl, Map.of("kind", "RETURN_PICKUP", "qty", 2));
+    assertThat(pickup.status()).as(pickup.body().toString()).isEqualTo(201);
+    assertThat(pickup.body().path("owner").asString()).as("비우면 사건 팀").isEqualTo("DELIVERY_OPS");
+    String pickupId = pickup.body().path("obligationId").asString();
+    String contactId =
+        send("POST", ops, obl, Map.of("kind", "CUSTOMER_CONTACT", "owner", "CS"))
+            .body()
+            .path("obligationId")
+            .asString();
+    String refundId =
+        send("POST", ops, obl, Map.of("kind", "REFUND", "owner", "ORDER_OPS", "amount", 12000))
+            .body()
+            .path("obligationId")
+            .asString();
+    assertThat(obligationEvents(pickupId, "ObligationCreated")).isEqualTo(1);
+
+    // 열린 의무 — 닫기 409, 목록·상세에 수
+    Map<String, Object> close = Map.of("resolution", "RESOLVED", "summary", "회수 완료");
+    Res blocked = send("POST", ops, "/cases/" + caseId + "/closures", close);
+    assertThat(blocked.status()).isEqualTo(409);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("OPEN_OBLIGATIONS");
+    assertThat(
+            send("GET", ops, "/cases/" + caseId, null).body().path("openObligationCount").asInt())
+        .isEqualTo(3);
+    assertThat(
+            send("GET", ops, "/cases?subjectRef=" + deliveryId, null)
+                .body()
+                .path("items")
+                .get(0)
+                .path("openObligationCount")
+                .asInt())
+        .isEqualTo(3);
+    assertThat(
+            send("GET", cs, "/obligations?owner=CS&caseId=" + caseId, null)
+                .body()
+                .path("items")
+                .findValuesAsString("obligationId"))
+        .containsExactly(contactId);
+
+    // 상담원: 고객센터 의무만, 시도 기록은 상태 그대로, 면제는 관리자만
+    Map<String, Object> callLog = Map.of("system", "cs-phone", "ref", "CALL-1", "kind", "LOG");
+    Res tried =
+        send(
+            "POST",
+            cs,
+            "/obligations/" + contactId + "/resolutions",
+            Map.of("outcome", "ATTEMPTED", "evidence", callLog, "note", "부재중 2회"));
+    assertThat(tried.status()).as(tried.body().toString()).isEqualTo(200);
+    assertThat(tried.body().path("state").asString()).isEqualTo("OPEN");
+    assertThat(tried.body().path("resolutions").get(0).path("note").asString()).isEqualTo("부재중 2회");
+    assertThat(obligationEvents(contactId, "ObligationResolved")).as("시도는 끝난 게 아님").isZero();
+    assertThat(
+            send(
+                    "POST",
+                    cs,
+                    "/obligations/" + contactId + "/resolutions",
+                    Map.of("outcome", "WAIVED", "evidence", callLog, "note", "연락 불가"))
+                .status())
+        .isEqualTo(403);
+    assertThat(
+            send(
+                    "POST",
+                    cs,
+                    "/obligations/" + pickupId + "/resolutions",
+                    Map.of("outcome", "FULFILLED", "resolvedQty", 1, "evidence", callLog))
+                .status())
+        .as("지원센터 의무")
+        .isEqualTo(403);
+    Res contacted =
+        send(
+            "POST",
+            cs,
+            "/obligations/" + contactId + "/resolutions",
+            Map.of("outcome", "FULFILLED", "evidence", callLog));
+    assertThat(contacted.body().path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(obligationEvents(contactId, "ObligationResolved")).isEqualTo(1);
+
+    // 지원센터: 부분 해소, 초과 409, 수량 없음 400
+    Map<String, Object> handover = Map.of("system", "delivery-execution-service", "ref", "HO-1");
+    String pick = "/obligations/" + pickupId + "/resolutions";
+    assertThat(
+            send("POST", ops, pick, Map.of("outcome", "FULFILLED", "evidence", handover)).status())
+        .isEqualTo(400);
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    pick,
+                    Map.of("outcome", "FULFILLED", "resolvedQty", 1, "evidence", handover))
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("PARTIALLY_RESOLVED");
+    Res over =
+        send(
+            "POST",
+            ops,
+            pick,
+            Map.of("outcome", "FULFILLED", "resolvedQty", 5, "evidence", handover));
+    assertThat(over.status()).isEqualTo(409);
+    assertThat(over.body().path("code").asString()).isEqualTo("QTY_EXCEEDS_OBLIGATION");
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    pick,
+                    Map.of("outcome", "FULFILLED", "resolvedQty", 1, "evidence", handover))
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("RESOLVED");
+
+    // 관리자 팀 환불 의무: 지원센터 403, 관리자 면제는 사유 필수
+    String refund = "/obligations/" + refundId + "/resolutions";
+    Map<String, Object> doc = Map.of("system", "claim-service", "ref", "CLM-1", "kind", "DOCUMENT");
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    refund,
+                    Map.of("outcome", "FULFILLED", "resolvedAmount", 12000, "evidence", doc))
+                .status())
+        .isEqualTo(403);
+    assertThat(send("POST", admin, refund, Map.of("outcome", "WAIVED", "evidence", doc)).status())
+        .as("사유 없음")
+        .isEqualTo(400);
+    assertThat(
+            send(
+                    "POST",
+                    admin,
+                    refund,
+                    Map.of("outcome", "WAIVED", "evidence", doc, "note", "고객이 환불 대신 재배송 선택"))
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("WAIVED");
+    assertThat(
+            send("POST", admin, refund, Map.of("outcome", "FAILED", "evidence", doc, "note", "x"))
+                .status())
+        .as("이미 끝남")
+        .isEqualTo(409);
+
+    // 모두 끝 — 닫힘, 닫힌 사건엔 등록 409, 상세에 의무 3
+    assertThat(send("POST", ops, "/cases/" + caseId + "/closures", close).status()).isEqualTo(200);
+    assertThat(send("POST", ops, obl, Map.of("kind", "OTHER")).status()).isEqualTo(409);
+    JsonNode detail = send("GET", ops, "/cases/" + caseId, null).body();
+    assertThat(detail.path("obligations")).hasSize(3);
+    assertThat(detail.path("history").toString())
+        .contains("OBLIGATION_CREATED", "OBLIGATION_RESOLVED");
+    assertThat(send("GET", md, "/obligations/" + pickupId, null).status()).isEqualTo(404);
+  }
 }

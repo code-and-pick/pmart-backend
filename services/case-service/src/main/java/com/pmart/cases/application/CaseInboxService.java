@@ -5,6 +5,7 @@ import com.pmart.cases.infrastructure.CaseStore;
 import com.pmart.cases.infrastructure.CaseStore.CaseRow;
 import com.pmart.cases.infrastructure.CaseStore.Ref;
 import com.pmart.cases.infrastructure.DispatchClient;
+import com.pmart.cases.infrastructure.ObligationStore;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.messaging.RequestIdempotency;
@@ -73,6 +74,7 @@ public class CaseInboxService {
   private final EventPublisher events;
   private final RequestIdempotency idempotency;
   private final DispatchClient dispatch;
+  private final ObligationStore obligations;
   private final CaseProperties props;
   private final Clock clock;
 
@@ -81,12 +83,14 @@ public class CaseInboxService {
       EventPublisher events,
       RequestIdempotency idempotency,
       DispatchClient dispatch,
+      ObligationStore obligations,
       CaseProperties props,
       Clock clock) {
     this.store = store;
     this.events = events;
     this.idempotency = idempotency;
     this.dispatch = dispatch;
+    this.obligations = obligations;
     this.props = props;
     this.clock = clock;
   }
@@ -518,6 +522,14 @@ public class CaseInboxService {
           if ("CLOSED".equals(c.state())) {
             return caseId; // 이미 닫힘
           }
+          if (obligations.countOpen(caseId) > 0) {
+            throw new PmartException(
+                "OPEN_OBLIGATIONS",
+                HttpStatus.CONFLICT,
+                "열린 의무가 있어 닫을 수 없습니다 — 의무를 해소하거나 관리자가 면제·실패로 끝낸 뒤 닫으세요.",
+                false,
+                List.of());
+          }
           if (c.assigneeId() != null
               && !c.assigneeId().equals(p.subject())
               && !roles.contains(CaseRules.ADMIN)) {
@@ -738,6 +750,16 @@ public class CaseInboxService {
       return configured.get(kind);
     }
     return CaseRules.DEFAULT_SLA.getOrDefault(kind, Duration.ofHours(4));
+  }
+
+  /** 의무(0.8.0)가 쓴다 — 지금 직원이 볼 수 있는 사건(없거나 못 보면 404). */
+  public CaseRow visibleCase(String caseId) {
+    return visible(operator(), caseId);
+  }
+
+  /** 의무(0.8.0)가 쓴다 — 지금 직원이 볼 수 있는 사건을 잠근다(닫기와 순서를 맞춘다). */
+  public CaseRow lockVisibleCase(String caseId) {
+    return lockVisible(operator(), caseId);
   }
 
   private CaseRow visible(PmartPrincipal p, String caseId) {
