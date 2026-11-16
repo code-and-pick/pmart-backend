@@ -68,6 +68,74 @@ public class ExecutionEventHandler {
    * case 오배송 확인(platform.case.v1 MisdeliveryConfirmed, ADR-0065): 귀책 RIDER 면 원래 배송 수행료
    * 미지급(SYSTEM·CUSTOMER 는 지급). inbox 트랜잭션 안.
    */
+  /** 사건함 사건(platform.case.v1) — 오배송 확인(라이더 귀책 수행료), 사건 열림·닫힘(도움요청 사건 번호·상태, DE-CASE). */
+  public void onCaseEvent(EventEnvelope e) {
+    switch (e.eventType()) {
+      case "MisdeliveryConfirmed" -> onCase(e);
+      case "CaseOpened", "CaseClosed", "CaseReopened" -> onHelpCase(e);
+      default -> {}
+    }
+  }
+
+  /**
+   * DE-CASE(2026-11-16): case 가 도움요청·전달 실패 등록으로 연 사건(RIDER_HELP·DELIVERY_INCIDENT) — 열리면 도움요청에 사건
+   * 번호·처리 중, 닫히면 처리됨. 도움요청은 refs 의 deliveryId·requestId(없으면 incidentId = 배송 ID:요청 ID)로 찾는다.
+   */
+  void onHelpCase(EventEnvelope e) {
+    JsonNode p = e.payload();
+    if (!HELP_CASE_TYPES.contains(p.path("type").asString(""))) {
+      return;
+    }
+    String caseId = p.path("caseId").asString("");
+    if (caseId.isBlank()) {
+      return;
+    }
+    if ("CaseReopened".equals(e.eventType())) {
+      log.info("사건 {} 다시 열림 → 도움요청 {}건 처리 중", caseId, store.reopenHelpByCase(caseId));
+      return;
+    }
+    if ("CaseClosed".equals(e.eventType())) {
+      Instant at = instantOr(p.path("closedAt").asString(null), clock.instant());
+      int n = store.closeHelpByCase(caseId, p.path("outcome").asString(null), at);
+      log.info("사건 {} 닫힘 → 도움요청 {}건 처리됨", caseId, n);
+      return;
+    }
+    String deliveryId = null;
+    String requestId = null;
+    String incidentId = null;
+    for (JsonNode r : p.path("refs")) {
+      switch (r.path("refType").asString("")) {
+        case "deliveryId" -> deliveryId = r.path("refId").asString(null);
+        case "requestId" -> requestId = r.path("refId").asString(null);
+        case "incidentId" -> incidentId = r.path("refId").asString(null);
+        default -> {}
+      }
+    }
+    if ((deliveryId == null || requestId == null) && incidentId != null) {
+      int i = incidentId.indexOf(':');
+      if (i > 0 && i < incidentId.length() - 1) {
+        deliveryId = incidentId.substring(0, i);
+        requestId = incidentId.substring(i + 1);
+      }
+    }
+    if (deliveryId == null || requestId == null) {
+      return; // 이 서비스 도움요청이 아닌 사건
+    }
+    int n = store.linkHelpCase(deliveryId, requestId, caseId);
+    log.info("사건 {} 열림 → 배송 {} 도움요청 연결 {}건", caseId, deliveryId, n);
+  }
+
+  static final java.util.Set<String> HELP_CASE_TYPES =
+      java.util.Set.of("RIDER_HELP", "DELIVERY_INCIDENT");
+
+  private static Instant instantOr(@Nullable String s, Instant fallback) {
+    try {
+      return s == null ? fallback : Instant.parse(s);
+    } catch (RuntimeException ex) {
+      return fallback;
+    }
+  }
+
   public void onCase(EventEnvelope e) {
     JsonNode p = e.payload();
     if (!"RIDER".equals(p.path("fault").asString(""))) {

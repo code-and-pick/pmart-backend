@@ -17,4 +17,5 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 ## DE-CASE. 사건함 사건 받아 도움요청에 사건 번호 붙이기 (2026-11-16, 보낸 영역 platform — case R-4 구현 뒤)
 - **이제 case-service 가 사건을 연다**(case 0.4.0, LAN 2026-11-16): `DeliveryIncidentRaised` → 사건 RIDER_HELP·DELIVERY_INCIDENT → `CaseOpened`(platform.case.v1, refs 에 `{refType: "incidentId", refId: "<deliveryId>:<요청 ID>"}`·deliveryId). 닫으면 `CaseClosed`(outcome = RESOLVED 등).
 - **execution 이 할 것**(R-4 §"case-service 가 생기면 요청한 쪽에서 바꿀 것"): `CaseOpened`·`CaseClosed` 구독(type RIDER_HELP·DELIVERY_INCIDENT 만) → `help_request.case_id`·state(IN_PROGRESS·RESOLVED) 갱신. 그 뒤 임시 "처리함 닫기"(BOD-4 `POST …/help-requests/{id}/resolutions`)는 사건함 닫기로 대신하고 정리(지우거나 사건 닫기로 넘김 — PC 5 판단).
+- **구현(2026-11-16, PC 5 — execution 0.5.1)**: `caseEvents` 가 `CaseOpened`·`CaseClosed`·`CaseReopened`(type RIDER_HELP·DELIVERY_INCIDENT)도 받는다. 열림 → 도움요청 `caseId`·IN_PROGRESS(refs deliveryId·requestId, 없으면 incidentId 를 나눔), 닫힘 → RESOLVED(resolvedBy `case:<caseId>`, 메모 = 결과), 다시 열림 → IN_PROGRESS. **처리함 닫기는 남기되 사건이 붙은 도움요청은 409 HELP_REQUEST_HAS_CASE**(사건함에서 닫기) — 사건이 없는 예전 도움요청만 그 경로로 닫는다(PC 5 판단: 지우면 예전 것을 닫을 길이 없다).
 

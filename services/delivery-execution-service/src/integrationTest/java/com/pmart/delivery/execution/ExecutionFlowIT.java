@@ -624,6 +624,111 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(String.class);
   }
 
+  /** DE-CASE(2026-11-16): 사건함이 도움요청으로 사건을 열면 도움요청에 사건 번호·처리 중, 그동안 옛 닫기 API 는 409, 사건을 닫으면 처리됨. */
+  @Test
+  void supportCaseOpenAndCloseFollowHelpRequest() throws Exception {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String requestId =
+        body(post(id, "help-requests", rider, Map.of("category", "CUSTOMER_UNREACHABLE")))
+            .path("resultId")
+            .asString();
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String caseId = "CASE-" + UUID.randomUUID();
+    kafka
+        .send(
+            "platform.case.v1",
+            caseId,
+            EventEnvelopeFixtures.envelope("CaseOpened")
+                .from("case-service")
+                .aggregate("Case", caseId, 1)
+                .payload(
+                    Map.of(
+                        "caseId",
+                        caseId,
+                        "type",
+                        "RIDER_HELP",
+                        "refs",
+                        List.of(
+                            Map.of("refType", "incidentId", "refId", id + ":" + requestId),
+                            Map.of("refType", "deliveryId", "refId", id),
+                            Map.of("refType", "requestId", "refId", requestId)),
+                        "openedAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
+    JsonNode help = null;
+    for (int i = 0; i < 100; i++) {
+      help = body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, ops));
+      if (caseId.equals(help.path("caseId").asString())) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(help.path("caseId").asString()).isEqualTo(caseId);
+    assertThat(help.path("state").asString()).isEqualTo("IN_PROGRESS");
+    ResponseEntity<String> blocked = resolve(id, requestId, ops, "K-" + UUID.randomUUID());
+    assertThat(blocked.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(blocked).path("code").asString()).isEqualTo("HELP_REQUEST_HAS_CASE");
+
+    kafka
+        .send(
+            "platform.case.v1",
+            caseId,
+            EventEnvelopeFixtures.envelope("CaseClosed")
+                .from("case-service")
+                .aggregate("Case", caseId, 2)
+                .payload(
+                    Map.of(
+                        "caseId",
+                        caseId,
+                        "type",
+                        "RIDER_HELP",
+                        "outcome",
+                        "RESOLVED",
+                        "closedAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
+    for (int i = 0; i < 100; i++) {
+      help = body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, ops));
+      if ("RESOLVED".equals(help.path("state").asString())) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(help.path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(help.path("resolvedBy").asString()).isEqualTo("case:" + caseId);
+    assertThat(help.path("resolutionNote").asString()).contains("RESOLVED");
+
+    kafka
+        .send(
+            "platform.case.v1",
+            caseId,
+            EventEnvelopeFixtures.envelope("CaseReopened")
+                .from("case-service")
+                .aggregate("Case", caseId, 3)
+                .payload(
+                    Map.of(
+                        "caseId",
+                        caseId,
+                        "type",
+                        "RIDER_HELP",
+                        "reopenedAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
+    for (int i = 0; i < 100; i++) {
+      help = body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, ops));
+      if ("IN_PROGRESS".equals(help.path("state").asString())) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    assertThat(help.path("state").asString()).isEqualTo("IN_PROGRESS");
+  }
+
   ResponseEntity<String> resolve(String id, String requestId, String token, String key) {
     return http.post()
         .uri("/deliveries/{id}/help-requests/{r}/resolutions", id, requestId)

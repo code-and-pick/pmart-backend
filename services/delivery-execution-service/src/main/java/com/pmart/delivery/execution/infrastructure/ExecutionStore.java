@@ -603,6 +603,38 @@ public class ExecutionStore {
         HELP_SELECT + " WHERE delivery_id = ? ORDER BY created_at", this::mapHelp, deliveryId);
   }
 
+  /** 사건함이 이 도움요청으로 사건을 열었다(DE-CASE) — 사건 번호, 열림이면 처리 중. 다른 사건이 이미 붙어 있으면 바꾸지 않는다. */
+  public int linkHelpCase(String deliveryId, String requestId, String caseId) {
+    return jdbc.update(
+        "UPDATE help_request SET case_id = ?, state = CASE WHEN state = 'OPEN' THEN 'IN_PROGRESS'"
+            + " ELSE state END WHERE delivery_id = ? AND request_id = ? AND (case_id IS NULL OR"
+            + " case_id = ?)",
+        caseId,
+        deliveryId,
+        requestId,
+        caseId);
+  }
+
+  /** 사건함이 사건을 닫았다(DE-CASE) — 그 사건의 도움요청을 닫는다. 처리자 = {@code case:<caseId>}, 메모 = 결과. */
+  public int closeHelpByCase(String caseId, @Nullable String outcome, Instant closedAt) {
+    return jdbc.update(
+        "UPDATE help_request SET state = 'RESOLVED', resolved_at = ?, resolved_by = ?,"
+            + " resolution_note = ? WHERE case_id = ? AND state <> 'RESOLVED'",
+        ts(closedAt),
+        "case:" + caseId,
+        outcome == null ? "사건함에서 닫음" : "사건함에서 닫음(" + outcome + ")",
+        caseId);
+  }
+
+  /** 사건함이 닫았던 사건을 다시 열었다(DE-CASE) — 사건함이 닫은 도움요청만 다시 처리 중으로. */
+  public int reopenHelpByCase(String caseId) {
+    return jdbc.update(
+        "UPDATE help_request SET state = 'IN_PROGRESS', resolved_at = NULL, resolved_by = NULL,"
+            + " resolution_note = NULL WHERE case_id = ? AND state = 'RESOLVED' AND resolved_by = ?",
+        caseId,
+        "case:" + caseId);
+  }
+
   /** 도움요청 처리함으로 닫기(0.4.0 — 사건함 전까지). 이미 닫혔으면 false. */
   public boolean resolveHelp(
       String deliveryId, String requestId, String by, @Nullable String note, Instant now) {

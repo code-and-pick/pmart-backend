@@ -63,7 +63,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 - [ ] **서비스 간 요청 — PC 5 몫(2026-11-16 정리)**:
   - [x] DD-MFC `DispatchFailed` 에 `mfcId` 싣기(2026-11-16 구현 — `DispatchDelayed` 도)(필드 추가 — 센터 관리자 배차 실패 사건, PC 2 요청, `delivery-dispatch-service.md`)
-  - [ ] DE-CASE `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태(`delivery-execution-service.md`)
+  - [x] DE-CASE `CaseOpened`·`CaseClosed` 구독(2026-11-16 구현 — Reopened 도, 사건 붙은 도움요청은 처리함 닫기 409) → 도움요청에 사건 번호·상태(`delivery-execution-service.md`)
   - [ ] TR-1 `DeliveryEtaUpdated`, RS-2(rider-auth) — 표 참고
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC

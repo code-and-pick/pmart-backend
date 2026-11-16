@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.5.0
+  version: 0.5.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -357,6 +357,8 @@ paths:
       x-added-in: '2026-11-15'
       description: |
         지원센터 사건함(case R-4)이 없는 동안 직원이 도움요청을 처리했다고 닫는다 — OPEN·IN_PROGRESS → RESOLVED. 이미 RESOLVED 면 409 INVALID_STATE(같은 키·같은 본문 재전송은 같은 결과).
+        **0.5.1(2026-11-16, DE-CASE)**: 사건함이 이 도움요청으로 사건을 열면(`CaseOpened` RIDER_HELP·DELIVERY_INCIDENT) 도움요청에 `caseId`·IN_PROGRESS, 사건을 닫으면(`CaseClosed`) RESOLVED(resolvedBy `case:<caseId>`, 메모 = 결과), 다시 열면(`CaseReopened`) IN_PROGRESS.
+        사건이 붙은 도움요청은 여기서 닫지 않는다 — **409 HELP_REQUEST_HAS_CASE**(사건함에서 닫기). 사건이 없는 예전 도움요청만 이 경로로 닫는다.
         권한은 전달 실패 결정과 같다: 그 센터 MFC_SUPERVISOR, OPERATOR_ADMIN, CS_AGENT, RIDER_OPS(아니면 403, 없는 도움요청은 404).
         배송 상태·버전은 바꾸지 않고 사건도 내지 않는다(받는 쪽이 없다 — 라이더 앱은 조회로 본다). note 에는 개인정보를 적지 않는다(로그에 남기지 않음).
       operationId: resolveHelpRequest

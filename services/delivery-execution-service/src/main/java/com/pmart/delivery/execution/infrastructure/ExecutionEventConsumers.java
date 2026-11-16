@@ -23,13 +23,16 @@ class ExecutionEventConsumers {
   }
 
   /**
-   * case 오배송 확인(platform.case.v1, 바인딩 {@code caseEvents-in-0}, ADR-0065 2026-11-16) — 라이더 귀책이면 원래
-   * 수행료 미지급. 처음 켜기 전 소비 그룹 시작 위치 latest.
+   * case 사건(platform.case.v1, 바인딩 {@code caseEvents-in-0}) — 오배송 확인(ADR-0065 2026-11-16, 라이더 귀책이면
+   * 원래 수행료 미지급), 사건 열림·닫힘(DE-CASE 2026-11-16, 도움요청 사건 번호·상태). 처음 켜기 전 소비 그룹 시작 위치 latest.
    */
   @Bean
   PmartEventConsumer caseEvents(EventConsumers consumers, ExecutionEventHandler handler) {
-    return consumers.of(e -> "MisdeliveryConfirmed".equals(e.eventType()), handler::onCase);
+    return consumers.of(e -> CASE_TYPES.contains(e.eventType()), handler::onCaseEvent);
   }
+
+  private static final java.util.Set<String> CASE_TYPES =
+      java.util.Set.of("MisdeliveryConfirmed", "CaseOpened", "CaseClosed", "CaseReopened");
 
   @Bean
   PmartEventConsumer fulfillmentEvents(EventConsumers consumers, ExecutionEventHandler handler) {

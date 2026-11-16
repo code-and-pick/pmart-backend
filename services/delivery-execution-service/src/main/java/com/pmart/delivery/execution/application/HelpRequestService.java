@@ -166,6 +166,15 @@ public class HelpRequestService {
           if (!Access.operatorCanDecide(p, mfcId)) {
             throw ExecutionService.forbidden("도움요청을 닫을 권한이 없습니다(센터 관리자·고객센터·라이더 운영).");
           }
+          if (h.caseId() != null && !"RESOLVED".equals(h.state())) {
+            // DE-CASE(2026-11-16): 사건함 사건이 붙은 도움요청은 사건함에서 닫는다(사건 닫힘 → 여기도 처리됨)
+            throw new PmartException(
+                "HELP_REQUEST_HAS_CASE",
+                org.springframework.http.HttpStatus.CONFLICT,
+                "사건함 사건(" + h.caseId() + ")에서 닫아 주세요.",
+                false,
+                java.util.List.of());
+          }
           Instant now = clock.instant();
           if (!store.resolveHelp(deliveryId, requestId, p.subject(), memo, now)) {
             throw PmartException.invalidState("이미 처리함으로 닫힌 도움요청입니다(지금 " + h.state() + ").");
