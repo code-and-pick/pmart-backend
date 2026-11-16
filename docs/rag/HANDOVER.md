@@ -137,6 +137,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 | `operator-index-scope.md` | 운영자 RAG 색인 범위 — ADR 61개 남김·뺌·애매함 표와 기준(2026-11-15) |
 | `worklog.md` | RAG 작업 일지(11-04~11-10). 영역을 나눈 뒤(2026-11-15~)는 **`docs/worklog/rag/YYYY-MM-DD.md`**(폴더 있음 — README) |
 | `rag-architecture-2026-11-16.svg` | **지금 RAG 구조도**(2026-11-16 PC 4) — LAN 배치, 임베딩·생성 모델, 색인 6단계, 질문 9단계, 운영자·고객 비교. 코드·설정 저장소 값 기준 — 값이 바뀌면 같이 고친다 |
+| `uml/` | **UML 다이어그램 5종**(2026-11-16 PC 4) — 배치·컴포넌트·시퀀스·상태 머신(모델 적재)·활동(질문 처리), 생성 스크립트 `make_uml.py` |
 | `codex-opinion/` | 설계·검토 원문 1~6차(수정 금지)와 1차 계획 |
 | `references/2026-11-07/` | 사용자가 넣은 외부 자료 원본(무료 모델 추천·Spring AI 구조 검토) |
 | `planning/` | 원본 대조·운영자/고객 RAG 보고서·구조도(2026-11-07) |
