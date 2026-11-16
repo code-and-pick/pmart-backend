@@ -23,3 +23,8 @@ notification-service 1차(2026-11-16, 계약 0.2.0, ADR-0064 — 고객 앱 알�
 ## N-2. 고객센터 문의 답변 알림 (2026-11-09, case 0.2.0)
 - 상담원이 문의에 답하면(`ANSWERED`) 고객에게 앱 알림. 지금은 case-service 가 사건을 발행하지 않는다 — 알림 서비스 구현 때 case 에 `InquiryAnswered`(inquiryId·customerId) 발행을 함께 넣는다.
 - **구현(2026-11-16)**: case 가 답변 때 `InquiryAnswered`(platform.case.v1, 답변 내용 없음)를 내고 notification 이 고객 알림함에 "문의에 답변이 등록되었어요"(목적지 INQUIRY = inquiryId).
+
+## N-3. 오배송 다시 배송비 결제 안내 (2026-11-16, ADR-0065 — 보낸 영역 delivery)
+- **배경**: 고객 잘못 오배송이 200m 이상이면 고객이 앱에서 9,000원을 30분 안에 결제해야 다시 배송된다(orchestration `redelivery_payment`, 고객 API `/redelivery-payments`). 결제하지 않으면 회수 후 상품값 − 9,000원 환불.
+- **필요한 것**: delivery.delivery.v1 `RedeliveryPaymentRequired`(deliveryId·orderId·caseId·fee·requiredAt — 받는 고객은 order 내부 조회 accountId) → 고객 알림함 "오배송된 상품을 실제 주소로 보내려면 9,000원 결제가 필요해요"(목적지 주문 상세 또는 결제 화면, 기한 = requiredAt + 30분). 회수로 바뀐 안내는 기존 환불 결과 알림으로 충분한지 함께 판단.
+- **지금(임시)**: 상담원이 통화로 안내.

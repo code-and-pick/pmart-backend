@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: order-orchestration-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     사가 인스턴스·단계·타임아웃·재시도·보상 로그·결과 불명 추적·운영자 수동 개입 기록의 정본. (docs/architecture/service-map.md §2)
     주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본)은 소유하지 않는다.
@@ -9,7 +9,12 @@ info:
     S2(2026-11-07, 슬라이스 6a): OrderConfirmed(order.order.v1) 구독으로 시작 → REQUEST_FULFILLMENT(mfc-fulfillment ConfirmOrder) →
     접수면 COMPLETED. 거절이 재시도 대상이면 AWAIT_RECOVERY(RETRY_WAITING) 뒤 새 작업 버전, 아니거나 끝나면 REQUEST_SYSTEM_CANCEL
     (claim POST /internal/claims/system-cancellations → S3) 뒤 COMPLETED. 조회는 GET /internal/sagas?orderId=&sagaType=S2_FULFILLMENT.
-    모든 엔드포인트는 서비스 간 전용(/internal). BackOffice BO-12는 승인 건(approvalRef)을 동반해야 수동 개입할 수 있다.
+    모든 엔드포인트는 서비스 간 전용(/internal) — 0.3.0 의 고객 경로 `/redelivery-payments` 만 예외. BackOffice BO-12는 승인 건(approvalRef)을 동반해야 수동 개입할 수 있다.
+    0.3.0(2026-11-16, ADR-0065 고객 잘못 오배송 다시 배송 9,000원): delivery-dispatch `RedeliveryPaymentRequired`(delivery.delivery.v1) 구독 →
+    결제 시도 생성(payment `POST /internal/payments`, 주문 참조 `RDL-<caseId>` — 원래 주문 결제와 별개, customerRef = 주문 accountId, 만료 = 기한) →
+    고객 앱이 결제위젯으로 결제(orderId = paymentAttemptId) 후 payment `POST /payment-confirmations` → PaymentApproved 면 dispatch 다시 배송 풀기
+    (`POST /internal/deliveries/{id}/redelivery-releases`). **30분** 기한까지 승인이 없거나 고객이 거절하면 dispatch 에 회수로 바꾸기
+    (`…/redelivery-cancellations`) + 재발송 사가 CUSTOMER_REFUND(회수 후 상품값 − 9,000원 환불). 기한 뒤 늦은 승인은 보상 취소.
 servers:
   - url: /api/v1
 security:
@@ -18,8 +23,86 @@ tags:
   - { name: sagas, description: 사가 조회·수동 개입 }
   - { name: checkout, description: S1 시작 (order-service) }
   - { name: cancellation, description: S3 시작 (claim-service) }
+  - { name: redelivery-payment, description: '오배송 다시 배송 9,000원 결제 대기(고객 앱 — ADR-0065)' }
 
 paths:
+  /redelivery-payments:
+    get:
+      tags: [redelivery-payment]
+      summary: "[고객 앱] 내 오배송 다시 배송 결제 대기 목록"
+      description: |
+        고객 토큰만 — 본인(주문 accountId) 것만, 최근 순 20건. 결제할 것은 status WAITING_PAYMENT 인 건의 paymentAttemptId 로
+        결제위젯(orderId = paymentAttemptId, amount, orderName)을 띄우고 payment-service `POST /payment-confirmations` 로 승인 요청한다.
+        결제 결과는 payment `GET /payments/{paymentAttemptId}` 로 본다. paymentAttemptId 가 비었으면(결제 시도 준비 중) 잠시 뒤 다시 읽는다.
+      operationId: listRedeliveryPayments
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: 이 주문 것만 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RedeliveryPayment' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /redelivery-payments/{redeliveryPaymentId}/payment-attempts:
+    post:
+      tags: [redelivery-payment]
+      summary: "[고객 앱] 결제 다시 시도 — 앞 결제 시도가 실패·만료됐으면 새 결제 시도"
+      description: |
+        기한 안의 결제 대기(WAITING_PAYMENT)만. 지금 결제 시도가 아직 쓸 수 있거나 진행 중이면 그대로, 실패·취소됐으면 새 시도를 만든다(paymentAttemptId 가 바뀐다).
+        남의 것·없는 것 404, 결제 대기가 아니면(기한 지남·거절·결제됨) 409 INVALID_STATE.
+      operationId: retryRedeliveryPayment
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: redeliveryPaymentId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: 지금 쓸 결제 시도
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedeliveryPayment' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: INVALID_STATE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /redelivery-payments/{redeliveryPaymentId}/declines:
+    post:
+      tags: [redelivery-payment]
+      summary: "[고객 앱] 결제하지 않고 회수 후 환불 고르기"
+      description: |
+        고객이 9,000원 결제 대신 "회수 후 취소·환불"을 고른다(ADR-0065 결정 3) — 잘못 간 상품은 회수, 환불은 상품값 − 9,000원.
+        이미 결제됐으면 409 ALREADY_PAID(결제가 처리 중이면 결과가 나온 뒤 판단). 이미 거절·기한 지남이면 그대로 200.
+      operationId: declineRedeliveryPayment
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: redeliveryPaymentId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RedeliveryPayment' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: ALREADY_PAID
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /internal/sagas:
     get:
       tags: [sagas]
@@ -221,6 +304,23 @@ paths:
 
 components:
   schemas:
+    RedeliveryPayment:
+      type: object
+      description: 오배송 다시 배송 9,000원 결제 대기(ADR-0065). 주소·좌표 없음.
+      required: [redeliveryPaymentId, orderId, amount, status, deadlineAt, createdAt]
+      properties:
+        redeliveryPaymentId: { type: string }
+        orderId: { type: string }
+        caseId: { type: string }
+        amount: { type: integer, description: 고객 부담(원) — 9,000 }
+        orderName: { type: string, description: 결제위젯 주문명 }
+        paymentAttemptId: { type: string, description: '결제위젯 orderId 로 그대로 쓴다. 준비 중이면 없음' }
+        status:
+          type: string
+          enum: [WAITING_PAYMENT, PAID, DECLINED, TIMED_OUT]
+          description: WAITING_PAYMENT 결제 대기, PAID 결제됨(다시 배송 배차), DECLINED 고객이 회수 후 환불 고름, TIMED_OUT 기한(30분) 지나 회수 후 환불
+        deadlineAt: { type: string, format: date-time, description: 결제 기한(배송 준비 + 30분) }
+        createdAt: { type: string, format: date-time }
     SagaType:
       type: string
       enum: [S1_CHECKOUT, S2_FULFILLMENT, S3_CANCELLATION, S4_RESERVATION_TIME_CHANGE]

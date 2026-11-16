@@ -192,6 +192,7 @@ GET /api/v1/quality-incidents OPERATOR
 GET /api/v1/quality-incidents/{incidentId} OPERATOR
 GET /api/v1/recalls/{recallId} OPERATOR
 GET /api/v1/recommendations OPERATOR
+GET /api/v1/redelivery-payments CUSTOMER
 GET /api/v1/replenishment-moves/{moveId} OPERATOR
 GET /api/v1/replenishment-status OPERATOR
 GET /api/v1/return-inspections/{returnInspectionId} OPERATOR
@@ -419,6 +420,8 @@ POST /api/v1/putaway-tasks/{taskId}/executions OPERATOR
 POST /api/v1/quality-decisions OPERATOR
 POST /api/v1/quality-decisions/{qualityDecisionId}/approvals OPERATOR
 POST /api/v1/recalls OPERATOR
+POST /api/v1/redelivery-payments/{redeliveryPaymentId}/declines CUSTOMER
+POST /api/v1/redelivery-payments/{redeliveryPaymentId}/payment-attempts CUSTOMER
 POST /api/v1/replenishment-moves OPERATOR
 POST /api/v1/return-inspections OPERATOR
 POST /api/v1/return-receipts OPERATOR

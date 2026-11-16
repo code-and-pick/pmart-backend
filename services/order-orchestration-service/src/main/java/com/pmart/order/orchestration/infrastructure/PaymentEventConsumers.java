@@ -3,6 +3,7 @@ package com.pmart.order.orchestration.infrastructure;
 import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
 import com.pmart.order.orchestration.application.CheckoutSagaService;
+import com.pmart.order.orchestration.application.RedeliveryPaymentService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -18,7 +19,12 @@ class PaymentEventConsumers {
 
   /** order.payment.v1 — 바인딩 paymentEvents-in-0(설정 저장소). */
   @Bean
-  PmartEventConsumer paymentEvents(EventConsumers consumers, CheckoutSagaService sagas) {
-    return consumers.of(sagas::onPaymentEvent);
+  PmartEventConsumer paymentEvents(
+      EventConsumers consumers, CheckoutSagaService sagas, RedeliveryPaymentService redelivery) {
+    return consumers.of(
+        e -> {
+          sagas.onPaymentEvent(e);
+          redelivery.onPaymentEvent(e); // 오배송 다시 배송 9,000원(ADR-0065) — 자기 결제 시도만
+        });
   }
 }

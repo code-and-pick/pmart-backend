@@ -54,7 +54,18 @@ public class ManualActionStore {
           + part("shortage_saga", "SHORTAGE")
           + " UNION ALL "
           + reshipmentPart()
+          + " UNION ALL "
+          + redeliveryPart()
           + ") x";
+
+  /** 오배송 다시 배송 9,000원 결제 대기(ADR-0065) — 결제됐는데 배차를 못 풀었거나 회수로 못 바꿈·늦은 결제 취소 실패. */
+  private static String redeliveryPart() {
+    return "SELECT s.saga_id, 'REDELIVERY_PAYMENT' AS saga_type, s.order_id, s.state,"
+        + " s.current_step, s.last_error_step, s.last_error_code, '오배송 사건 ' || s.case_id || ' ·"
+        + " 다시 배송 ' || s.delivery_id || COALESCE(' — ' || s.last_error_message, '') AS"
+        + " last_error_message, s.updated_at FROM redelivery_payment s WHERE"
+        + STUCK;
+  }
 
   /**
    * 오배송 재발송 사가 — 주문을 찾기 전에 멈추면 주문 ID 가 없어 빈 값. 사람이 찾을 수 있게 오배송 사건·배송 ID 를 사유 앞에 붙인다(사건·배송 ID 는 개인정보

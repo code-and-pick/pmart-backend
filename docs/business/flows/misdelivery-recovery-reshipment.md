@@ -42,7 +42,21 @@
 - 배송: dispatch 가 DispatchRequested 로 배송을 만든다(출고당 하나) — 재발송이면 type RESHIPMENT·caseId, 약속 = 오배송 확인 + 50분. 주소·배송 방식은 주문 그대로(O-4).
 - 주문 원장: 재발송 상품의 인계·전달은 O-1 그대로(보낼 수량 = 원수량 − 출고 전 취소 + 재발송). 주문 상태는 뒤로 가지 않는다(이미 COMPLETED 면 그대로).
 
+## 2.2 고객 잘못 다시 배송 9,000원 결제 대기 (order-orchestration `redelivery_payment` — ADR-0065 결정 3, 2026-11-16)
+잘못 둔 곳 ↔ 실제 집이 200m 이상이면 dispatch 가 다시 배송을 만들되 배차하지 않고 `RedeliveryPaymentRequired`(9,000원)를 낸다. orchestration 이 그 사건으로 결제 대기 사가를 시작한다(사건 ID 유일).
+| 단계 | 하는 일 | 실패 |
+|---|---|---|
+| PREPARE_PAYMENT | order 원장의 accountId → payment 결제 시도(주문 참조 `RDL-<caseId>` — 원래 주문 결제와 별개, customerRef = accountId, 만료 = 기한, 키 `<sagaId>:PAY:<n>`) | 모름·거절은 sweep 이 다시(기한이 지나면 회수로) |
+| AWAIT_PAYMENT | 결제 시도 조회. APPROVED → 결제됨. PENDING·UNKNOWN·MISMATCH 는 기한이 지나도 결과를 기다림. 고객 거절이나 기한(사건 시각 + **30분**) → 회수로 | — |
+| RELEASE_DELIVERY | dispatch `POST /internal/deliveries/{id}/redelivery-releases` — 배차 시작, 약속 = 풀린 때 + 50분 | 업무 거절 상신(처리 대기 REDELIVERY_PAYMENT), 모름은 sweep |
+| CONVERT_TO_RECOVERY | dispatch `…/redelivery-cancellations`(reason TIMED_OUT·DECLINED — 다시 배송 닫고 MFC 회수 배송) → 재발송 사가 **CUSTOMER_REFUND**(상품값 − 9,000원 환불) | 업무 거절 상신, 모름은 sweep |
+| CANCEL_LATE_PAYMENT | 회수로 바꾼 뒤 승인이 오면(PaymentApproved) 보상 취소(reason REDELIVERY_PAYMENT_TOO_LATE) | 업무 거절 상신 |
+
+- 고객 앱: `GET /redelivery-payments`(본인 것) → 결제위젯(orderId = paymentAttemptId, 9,000원, "오배송 다시 배송비") → payment `POST /payment-confirmations`. 실패하면 `POST /redelivery-payments/{id}/payment-attempts`(새 시도), 결제 대신 회수 후 환불은 `…/declines`. handoff `docs/handoff/clients/customer-app/2026-11-16-request-redelivery-payment.md`.
+- 결제 기한 안에 결제창에 들어갔다면 결제 서비스가 기한(`resourceExpiresAt`) 뒤 승인을 막는다(EXPIRED). 그래도 기한 직전 승인 결과가 늦게 오면 CANCEL_LATE_PAYMENT.
+
 ## 3. 남은 것
+- 고객 알림(결제 필요·기한 임박·회수로 바뀜) — notification N-3 요청.
 - 재발송 지연(재고 확보·배정 실패) 기한과 고객 안내(ADR-0052 남은 것) — 지금은 상신(수동).
 - 재발송 출고 작업 중지(고객이 재발송을 원치 않을 때) — 원래 작업 지시만 중지된다.
 - ~~처리 대기 목록에 재발송 사가 없음~~ → 2026-11-16 더함(사용자 "운영자 처리 대기 목록에 재발송 건 추가해"): 상신된 재발송 사가는 `stuck-sagas` 에 sagaType RESHIPMENT 로 나오고 처리 완료 표시(MARK_RESOLVED)를 할 수 있다. 주문을 찾기 전에 멈춘 것은 주문 ID 가 비고 사유 앞에 오배송 사건·배송 ID.

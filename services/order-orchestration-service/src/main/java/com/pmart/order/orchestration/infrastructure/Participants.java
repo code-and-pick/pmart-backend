@@ -425,6 +425,35 @@ public class Participants {
         Map.of("orderId", orderId));
   }
 
+  // ---------- 오배송 다시 배송 9,000원(ADR-0065 4단계) ----------
+
+  /** 결제됨 → dispatch 다시 배송 배차 풀기(멱등). */
+  public Result releaseRedelivery(
+      String deliveryId, String requestId, String caseId, @Nullable String paymentAttemptId) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("caseId", caseId);
+    if (paymentAttemptId != null) {
+      body.put("paymentAttemptId", paymentAttemptId);
+    }
+    return post(
+        dispatch,
+        DISPATCH + " redelivery-releases",
+        "/api/v1/internal/deliveries/" + deliveryId + "/redelivery-releases",
+        requestId,
+        body);
+  }
+
+  /** 기한·거절 → dispatch 다시 배송 닫고 회수로(멱등). reason TIMED_OUT / DECLINED. */
+  public Result cancelRedelivery(
+      String deliveryId, String requestId, String caseId, String reason) {
+    return post(
+        dispatch,
+        DISPATCH + " redelivery-cancellations",
+        "/api/v1/internal/deliveries/" + deliveryId + "/redelivery-cancellations",
+        requestId,
+        Map.of("caseId", caseId, "reason", reason));
+  }
+
   // ---------- 공통 ----------
 
   private Result post(RestClient client, String target, String uri, String requestId, Object body) {
