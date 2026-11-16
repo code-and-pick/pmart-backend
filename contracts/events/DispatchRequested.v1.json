@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/DispatchRequested.v1.json",
   "title": "DispatchRequested",
-  "description": "출고의 라이더 배차를 요청한 사실(2026-11-08 사용자 결정 D-5, Delivery §3.1). 점원이 포장 중(또는 출하 대기 뒤) 예상 포장 시간과 함께 요청(MANUAL). 2026-11-13(BR-51, 사용자 \"자동요청빼\") 부터 출하 대기 자동 요청은 없다 — AUTO_ON_READY 는 그 전 기록에만 남는다(enum 유지). 출고당 한 번. 발행 mfc-fulfillment. 구독 delivery-dispatch(예정). 토픽 mfc.fulfillment.v1",
+  "description": "출고의 라이더 배차를 요청한 사실(2026-11-08 사용자 결정 D-5, Delivery §3.1). 점원이 포장 중(또는 출하 대기 뒤) 예상 포장 시간과 함께 요청(MANUAL). 2026-11-13(BR-51, 사용자 \"자동요청빼\") 부터 출하 대기 자동 요청은 없다 — AUTO_ON_READY 는 그 전 기록에만 남는다(enum 유지). 출고당 한 번. 발행 mfc-fulfillment. 구독 delivery-dispatch(예정). 토픽 mfc.fulfillment.v1 2026-11-16: 오배송 재발송(작업 지시 kind RESHIPMENT)이면 purpose MISDELIVERY_RESHIPMENT·caseId.",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -27,15 +27,52 @@
             "requestedAt"
           ],
           "properties": {
-            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
-            "fulfillmentId": { "$ref": "_defs.v1.json#/$defs/Ref" },
-            "shipmentId": { "$ref": "_defs.v1.json#/$defs/Ref" },
-            "mfcId": { "$ref": "_defs.v1.json#/$defs/CenterId" },
-            "trigger": { "type": "string", "enum": ["MANUAL", "AUTO_ON_READY"] },
-            "estimatedPackMinutes": { "type": "integer", "minimum": 1, "description": "MANUAL 만 — 점원이 넣은 예상 포장 시간(분)" },
-            "estimatedReadyAt": { "$ref": "_defs.v1.json#/$defs/DateTime", "description": "출하 대기 예상 시각. AUTO_ON_READY 면 이미 대기(= requestedAt)" },
-            "requestedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" },
-            "requestedBy": { "type": "string", "description": "MANUAL 만 — 점원 ID" }
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "fulfillmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "shipmentId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "trigger": {
+              "type": "string",
+              "enum": [
+                "MANUAL",
+                "AUTO_ON_READY"
+              ]
+            },
+            "estimatedPackMinutes": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "MANUAL 만 — 점원이 넣은 예상 포장 시간(분)"
+            },
+            "estimatedReadyAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "출하 대기 예상 시각. AUTO_ON_READY 면 이미 대기(= requestedAt)"
+            },
+            "requestedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "requestedBy": {
+              "type": "string",
+              "description": "MANUAL 만 — 점원 ID"
+            },
+            "purpose": {
+              "type": "string",
+              "enum": [
+                "MISDELIVERY_RESHIPMENT"
+              ],
+              "description": "2026-11-16 — 오배송 재발송 작업 지시의 출고면 MISDELIVERY_RESHIPMENT(없으면 일반 주문 출고)"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "오배송 재발송의 근거 사건(case)"
+            }
           },
           "additionalProperties": true
         }

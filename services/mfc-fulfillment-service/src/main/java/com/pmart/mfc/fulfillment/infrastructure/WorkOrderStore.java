@@ -27,7 +27,15 @@ public class WorkOrderStore {
       String acceptance,
       int version,
       Instant createdAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      String kind,
+      @Nullable String sourceRef) {
+
+    /** 오배송 재발송 작업 지시(2026-11-16). */
+    public boolean reshipment() {
+      return "RESHIPMENT".equals(kind);
+    }
+  }
 
   public record VersionRow(
       String fulfillmentId,
@@ -95,9 +103,21 @@ public class WorkOrderStore {
         "fulfillment:" + orderId);
   }
 
+  /** 주문 확정 작업 지시(ORIGINAL — 주문당 하나). 오배송 재발송 작업은 {@link #findBySource}. */
   public Optional<WorkOrderRow> findByOrder(String orderId) {
     return jdbc
-        .query("SELECT * FROM work_order WHERE order_id = ?", (rs, i) -> order(rs), orderId)
+        .query(
+            "SELECT * FROM work_order WHERE order_id = ? AND kind = 'ORIGINAL'",
+            (rs, i) -> order(rs),
+            orderId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 오배송 재발송 작업 지시(근거 사건당 하나). */
+  public Optional<WorkOrderRow> findBySource(String sourceRef) {
+    return jdbc
+        .query("SELECT * FROM work_order WHERE source_ref = ?", (rs, i) -> order(rs), sourceRef)
         .stream()
         .findFirst();
   }
@@ -116,7 +136,8 @@ public class WorkOrderStore {
     jdbc.update(
         "INSERT INTO work_order (fulfillment_id, order_id, mfc_id, reservation_id, delivery_mode,"
             + " arrival_start, arrival_end, out_of_stock_preference, last_work_version, acceptance,"
-            + " version, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " version, created_at, updated_at, kind, source_ref) VALUES"
+            + " (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         w.fulfillmentId(),
         w.orderId(),
         w.mfcId(),
@@ -129,7 +150,9 @@ public class WorkOrderStore {
         w.acceptance(),
         w.version(),
         ts(w.createdAt()),
-        ts(w.updatedAt()));
+        ts(w.updatedAt()),
+        w.kind(),
+        w.sourceRef());
   }
 
   /** 새 작업 버전 결정 반영(마지막 버전·접수 여부·버전 +1). */
@@ -339,7 +362,9 @@ public class WorkOrderStore {
         rs.getString("acceptance"),
         rs.getInt("version"),
         rs.getTimestamp("created_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getString("kind"),
+        rs.getString("source_ref"));
   }
 
   private static VersionRow version(ResultSet rs) throws SQLException {

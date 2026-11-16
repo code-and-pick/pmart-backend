@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.4.11
+  version: 0.5.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -32,6 +32,11 @@ info:
     - PKG: OPEN→SEALED→HANDED_OVER / SEALED→INVALIDATED(재포장·피킹 뒤 중지) / OPEN→VOIDED(재고 PACK 거절)
     - 인계 fence: AuthorizePackageHandover → HANDOVER_IN_PROGRESS(handoverAuthorizationId, fenceVersion) → CommitPackageHandover → mfc-inventory 커밋 → HANDED_OVER.
       WorkStopResult와 PackageHandedOver는 같은 packageId에 상호 배타. fence 만료는 취소 성공이 아니다.
+
+    0.5.0(2026-11-16, 오배송 재발송 — ADR-0052 결정 4, 사용자 "새상품 재배차 서비스 넣어" → "전부 PR로"): ConfirmOrder 에 `kind`(ORIGINAL 기본 / RESHIPMENT)·`reshipmentRef`(오배송 확인 사건 caseId).
+      RESHIPMENT 는 **같은 주문의 두 번째 작업 지시**(원래 작업 지시와 따로 — 주문당 ORIGINAL 하나, 같은 reshipmentRef 는 하나). 자기 재고 예약(reservationId)으로 덮이는지 보고, 이미 중지된 수량은 빼지 않는다(배송된 상품을 다시 보내는 것).
+      재발송 출고의 WorkAccepted·PackingFinished·ShipmentReady·DispatchRequested·LineShortageReported 에 `purpose: MISDELIVERY_RESHIPMENT`·`caseId`. WorkAccepted/WorkRejected 집계는 fulfillmentId(원래 주문 집계 버전과 겹치지 않게).
+      `GET /internal/work-orders?orderId=` 와 작업 중지는 원래(ORIGINAL) 작업 지시만 본다.
 servers:
   - url: /api/v1
 security:
@@ -1127,6 +1132,8 @@ components:
             start: { type: string, format: date-time }
             end: { type: string, format: date-time }
         promisedReadyAt: { type: string, format: date-time, description: 예약배달은 슬롯 기준 준비 완료 목표 }
+        kind: { type: string, enum: [ORIGINAL, RESHIPMENT], default: ORIGINAL, description: '0.5.0 — RESHIPMENT = 오배송 재발송(같은 주문의 두 번째 작업 지시, reshipmentRef 필수)', x-added-in: '2026-11-16' }
+        reshipmentRef: { type: string, maxLength: 64, description: '0.5.0 — RESHIPMENT 의 근거(오배송 확인 사건 caseId). 같은 값은 작업 지시 하나', x-added-in: '2026-11-16' }
         shipments:
           type: array
           minItems: 1

@@ -307,6 +307,116 @@ class WorkOrderIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("WorkAccepted", o)).isEqualTo(1);
   }
 
+  /**
+   * 오배송 재발송(2026-11-16, ADR-0052 결정 4): 접수된 주문에 kind RESHIPMENT 작업 지시를 하나 더 — 자기 예약으로, 근거 사건당 하나,
+   * 원래 작업 중지 수량은 빼지 않는다, 사건에 purpose·caseId, 주문 조회는 원래 작업 지시 그대로.
+   */
+  @Test
+  void reshipmentIsSecondWorkOrderForSameOrder() {
+    String o = order();
+    reservation(o, "CONFIRMED", "CONFIRMED");
+    // 원래 주문: L1 1개 중지 뒤 접수(PICK 2)
+    post(
+        "/internal/stop-requests",
+        "s-" + o,
+        Map.of(
+            "stopRequestId",
+            "STOP-" + o,
+            "orderId",
+            o,
+            "scope",
+            "PARTIAL",
+            "lines",
+            List.of(Map.of("orderLineId", o + "-L1", "qty", 1))));
+    Res first = post("/internal/work-orders", "k-" + o, confirmBody(o, "MFC-T1", 1, null));
+    assertThat(first.body().path("decision").asString()).isEqualTo("ACCEPTED");
+    String original = first.body().path("fulfillmentId").asString();
+
+    String caseId = "CASE-" + UUID.randomUUID();
+    String rsv = "RSV-RS-" + o;
+    inv.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/reservations/" + rsv))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "reservationId",
+                        rsv,
+                        "state",
+                        "CONFIRMED",
+                        "parts",
+                        List.of(
+                            Map.of(
+                                "partId",
+                                "P1",
+                                "sku",
+                                "E-00000001",
+                                "qty",
+                                2,
+                                "state",
+                                "CONFIRMED"),
+                            Map.of(
+                                "partId",
+                                "P2",
+                                "sku",
+                                "E-00000002",
+                                "qty",
+                                1,
+                                "state",
+                                "CONFIRMED"))))));
+    Map<String, Object> body = confirmBody(o, "MFC-T1", 1, null);
+    body.put("reservationId", rsv);
+    body.put("kind", "RESHIPMENT");
+    body.put("reshipmentRef", caseId);
+    body.put(
+        "shipments",
+        List.of(
+            Map.of(
+                "shipmentId",
+                o + "-RS1",
+                "lines",
+                List.of(
+                    Map.of("orderLineId", o + "-L1", "sku", "E-00000001", "qty", 2),
+                    Map.of("orderLineId", o + "-L2", "sku", "E-00000002", "qty", 1)))));
+    // reshipmentRef 없이 → 400
+    Map<String, Object> noRef = new LinkedHashMap<>(body);
+    noRef.remove("reshipmentRef");
+    assertThat(post("/internal/work-orders", "rs0-" + o, noRef).status()).isEqualTo(400);
+
+    Res r = post("/internal/work-orders", "rs-" + o, body);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    assertThat(r.body().path("decision").asString()).isEqualTo("ACCEPTED");
+    String fid = r.body().path("fulfillmentId").asString();
+    assertThat(fid).isNotEqualTo(original);
+    assertThat(r.body().path("shipmentIds").path(0).asString()).isEqualTo(o + "-RS1");
+    // 원래 주문의 중지 수량을 빼지 않는다 — L1 2 + L2 1
+    assertThat(task(get("/internal/work-orders/" + fid).body(), "PICK").path("plannedQty").asInt())
+        .isEqualTo(3);
+    // 같은 근거 다시(다른 키) → 같은 작업 지시
+    assertThat(
+            post("/internal/work-orders", "rs2-" + o, body).body().path("fulfillmentId").asString())
+        .isEqualTo(fid);
+    // 주문 조회·원래 접수는 그대로
+    assertThat(get("/internal/work-orders?orderId=" + o).body().path("fulfillmentId").asString())
+        .isEqualTo(original);
+    JsonNode accepted =
+        mapper.readTree(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'WorkAccepted' AND"
+                    + " aggregateid = ?",
+                String.class,
+                fid));
+    assertThat(accepted.path("payload").path("purpose").asString())
+        .isEqualTo("MISDELIVERY_RESHIPMENT");
+    assertThat(accepted.path("payload").path("caseId").asString()).isEqualTo(caseId);
+    assertThat(outbox("WorkAccepted", o)).isEqualTo(1); // 원래 주문 집계는 원래 접수 하나
+    // 같은 근거로 다른 주문 → 409
+    String other = order();
+    Map<String, Object> wrong = new LinkedHashMap<>(body);
+    wrong.put("orderId", other);
+    assertThat(post("/internal/work-orders", "rs3-" + o, wrong).status()).isEqualTo(409);
+  }
+
   @Test
   void stoppedQuantitiesSubtractedAndFullStopRejected() {
     String o = order();

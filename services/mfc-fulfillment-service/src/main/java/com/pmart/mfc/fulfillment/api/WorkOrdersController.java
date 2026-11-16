@@ -106,7 +106,9 @@ public class WorkOrdersController implements WorkOrdersApi {
                                                 l.getUnitsPerSku(),
                                                 l.getWeightG()))
                                     .toList()))
-                    .toList()));
+                    .toList(),
+                body.getKind() == null ? null : body.getKind().getValue(),
+                body.getReshipmentRef()));
     return ResponseEntity.status(HttpStatus.CREATED).body(decision(d));
   }
 

@@ -100,7 +100,23 @@ public class FulfillmentEvents {
       p.put("outOfStockPreference", t.outOfStockPreference());
     }
     p.put("reportedAt", at.toString());
+    reshipment(t.fulfillmentId(), p);
     publish("LineShortageReported", "Fulfillment", t.orderId(), orderVersion(t), t.startedBy(), p);
+  }
+
+  /** 오배송 재발송 작업 지시의 출고면 purpose·caseId 를 더한다(2026-11-16 — 배차가 재발송 배송으로 표시). */
+  private void reshipment(@Nullable String fulfillmentId, Map<String, Object> p) {
+    if (fulfillmentId == null) {
+      return;
+    }
+    works
+        .find(fulfillmentId)
+        .filter(WorkOrderStore.WorkOrderRow::reshipment)
+        .ifPresent(
+            w -> {
+              p.put("purpose", "MISDELIVERY_RESHIPMENT");
+              p.put("caseId", w.sourceRef());
+            });
   }
 
   /** DispatchRequested(D-5) — 출고 집계, 같은 트랜잭션. */
@@ -119,6 +135,7 @@ public class FulfillmentEvents {
     if (r.requestedBy() != null) {
       p.put("requestedBy", r.requestedBy());
     }
+    reshipment(pack.fulfillmentId(), p);
     publish("DispatchRequested", "Shipment", r.shipmentId(), 1, r.requestedBy(), p);
   }
 
@@ -146,6 +163,7 @@ public class FulfillmentEvents {
     finished.put("mfcId", pack.mfcId());
     finished.put("packages", pkgs);
     finished.put("finishedAt", at.toString());
+    reshipment(pack.fulfillmentId(), finished);
     publish(
         "PackingFinished",
         "Shipment",
@@ -160,6 +178,7 @@ public class FulfillmentEvents {
     ready.put("mfcId", pack.mfcId());
     ready.put("readyAt", at.toString());
     ready.put("packages", pkgs);
+    reshipment(pack.fulfillmentId(), ready);
     publish(
         "ShipmentReady", "Shipment", pack.shipmentId(), shipmentVersion, pack.startedBy(), ready);
   }

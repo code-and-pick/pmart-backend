@@ -47,7 +47,11 @@ import org.springframework.stereotype.Service;
  *   <li>결정과 WorkAccepted / WorkRejected(mfc.fulfillment.v1)는 한 트랜잭션.
  * </ol>
  *
- * OPERATION_RESTRICTED(센터 운영 중단)는 원천(mfc-capacity 운영 제한)이 아직 없어 이 서비스가 내지 않는다(사유 값만 계약에 있다).
+ * <p>오배송 재발송(kind RESHIPMENT, 2026-11-16 — ADR-0052 결정 4): 같은 주문의 두 번째 작업 지시. reshipmentRef(오배송 확인
+ * 사건) 당 하나, 자기 재고 예약으로 덮이는지 보고, 원래 주문의 작업 중지 수량은 빼지 않는다(배송된 상품을 다시 보내는 것). 사건에 purpose
+ * MISDELIVERY_RESHIPMENT·caseId, 접수 사건 집계 키는 fulfillmentId.
+ *
+ * <p>OPERATION_RESTRICTED(센터 운영 중단)는 원천(mfc-capacity 운영 제한)이 아직 없어 이 서비스가 내지 않는다(사유 값만 계약에 있다).
  */
 @Service
 public class WorkOrderService {
@@ -76,7 +80,14 @@ public class WorkOrderService {
       @Nullable String outOfStockPreference,
       @Nullable Instant arrivalStart,
       @Nullable Instant arrivalEnd,
-      List<Ship> shipments) {}
+      List<Ship> shipments,
+      @Nullable String kind,
+      @Nullable String reshipmentRef) {
+
+    public boolean reshipment() {
+      return "RESHIPMENT".equals(kind);
+    }
+  }
 
   /** 결정(계약 WorkOrderDecision). */
   public record Decision(
@@ -137,6 +148,11 @@ public class WorkOrderService {
       throw new PmartException(
           com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "workVersion 은 1 이상입니다.");
     }
+    if (in.reshipment() && (in.reshipmentRef() == null || in.reshipmentRef().isBlank())) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "재발송(RESHIPMENT)은 reshipmentRef 가 필요합니다.");
+    }
     // 예약 조회는 트랜잭션 밖에서(하위 호출을 잠금 안에 두지 않는다). 이미 결정된 버전·접수된 주문이면 부르지 않는다.
     InventoryClient.Reservation reservation =
         needsEvaluation(in) ? inventory.reservation(in.reservationId()) : null;
@@ -149,8 +165,15 @@ public class WorkOrderService {
         .value();
   }
 
+  /** 이 요청의 작업 지시 — 일반은 주문의 ORIGINAL, 재발송은 근거 사건의 것. */
+  private java.util.Optional<WorkOrderRow> existing(ConfirmCommand in) {
+    return in.reshipment()
+        ? store.findBySource(in.reshipmentRef())
+        : store.findByOrder(in.orderId());
+  }
+
   private boolean needsEvaluation(ConfirmCommand in) {
-    WorkOrderRow w = store.findByOrder(in.orderId()).orElse(null);
+    WorkOrderRow w = existing(in).orElse(null);
     return w == null
         || (!"ACCEPTED".equals(w.acceptance())
             && store.version(w.fulfillmentId(), in.workVersion()).isEmpty());
@@ -159,7 +182,10 @@ public class WorkOrderService {
   private Decision decide(ConfirmCommand in, InventoryClient.@Nullable Reservation reservation) {
     store.lockOrder(in.orderId());
     Instant now = clock.instant();
-    WorkOrderRow w = store.findByOrder(in.orderId()).orElse(null);
+    WorkOrderRow w = existing(in).orElse(null);
+    if (w != null && !w.orderId().equals(in.orderId())) {
+      throw invalidState("재발송 근거 " + in.reshipmentRef() + " 는 다른 주문의 작업 지시입니다.");
+    }
     if (w != null) {
       VersionRow same = store.version(w.fulfillmentId(), in.workVersion()).orElse(null);
       if (same != null) {
@@ -187,7 +213,11 @@ public class WorkOrderService {
         requested.add(new Line(l.orderLineId(), l.sku(), l.qty()));
       }
     }
-    List<Line> remaining = WorkRules.remaining(requested, stops.stoppedByLine(in.orderId()));
+    // 재발송은 배송된 상품을 다시 보내는 것이라 원래 주문의 작업 중지 수량을 빼지 않는다
+    List<Line> remaining =
+        in.reshipment()
+            ? WorkRules.remaining(requested, Map.of())
+            : WorkRules.remaining(requested, stops.stoppedByLine(in.orderId()));
 
     String reject = null;
     String message = null;
@@ -214,7 +244,9 @@ public class WorkOrderService {
               acceptance,
               1,
               now,
-              now));
+              now,
+              in.reshipment() ? "RESHIPMENT" : "ORIGINAL",
+              in.reshipment() ? in.reshipmentRef() : null));
     } else {
       store.decide(fulfillmentId, in.workVersion(), acceptance, now);
     }
@@ -395,6 +427,10 @@ public class WorkOrderService {
     if (in.sagaId() != null) {
       p.put("sagaId", in.sagaId());
     }
+    if (in.reshipment()) {
+      p.put("purpose", "MISDELIVERY_RESHIPMENT");
+      p.put("caseId", in.reshipmentRef());
+    }
     if (accepted) {
       p.put("shipmentIds", d.shipmentIds());
       p.put("taskIds", d.taskIds());
@@ -414,7 +450,8 @@ public class WorkOrderService {
             accepted ? "WorkAccepted" : "WorkRejected",
             1,
             "Fulfillment",
-            d.orderId(),
+            // 재발송은 자기 작업 지시로 센다(원래 주문 집계 버전과 겹치지 않게)
+            in.reshipment() ? d.fulfillmentId() : d.orderId(),
             aggregateVersion,
             new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
             EventEnvelope.EventSource.REAL,

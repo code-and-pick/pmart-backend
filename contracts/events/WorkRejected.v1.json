@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/WorkRejected.v1.json",
   "title": "WorkRejected",
-  "description": "ConfirmOrder 작업을 거절한 사실. 발행 mfc-fulfillment. 구독 order-orchestration(6a 는 동기 응답으로 진행 — 사건은 기록·BI용). 토픽 mfc.fulfillment.v1",
+  "description": "ConfirmOrder 작업을 거절한 사실. 발행 mfc-fulfillment. 구독 order-orchestration(6a 는 동기 응답으로 진행 — 사건은 기록·BI용). 토픽 mfc.fulfillment.v1 2026-11-16: 오배송 재발송(작업 지시 kind RESHIPMENT)이면 purpose MISDELIVERY_RESHIPMENT·caseId.",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -54,6 +54,17 @@
             },
             "message": {
               "type": "string"
+            },
+            "purpose": {
+              "type": "string",
+              "enum": [
+                "MISDELIVERY_RESHIPMENT"
+              ],
+              "description": "2026-11-16 — 오배송 재발송 작업 지시의 출고면 MISDELIVERY_RESHIPMENT(없으면 일반 주문 출고)"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "오배송 재발송의 근거 사건(case)"
             }
           },
           "additionalProperties": true
