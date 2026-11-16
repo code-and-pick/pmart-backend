@@ -19,3 +19,13 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **execution 이 할 것**(R-4 §"case-service 가 생기면 요청한 쪽에서 바꿀 것"): `CaseOpened`·`CaseClosed` 구독(type RIDER_HELP·DELIVERY_INCIDENT 만) → `help_request.case_id`·state(IN_PROGRESS·RESOLVED) 갱신. 그 뒤 임시 "처리함 닫기"(BOD-4 `POST …/help-requests/{id}/resolutions`)는 사건함 닫기로 대신하고 정리(지우거나 사건 닫기로 넘김 — PC 5 판단).
 - **구현(2026-11-16, PC 5 — execution 0.5.1)**: `caseEvents` 가 `CaseOpened`·`CaseClosed`·`CaseReopened`(type RIDER_HELP·DELIVERY_INCIDENT)도 받는다. 열림 → 도움요청 `caseId`·IN_PROGRESS(refs deliveryId·requestId, 없으면 incidentId 를 나눔), 닫힘 → RESOLVED(resolvedBy `case:<caseId>`, 메모 = 결과), 다시 열림 → IN_PROGRESS. **처리함 닫기는 남기되 사건이 붙은 도움요청은 409 HELP_REQUEST_HAS_CASE**(사건함에서 닫기) — 사건이 없는 예전 도움요청만 그 경로로 닫는다(PC 5 판단: 지우면 예전 것을 닫을 길이 없다).
 
+
+## DE-2. 도움요청 대화(#60) — 답장 권한·새 메시지 값·가림·처리 중 시점 (2026-11-16, 보낸 영역 backoffice)
+- **왜**: 백오피스 웹 요청(pmart-clients PR #45 `docs/handoff/backoffice/2026-11-16-backend-rider-help-chat.md`)과 PC 5 #60(execution 0.6.0 대화 API)을 맞춰 보니 빈 곳 넷. **사용자 결정(2026-11-16 "진행해" — PC 2 추천대로)**. 대화는 #60 대로 도움요청 쪽(execution)에 둔다.
+- **요청**
+  1. **답장 권한을 접수 건 규칙에 맞추기**: 답장(POST …/messages) = RIDER_OPS·OPERATOR_ADMIN 만. **CS_AGENT 는 보기만**(접수 건에서 상담원은 보기만 — 사건함 공통 결정), **센터 관리자(MFC_SUPERVISOR)는 답장 없음**(접수 건 쪽에서 RIDER_HELP 를 보지 않음). 접수 건이 **관리자 팀(ORDER_OPS)으로 넘어가면 관리자만** 답장(case 0.7.0 이관 — `CaseTransferred` payload `toGroup` 을 구독해 도움요청에 지금 팀을 기록하면 된다; 같은 토픽 platform.case.v1, DE-CASE 구독에 더하기).
+  2. **새 메시지 값**: 도움요청 조회(`GET …/help-requests/{requestId}`, 직원)에 `lastRiderMessageAt`(라이더 마지막 메시지 시각)·`lastSupportMessageAt` 을 싣기. 직원별 읽음은 서버에 두지 않는다 — 화면이 직원별로 기억(백오피스 bff 가 사건함 목록에 붙인다 — PC 2).
+  3. **관리자 가림**: 대화에 고객 전화번호·출입 비밀번호가 들어갈 수 있다 — case 메모(0.10.0 `…/maskings`)와 같게 `POST …/messages/{messageId}/maskings`(OPERATOR_ADMIN, 사유 필수) — 글을 지우고(body null) 누가·언제·왜는 남김, **라이더에게도 가려져 보임**.
+  4. **"처리 중(IN_PROGRESS)" 시점**: 지금(DE-CASE)은 접수 건이 **열리는 순간**. → **상담원이 집을 때**(`CaseAssigned`)로 — 열렸지만 아무도 보지 않은 상태를 라이더에게 "처리 중"이라 하지 않는다(라이더 앱 요청서 표와도 맞음). 열림 ~ 집기 사이는 지금의 OPEN 그대로, 사건 번호는 열릴 때 붙인다.
+- **받는 쪽(backoffice)**: 2 가 나오면 bff 사건함(`case-inbox`) 목록에 RIDER_HELP 건의 `lastRiderMessageAt` 을 붙인다. 웹 화면은 #60 병합 뒤.
+- 급한 순서: 1(권한 — 넘긴 건·상담원 답장이 지금 열려 있음) → 4 → 2 → 3.

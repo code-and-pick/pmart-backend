@@ -65,6 +65,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [x] DD-MFC `DispatchFailed` 에 `mfcId` 싣기(2026-11-16 구현 — `DispatchDelayed` 도)(필드 추가 — 센터 관리자 배차 실패 사건, PC 2 요청, `delivery-dispatch-service.md`)
   - [x] DE-CASE `CaseOpened`·`CaseClosed` 구독(2026-11-16 구현 — Reopened 도, 사건 붙은 도움요청은 처리함 닫기 409) → 도움요청에 사건 번호·상태(`delivery-execution-service.md`)
   - [x] TR-1 `DeliveryEtaUpdated`(2026-11-16 구현 — 설정 있을 때만 켜짐)
+  - [ ] DE-2 도움요청 대화(#60) — 답장 권한을 접수 건 규칙에(CS 보기만·넘긴 건 관리자만), 새 메시지 값 `lastRiderMessageAt`, 관리자 가림, 처리 중 = 집을 때(PC 2 요청, `delivery-execution-service.md` DE-2)
   - [ ] RS-2(rider-auth) — 표 참고
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
