@@ -67,8 +67,19 @@ public class CaseInboxService {
       boolean unassigned,
       boolean overdue) {}
 
+  /**
+   * @param fault 귀책 CUSTOMER·RIDER·SYSTEM(ADR-0065, 2026-11-16) — 없으면 예전 처리(회수 + 재발송)
+   * @param resolution 고객 선택 RESHIP·REFUND·REDELIVER — 없으면 귀책별 기본
+   * @param redeliveryDestinationId CUSTOMER·REDELIVER 의 실제 주소(order 기록 ID)
+   */
   public record MisdeliveryCommand(
-      String deliveryId, String summary, @Nullable String centerId, List<String> evidenceRefs) {}
+      String deliveryId,
+      String summary,
+      @Nullable String centerId,
+      List<String> evidenceRefs,
+      @Nullable String fault,
+      @Nullable String resolution,
+      @Nullable String redeliveryDestinationId) {}
 
   private final CaseStore store;
   private final EventPublisher events;
@@ -328,6 +339,9 @@ public class CaseInboxService {
   public Detail createMisdelivery(String requestId, String sourceSystem, MisdeliveryCommand cmd) {
     PmartPrincipal p = requireAny(CaseRules.CREATE_MISDELIVERY_ROLES, "오배송 확인 기록");
     String deliveryId = cmd.deliveryId().strip();
+    MisdeliveryDecision decision =
+        misdeliveryDecision(
+            cmd.fault(), cmd.resolution(), blankToNull(cmd.redeliveryDestinationId()));
     // 배정 라이더(있으면 사건에 싣는다 — 회수 배차가 쓴다). 못 읽어도 기록은 막지 않는다
     String riderId = null;
     if (props.deliveryDispatchBaseUrl() != null) {
@@ -358,6 +372,11 @@ public class CaseInboxService {
                   List<Ref> refs = new ArrayList<>();
                   refs.add(new Ref("deliveryId", deliveryId));
                   addRef(refs, "riderId", rider);
+                  if (decision != null) {
+                    refs.add(new Ref("fault", decision.fault()));
+                    refs.add(new Ref("resolution", decision.resolution()));
+                    addRef(refs, "redeliveryDestinationId", decision.redeliveryDestinationId());
+                  }
                   refs = withPrevious(CaseRules.MISDELIVERY, deliveryId, refs);
                   CaseRow c =
                       new CaseRow(
@@ -396,6 +415,13 @@ public class CaseInboxService {
                   m.put("confirmedAt", now.toString());
                   if (!cmd.evidenceRefs().isEmpty()) {
                     m.put("evidenceRefs", cmd.evidenceRefs());
+                  }
+                  if (decision != null) {
+                    m.put("fault", decision.fault());
+                    m.put("resolution", decision.resolution());
+                    if (decision.redeliveryDestinationId() != null) {
+                      m.put("redeliveryDestinationId", decision.redeliveryDestinationId());
+                    }
                   }
                   events.publish("MisdeliveryConfirmed", 1, AGGREGATE, c.caseId(), 1, actor, m);
                   log.info("오배송 확인 사건 {} 배송 {} by {}", c.caseId(), deliveryId, p.subject());
@@ -845,5 +871,57 @@ public class CaseInboxService {
 
   private static PmartException notFound(String caseId) {
     return PmartException.notFound("CASE_NOT_FOUND", "사건을 찾을 수 없습니다: " + caseId);
+  }
+
+  // ---------- 오배송 귀책(ADR-0065, 2026-11-16) ----------
+
+  /** 귀책·고객 선택·실제 주소 ID(CUSTOMER·REDELIVER). */
+  public record MisdeliveryDecision(
+      String fault,
+      String resolution,
+      @org.jspecify.annotations.Nullable String redeliveryDestinationId) {}
+
+  /**
+   * 오배송 귀책·선택 검사. fault 가 없으면 null(예전 처리). RIDER·SYSTEM 은 RESHIP(기본)·REFUND, CUSTOMER 는
+   * REDELIVER(기본)·REFUND — 다른 조합은 422 INVALID_MISDELIVERY_RESOLUTION. CUSTOMER·REDELIVER 는 실제 주소 ID
+   * 필수(422 REDELIVERY_DESTINATION_REQUIRED).
+   */
+  static @org.jspecify.annotations.Nullable MisdeliveryDecision misdeliveryDecision(
+      @org.jspecify.annotations.Nullable String fault,
+      @org.jspecify.annotations.Nullable String resolution,
+      @org.jspecify.annotations.Nullable String redeliveryDestinationId) {
+    if (fault == null) {
+      if (resolution != null || redeliveryDestinationId != null) {
+        throw unprocessable("INVALID_MISDELIVERY_RESOLUTION", "귀책(fault)을 함께 보내야 합니다.");
+      }
+      return null;
+    }
+    boolean customer = "CUSTOMER".equals(fault);
+    String r = resolution != null ? resolution : customer ? "REDELIVER" : "RESHIP";
+    boolean ok =
+        customer
+            ? "REDELIVER".equals(r) || "REFUND".equals(r)
+            : "RESHIP".equals(r) || "REFUND".equals(r);
+    if (!ok) {
+      throw unprocessable(
+          "INVALID_MISDELIVERY_RESOLUTION",
+          customer
+              ? "고객 잘못이면 다시 배송(REDELIVER) 또는 환불(REFUND)입니다."
+              : "라이더·시스템 잘못이면 재발송(RESHIP) 또는 환불(REFUND)입니다.");
+    }
+    if (customer && "REDELIVER".equals(r) && redeliveryDestinationId == null) {
+      throw unprocessable("REDELIVERY_DESTINATION_REQUIRED", "다시 배송할 실제 주소를 먼저 기록해 주세요.");
+    }
+    return new MisdeliveryDecision(
+        fault, r, "REDELIVER".equals(r) ? redeliveryDestinationId : null);
+  }
+
+  private static com.pmart.common.web.PmartException unprocessable(String code, String message) {
+    return new com.pmart.common.web.PmartException(
+        code,
+        org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+        message,
+        false,
+        java.util.List.of());
   }
 }

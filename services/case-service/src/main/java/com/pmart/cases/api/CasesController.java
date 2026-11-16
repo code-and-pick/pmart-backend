@@ -118,7 +118,20 @@ public class CasesController implements CasesApi {
                     idempotencyKey,
                     xSourceSystem,
                     new CaseInboxService.MisdeliveryCommand(
-                        body.getSubjectRef(), body.getSummary(), body.getCenterId(), evidence))));
+                        body.getSubjectRef(),
+                        body.getSummary(),
+                        body.getCenterId(),
+                        evidence,
+                        body.getMisdelivery() == null
+                            ? null
+                            : body.getMisdelivery().getFault().getValue(),
+                        body.getMisdelivery() == null
+                                || body.getMisdelivery().getResolution() == null
+                            ? null
+                            : body.getMisdelivery().getResolution().getValue(),
+                        body.getMisdelivery() == null
+                            ? null
+                            : body.getMisdelivery().getRedeliveryDestinationId()))));
   }
 
   @Override

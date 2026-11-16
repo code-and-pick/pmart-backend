@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/MisdeliveryConfirmed.v1.json",
   "title": "MisdeliveryConfirmed",
-  "description": "오배송 확인(2026-11-16, service-requests R-7 — 사용자 결정 2026-11-15: 오배송 확인은 상담원·지원센터(RIDER_OPS)가 기록, 라이더 앱만으로 확정하지 않음). 발행 case-service(MISDELIVERY 사건을 열 때 같은 트랜잭션). 구독 delivery-dispatch(회수 배차 DD-2 — 구현은 delivery 영역, 아직). 토픽 platform.case.v1, 키 = caseId. 잘못 간 곳의 주소·좌표 원문은 싣지 않는다(근거는 증빙 참조만).",
+  "description": "오배송 확인(2026-11-16, service-requests R-7 — 사용자 결정 2026-11-15: 오배송 확인은 상담원·지원센터(RIDER_OPS)가 기록, 라이더 앱만으로 확정하지 않음). 발행 case-service(MISDELIVERY 사건을 열 때 같은 트랜잭션). 구독 delivery-dispatch(회수 배차 DD-2 — 구현은 delivery 영역, 아직). 토픽 platform.case.v1, 키 = caseId. 잘못 간 곳의 주소·좌표 원문은 싣지 않는다(근거는 증빙 참조만). 2026-11-16 ADR-0065: fault·resolution·redeliveryDestinationId(없으면 예전처럼 회수 + 재발송, 라이더 배달료 지급).",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -52,6 +52,29 @@
                 "maxLength": 300
               },
               "description": "확인 근거 참조(사진·통화 기록 ID)"
+            },
+            "fault": {
+              "type": "string",
+              "enum": [
+                "CUSTOMER",
+                "RIDER",
+                "SYSTEM"
+              ],
+              "description": "귀책(ADR-0065)"
+            },
+            "resolution": {
+              "type": "string",
+              "enum": [
+                "RESHIP",
+                "REFUND",
+                "REDELIVER"
+              ],
+              "description": "고객 선택(ADR-0065) — RIDER·SYSTEM: RESHIP·REFUND, CUSTOMER: REDELIVER·REFUND"
+            },
+            "redeliveryDestinationId": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "CUSTOMER·REDELIVER — order 에 기록한 실제 주소 ID(주소 원문 없음)"
             }
           },
           "additionalProperties": true

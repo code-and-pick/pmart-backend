@@ -332,6 +332,55 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         send("POST", admin, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-2"));
     assertThat(a.status()).isEqualTo(200);
     assertThat(a.body().path("assigneeId").asString()).isEqualTo("op-ops-2");
+
+    // ADR-0065(2026-11-16): 귀책·고객 선택 — 사건 refs·MisdeliveryConfirmed 에 싣고, 맞지 않는 조합은 422
+    String d2 = "DLV-F-" + UUID.randomUUID();
+    Map<String, Object> rider = new LinkedHashMap<>(mis);
+    rider.put("subjectRef", d2);
+    rider.put("misdelivery", Map.of("fault", "RIDER", "resolution", "REFUND"));
+    Res r2 = send("POST", cs, "/cases", rider);
+    assertThat(r2.status()).as(r2.body().toString()).isEqualTo(201);
+    String c2 = r2.body().path("caseId").asString();
+    assertThat(r2.body().toString()).contains("\"fault\"", "RIDER", "REFUND");
+    String p2 =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'MisdeliveryConfirmed'",
+            String.class,
+            c2);
+    assertThat(p2).contains("\"fault\": \"RIDER\"", "\"resolution\": \"REFUND\"");
+    String d3 = "DLV-F-" + UUID.randomUUID();
+    Map<String, Object> sys = new LinkedHashMap<>(mis);
+    sys.put("subjectRef", d3);
+    sys.put("misdelivery", Map.of("fault", "SYSTEM")); // 기본 RESHIP
+    Res r3 = send("POST", cs, "/cases", sys);
+    assertThat(r3.status()).isEqualTo(201);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'MisdeliveryConfirmed'",
+                String.class,
+                r3.body().path("caseId").asString()))
+        .contains("\"resolution\": \"RESHIP\"");
+    String d4 = "DLV-F-" + UUID.randomUUID();
+    Map<String, Object> cust = new LinkedHashMap<>(mis);
+    cust.put("subjectRef", d4);
+    cust.put("misdelivery", Map.of("fault", "CUSTOMER")); // 기본 REDELIVER — 실제 주소 없으면 422
+    Res noDest = send("POST", cs, "/cases", cust);
+    assertThat(noDest.status()).isEqualTo(422);
+    assertThat(noDest.body().path("code").asString()).isEqualTo("REDELIVERY_DESTINATION_REQUIRED");
+    cust.put("misdelivery", Map.of("fault", "CUSTOMER", "resolution", "RESHIP"));
+    Res wrong = send("POST", cs, "/cases", cust);
+    assertThat(wrong.body().path("code").asString()).isEqualTo("INVALID_MISDELIVERY_RESOLUTION");
+    cust.put(
+        "misdelivery",
+        Map.of("fault", "CUSTOMER", "resolution", "REDELIVER", "redeliveryDestinationId", "RDD-1"));
+    Res ok = send("POST", cs, "/cases", cust);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(201);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'MisdeliveryConfirmed'",
+                String.class,
+                ok.body().path("caseId").asString()))
+        .contains("\"fault\": \"CUSTOMER\"", "\"redeliveryDestinationId\": \"RDD-1\"");
   }
 
   void publishOrder(
