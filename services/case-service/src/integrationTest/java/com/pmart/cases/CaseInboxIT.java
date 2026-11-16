@@ -1189,8 +1189,8 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
 
   /**
    * 교대 인수인계(0.9.0 — 2026-11-16 사용자 "진행해 줘", BO-27): 전임이 맡은 건을 다음 조치와 함께 작성(담당 그대로) → 후임 본인이 건별 수락 —
-   * 받은 건은 담당 이동·HANDED_OVER, 뺀 건은 EXCLUDED(미인수), 그사이 바뀐 건 SKIPPED_CHANGED, 다룰 수 없는 후임은 SKIPPED_NOT_ALLOWED.
-   * 취소하면 그 건을 다시 넣을 수 있다.
+   * 받은 건은 담당 이동·HANDED_OVER, 뺀 건은 EXCLUDED(미인수), 그사이 바뀐 건 SKIPPED_CHANGED, 다룰 수 없는 후임은
+   * SKIPPED_NOT_ALLOWED. 취소하면 그 건을 다시 넣을 수 있다.
    */
   @Test
   void shiftHandoverIsAcceptedPerCaseBySuccessor() {
