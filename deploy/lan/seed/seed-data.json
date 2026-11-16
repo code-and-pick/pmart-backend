@@ -4,10 +4,10 @@
   "_initialStockComment": "--initial-stock 일 때 SKU 마다 넣는 시험 초기 재고(사용자 결정 2026-10-30, INITIAL_STOCK 승인 경로)",
   "initialStockPerSku": 10,
   "center": {
-    "_comment": "시험 MFC. 고객 주문 운영 08:00~24:00 매일(사용자 결정 2026-10-31 LAN 시험값 — 00~08 실제 배송 없음은 확정 정책)",
+    "_comment": "시험 MFC. 고객 주문 운영 08:00~24:00 매일(사용자 결정 2026-10-31 LAN 시험값 — 00~08 실제 배송 없음은 확정 정책). 위치 = 부산진구지점 실제 주소(사용자 지점 목록 2026-11-16, 좌표는 카카오 주소 검색 — 지번 부전동 112-3). 그 전 서면역 부근 시험 좌표 35.1578·129.0597 에서 약 220m",
     "profile": {
-      "type": "MFC", "name": "[시험] 부산진구 MFC", "state": "ACTIVE", "address": "부산 부산진구 서면 부근 (시험 좌표, 실제 주소 수집 중)",
-      "coordinates": { "lat": 35.1578, "lng": 129.0597 },
+      "type": "MFC", "name": "[시험] 부산진구 MFC", "state": "ACTIVE", "address": "부산 부산진구 동천로 109 삼한골든게이트 2층",
+      "coordinates": { "lat": 35.158501, "lng": 129.062021 },
       "temperatureZones": ["AMBIENT", "CHILLED", "FROZEN"], "floors": 1
     },
     "customerOrderHours": [ { "start": "08:00", "end": "24:00" } ],
