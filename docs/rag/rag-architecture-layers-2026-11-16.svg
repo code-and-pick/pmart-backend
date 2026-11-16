@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 1324" width="1040" height="1324" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
+  <title>PMart RAG 아키텍처 (운영자 · 고객)</title>
+  <style>
+    .bg { fill: #ffffff; }
+    .tt { fill: #1f2933; font-size: 22px; font-weight: 700; }
+    .th { fill: #1f2933; font-size: 15px; font-weight: 700; }
+    .tb { fill: #1f2933; font-size: 13.5px; font-weight: 700; }
+    .m  { fill: #52606d; font-size: 11.5px; }
+    .tag { fill: #7b8794; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; }
+    .ll { fill: #1f2933; font-size: 13px; font-weight: 700; }
+    .lb { fill: #eef1f5; stroke: #cbd2d9; }
+    .wrap  { fill: #4a7fc1; fill-opacity: 0.05; stroke: #4a7fc1; stroke-width: 1.5; }
+    .wrap2 { fill: #7b8794; fill-opacity: 0.05; stroke: #9aa5b1; stroke-width: 1.5; }
+    .b { fill: #e3eefb; stroke: #4a7fc1; }
+    .p { fill: #efe7fa; stroke: #8a63c0; }
+    .g { fill: #e3f3e8; stroke: #4c9a68; }
+    .o { fill: #fcefdc; stroke: #c58a32; }
+    .r { fill: #fde8e8; stroke: #c25454; }
+    .y { fill: #e0f4f4; stroke: #3a9a9a; }
+    .k { fill: #f6f1df; stroke: #a8902f; }
+    .n { fill: #eef1f5; stroke: #7b8794; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #14181d; }
+      .tt, .th, .tb, .ll { fill: #e6e9ee; }
+      .m { fill: #a9b4c0; }
+      .tag { fill: #8d99a6; }
+      .lb { fill: #1f262e; stroke: #3e4c59; }
+      .wrap { stroke: #6ea1db; fill: #6ea1db; }
+      .wrap2 { stroke: #616e7c; fill: #9aa5b1; }
+      .b { fill: #1d2f45; stroke: #6ea1db; }
+      .p { fill: #2e2442; stroke: #ab8ae0; }
+      .g { fill: #1b3527; stroke: #6cc08c; }
+      .o { fill: #3a2c17; stroke: #e0a85a; }
+      .r { fill: #3d1f1f; stroke: #e07a7a; }
+      .y { fill: #173535; stroke: #5cc0c0; }
+      .k { fill: #34301a; stroke: #cdb44f; }
+      .n { fill: #1f262e; stroke: #8d99a6; }
+    }
+  </style>
+  <rect class="bg" x="0" y="0" width="1040" height="1324"/>
+  <text class="tt" x="20" y="38" text-anchor="start">PMart RAG 아키텍처 (운영자 · 고객)</text>
+  <text class="m" x="20" y="62" text-anchor="start">pmart-backend 기준 · 2026-11-16 · 계층 구성만 표시</text>
+  <rect class="lb" x="20" y="84" width="116" height="64" rx="8"/>
+  <text class="ll" x="78" y="121" text-anchor="middle">클라이언트</text>
+  <rect class="lb" x="20" y="162" width="116" height="64" rx="8"/>
+  <text class="ll" x="78" y="199" text-anchor="middle">게이트웨이</text>
+  <rect class="lb" x="20" y="240" width="116" height="548" rx="8"/>
+  <text class="ll" x="78" y="519" text-anchor="middle">서비스</text>
+  <rect class="lb" x="20" y="802" width="116" height="130" rx="8"/>
+  <text class="ll" x="78" y="872" text-anchor="middle">모델 런타임</text>
+  <rect class="lb" x="20" y="946" width="116" height="162" rx="8"/>
+  <text class="ll" x="78" y="1032" text-anchor="middle">데이터</text>
+  <rect class="lb" x="20" y="1122" width="116" height="84" rx="8"/>
+  <text class="ll" x="78" y="1169" text-anchor="middle">지식 문서</text>
+  <rect class="lb" x="20" y="1220" width="116" height="84" rx="8"/>
+  <text class="ll" x="78" y="1258" text-anchor="middle">배치</text>
+  <text class="ll" x="78" y="1276" text-anchor="middle">운영</text>
+  <rect class="b" x="150" y="84" width="425" height="64" rx="9"/>
+  <text class="tb" x="362.5" y="108" text-anchor="middle">백오피스 웹 (운영자)</text>
+  <text class="m" x="362.5" y="128" text-anchor="middle">직원 typ=OPERATOR · 정책·업무 절차 질의</text>
+  <rect class="b" x="595" y="84" width="425" height="64" rx="9"/>
+  <text class="tb" x="807.5" y="108" text-anchor="middle">고객 앱 /support/chat</text>
+  <text class="m" x="807.5" y="128" text-anchor="middle">회원 typ=CUSTOMER · 비회원 403</text>
+  <rect class="b" x="150" y="162" width="870" height="64" rx="9"/>
+  <text class="tb" x="585" y="186" text-anchor="middle">API Gateway</text>
+  <text class="m" x="585" y="206" text-anchor="middle">JWT 검증 · /api/v1/assistant/** · /api/v1/customer-assistant/** · 응답 제한 65초</text>
+  <rect class="wrap" x="150" y="240" width="425" height="548" rx="12"/>
+  <text class="th" x="362.5" y="268" text-anchor="middle">ai-assistant-service · :8508</text>
+  <text class="m" x="362.5" y="288" text-anchor="middle">운영자 RAG · Spring Boot + Spring AI 2.0.2</text>
+  <rect class="b" x="162" y="304" width="401" height="112" rx="9"/>
+  <text class="tag" x="174" y="322" text-anchor="start">API</text>
+  <text class="tb" x="362.5" y="342" text-anchor="middle">AssistantController</text>
+  <text class="m" x="362.5" y="362" text-anchor="middle">질문 POST (Idempotency-Key) · 답변 조회 GET</text>
+  <text class="m" x="362.5" y="379" text-anchor="middle">답변 이력 조회</text>
+  <rect class="p" x="162" y="424" width="401" height="112" rx="9"/>
+  <text class="tag" x="174" y="442" text-anchor="start">APPLICATION</text>
+  <text class="tb" x="362.5" y="462" text-anchor="middle">PolicyQuestionService</text>
+  <text class="m" x="362.5" y="482" text-anchor="middle">선점(lease) · 활성 스냅숏 고정 · 처리 제한 25초</text>
+  <text class="m" x="362.5" y="499" text-anchor="middle">Retriever · AnswerGenerator (생성 / 발췌)</text>
+  <text class="m" x="362.5" y="516" text-anchor="middle">AccessPolicy · KnowledgeJobs (색인 작업)</text>
+  <rect class="g" x="162" y="544" width="401" height="112" rx="9"/>
+  <text class="tag" x="174" y="562" text-anchor="start">DOMAIN</text>
+  <text class="tb" x="362.5" y="582" text-anchor="middle">QuestionClassifier · RankingPolicy</text>
+  <text class="m" x="362.5" y="602" text-anchor="middle">의도 분류: 정책 / 실시간 / 범위 밖 (모델 없음)</text>
+  <text class="m" x="362.5" y="619" text-anchor="middle">임계값 0.40 · 지위(Authority) · 우선순위 가중</text>
+  <text class="m" x="362.5" y="636" text-anchor="middle">CitationVerifier · ExtractiveComposer · Lifecycle</text>
+  <rect class="o" x="162" y="664" width="401" height="112" rx="9"/>
+  <text class="tag" x="174" y="682" text-anchor="start">INFRASTRUCTURE</text>
+  <text class="tb" x="362.5" y="702" text-anchor="middle">Store · Ingest · Embedding</text>
+  <text class="m" x="362.5" y="722" text-anchor="middle">ChunkStore (벡터 + trigram 혼합) · SnapshotStore · AnswerStore</text>
+  <text class="m" x="362.5" y="739" text-anchor="middle">KnowledgeIngestor · MarkdownChunker · SupersessionResolver</text>
+  <text class="m" x="362.5" y="756" text-anchor="middle">OllamaEmbedding / LocalHash (local 384차원) · AdvisoryLocks</text>
+  <rect class="wrap" x="595" y="240" width="425" height="548" rx="12"/>
+  <text class="th" x="807.5" y="268" text-anchor="middle">customer-assistant-service · :8509</text>
+  <text class="m" x="807.5" y="288" text-anchor="middle">고객 RAG · 운영자 RAG 코드를 복사해 시작</text>
+  <rect class="b" x="607" y="304" width="401" height="112" rx="9"/>
+  <text class="tag" x="619" y="322" text-anchor="start">API</text>
+  <text class="tb" x="807.5" y="342" text-anchor="middle">CustomerAssistantController · RateLimitAdvice</text>
+  <text class="m" x="807.5" y="362" text-anchor="middle">요청 제한 1분 5개 · 하루 50개 (Asia/Seoul)</text>
+  <text class="m" x="807.5" y="379" text-anchor="middle">근거 없음 → 고객센터 문의(/inquiries) 안내</text>
+  <rect class="p" x="607" y="424" width="401" height="112" rx="9"/>
+  <text class="tag" x="619" y="442" text-anchor="start">APPLICATION</text>
+  <text class="tb" x="807.5" y="462" text-anchor="middle">CustomerQuestionService</text>
+  <text class="m" x="807.5" y="482" text-anchor="middle">선점(lease) · 스냅숏 고정 · 질문 원문 미저장(해시)</text>
+  <text class="m" x="807.5" y="499" text-anchor="middle">Retriever · AnswerGenerator (생성 / 발췌)</text>
+  <text class="m" x="807.5" y="516" text-anchor="middle">AccessPolicy · KnowledgeJobs (색인 작업)</text>
+  <rect class="g" x="607" y="544" width="401" height="112" rx="9"/>
+  <text class="tag" x="619" y="562" text-anchor="start">DOMAIN</text>
+  <text class="tb" x="807.5" y="582" text-anchor="middle">QuestionClassifier · RankingPolicy</text>
+  <text class="m" x="807.5" y="602" text-anchor="middle">CitationVerifier · CustomerAnswerChecks</text>
+  <text class="m" x="807.5" y="619" text-anchor="middle">(숫자 온전성 · 표 행 누락 · 질문어 근거)</text>
+  <text class="m" x="807.5" y="636" text-anchor="middle">OrderStatusText · RateLimit · TableText</text>
+  <rect class="o" x="607" y="664" width="401" height="112" rx="9"/>
+  <text class="tag" x="619" y="682" text-anchor="start">INFRASTRUCTURE</text>
+  <text class="tb" x="807.5" y="702" text-anchor="middle">Store · Ingest · Embedding</text>
+  <text class="m" x="807.5" y="722" text-anchor="middle">ChunkStore · SnapshotStore · AnswerStore · AdvisoryLocks</text>
+  <text class="m" x="807.5" y="739" text-anchor="middle">KnowledgeIngestor · MarkdownChunker · SupersessionResolver</text>
+  <text class="m" x="807.5" y="756" text-anchor="middle">OrderClient → order-service GET /orders (내 주문)</text>
+  <rect class="wrap2" x="150" y="802" width="870" height="130" rx="12"/>
+  <text class="th" x="585" y="828" text-anchor="middle">Ollama</text>
+  <text class="m" x="585" y="848" text-anchor="middle">Docker · PC 2 GPU RTX 2060 6GB · CPU 4 / 메모리 6GB 상한 · 동시 1건 · 외부 모델 API 없음</text>
+  <rect class="r" x="162" y="862" width="413" height="58" rx="9"/>
+  <text class="tb" x="368.5" y="886" text-anchor="middle">대화 모델  qwen3:4b</text>
+  <text class="m" x="368.5" y="906" text-anchor="middle">GPU 100% · 3.9GB · 문맥 8192 · 온도 운영자 0.2 / 고객 0.0</text>
+  <rect class="r" x="595" y="862" width="413" height="58" rx="9"/>
+  <text class="tb" x="801.5" y="886" text-anchor="middle">임베딩 모델  qwen3-embedding:0.6b</text>
+  <text class="m" x="801.5" y="906" text-anchor="middle">CPU · 1024차원 · 질문에만 지시문</text>
+  <rect class="wrap2" x="150" y="946" width="870" height="162" rx="12"/>
+  <text class="th" x="585" y="972" text-anchor="middle">rag-pgvector</text>
+  <text class="m" x="585" y="992" text-anchor="middle">pgvector/pgvector:pg17 · 포트 15433 · LAN 노출 없음 · 서비스별 DB·계정 분리</text>
+  <rect class="y" x="162" y="1006" width="413" height="90" rx="9"/>
+  <text class="tb" x="368.5" y="1030" text-anchor="middle">DB  ai_assistant_service</text>
+  <text class="m" x="368.5" y="1050" text-anchor="middle">index_snapshot · index_source_file</text>
+  <text class="m" x="368.5" y="1067" text-anchor="middle">doc_chunk (vector 1024 + gin_trgm)</text>
+  <text class="m" x="368.5" y="1084" text-anchor="middle">embedding_cache · policy_answer</text>
+  <rect class="y" x="595" y="1006" width="413" height="90" rx="9"/>
+  <text class="tb" x="801.5" y="1030" text-anchor="middle">DB  customer_assistant_service</text>
+  <text class="m" x="801.5" y="1050" text-anchor="middle">index_snapshot · index_source_file</text>
+  <text class="m" x="801.5" y="1067" text-anchor="middle">doc_chunk (vector 1024 + gin_trgm)</text>
+  <text class="m" x="801.5" y="1084" text-anchor="middle">embedding_cache · customer_answer</text>
+  <rect class="k" x="150" y="1122" width="425" height="84" rx="9"/>
+  <text class="tb" x="362.5" y="1146" text-anchor="middle">운영자 manifest.yml — 52개 · 1,677 청크</text>
+  <text class="m" x="362.5" y="1166" text-anchor="middle">ADR 업무 정책 17 · 업무 원문 · flows · contracts/states</text>
+  <text class="m" x="362.5" y="1183" text-anchor="middle">cs-scripts 11 · 지위·우선순위(precedence) 가중</text>
+  <rect class="k" x="595" y="1122" width="425" height="84" rx="9"/>
+  <text class="tb" x="807.5" y="1146" text-anchor="middle">고객 manifest.yml — 13개 · 63 청크</text>
+  <text class="m" x="807.5" y="1166" text-anchor="middle">docs/business/customer-faq 01 ~ 13</text>
+  <text class="m" x="807.5" y="1183" text-anchor="middle">사용자 승인 고객 공개 안내만 · 가중 0</text>
+  <rect class="n" x="150" y="1220" width="870" height="84" rx="9"/>
+  <text class="tb" x="585" y="1244" text-anchor="middle">LAN PC 2  —  rag-pgvector · ollama · ai-assistant-service · customer-assistant-service</text>
+  <text class="m" x="585" y="1264" text-anchor="middle">색인·배포는 PC 1: lan.sh rag-pull · rag-warm · rag-ingest · rag-ingest-customer · watch.sh 감시</text>
+  <text class="m" x="585" y="1281" text-anchor="middle">로컬 개발: local 프로필 = 해시 임베딩(384차원) + pgvector 15433 · 실제 모델 벡터와 DB 혼용 금지</text>
+</svg>
