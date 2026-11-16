@@ -162,6 +162,17 @@ public class CaseStore {
         caseId);
   }
 
+  /** 이관(0.7.0): 담당 팀 바꾸고 담당 비움(ASSIGNED 면 OPEN 으로). */
+  public void transfer(String caseId, String toGroup, Instant at) {
+    jdbc.update(
+        "UPDATE case_record SET assignee_group = ?, assignee_id = NULL,"
+            + " state = CASE WHEN state = 'ASSIGNED' THEN 'OPEN' ELSE state END,"
+            + " version = version + 1, updated_at = ? WHERE case_id = ?",
+        toGroup,
+        ts(at),
+        caseId);
+  }
+
   /** 같은 종류·같은 대상의 가장 최근 닫힌 사건(0.6.0 — 새 사건의 previousCaseId). */
   public Optional<String> latestClosed(String kind, String subjectRef) {
     return jdbc

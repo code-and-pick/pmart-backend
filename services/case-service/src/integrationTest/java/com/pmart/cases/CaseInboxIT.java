@@ -746,4 +746,108 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     // 다시 열린 동안 같은 배송 새 오배송은 409(열린 사건 하나)
     assertThat(send("POST", cs, "/cases", mis).status()).isEqualTo(409);
   }
+
+  /**
+   * 이관(0.7.0 — 2026-11-16 사용자 "A안"): 배송 쪽 사건만 지원센터 팀 ↔ 관리자 팀. 관리자 팀으로 간 사건은 지원센터가 보기만(집기·닫기 403),
+   * 담당 비움·OPEN, 이력·CaseTransferred. 그 밖 팀·센터 이관 422, 같은 팀·닫힌 사건 409, 남이 맡은 것은 관리자만.
+   */
+  @Test
+  void deliveryCaseTransfersBetweenSupportAndAdminTeams() {
+    String deliveryId = "DLV-TR-" + UUID.randomUUID().toString().substring(0, 8);
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String caseId =
+        send(
+                "POST",
+                cs,
+                "/cases",
+                Map.of(
+                    "kind", "MISDELIVERY",
+                    "subjectType", "DELIVERY",
+                    "subjectRef", deliveryId,
+                    "summary", "환불이 얽힌 오배송"))
+            .body()
+            .path("caseId")
+            .asString();
+    assertThat(
+            send("POST", ops, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-1"))
+                .status())
+        .isEqualTo(200);
+    String path = "/cases/" + caseId + "/transfers";
+    Map<String, Object> toAdmin = Map.of("toGroup", "ORDER_OPS", "reason", "환불 판단 필요");
+
+    assertThat(send("POST", ops2, path, toAdmin).status()).as("남이 맡은 사건").isEqualTo(403);
+    assertThat(send("POST", cs, path, toAdmin).status()).as("상담원은 보기만").isEqualTo(403);
+    assertThat(send("POST", ops, path, Map.of("toGroup", "FINANCE", "reason", "x")).status())
+        .isEqualTo(422);
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    path,
+                    Map.of("toGroup", "ORDER_OPS", "toCenterId", "MFC-1", "reason", "x"))
+                .status())
+        .isEqualTo(422);
+    assertThat(send("POST", ops, path, Map.of("toGroup", "ORDER_OPS", "reason", " ")).status())
+        .isEqualTo(400);
+    assertThat(send("POST", ops, path, Map.of("toGroup", "DELIVERY_OPS", "reason", "x")).status())
+        .as("같은 팀")
+        .isEqualTo(409);
+
+    Res moved = send("POST", ops, path, toAdmin);
+    assertThat(moved.status()).as(moved.body().toString()).isEqualTo(200);
+    assertThat(moved.body().path("assigneeGroup").asString()).isEqualTo("ORDER_OPS");
+    assertThat(moved.body().path("state").asString()).isEqualTo("OPEN");
+    assertThat(
+            moved.body().path("assigneeId").isNull()
+                || moved.body().path("assigneeId").isMissingNode())
+        .isTrue();
+    assertThat(moved.body().path("history").toString()).contains("TRANSFERRED", "ORDER_OPS");
+    assertThat(outbox(caseId, "CaseTransferred")).isEqualTo(1);
+
+    // 지원센터는 보기만, 관리자 팀 목록에 나온다
+    assertThat(send("GET", ops, "/cases/" + caseId, null).status()).isEqualTo(200);
+    assertThat(
+            send("POST", ops, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-1"))
+                .status())
+        .isEqualTo(403);
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    "/cases/" + caseId + "/closures",
+                    Map.of("resolution", "RESOLVED", "summary", "x"))
+                .status())
+        .isEqualTo(403);
+    assertThat(
+            send("GET", admin, "/cases?assigneeGroup=ORDER_OPS&subjectRef=" + deliveryId, null)
+                .body()
+                .path("items")
+                .findValuesAsString("caseId"))
+        .containsExactly(caseId);
+
+    // 관리자가 되돌리면 지원센터가 다시 집는다
+    assertThat(
+            send("POST", admin, path, Map.of("toGroup", "DELIVERY_OPS", "reason", "환불 처리 끝"))
+                .status())
+        .isEqualTo(200);
+    assertThat(
+            send(
+                    "POST",
+                    ops2,
+                    "/cases/" + caseId + "/assignments",
+                    Map.of("assigneeId", "op-ops-2"))
+                .status())
+        .isEqualTo(200);
+    assertThat(
+            send(
+                    "POST",
+                    ops2,
+                    "/cases/" + caseId + "/closures",
+                    Map.of("resolution", "RESOLVED", "summary", "회수 완료"))
+                .status())
+        .isEqualTo(200);
+    assertThat(send("POST", admin, path, toAdmin).status()).as("닫힌 사건").isEqualTo(409);
+  }
 }

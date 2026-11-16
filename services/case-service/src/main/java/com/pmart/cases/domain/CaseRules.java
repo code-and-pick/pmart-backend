@@ -100,9 +100,25 @@ public final class CaseRules {
         && !roles.contains(CS_AGENT);
   }
 
-  /** 집기·닫기 할 수 있는가(그 종류 팀). */
-  public static boolean canWork(Set<String> roles, String kind) {
-    return roles.contains(ADMIN) || (DELIVERY_KINDS.contains(kind) && roles.contains(RIDER_OPS));
+  /**
+   * 집기·닫기·재개·이관 할 수 있는가(지금 담당 팀). 관리자는 모두, 지원센터(RIDER_OPS)는 배송 쪽 사건이 지원센터 팀(DELIVERY_OPS)에 있을 때만 —
+   * 관리자 팀(ORDER_OPS)으로 넘긴 배송 쪽 사건은 관리자만(0.7.0).
+   */
+  public static boolean canWork(Set<String> roles, String kind, @Nullable String group) {
+    if (roles.contains(ADMIN)) {
+      return true;
+    }
+    return DELIVERY_KINDS.contains(kind)
+        && roles.contains(RIDER_OPS)
+        && !GROUP_ORDER_OPS.equals(group);
+  }
+
+  /** 이관할 수 있는 팀(0.7.0 — 사용자 "A안"): 사람이 있는 두 팀. */
+  public static final Set<String> TRANSFER_GROUPS = Set.of(GROUP_DELIVERY_OPS, GROUP_ORDER_OPS);
+
+  /** 이관할 수 있는 사건 — 배송 쪽만(사가·결제는 이미 관리자 팀). */
+  public static boolean transferable(String kind) {
+    return DELIVERY_KINDS.contains(kind);
   }
 
   /** 사건함에 나오는 종류(고객 문의 CS_INQUIRY 는 /inquiries). */

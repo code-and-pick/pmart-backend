@@ -24,6 +24,8 @@
 | `CS_AGENT`(고객센터 상담원, 2026-11-09), `OPERATOR_ADMIN`(2026-11-15 메뉴 요청 — 문의 답변은 **보기만**, 답변은 CS_AGENT: 2026-11-16 사용자 (가), case 0.4.2) | **고객센터** 묶음: 주문 조회, 문의 답변, 라이더 컴플레인(기록·조회), 클레임 조회, 배송·배차 확인, 전달 실패 확정·반려(2026-11-15) | order `/orders/lookups`, case `/inquiries`·`/rider-complaints`, claim `/claims`, execution `/deliveries/{id}`·`failure-decisions`, dispatch `/deliveries/{id}/dispatch`(PC 5 BOD-2 뒤) |
 | `RIDER_OPS`(라이더 운영, 2026-11-15 새 역할) | **라이더 운영** 묶음: 라이더 찾기·계정 제한, 제한 검토, 전달 실패·도움요청 대기, 배송·배차 확인·픽업 전 배차 취소, 라이더 컴플레인 조회, 주문 조회 | rider `/riders*`, execution·dispatch `/deliveries/{id}*`, case `/rider-complaints`(조회), order `/orders/lookups` — 권한은 PC 5 BOD-1 뒤(`delivery-backoffice-staff-apis.md`) |
 
+> **2026-11-16 클라이언트 묶음(사용자 결정 — pmart-clients PR #22, 알림 `pmart-clients docs/handoff/backoffice/2026-11-16-backend-menu-shared-lookup-group.md`)**: `CS_AGENT`·`RIDER_OPS`(그리고 `OPERATOR_ADMIN`)가 **함께 쓰는 조회 화면**(주문 조회·통합 조회·실시간 배송 현황·배송·배차 확인·라이더 컴플레인)은 클라이언트에서 **"조회·현황" 공통 묶음**으로 보여 준다. 위 표의 역할 → 볼 수 있는 화면은 바뀌지 않았다(묶는 방법만). 앞으로 두 역할이 함께 쓰는 조회 화면은 이 묶음, 한쪽만 쓰는 화면은 그 역할 묶음.
+
 - **여러 역할**: 메뉴를 합쳐 보인다(합집합).
 - **여러 센터**(`centers` 가 둘 이상): MFC 메뉴 위에 센터 선택 — 고른 센터의 `mfcId` 로 부른다. 하나면 고르지 않는다.
 - 역할이 하나도 맞지 않으면 내 세션만.

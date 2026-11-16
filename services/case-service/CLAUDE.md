@@ -30,7 +30,7 @@
   - 팀 공용 목록 `GET /cases`(state 비우면 열린 것, P1·기한 순, unassigned·overdue·assigneeGroup) → 집기 `POST …/assignments`(자기 자신만, 관리자는 다른 사람에게) → 닫기 `POST …/closures`(resolution·summary 필수, 남이 맡은 것은 관리자만). 보기 OPERATOR_ADMIN·RIDER_OPS·CS_AGENT(배송 쪽, CS 는 보기만).
   - 처리 기한 `pmart.cases.sla.[종류]`(맵 키는 `"[RIDER_HELP]"` 처럼 — `_` 를 지키려고) — 표시만(`overdue`), 알림 없음. 값 확정(2026-11-16 사용자 — 도움요청·위치 끊김 10분, 전달 실패·오배송 30분).
   - 사건 `CaseOpened·CaseAssigned·CaseClosed`(platform.case.v1). 고객 문의 행(CS_INQUIRY)은 `/cases` 에 나오지 않는다.
-  - 아직: 이관·의무·행위 요청(501). 재개는 0.6.0.
+  - 아직: 의무·행위 요청(501). 재개 0.6.0, 이관 0.7.0.
 - **사가·결제 이상(2026-11-16, 계약 0.5.0 — R-3, 사용자: 기한 1시간·"이상만"·멈춘 사가는 지금 안 함)**: `CaseInboxService.onOrderException`·`CaseRules.orderExceptionKind`. 마이그레이션 없음(같은 표).
   - 구독 `sagaEvents`(order.saga.v1 `ReconciliationRequired` 전부·`CompensationExecuted` 중 result ≠ SUCCESS), `paymentEvents`(order.payment.v1 `PaymentMismatch` 전부·`PaymentResultUnknown` 중 escalated=true). 앞 셋 → RECONCILIATION, 결제 불명 → PAYMENT_UNKNOWN. 정상 보상·조회 중 결제 불명은 버린다.
   - 주문(없으면 사가·결제 시도) + 종류마다 열린 사건 하나(dedupe `<종류>:<대상>`). 재발은 RECURRED 이력, 결제 불명 반복(15분마다)은 이력도 없음. refs = orderId·sagaId·paymentAttemptId·resourceId, 금액·상세 없음.
@@ -49,6 +49,11 @@
 - **재개·이전 사건 연결(2026-11-16, 계약 0.6.0 — 사용자 "1번 + 이전 사건 연결", 업무 원문 §5.3·BO-27)**: `CaseInboxService.reopen`·`withPrevious`, `CaseStore.reopen`·`latestClosed`. 마이그레이션 없음.
   - `POST /cases/{id}/reopenings`(reason 필수): **사람이 손으로만**(자동 재개 없음 — 근거가 뒤집혔는지는 사람이 판단), 닫기와 같은 사람(`CaseRules.canWork` — 그 종류 팀·관리자, CS 는 403), 기간 제한 없음. CLOSED → REOPENED, 담당 비움(팀 공용 목록), 처리 기한은 지금부터 그 종류 기본값, 마지막 종결 내용(resolution·closureSummary)은 남김. 이력 REOPENED(사유 — 로그 금지), `CaseReopened`. 닫히지 않음 409 INVALID_STATE, 같은 dedupe_key 로 열린 사건이 있으면(열린 사건 유일 색인 V4) 409 CASE_ALREADY_OPEN.
   - 새 사건을 열 때(구독·오배송 모두) 같은 종류·같은 subjectRef 의 가장 최근 닫힌 사건을 refs `previousCaseId` 로 잇는다(기간 값 없음).
+
+- **이관(2026-11-16, 계약 0.7.0 — 사용자 "A안", 업무 원문 §5.3 "넘긴 의무는 이관 완료/상대 처리 중으로")**: `CaseInboxService.transfer`, `CaseRules.TRANSFER_GROUPS`·`transferable`, `CaseStore.transfer`. 마이그레이션 없음.
+  - `POST /cases/{id}/transfers`(toGroup·reason 필수): **배송 쪽 사건만** `DELIVERY_OPS`(지원센터) ↔ `ORDER_OPS`(관리자 팀). 사가·결제 사건·그 밖 팀·toCenterId·mergeIntoCaseId 는 422 UNSUPPORTED_ACTION. 같은 팀·닫힌 사건 409 INVALID_STATE.
+  - 담당 비움(ASSIGNED → OPEN), 기한·보이는 범위 그대로. 이력 TRANSFERRED(`from → to: 사유`), `CaseTransferred`(fromGroup·toGroup·reason).
+  - **`CaseRules.canWork(roles, kind, group)`** — 집기·닫기·재개·이관 모두 지금 팀 기준: 관리자는 모두, RIDER_OPS 는 배송 쪽 사건이 ORDER_OPS 가 아닐 때만. 남이 맡은 사건 이관은 관리자만(닫기와 같음).
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

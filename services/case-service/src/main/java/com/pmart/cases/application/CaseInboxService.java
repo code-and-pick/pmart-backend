@@ -453,7 +453,7 @@ public class CaseInboxService {
         () -> {
           CaseRow c = lockVisible(p, caseId);
           checkVersion(c, expectedVersion);
-          if (!CaseRules.canWork(roles, c.kind())) {
+          if (!CaseRules.canWork(roles, c.kind(), c.assigneeGroup())) {
             throw new PmartException(ErrorCode.FORBIDDEN, "이 사건을 맡을 권한이 없습니다.");
           }
           if ("CLOSED".equals(c.state())) {
@@ -512,7 +512,7 @@ public class CaseInboxService {
         () -> {
           CaseRow c = lockVisible(p, caseId);
           checkVersion(c, expectedVersion);
-          if (!CaseRules.canWork(roles, c.kind())) {
+          if (!CaseRules.canWork(roles, c.kind(), c.assigneeGroup())) {
             throw new PmartException(ErrorCode.FORBIDDEN, "이 사건을 닫을 권한이 없습니다.");
           }
           if ("CLOSED".equals(c.state())) {
@@ -568,7 +568,7 @@ public class CaseInboxService {
         () -> {
           CaseRow c = lockVisible(p, caseId);
           checkVersion(c, expectedVersion);
-          if (!CaseRules.canWork(roles, c.kind())) {
+          if (!CaseRules.canWork(roles, c.kind(), c.assigneeGroup())) {
             throw new PmartException(ErrorCode.FORBIDDEN, "이 사건을 다시 열 권한이 없습니다.");
           }
           if (!"CLOSED".equals(c.state())) {
@@ -603,6 +603,91 @@ public class CaseInboxService {
           return caseId;
         });
     return detail(store.find(caseId).orElseThrow());
+  }
+
+  /**
+   * 이관(0.7.0 — 2026-11-16 사용자 "A안", 업무 원문 §5.3): 배송 쪽 사건만 지원센터 팀 ↔ 관리자 팀. 지금 그 사건을 다룰 수 있는 사람이, 남이
+   * 맡은 사건은 관리자만. 담당 비움, 기한·보이는 범위 그대로. 센터 이관·병합·그 밖 팀은 422.
+   */
+  public Detail transfer(
+      String requestId,
+      String sourceSystem,
+      String caseId,
+      String toGroup,
+      @Nullable String toCenterId,
+      @Nullable String mergeIntoCaseId,
+      String reason,
+      @Nullable Integer expectedVersion) {
+    PmartPrincipal p = operator();
+    Set<String> roles = roles(p);
+    if (reason == null || reason.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(이관 사유)이 필요합니다.");
+    }
+    if (blankToNull(toCenterId) != null
+        || blankToNull(mergeIntoCaseId) != null
+        || !CaseRules.TRANSFER_GROUPS.contains(toGroup)) {
+      throw unsupported("지금은 배송 쪽 사건을 지원센터(DELIVERY_OPS)·관리자(ORDER_OPS) 팀 사이로만 넘깁니다(센터 이관·병합 없음).");
+    }
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "transferCase:" + caseId, p.subject()),
+        List.of(toGroup, reason),
+        String.class,
+        () -> {
+          CaseRow c = lockVisible(p, caseId);
+          checkVersion(c, expectedVersion);
+          if (!CaseRules.transferable(c.kind())) {
+            throw unsupported("이 종류의 사건은 넘기지 않습니다(사가·결제 사건은 관리자 팀).");
+          }
+          if (!CaseRules.canWork(roles, c.kind(), c.assigneeGroup())) {
+            throw new PmartException(ErrorCode.FORBIDDEN, "이 사건을 넘길 권한이 없습니다.");
+          }
+          if ("CLOSED".equals(c.state())) {
+            throw PmartException.invalidState("닫힌 사건입니다.");
+          }
+          if (toGroup.equals(c.assigneeGroup())) {
+            throw PmartException.invalidState("이미 그 팀의 사건입니다.");
+          }
+          if (c.assigneeId() != null
+              && !c.assigneeId().equals(p.subject())
+              && !roles.contains(CaseRules.ADMIN)) {
+            throw new PmartException(ErrorCode.FORBIDDEN, "다른 직원이 맡은 사건은 관리자만 넘길 수 있습니다.");
+          }
+          Instant now = now();
+          store.transfer(caseId, toGroup, now);
+          CaseRow after = store.find(caseId).orElseThrow();
+          store.history(
+              caseId,
+              now,
+              p.subject(),
+              "TRANSFERRED",
+              c.state(),
+              after.state(),
+              c.assigneeGroup() + " → " + toGroup + ": " + reason.strip());
+          Map<String, Object> m = basePayload(after);
+          m.put("assignee", null);
+          m.put("fromAssignee", c.assigneeId());
+          m.put("toAssignee", null);
+          m.put("fromGroup", c.assigneeGroup());
+          m.put("toGroup", toGroup);
+          m.put("reason", reason.strip());
+          m.put("transferredAt", now.toString());
+          events.publish(
+              "CaseTransferred",
+              1,
+              AGGREGATE,
+              caseId,
+              after.version(),
+              new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+              m);
+          log.info("사건 이관 {} {} → {} by {}", caseId, c.assigneeGroup(), toGroup, p.subject());
+          return caseId;
+        });
+    return detail(store.find(caseId).orElseThrow());
+  }
+
+  private static PmartException unsupported(String detail) {
+    return new PmartException(
+        "UNSUPPORTED_ACTION", HttpStatus.UNPROCESSABLE_CONTENT, detail, false, List.of());
   }
 
   // ---------------------------------------------------------------- 공통

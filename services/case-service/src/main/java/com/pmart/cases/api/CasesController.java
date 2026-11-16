@@ -17,6 +17,7 @@ import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ModelCase;
 import com.pmart.cases.api.generated.model.Priority;
 import com.pmart.cases.api.generated.model.ReopenCaseRequest;
+import com.pmart.cases.api.generated.model.TransferCaseRequest;
 import com.pmart.cases.application.CaseInboxService;
 import com.pmart.cases.domain.CaseRules;
 import com.pmart.cases.infrastructure.CaseStore.CaseRow;
@@ -155,6 +156,26 @@ public class CasesController implements CasesApi {
         detail(
             cases.reopen(
                 idempotencyKey, xSourceSystem, caseId, body.getReason(), xExpectedVersion)));
+  }
+
+  @Override
+  public ResponseEntity<ModelCase> transferCase(
+      String caseId,
+      String idempotencyKey,
+      String xSourceSystem,
+      TransferCaseRequest body,
+      @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        detail(
+            cases.transfer(
+                idempotencyKey,
+                xSourceSystem,
+                caseId,
+                body.getToGroup().getValue(),
+                body.getToCenterId(),
+                body.getMergeIntoCaseId(),
+                body.getReason(),
+                xExpectedVersion)));
   }
 
   private CaseSummary summary(CaseRow c) {
