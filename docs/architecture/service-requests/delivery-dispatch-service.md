@@ -54,3 +54,4 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **왜**: 사용자 결정(2026-11-16 "추천대로") — 센터 관리자(MFC_SUPERVISOR)가 **자기 센터의 배차 실패 사건**을 백오피스 사건함에서 본다(배송 원문 §3.6 "배차 지연·불가는 MFC 관리자·고객센터에 안내"). case 0.5.2 는 사건의 센터를 `DispatchFailed.payload.mfcId` 로 정하는데, 지금 payload 에 없다(deliveryId·orderId·reason·attempts·failedAt) → 센터 관리자에게 하나도 안 보인다.
 - **할 것(작음, 필드 추가만)**: `DispatchEvents.failed(...)` 가 `p.put("mfcId", before.mfcId())` — 계약 `contracts/events/DispatchFailed.v1.json` payload 에 `mfcId`(선택, `_defs` CenterId) 추가(필드 추가라 하위 호환). `DispatchDelayed` 도 같은 이유로 있으면 좋다(지금 사건함은 구독 안 함).
 - **case 쪽**: 이미 읽는다(값이 없으면 센터 없음 → 지원센터·관리자만 봄). 바꿀 것 없음.
+- **구현(2026-11-16, PC 5)**: `DispatchFailed`·`DispatchDelayed` payload 에 `mfcId`(선택 — 계약 필드 추가). DispatchFlowIT 로 확인.

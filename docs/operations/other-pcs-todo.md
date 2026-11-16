@@ -62,7 +62,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] LAN 서비스가 많은 PC 다(남은 메모리 약 5GB, 2026-11-13) — 빌드·시험 중 LAN 서비스 상태가 나빠지면 PC 1 에 알린다
 
 - [ ] **서비스 간 요청 — PC 5 몫(2026-11-16 정리)**:
-  - [ ] DD-MFC `DispatchFailed` 에 `mfcId` 싣기(필드 추가 — 센터 관리자 배차 실패 사건, PC 2 요청, `delivery-dispatch-service.md`)
+  - [x] DD-MFC `DispatchFailed` 에 `mfcId` 싣기(2026-11-16 구현 — `DispatchDelayed` 도)(필드 추가 — 센터 관리자 배차 실패 사건, PC 2 요청, `delivery-dispatch-service.md`)
   - [ ] DE-CASE `CaseOpened`·`CaseClosed` 구독 → 도움요청에 사건 번호·상태(`delivery-execution-service.md`)
   - [ ] TR-1 `DeliveryEtaUpdated`, RS-2(rider-auth) — 표 참고
 

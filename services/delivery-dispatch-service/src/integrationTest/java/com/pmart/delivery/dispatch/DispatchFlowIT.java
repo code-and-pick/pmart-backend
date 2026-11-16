@@ -518,8 +518,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT state FROM delivery WHERE delivery_id = ?", String.class, deliveryId))
         .isEqualTo("DISPATCHING");
-    assertThat(outbox(deliveryId, "DispatchFailed").path("payload").path("reason").asString())
-        .isEqualTo("REPEATED_REJECTION");
+    JsonNode failed = outbox(deliveryId, "DispatchFailed").path("payload");
+    assertThat(failed.path("reason").asString()).isEqualTo("REPEATED_REJECTION");
+    assertThat(failed.path("mfcId").asString()).isNotBlank(); // DD-MFC — 센터 관리자 사건함
     Map<String, Object> next =
         jdbc.queryForMap(
             "SELECT trigger, state, next_run_at > ? AS later FROM dispatch_attempt WHERE delivery_id = ? AND"
@@ -1154,6 +1155,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     engine.tick();
     JsonNode delayed = outbox(deliveryId, "DispatchDelayed").path("payload");
     assertThat(delayed.path("threshold").asInt()).isEqualTo(20);
+    assertThat(delayed.path("mfcId").asString()).isEqualTo(mfc); // DD-MFC
     assertThat(delayed.path("delayedMinutes").asInt()).isGreaterThanOrEqualTo(36);
     engine.tick();
     assertThat(

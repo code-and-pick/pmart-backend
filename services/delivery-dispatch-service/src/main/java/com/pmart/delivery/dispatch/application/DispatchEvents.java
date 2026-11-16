@@ -170,6 +170,9 @@ public class DispatchEvents {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", d.deliveryId());
     p.put("orderId", d.orderId());
+    if (d.mfcId() != null) {
+      p.put("mfcId", d.mfcId()); // DD-MFC — 센터 관리자 사건함
+    }
     p.put("delayedMinutes", delayedMinutes);
     p.put("threshold", thresholdMinutes);
     p.put("detectedAt", at.toString());
@@ -180,6 +183,10 @@ public class DispatchEvents {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", before.deliveryId());
     p.put("orderId", before.orderId());
+    if (before.mfcId() != null) {
+      p.put(
+          "mfcId", before.mfcId()); // DD-MFC(2026-11-16) — case 가 센터 관리자(MFC_SUPERVISOR) 사건함에 보일 센터
+    }
     p.put("reason", reason);
     p.put("attempts", attempts);
     p.put("failedAt", at.toString());

@@ -41,6 +41,10 @@
             },
             "detectedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId",
+              "description": "배송의 센터(2026-11-16 DD-MFC — case 사건함이 센터 관리자에게 보일 센터를 정한다). 선택 — 예전 사건에는 없다"
             }
           },
           "additionalProperties": true
