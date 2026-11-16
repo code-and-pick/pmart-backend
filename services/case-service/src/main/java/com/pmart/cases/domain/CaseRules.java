@@ -17,6 +17,9 @@ import org.jspecify.annotations.Nullable;
  *       열기: CS_AGENT·RIDER_OPS· OPERATOR_ADMIN.
  *   <li>우선순위: 사고(ACCIDENT)·안전 위협 P1, 도움요청·위치 끊김 P2, 그 밖 P3.
  *   <li>처리 기한: 종류별 기본값(설정으로 바꿈) — 표시만, 알림 없음.
+ *   <li>사가·결제 이상(R-3, 2026-11-16 사용자 — 기한 1시간·"이상만"·멈춘 사가는 지금 안 함): RECONCILIATION(대사 필요·결제 불일치·보상
+ *       실패)·PAYMENT_UNKNOWN(결제 결과 불명 상신). 팀 ORDER_OPS = OPERATOR_ADMIN 만 보고 집고 닫는다. 사건은 알림·기록이고 조치는
+ *       처리 대기(BO-12) 버튼·각 메뉴에서 한다.
  * </ul>
  */
 public final class CaseRules {
@@ -28,11 +31,17 @@ public final class CaseRules {
   public static final String RIDER_LOCATION_STALE = "RIDER_LOCATION_STALE";
   public static final String MISDELIVERY = "MISDELIVERY";
   public static final String CS_INQUIRY = "CS_INQUIRY";
+  public static final String RECONCILIATION = "RECONCILIATION";
+  public static final String PAYMENT_UNKNOWN = "PAYMENT_UNKNOWN";
 
   public static final String GROUP_DELIVERY_OPS = "DELIVERY_OPS";
+  public static final String GROUP_ORDER_OPS = "ORDER_OPS";
 
   public static final Set<String> DELIVERY_KINDS =
       Set.of(RIDER_HELP, DELIVERY_INCIDENT, RIDER_LOCATION_STALE, MISDELIVERY);
+
+  /** 사가·결제 이상(R-3) — OPERATOR_ADMIN 만. */
+  public static final Set<String> ORDER_KINDS = Set.of(RECONCILIATION, PAYMENT_UNKNOWN);
 
   public static final String ADMIN = "OPERATOR_ADMIN";
   public static final String RIDER_OPS = "RIDER_OPS";
@@ -40,16 +49,24 @@ public final class CaseRules {
 
   public static final List<String> CREATE_MISDELIVERY_ROLES = List.of(CS_AGENT, RIDER_OPS, ADMIN);
 
-  /** 종류별 처리 기한 기본값(설정 {@code pmart.cases.sla.<종류>} 로 바꾼다 — 값 확정 2026-11-16 사용자 "그대로 할게"). */
+  /**
+   * 종류별 처리 기한 기본값(설정 {@code pmart.cases.sla.<종류>} 로 바꾼다 — 값 확정 2026-11-16 사용자 "그대로 할게", 사가·결제 이상
+   * 1시간은 같은 날 "한시간으로").
+   */
   public static final Map<String, Duration> DEFAULT_SLA =
       Map.of(
           RIDER_HELP, Duration.ofMinutes(10),
           DELIVERY_INCIDENT, Duration.ofMinutes(30),
           RIDER_LOCATION_STALE, Duration.ofMinutes(10),
-          MISDELIVERY, Duration.ofMinutes(30));
+          MISDELIVERY, Duration.ofMinutes(30),
+          RECONCILIATION, Duration.ofHours(1),
+          PAYMENT_UNKNOWN, Duration.ofHours(1));
 
   public static String group(String kind) {
-    return DELIVERY_KINDS.contains(kind) ? GROUP_DELIVERY_OPS : "CS";
+    if (DELIVERY_KINDS.contains(kind)) {
+      return GROUP_DELIVERY_OPS;
+    }
+    return ORDER_KINDS.contains(kind) ? GROUP_ORDER_OPS : "CS";
   }
 
   /** 볼 수 있는 종류. 빈 집합 = 하나도 없음. */
@@ -69,7 +86,28 @@ public final class CaseRules {
   }
 
   /** 사건함에 나오는 종류(고객 문의 CS_INQUIRY 는 /inquiries). */
-  public static final Set<String> ALL_INBOX_KINDS = DELIVERY_KINDS;
+  public static final Set<String> ALL_INBOX_KINDS =
+      Set.of(
+          RIDER_HELP,
+          DELIVERY_INCIDENT,
+          RIDER_LOCATION_STALE,
+          MISDELIVERY,
+          RECONCILIATION,
+          PAYMENT_UNKNOWN);
+
+  /**
+   * 사가·결제 사건 중 사건함에 여는 것("이상만", 2026-11-16 사용자). 대사 필요·결제 불일치는 전부, 보상 실행은 성공이 아닌 것만(정상 보상은 주문 취소마다
+   * 나온다), 결제 결과 불명은 상신된 것(escalated)만. 열지 않으면 null, 열면 종류.
+   */
+  public static @Nullable String orderExceptionKind(
+      String eventType, @Nullable String result, boolean escalated) {
+    return switch (eventType) {
+      case "ReconciliationRequired", "PaymentMismatch" -> RECONCILIATION;
+      case "CompensationExecuted" -> "SUCCESS".equals(result) ? null : RECONCILIATION;
+      case "PaymentResultUnknown" -> escalated ? PAYMENT_UNKNOWN : null;
+      default -> null;
+    };
+  }
 
   /** 라이더 도움요청·전달 실패 사건 → 종류. */
   public static String incidentKind(@Nullable String type, @Nullable String category) {

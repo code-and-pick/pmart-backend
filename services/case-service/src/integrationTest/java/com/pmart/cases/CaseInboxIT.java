@@ -333,4 +333,169 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     assertThat(a.status()).isEqualTo(200);
     assertThat(a.body().path("assigneeId").asString()).isEqualTo("op-ops-2");
   }
+
+  void publishOrder(
+      String topic,
+      String type,
+      String aggregateType,
+      String key,
+      Map<String, Object> payload,
+      String from) {
+    kafka
+        .send(
+            topic,
+            key,
+            EventEnvelopeFixtures.envelope(type)
+                .from(from)
+                .aggregate(aggregateType, key, 1)
+                .payload(payload)
+                .buildJson())
+        .join();
+  }
+
+  List<String> kindsOf(String subjectRef) {
+    return jdbc.queryForList(
+        "SELECT case_type FROM case_record WHERE subject_ref = ? ORDER BY case_type",
+        String.class,
+        subjectRef);
+  }
+
+  /**
+   * R-3(2026-11-16 사용자 — 기한 1시간·"이상만"·멈춘 사가는 안 함): 정상 보상·조회 중 결제 불명은 사건이 아니고, 보상 실패·대사 필요·결제 불일치 →
+   * RECONCILIATION, 상신된 결제 불명 → PAYMENT_UNKNOWN. 같은 주문 재발은 이력만(결제 불명 반복은 이력도 없음). 관리자만 보고 집는다.
+   */
+  @Test
+  void sagaAndPaymentExceptionsOpenAdminOnlyCases() throws Exception {
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-R3-" + suffix;
+    String sagaId = "SAGA-R3-" + suffix;
+    String saga = "order-orchestration-service";
+
+    // 정상 보상 → 사건 없음, 이어서 보상 실패 → RECONCILIATION(같은 파티션이라 앞 사건이 먼저 처리됨)
+    Map<String, Object> comp = new LinkedHashMap<>();
+    comp.put("sagaId", sagaId);
+    comp.put("orderId", orderId);
+    comp.put("resourceType", "INVENTORY_RESERVATION");
+    comp.put("resourceId", "RSV-1");
+    comp.put("result", "SUCCESS");
+    comp.put("executedAt", Instant.now().toString());
+    publishOrder("order.saga.v1", "CompensationExecuted", "Saga", sagaId, comp, saga);
+    Map<String, Object> failed = new LinkedHashMap<>(comp);
+    failed.put("result", "FAILED");
+    publishOrder("order.saga.v1", "CompensationExecuted", "Saga", sagaId, failed, saga);
+    assertThat(await(() -> kindsOf(orderId), l -> !l.isEmpty())).containsExactly("RECONCILIATION");
+
+    // 같은 주문의 대사 필요 → 사건 그대로 + 재발 이력
+    publishOrder(
+        "order.saga.v1",
+        "ReconciliationRequired",
+        "Saga",
+        sagaId,
+        Map.of(
+            "sagaId",
+            sagaId,
+            "orderId",
+            orderId,
+            "mismatchType",
+            "AMOUNT",
+            "details",
+            Map.of(),
+            "detectedAt",
+            Instant.now().toString()),
+        saga);
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history h JOIN case_record c ON c.case_id = h.case_id"
+                    + " WHERE c.subject_ref = ? AND h.action = 'RECURRED'",
+                orderId),
+        c -> c > 0);
+    assertThat(kindsOf(orderId)).containsExactly("RECONCILIATION");
+
+    // 결제 불명: 조회 중(escalated=false)은 사건 아님, 상신 → PAYMENT_UNKNOWN, 다시 와도 이력 없음
+    String payOrder = "ORD-R3P-" + suffix;
+    String attempt = "PAY-R3-" + suffix;
+    Map<String, Object> unknown = new LinkedHashMap<>();
+    unknown.put("paymentAttemptId", attempt);
+    unknown.put("orderRef", payOrder);
+    unknown.put("inquiryCount", 3);
+    unknown.put("nextInquiryAt", Instant.now().plusSeconds(60).toString());
+    unknown.put("escalated", false);
+    publishOrder(
+        "order.payment.v1", "PaymentResultUnknown", "Payment", attempt, unknown, "payment-service");
+    Map<String, Object> escalated = new LinkedHashMap<>(unknown);
+    escalated.put("inquiryCount", 5);
+    escalated.put("escalated", true);
+    publishOrder(
+        "order.payment.v1",
+        "PaymentResultUnknown",
+        "Payment",
+        attempt,
+        escalated,
+        "payment-service");
+    publishOrder(
+        "order.payment.v1",
+        "PaymentResultUnknown",
+        "Payment",
+        attempt,
+        escalated,
+        "payment-service");
+    // 다른 주문의 결제 불일치 → RECONCILIATION(같은 토픽·키 뒤에 넣어 앞 사건이 다 처리된 뒤를 기다린다)
+    String mismatchOrder = "ORD-R3M-" + suffix;
+    publishOrder(
+        "order.payment.v1",
+        "PaymentMismatch",
+        "Payment",
+        attempt,
+        Map.of(
+            "paymentAttemptId",
+            attempt + "-M",
+            "orderRef",
+            mismatchOrder,
+            "mismatchType",
+            "AMOUNT",
+            "expectedAmount",
+            10000,
+            "approvedAmount",
+            9000,
+            "detectedAt",
+            Instant.now().toString()),
+        "payment-service");
+    assertThat(await(() -> kindsOf(mismatchOrder), l -> !l.isEmpty()))
+        .containsExactly("RECONCILIATION");
+    assertThat(kindsOf(payOrder)).as("상신 두 번 — 사건 하나").containsExactly("PAYMENT_UNKNOWN");
+    assertThat(
+            count(
+                "SELECT count(*) FROM case_history h JOIN case_record c ON c.case_id = h.case_id"
+                    + " WHERE c.subject_ref = ? AND h.action = 'RECURRED'",
+                payOrder))
+        .as("결제 불명 반복은 이력도 없음")
+        .isZero();
+
+    // 관리자만 본다 — 배송 팀·상담원 목록엔 없고 단건은 404
+    Res adminList = send("GET", admin, "/cases?subjectRef=" + orderId, null);
+    assertThat(adminList.status()).isEqualTo(200);
+    JsonNode item = adminList.body().path("items").get(0);
+    String caseId = item.path("caseId").asString();
+    assertThat(item.path("kind").asString()).isEqualTo("RECONCILIATION");
+    assertThat(item.path("assigneeGroup").asString()).isEqualTo("ORDER_OPS");
+    assertThat(item.path("refs").toString()).contains(orderId, sagaId, "RSV-1");
+    Instant due = Instant.parse(item.path("slaDueAt").asString());
+    assertThat(due)
+        .isBetween(Instant.now().plusSeconds(50 * 60), Instant.now().plusSeconds(61 * 60));
+    assertThat(outbox(caseId, "CaseOpened")).isEqualTo(1);
+    assertThat(send("GET", ops, "/cases?subjectRef=" + orderId, null).body().path("items"))
+        .isEmpty();
+    assertThat(send("GET", cs, "/cases?kind=PAYMENT_UNKNOWN", null).body().path("items")).isEmpty();
+    assertThat(send("GET", ops, "/cases/" + caseId, null).status()).isEqualTo(404);
+    assertThat(
+            send("POST", ops, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-1"))
+                .status())
+        .isEqualTo(404);
+
+    Res claimed =
+        send("POST", admin, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-admin"));
+    assertThat(claimed.status()).as(claimed.body().toString()).isEqualTo(200);
+    assertThat(claimed.body().path("history").toString()).contains("RECURRED");
+  }
 }

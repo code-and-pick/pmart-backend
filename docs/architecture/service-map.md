@@ -415,7 +415,7 @@
 - **소유하지 않음**: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification).
 - **API**: 사건 생성/배정/이관/종결, 의무 등록/해소, CS 접수, 도움요청.
 - **발행**: `CaseOpened/Assigned/Transferred/Closed/Reopened`, `ObligationCreated/Resolved`, `ShiftHandoverCompleted`, `RiderComplaintRecorded`(라이더 컴플레인 — 신고·오배송·파손, rider 제한 검토 집계, R-5 2026-11-14 요청·구현 전).
-- **구독**: `ReconciliationRequired`, `PaymentResultUnknown`(장기), `DispatchFailed`, `DeliveryIncidentRaised`, `TransportIncidentRaised`, `LineShortageReported`(동의 없음), `ReceiptDiscrepancyReported`, `OutboundDiscrepancyRaised`, `QualityDecisionMade`(리콜), `IncidentResolution`(도메인 회신).
+- **구독**: `ReconciliationRequired`, `CompensationExecuted`(성공 아닌 것만), `PaymentMismatch`, `PaymentResultUnknown`(상신된 것만) — 사가·결제 이상 사건(R-3 구현 2026-11-16, OPERATOR_ADMIN), `DispatchFailed`, `DeliveryIncidentRaised`, `TransportIncidentRaised`, `LineShortageReported`(동의 없음), `ReceiptDiscrepancyReported`, `OutboundDiscrepancyRaised`, `QualityDecisionMade`(리콜), `IncidentResolution`(도메인 회신).
 
 ### center-master-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: 센터 코드·유형(CDC/MFC)·명칭·주소·좌표·진입/하차/인계 위치·층수·반입 조건·취급 온도대·영업 캘린더(고객 주문 운영/직원 근무/차량 진입/하차·인계/검수·적치 창 — 다섯 시간표 분리, 휴일·임시 제한·버전·승인자), 휴점/폐점 의무 목록(BO-06).

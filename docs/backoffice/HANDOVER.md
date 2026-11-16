@@ -70,7 +70,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
 ## 4. 할 일 (추천 순서)
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
-2. **case R-3** — 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
+2. **case R-3** — ✅ **2026-11-16 PC 2 구현(계약 0.5.0, PR 대기 — 기한 1시간·"이상만"·멈춘 사가 안 함, `service-requests/case-service.md` R-3)**. 원래 내용: 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
 3. 배송 쪽 연결이 오면 확인: delivery-execution 이 `CaseOpened`·`CaseClosed` 로 도움요청에 사건 번호 붙이기(요청 DE-CASE), dispatch 가 `MisdeliveryConfirmed` 로 회수 배차(DD-2) — PC 5 작업. 그 뒤 execution 의 임시 "도움요청 처리함 닫기"(BOD-4) 정리.
 4. 나중: MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
 5. 고객센터 문의 답변을 바꿀 때(`InquiryService.reply`) **`InquiryAnswered` 발행을 지킨다** — 고객 알림함이 이것만 보고 "답변이 등록되었어요"를 쌓는다(notification 이 구독, PC 1). 리뷰·알림 백오피스 화면은 정책이 정해질 때(리뷰 숨김·신고는 사용자 결정 "이번엔 뺌").

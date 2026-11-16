@@ -36,7 +36,8 @@ import tools.jackson.databind.JsonNode;
  * <ul>
  *   <li>여는 길: delivery-execution {@code DeliveryIncidentRaised}(라이더 도움요청·전달 실패, R-4),
  *       delivery-tracking {@code RiderLocationStale}(R-6 — 같은 라이더·배송으로 열린 사건이 있으면 이력만 더함), 직원의 오배송
- *       확인(R-7 — {@code MisdeliveryConfirmed} 도 냄).
+ *       확인(R-7 — {@code MisdeliveryConfirmed} 도 냄), 사가·결제 이상(R-3 — order-orchestration·payment 사건 중
+ *       이상만, OPERATOR_ADMIN).
  *   <li>팀 공용 목록 → 직원이 집어 간다(assign = 자기 자신, OPERATOR_ADMIN 은 다른 사람에게도). 닫기는 사유·요약 필수.
  *   <li>사건마다 {@code CaseOpened·CaseAssigned·CaseClosed}(platform.case.v1) — delivery-execution 이
  *       도움요청에 사건 번호를 붙이는 데 쓴다(그쪽 구현은 delivery 영역).
@@ -159,6 +160,73 @@ public class CaseInboxService {
         "배달 중 라이더 위치 끊김(마지막 " + text(p, "lastSeenAt") + ") — 라이더 연락 필요",
         refs,
         key);
+  }
+
+  /**
+   * R-3: 사가·결제 이상 → RECONCILIATION·PAYMENT_UNKNOWN(OPERATOR_ADMIN, 2026-11-16 사용자 "이상만"). 같은 주문으로
+   * 열린 같은 종류 사건이 있으면 이력(재발)만 — 결제 결과 불명은 15분마다 다시 오므로 재발 이력도 남기지 않는다. 사건은 알림·기록이고 조치는 처리
+   * 대기(BO-12)에서 한다. 금액·상세는 사건에 싣지 않는다(참조만).
+   */
+  public void onOrderException(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String type = e.eventType();
+    String kind =
+        CaseRules.orderExceptionKind(type, text(p, "result"), p.path("escalated").asBoolean(false));
+    if (kind == null) {
+      return; // 정상 보상·아직 조회 중인 결제 불명 — 사건 아님
+    }
+    String orderId = text(p, "orderId") != null ? text(p, "orderId") : text(p, "orderRef");
+    String sagaId = text(p, "sagaId");
+    String paymentAttemptId = text(p, "paymentAttemptId");
+    String subjectRef = orderId != null ? orderId : sagaId != null ? sagaId : paymentAttemptId;
+    if (subjectRef == null) {
+      throw new IllegalArgumentException("orderId·sagaId·paymentAttemptId 없음"); // 계약 위반 → DLT
+    }
+    String subjectType = orderId != null ? "ORDER" : sagaId != null ? "SAGA" : "PAYMENT";
+    String key = kind + ":" + subjectRef;
+    Instant now = now();
+    var open = store.lockOpenByDedupe(key);
+    if (open.isPresent()) {
+      if (!"PaymentResultUnknown".equals(type)) {
+        store.touch(open.get().caseId(), now);
+        store.history(
+            open.get().caseId(),
+            now,
+            SYSTEM,
+            "RECURRED",
+            null,
+            null,
+            orderExceptionSummary(type, p));
+      }
+      log.info("사가·결제 이상 재발 {} — 사건 {} 에 이력만", type, open.get().caseId());
+      return;
+    }
+    List<Ref> refs = new ArrayList<>();
+    addRef(refs, "orderId", orderId);
+    addRef(refs, "sagaId", sagaId);
+    addRef(refs, "paymentAttemptId", paymentAttemptId);
+    addRef(refs, "resourceId", text(p, "resourceId"));
+    openFromEvent(
+        e, kind, "P2", subjectType, subjectRef, null, orderExceptionSummary(type, p), refs, key);
+  }
+
+  private static String orderExceptionSummary(String type, JsonNode p) {
+    return switch (type) {
+      case "ReconciliationRequired" -> "대사 필요 — " + orDash(text(p, "mismatchType"));
+      case "PaymentMismatch" -> "결제 승인 불일치 — " + orDash(text(p, "mismatchType"));
+      case "CompensationExecuted" ->
+          "보상 해제 "
+              + ("FAILED".equals(text(p, "result")) ? "실패" : "결과 불명")
+              + " — "
+              + orDash(text(p, "resourceType"));
+      case "PaymentResultUnknown" ->
+          "결제 결과 불명 상신 — 원거래 조회 " + p.path("inquiryCount").asInt(0) + "회";
+      default -> type;
+    };
+  }
+
+  private static String orDash(@Nullable String s) {
+    return s == null ? "-" : s;
   }
 
   private void openFromEvent(

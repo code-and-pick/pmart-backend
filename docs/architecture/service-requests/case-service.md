@@ -34,9 +34,9 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 | R-2 | order-orchestration | 없음(기존 S3) |
 
 ## 사건함 공통 결정 (사용자 2026-11-16 "너 추천대로")
-- **유형(처음 다섯)**: 라이더 도움요청 `RIDER_HELP`·전달 실패 `DELIVERY_FAILURE`(R-4), 위치 끊김 `RIDER_LOCATION_STALE`(R-6), 오배송 확인 `MISDELIVERY`(R-7), 사가·결제 이상 `ORDER_EXCEPTION`(R-3). 우선순위는 유형·category 로(사고 ACCIDENT 긴급).
+- **유형(처음 다섯)**: 라이더 도움요청 `RIDER_HELP`·전달 실패 `DELIVERY_FAILURE`(R-4), 위치 끊김 `RIDER_LOCATION_STALE`(R-6), 오배송 확인 `MISDELIVERY`(R-7), 사가·결제 이상 `RECONCILIATION`·`PAYMENT_UNKNOWN`(R-3 — 계약 CaseKind 에 있던 이름을 씀, 2026-11-16 구현). 우선순위는 유형·category 로(사고 ACCIDENT 긴급).
 - **담당**: 유형별 팀 — 앞 넷은 **`RIDER_OPS`(지원센터 겸함, 2026-11-16 결정)**, 사가·결제 이상은 `OPERATOR_ADMIN`. 배정은 **팀 공용 목록에서 직원이 집어 간다**(자동 배정 없음 — 집으면 담당자 기록).
-- **처리 기한**: 유형별 기한을 **표시만** 하고 넘긴 건은 목록에서 강조. 알림(Slack 등)은 나중. **값 확정(사용자 2026-11-16 "그대로 할게")**: 도움요청 10분·위치 끊김 10분·전달 실패 30분·오배송 확인 30분(설정 `pmart.cases.sla`). 사가·결제 이상(R-3)은 그때 정한다.
+- **처리 기한**: 유형별 기한을 **표시만** 하고 넘긴 건은 목록에서 강조. 알림(Slack 등)은 나중. **값 확정(사용자 2026-11-16 "그대로 할게")**: 도움요청 10분·위치 끊김 10분·전달 실패 30분·오배송 확인 30분(설정 `pmart.cases.sla`). 사가·결제 이상(R-3)은 **1시간**(사용자 2026-11-16 "한시간으로").
 
 ## R-3. 사가·결제 상신 받기 (2026-11-09 기록)
 
@@ -47,6 +47,10 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   2. 사가 ESCALATED(S1·S3·결품 사가의 업무 거절) 상신 경로 — 사건으로 받을지 직접 호출로 받을지 함께 정한다.
 - **사용자 결정**: 문서에 없음 — 케이스 유형·담당·처리 기한은 case 구현 때 질문.
 - 근거: `docs/architecture/events.md`, `docs/business/flows/cancel-vs-handover.md`, `services/order-orchestration-service/CLAUDE.md`(상태).
+- **구현됨(2026-11-16, 보낸 영역 backoffice — case 계약 0.5.0, PR 대기)**. 사용자 결정(같은 날): 처리 기한 **1시간**(표시만), 받을 범위 **"이상만"**, 업무 거절로 멈춘 사가(ESCALATED)는 **지금은 사건으로 열지 않음**(처리 대기 BO-12 에 보인다 — 2번 항목은 하지 않음).
+  - `ReconciliationRequired` 전부·`CompensationExecuted` 중 result ≠ SUCCESS·`PaymentMismatch` 전부 → `RECONCILIATION`, `PaymentResultUnknown` 중 escalated=true → `PAYMENT_UNKNOWN`. 담당 OPERATOR_ADMIN(팀 ORDER_OPS) 만.
+  - 주문마다 같은 종류 열린 사건 하나(재발은 이력). 사건은 알림·기록, 조치는 처리 대기 버튼(BO-12)·각 메뉴.
+  - **PC 1 이 할 것**: 설정 저장소 `case-service.yml` 에 바인딩 `sagaEvents-in-0`(order.saga.v1)·`paymentEvents-in-0`(order.payment.v1), `spring.cloud.function.definition` 에 두 함수, `pmart.cases.sla."[RECONCILIATION]"`·`"[PAYMENT_UNKNOWN]"` PT1H — 시험 사본(`services/case-service/src/integrationTest/resources/pmart-config/case-service.yml`)과 같게. 배포 전 소비 그룹 case-service 의 두 토픽 시작 위치 latest(지난 이상은 처리 대기에 이미 보인다).
 
 ## R-4. 라이더 도움요청·전달 실패 등록 → 지원센터 사건 (2026-11-13, 보낸 영역 delivery — 사용자 결정 "1번")
 
