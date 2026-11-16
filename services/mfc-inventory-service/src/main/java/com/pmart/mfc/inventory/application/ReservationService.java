@@ -278,6 +278,102 @@ public class ReservationService {
    * pmart.inventory.min-remaining-days}). 둘 다 없으면 미설정(null — 기한 있는 LOT 은 CONFIG_REQUIRED). 제조 후
    * 경과일은 상품 보장만.
    */
+  /**
+   * S4 예약 시간 변경 — 배송 약속일 바꾸기(2026-11-16). 지금 잡힌 LOT 조각이 새 약속일에도 적격일 때만 바꾼다. 미달이면 422
+   * LOT_EXPIRY_NOT_MET(예약 그대로 — OMS "새 출고일에 미달 → 시간 변경 실패·기존 유효 예약 유지").
+   */
+  public CommandResponse changePromisedDate(
+      String requestId,
+      String sourceSystem,
+      String reservationId,
+      String orderId,
+      LocalDate promisedDate) {
+    return idempotency
+        .execute(
+            new RequestIdempotency.RequestKey(
+                sourceSystem, requestId, "changeReservationPromisedDate", "system"),
+            Map.of(
+                "reservationId", reservationId,
+                "orderId", orderId,
+                "promisedDate", promisedDate.toString()),
+            CommandResponse.class,
+            () -> {
+              Instant now = clock.instant();
+              ReservationRow r =
+                  reservations
+                      .lock(reservationId)
+                      .orElseThrow(
+                          () ->
+                              PmartException.notFound(
+                                  "RESERVATION_NOT_FOUND", "예약이 없습니다: " + reservationId));
+              if (!r.orderId().equals(orderId)) {
+                throw new PmartException(
+                    com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "다른 주문의 예약입니다.");
+              }
+              if (r.state() != ReservationState.HELD && r.state() != ReservationState.CONFIRMED) {
+                throw PmartException.invalidState("활성 예약이 아닙니다(" + r.state() + ").");
+              }
+              if (promisedDate.equals(r.promisedDate())) {
+                return new CommandResponse(
+                    com.pmart.common.web.CommandStatus.APPLIED,
+                    requestId,
+                    reservationId,
+                    null,
+                    r.version(),
+                    false,
+                    null,
+                    now);
+              }
+              List<ReservationStore.PartRow> parts =
+                  reservations.parts(reservationId).stream()
+                      .filter(
+                          p ->
+                              p.state() == ReservationState.HELD
+                                  || p.state() == ReservationState.CONFIRMED)
+                      .toList();
+              java.util.Set<String> skuIds = new java.util.LinkedHashSet<>();
+              parts.forEach(p -> skuIds.add(p.sku()));
+              LotAllocator.Rules rules = shelfRules(skuIds, skus.findAll(List.copyOf(skuIds)));
+              Map<String, StockStore.LotRow> lots =
+                  stock.lots(parts.stream().map(ReservationStore.PartRow::lotId).toList());
+              List<PmartException.Detail> bad = new ArrayList<>();
+              for (ReservationStore.PartRow p : parts) {
+                StockStore.LotRow l = lots.get(p.lotId());
+                LotAllocator.LotCandidate c =
+                    new LotAllocator.LotCandidate(
+                        p.sku(),
+                        p.lotId(),
+                        l == null ? null : l.expiryDate(),
+                        l == null ? null : l.manufactureDate(),
+                        null,
+                        1);
+                if (!LotAllocator.eligible(c, promisedDate, rules)) {
+                  bad.add(new PmartException.Detail(p.sku(), p.lotId()));
+                }
+              }
+              if (!bad.isEmpty()) {
+                throw new PmartException(
+                    "LOT_EXPIRY_NOT_MET",
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                    "잡힌 LOT 이 새 배송 약속일의 소비기한 기준에 미달합니다(" + bad.size() + "건).",
+                    false,
+                    bad);
+              }
+              reservations.setPromisedDate(reservationId, promisedDate, now);
+              log.info("예약 {} 배송 약속일 {} → {}", reservationId, r.promisedDate(), promisedDate);
+              return new CommandResponse(
+                  com.pmart.common.web.CommandStatus.APPLIED,
+                  requestId,
+                  reservationId,
+                  null,
+                  r.version() + 1,
+                  false,
+                  null,
+                  now);
+            })
+        .value();
+  }
+
   private LotAllocator.Rules shelfRules(
       Collection<String> skuIds, Map<String, SkuProjection> projections) {
     Map<String, ShelfRule> out = new LinkedHashMap<>();

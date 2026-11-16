@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -568,6 +568,45 @@ paths:
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
           description: PARTIAL_RELEASE_NOT_SUPPORTED (lines 가 예약 전량과 다름)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/reservations/{reservationId}/promised-date-changes:
+    post:
+      tags: [reservations]
+      summary: "[orchestration S4→inventory] 예약 시간 변경 — 배송 약속일 바꾸기(잡힌 LOT 소비기한 재검사)"
+      x-added-in: '2026-11-16'
+      description: |
+        S4 예약 시간 변경으로 배송 날짜가 바뀔 때(OMS §4 — "변경 시 … LOT 기한을 검증", "예약 시 적격이나 새 출고일에 미달 → 시간 변경 실패·기존 유효 예약 유지").
+        예약을 잠근 뒤 지금 잡힌 LOT 조각(HELD·CONFIRMED)이 **새 약속일 기준으로도 적격**(소비기한 − 약속일 ≥ 최소 잔여일, 제조일 기준)일 때만 약속일을 바꾼다.
+        하나라도 미달이면 422 LOT_EXPIRY_NOT_MET(details: field = sku, reason = lotId) — 예약은 그대로(다른 LOT 로 다시 잡지 않는다). 같은 날짜면 그대로 성공.
+        활성(HELD·CONFIRMED)이 아니면 409 INVALID_STATE. 같은 Idempotency-Key 재전송은 같은 결과.
+      operationId: changeReservationPromisedDate
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, promisedDate]
+              properties:
+                orderId: { type: string }
+                promisedDate: { type: string, format: date, description: 새 배송 약속일(Asia/Seoul) }
+      responses:
+        '200':
+          description: APPLIED (resultId = reservationId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: LOT_EXPIRY_NOT_MET
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

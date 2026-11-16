@@ -44,3 +44,4 @@
 
 ## 이미지 (ADR-0053)
 - **GraalVM Native 이미지로 만들지 않는다 — JVM 으로 실행한다.** OR-Tools(JNI + 미리 빌드된 `.so`) 때문. 다른 서비스가 Native 로 바뀌어도 이 서비스는 JVM(2026-11-10 사용자 결정).
+- **S4 예약 시간 변경 — 교체 Hold(2026-11-16, 계약 0.15.0, V16, PC 5 작성)**: `replacesHoldId` = 같은 주문·센터의 확정 Hold → 다른 창 새 HELD(두 창 모두 단위), 새 Hold 확정 때 같은 트랜잭션에서 기존 RELEASED(RESCHEDULED). 확정 전 409·같은 창 422 SAME_WINDOW·진행 중 교체 409. 유일 색인 HELD 1·CONFIRMED 1.

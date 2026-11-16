@@ -661,6 +661,64 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** 상품별 소비기한 보장(ADR-0041) — 상품 이벤트 대신 투영 열을 직접 채운다(시험 준비). */
+  /** S4(2026-11-16): 배송 약속일 바꾸기 — 잡힌 LOT 이 새 날짜에도 적격이면 바꾸고, 미달이면 422 LOT_EXPIRY_NOT_MET·예약 그대로. */
+  @Test
+  void promisedDateChangeKeepsReservationWhenLotWouldExpire() {
+    String milk = newSku();
+    handlingOn(milk);
+    projection(milk, "CHILLED");
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(line(milk, 2, 0, "M-EDGE", today.plusDays(2).toString())));
+    Res ok = reserve(UUID.randomUUID().toString(), reserveBody("ORD-S4", Map.of(milk, 1)));
+    assertThat(ok.status()).isEqualTo(201);
+    String rid = ok.body().path("resultId").asString();
+    // 오늘 그대로 → 같은 날짜 성공
+    Res same =
+        post(
+            ORCH,
+            "order-orchestration-service",
+            "/internal/reservations/" + rid + "/promised-date-changes",
+            UUID.randomUUID().toString(),
+            Map.of("orderId", "ORD-S4", "promisedDate", today.toString()));
+    assertThat(same.status()).isEqualTo(200);
+    // 내일 → 기한 +2일 − 내일 = 1일 < 최소 2일 → 422, 예약 그대로
+    Res bad =
+        post(
+            ORCH,
+            "order-orchestration-service",
+            "/internal/reservations/" + rid + "/promised-date-changes",
+            UUID.randomUUID().toString(),
+            Map.of("orderId", "ORD-S4", "promisedDate", today.plusDays(1).toString()));
+    assertThat(bad.status()).isEqualTo(422);
+    assertThat(bad.body().path("code").asString()).isEqualTo("LOT_EXPIRY_NOT_MET");
+    assertThat(bad.body().path("details").path(0).path("field").asString()).isEqualTo(milk);
+    assertThat(get(ORCH, "/internal/reservations/" + rid).body().path("state").asString())
+        .isIn("HELD", "CONFIRMED");
+    // 넉넉한 LOT 이면 내일로 바뀐다
+    String bread = newSku();
+    handlingOn(bread);
+    projection(bread, "CHILLED");
+    stocked(
+        "RCV-" + UUID.randomUUID(),
+        List.of(line(bread, 2, 0, "B-OK", today.plusDays(10).toString())));
+    String rid2 =
+        reserve(UUID.randomUUID().toString(), reserveBody("ORD-S4B", Map.of(bread, 1)))
+            .body()
+            .path("resultId")
+            .asString();
+    Res moved =
+        post(
+            ORCH,
+            "order-orchestration-service",
+            "/internal/reservations/" + rid2 + "/promised-date-changes",
+            UUID.randomUUID().toString(),
+            Map.of("orderId", "ORD-S4B", "promisedDate", today.plusDays(1).toString()));
+    assertThat(moved.status()).isEqualTo(200);
+    assertThat(moved.body().path("status").asString()).isEqualTo("APPLIED");
+  }
+
   void guarantee(String sku, Integer minRemainingDays, Integer maxDaysSinceManufacture) {
     jdbc.update(
         "UPDATE sku_projection SET shelf_min_remaining_days = ?, shelf_max_days_since_mfg = ?"

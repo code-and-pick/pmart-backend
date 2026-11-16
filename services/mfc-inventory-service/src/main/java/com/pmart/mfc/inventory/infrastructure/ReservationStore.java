@@ -121,6 +121,16 @@ public class ReservationStore {
   }
 
   /** 예약 행을 잠그고 읽는다. */
+  /** S4: 배송 약속일 바꾸기. */
+  public void setPromisedDate(String reservationId, java.time.LocalDate date, Instant at) {
+    jdbc.update(
+        "UPDATE reservation SET promised_date = ?, row_version = row_version + 1, updated_at = ?"
+            + " WHERE reservation_id = ?",
+        java.sql.Date.valueOf(date),
+        java.sql.Timestamp.from(at),
+        reservationId);
+  }
+
   public Optional<ReservationRow> lock(String reservationId) {
     return jdbc
         .query(

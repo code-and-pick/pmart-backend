@@ -222,6 +222,23 @@ public class ReservationsController implements ReservationsApi {
     return ResponseEntity.ok(Commands.dto(r));
   }
 
+  /** S4 예약 시간 변경 — 배송 약속일(2026-11-16). */
+  @Override
+  public ResponseEntity<ReserveInventory201Response> changeReservationPromisedDate(
+      String reservationId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.mfc.inventory.api.generated.model.ChangeReservationPromisedDateRequest body) {
+    return ResponseEntity.ok(
+        Commands.dto(
+            service.changePromisedDate(
+                idempotencyKey,
+                xSourceSystem,
+                reservationId,
+                body.getOrderId(),
+                body.getPromisedDate())));
+  }
+
   @Override
   public ResponseEntity<ReserveInventory201Response> releaseReservation(
       String reservationId,
