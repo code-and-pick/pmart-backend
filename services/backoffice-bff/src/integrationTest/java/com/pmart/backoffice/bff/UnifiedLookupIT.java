@@ -170,6 +170,37 @@ class UnifiedLookupIT {
             .willReturn(json(200, "{\"items\":[" + caseJson + "]}")));
     cases.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/cases/CASE-1")).willReturn(json(200, caseJson)));
+    // 닫힌 사건(state=CLOSED) — 주문에는 지난 사건 하나, 배송에는 없음(나중에 넣은 스텁이 먼저 맞는다)
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .withQueryParam("subjectRef", equalTo("ORD-1"))
+            .withQueryParam("state", equalTo("CLOSED"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"caseId":"CASE-0","kind":"RECONCILIATION","state":"CLOSED","priority":"P2",
+                               "subjectType":"ORDER","subjectRef":"ORD-1"}]}""")));
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .withQueryParam("subjectRef", equalTo("DLV-1"))
+            .withQueryParam("state", equalTo("CLOSED"))
+            .willReturn(json(200, "{\"items\":[]}")));
+    // 고객 문의 — 다른 주문 것이 섞여 와도(예전 case) 거른다, 제목은 싣지 않는다. RIDER_OPS 는 403
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/inquiries"))
+            .withQueryParam("orderId", equalTo("ORD-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"inquiryId":"INQ-1","category":"ORDER","orderId":"ORD-1","title":"홍길동 집 앞에 두세요",
+                               "status":"ANSWERED","origin":"INQUIRY_PAGE","createdAt":"2026-11-16T02:00:00Z"},
+                              {"inquiryId":"INQ-X","category":"ORDER","orderId":"ORD-9","status":"RECEIVED"}]}""")));
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/inquiries"))
+            .withHeader("Authorization", equalTo("Bearer " + OPS))
+            .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
   }
 
   static List<String> kinds(JsonNode body) {
@@ -184,7 +215,14 @@ class UnifiedLookupIT {
     Res r = lookup(CS, "q=ORD-1&kind=ORDER");
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
     assertThat(kinds(r.body()))
-        .containsExactly("ORDER:ORD-1", "DELIVERY:DLV-1", "DISPATCH:DLV-1", "CASE:CASE-1");
+        .containsExactly(
+            "ORDER:ORD-1",
+            "DELIVERY:DLV-1",
+            "DISPATCH:DLV-1",
+            "CASE:CASE-0",
+            "CASE:CASE-1",
+            "INQUIRY:INQ-1");
+    assertThat(r.body().toString()).as("다른 주문 문의·고객이 쓴 제목은 없다").doesNotContain("INQ-X", "홍길동");
     assertThat(r.body().path("resolved").path("orderId").asString()).isEqualTo("ORD-1");
     // 클레임 원천 장애 — 0건으로 바꾸지 않고 unavailableSources
     assertThat(r.body().path("unavailableSources").toString()).contains("claim-service");
@@ -217,6 +255,11 @@ class UnifiedLookupIT {
     assertThat(byDelivery.body().path("resolved").path("kind").asString()).isEqualTo("DELIVERY");
     assertThat(byDelivery.body().path("resolved").path("orderId").asString()).isEqualTo("ORD-1");
     assertThat(kinds(byDelivery.body())).contains("ORDER:ORD-1", "DISPATCH:DLV-1", "CASE:CASE-1");
+    assertThat(kinds(byDelivery.body())).noneMatch(k -> k.startsWith("INQUIRY:"));
+    assertThat(byDelivery.body().path("unavailableSources").toString())
+        .as("라이더 운영은 문의를 볼 수 없다 — 사건 원천과 따로 표시")
+        .contains("case-service/inquiries")
+        .doesNotContain("\"case-service\"");
 
     Res byCase = lookup(OPS, "q=CASE-1");
     assertThat(byCase.status()).isEqualTo(200);

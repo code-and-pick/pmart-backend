@@ -29,7 +29,7 @@ import tools.jackson.databind.JsonNode;
  * <ul>
  *   <li>역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS. 원천은 호출한 직원 토큰으로 다시 판정한다.
  *   <li>찾는 값: 주문·배송·사건·고객 ID(완전 일치). ANY 는 접두어로. TRANSFER·TRIP·모르는 접두어는 422 UNSUPPORTED_LOOKUP.
- *   <li>주문 하나로 잇는다 — 원천마다 따로(ORDER·DELIVERY·DISPATCH·CLAIM·CASE), 상태를 합치지 않는다. 실패·권한 없음은
+ *   <li>주문 하나로 잇는다 — 원천마다 따로(ORDER·DELIVERY·DISPATCH·CLAIM·CASE·INQUIRY), 상태를 합치지 않는다. 실패·권한 없음은
  *       unavailableSources(0건·정상으로 바꾸지 않는다), 없는 대상(404)은 항목 없음.
  *   <li>summary 는 원천 필드 중 개인정보가 아닌 것만 고른다(이름·연락처·주소·메모 없음). 찾는 값은 로그에 남기지 않는다(고객 ID).
  * </ul>
@@ -99,6 +99,16 @@ public class UnifiedLookupView {
           "delayAlertedAt",
           "createdAt",
           "updatedAt");
+  private static final List<String> INQUIRY_FIELDS =
+      List.of(
+          "inquiryId",
+          "category",
+          "orderId",
+          "status",
+          "origin",
+          "createdAt",
+          "answeredAt",
+          "version");
   private static final List<String> CLAIM_FIELDS =
       List.of("claimId", "orderId", "type", "state", "openedAt");
   private static final List<String> CASE_FIELDS =
@@ -239,6 +249,24 @@ public class UnifiedLookupView {
     subjects.add(orderId);
     subjects.addAll(deliveryIds);
     composeCases(run, subjects);
+    composeInquiries(run, orderId);
+  }
+
+  /**
+   * 그 주문의 고객 문의(case 0.5.0 {@code GET /inquiries?orderId=}). 볼 수 있는 역할은 CS_AGENT·OPERATOR_ADMIN 뿐 —
+   * 그 밖(RIDER_OPS)은 403 이 {@code case-service/inquiries} 로 unavailableSources 에 남는다(사건 원천과 따로). 예전
+   * case 가 orderId 를 모르고 전부 돌려줘도 섞이지 않게 여기서 한 번 더 거른다. 제목·내용은 고객이 쓴 글이라 싣지 않는다.
+   */
+  private void composeInquiries(Run run, String orderId) {
+    JsonNode page =
+        run.get(Source.INQUIRY, "/inquiries", Map.of(), Map.of("orderId", orderId, "size", 50));
+    if (page != null) {
+      for (JsonNode i : page.path("items")) {
+        if (orderId.equals(text(i, "orderId"))) {
+          run.add("INQUIRY", text(i, "inquiryId"), pick(i, INQUIRY_FIELDS), Source.INQUIRY);
+        }
+      }
+    }
   }
 
   /** 배송마다 배차(앞 {@value #MAX_DELIVERIES}개). */
@@ -252,14 +280,19 @@ public class UnifiedLookupView {
     }
   }
 
-  /** 주문·배송 번호로 열린 사건(그 직원이 볼 수 있는 종류만 — case 가 판정). */
+  /** 주문·배송 번호로 사건 — 열린 것과 닫힌 것(그 직원이 볼 수 있는 종류만, case 가 판정). */
   private void composeCases(Run run, List<String> subjectRefs) {
     for (String subject : subjectRefs.stream().limit(MAX_DELIVERIES + 1).toList()) {
-      JsonNode page =
-          run.get(Source.CASE, "/cases", Map.of(), Map.of("subjectRef", subject, "size", 50));
-      if (page != null) {
-        for (JsonNode c : page.path("items")) {
-          run.add("CASE", text(c, "caseId"), pick(c, CASE_FIELDS), Source.CASE);
+      // 열린 것(state 비움) + 닫힌 것(최근 20건) — 같은 주문에서 전에 있었던 일도 보이게
+      for (Map<String, ?> q :
+          List.<Map<String, ?>>of(
+              Map.of("subjectRef", subject, "size", 50),
+              Map.of("subjectRef", subject, "state", "CLOSED", "size", 20))) {
+        JsonNode page = run.get(Source.CASE, "/cases", Map.of(), q);
+        if (page != null) {
+          for (JsonNode c : page.path("items")) {
+            run.add("CASE", text(c, "caseId"), pick(c, CASE_FIELDS), Source.CASE);
+          }
         }
       }
     }

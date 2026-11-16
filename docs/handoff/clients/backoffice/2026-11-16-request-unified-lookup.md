@@ -12,12 +12,13 @@
 - 권한: OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(그 밖 403). 각 원천은 그 직원 권한으로 다시 판정한다.
 - 응답
   - `resolved`: `{kind, orderId}` — 배송·사건 번호로 찾으면 그 주문으로 이어 `orderId` 가 채워진다. 고객 ID 면 `orderId` null.
-  - `matches[]`: `{kind, id, summary, source}` — `kind` = `ORDER`·`DELIVERY`·`DISPATCH`·`CLAIM`·`CASE`. **원천마다 따로** 온다(배송 수행 `DELIVERY` 와 배차 `DISPATCH` 는 같은 배송 ID 라도 다른 항목). `summary` 필드 이름은 각 원천 응답 그대로:
+  - `matches[]`: `{kind, id, summary, source}` — `kind` = `ORDER`·`DELIVERY`·`DISPATCH`·`CLAIM`·`CASE`·`INQUIRY`. **원천마다 따로** 온다(배송 수행 `DELIVERY` 와 배차 `DISPATCH` 는 같은 배송 ID 라도 다른 항목). `summary` 필드 이름은 각 원천 응답 그대로:
     - ORDER: orderId·customerId·status·mfcId·deliveryMode·arrivalWindow·confirmedAt·amounts·payment·lineCount·fulfillmentIssueCount (고객 ID 로 찾으면 목록 요약 — totalAmount·approvedAmount·itemCount·openFulfillmentIssues)
     - DELIVERY: deliveryId·type·state·riderId·mfcId·assignedAt·pickedUpAt·completedAt·createdAt
     - DISPATCH: deliveryId·state·assignment·attempts·delayAlertedAt·updatedAt
     - CLAIM: claimId·type·state·openedAt
-    - CASE(열린 사건만, 그 직원이 볼 수 있는 종류만): caseId·kind·state·priority·summary·slaDueAt·overdue·assigneeId·refs
+    - CASE(열린 것 + 닫힌 것 최근 20건, 그 직원이 볼 수 있는 종류만): caseId·kind·state·priority·summary·slaDueAt·overdue·assigneeId·refs
+    - INQUIRY(그 주문의 고객 문의 — CS_AGENT·OPERATOR_ADMIN 만, 그 밖은 `unavailableSources` 에 `case-service/inquiries`): inquiryId·category·status·origin·createdAt·answeredAt(제목·내용 없음 — 문의 답변 화면 `/inquiries/{id}` 로)
   - `source`: 원천 이름·조회 시각. `unavailableSources[]`: 실패했거나 볼 권한이 없는 원천 — **"조회 실패/권한 없음"으로 보여 주고 0건처럼 보이지 않게**.
   - 개인정보(이름·연락처·주소·메모)는 가린 값도 오지 않는다 — 원문이 필요하면 주문 상세 화면의 열람 요청(ADR-0062).
 - 찾는 대상이 없으면 200 + `matches` 비어 있음(404 아님).
@@ -29,7 +30,7 @@
 - 고객 ID 로 찾으면 주문 목록만 → 주문을 누르면 그 주문으로 다시 통합 조회.
 
 ## 3. 아직 없는 것
-- MFC 현장(예약·작업·인계 — PC 3 API), 고객 문의(주문으로 거르는 API 없음), 닫힌 사건. 필요하면 알려 주세요.
+- MFC 현장(예약·작업·인계 — PC 3 API). 필요하면 알려 주세요.
 
 ## 4. 질문이 있으면
 - `pmart-clients/docs/handoff/backoffice/` 에 남겨 주세요.

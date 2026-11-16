@@ -23,7 +23,9 @@ public class LookupClients {
     EXECUTION("delivery-execution-service"),
     DISPATCH("delivery-dispatch-service"),
     CLAIM("claim-service"),
-    CASE("case-service");
+    CASE("case-service"),
+    /** 같은 case-service 지만 권한이 달라(CS_AGENT·OPERATOR_ADMIN 만) 따로 표시한다. */
+    INQUIRY("case-service/inquiries");
 
     public final String system;
 
@@ -42,7 +44,8 @@ public class LookupClients {
             Source.EXECUTION, builder.clone().baseUrl(props.executionBaseUrl()).build(),
             Source.DISPATCH, builder.clone().baseUrl(props.dispatchBaseUrl()).build(),
             Source.CLAIM, builder.clone().baseUrl(props.claimBaseUrl()).build(),
-            Source.CASE, builder.clone().baseUrl(props.caseBaseUrl()).build());
+            Source.CASE, builder.clone().baseUrl(props.caseBaseUrl()).build(),
+            Source.INQUIRY, builder.clone().baseUrl(props.caseBaseUrl()).build());
     this.mapper = mapper;
   }
 
