@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.5.1
+  version: 0.6.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -349,6 +349,80 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/HelpRequest' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /deliveries/{deliveryId}/help-requests/{requestId}/messages:
+    get:
+      tags: [execution]
+      summary: 도움요청 대화 — 라이더 ↔ 지원센터 상담원 메시지 목록 (0.6.0)
+      x-added-in: '2026-11-16'
+      description: |
+        도움요청 한 건(= 사건함 RIDER_HELP 한 건)에 딸린 메시지(pmart-clients 라이더 앱 요청 §11-3, 2026-11-16 사용자 "라이더랑 얘기가 되어야").
+        볼 수 있는 사람은 도움요청 조회와 같다(요청한 라이더 본인, 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS — 아니면 404).
+        오래된 것부터. `after` = 마지막으로 받은 seq — 그보다 뒤 메시지만(앱 4초 확인용). 한 번에 200개까지.
+        senderType RIDER·SUPPORT. 상담원 ID(senderId)는 직원에게만(라이더에게는 null — "지원센터"로 보인다).
+      operationId: listHelpRequestMessages
+      x-pmart-user-types: [RIDER, OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+        - { name: after, in: query, required: false, schema: { type: integer, format: int64, minimum: 0 }, description: 이 seq 뒤 메시지만 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/HelpMessage' } }
+                  helpState: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED], description: 도움요청 상태(RESOLVED 면 더 쓸 수 없다) }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    post:
+      tags: [execution]
+      summary: 도움요청 대화 — 메시지 보내기 (라이더 본인 / 지원센터 상담원, 0.6.0)
+      x-added-in: '2026-11-16'
+      description: |
+        라이더: 도움요청을 보낸 본인만. photoRefs 는 이 배송에 본인이 올린 증빙 사진(`POST …/evidence-photos`)만(아니면 422 PHOTO_NOT_FOUND).
+        직원: 처리 권한이 있는 직원 — 그 센터 MFC_SUPERVISOR, OPERATOR_ADMIN, CS_AGENT, RIDER_OPS(볼 수는 있어도 쓸 수 없으면 403). 직원은 사진을 붙이지 않는다.
+        처리된(RESOLVED) 도움요청에는 쓸 수 없다 — 409 HELP_REQUEST_CLOSED(사건함에서 다시 열면 IN_PROGRESS 로 돌아와 다시 쓸 수 있다).
+        같은 Idempotency-Key·같은 본문 재전송은 같은 메시지. 내용은 로그에 남기지 않는다(개인정보를 적지 않도록 화면에서 안내).
+      operationId: postHelpRequestMessage
+      x-pmart-user-types: [RIDER, OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 1000 }
+                photoRefs: { type: array, maxItems: 5, items: { type: string } }
+      responses:
+        '201':
+          description: 보냄
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HelpMessage' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: HELP_REQUEST_CLOSED / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: PHOTO_NOT_FOUND
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /deliveries/{deliveryId}/help-requests/{requestId}/resolutions:
     post:
@@ -711,6 +785,18 @@ components:
       x-added-in: '2026-11-15'
       properties:
         note: { type: string, maxLength: 300, description: 처리 메모(선택, 개인정보 금지) }
+    HelpMessage:
+      type: object
+      x-added-in: '2026-11-16'
+      required: [messageId, seq, senderType, body, createdAt]
+      properties:
+        messageId: { type: string }
+        seq: { type: integer, format: int64, description: 대화 안 순번(오름차순) — 다음 조회의 after }
+        senderType: { type: string, enum: [RIDER, SUPPORT] }
+        senderId: { type: [string, 'null'], description: 보낸 사람 ID — 직원에게만(라이더에게 상담원 ID 는 null) }
+        body: { type: string }
+        photoRefs: { type: array, items: { type: string }, description: '사진 보기 GET /deliveries/{id}/evidence-photos/{photoRef}' }
+        createdAt: { type: string, format: date-time }
     HelpRequest:
       type: object
       properties:

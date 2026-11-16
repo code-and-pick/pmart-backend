@@ -624,6 +624,82 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(String.class);
   }
 
+  /**
+   * 도움요청 대화(0.6.0, 라이더 앱 요청 §11-3): 라이더 ↔ 지원센터 메시지. 라이더는 본인 사진만 붙이고 상담원 ID 는 못 본다, after 로 새 메시지만,
+   * 쓸 권한 없는 직원 403·남의 라이더 404, 처리되면 409 HELP_REQUEST_CLOSED.
+   */
+  @Test
+  void riderAndSupportExchangeMessagesOnHelpRequest() throws Exception {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String requestId =
+        body(post(id, "help-requests", rider, Map.of("category", "ADDRESS_ISSUE")))
+            .path("resultId")
+            .asString();
+    String thread = "help-requests/" + requestId + "/messages";
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String worker = TestJwt.operator("OP-W", List.of("MFC_WORKER"), List.of("MFC-1"));
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    // 라이더 → (본인 사진) / 남의 사진은 422
+    ResponseEntity<String> first =
+        post(id, thread, rider, Map.of("body", "건물 입구를 못 찾겠어요", "photoRefs", List.of(photo)));
+    assertThat(first.getStatusCode().value()).isEqualTo(201);
+    assertThat(body(first).path("senderType").asString()).isEqualTo("RIDER");
+    long seq1 = body(first).path("seq").asLong();
+    assertThat(
+            body(post(id, thread, rider, Map.of("body", "x", "photoRefs", List.of("PH-NOPE"))))
+                .path("code")
+                .asString())
+        .isEqualTo("PHOTO_NOT_FOUND");
+    // 상담원 답장 — 쓸 권한 없는 직원 403
+    assertThat(
+            staffPost("/deliveries/" + id + "/" + thread, worker, Map.of("body", "?"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    ResponseEntity<String> reply =
+        staffPost("/deliveries/" + id + "/" + thread, ops, Map.of("body", "정문 왼쪽 계단으로 가세요"));
+    assertThat(reply.getStatusCode().value()).isEqualTo(201);
+    assertThat(body(reply).path("senderType").asString()).isEqualTo("SUPPORT");
+    // 직원은 둘 다·보낸 사람 ID 보임, 라이더는 after 뒤 상담원 메시지만·상담원 ID 없음
+    JsonNode all = body(staffGet("/deliveries/" + id + "/" + thread, ops));
+    assertThat(all.path("items")).hasSize(2);
+    assertThat(all.path("items").get(1).path("senderId").asString()).isEqualTo("OP-RO");
+    JsonNode fresh =
+        body(staffGet("/deliveries/" + id + "/" + thread + "?after=" + seq1, TestJwt.rider(rider)));
+    assertThat(fresh.path("items")).hasSize(1);
+    assertThat(fresh.path("items").get(0).path("body").asString()).isEqualTo("정문 왼쪽 계단으로 가세요");
+    assertThat(fresh.path("items").get(0).path("senderId").isNull()).isTrue();
+    assertThat(fresh.path("helpState").asString()).isEqualTo("OPEN");
+    assertThat(
+            staffGet("/deliveries/" + id + "/" + thread, TestJwt.rider("RDR-OTHER"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+    // 처리되면 더 못 쓴다
+    assertThat(resolve(id, requestId, ops, "K-" + UUID.randomUUID()).getStatusCode().value())
+        .isEqualTo(200);
+    ResponseEntity<String> closed = post(id, thread, rider, Map.of("body", "감사합니다"));
+    assertThat(closed.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(closed).path("code").asString()).isEqualTo("HELP_REQUEST_CLOSED");
+  }
+
+  ResponseEntity<String> staffPost(String uri, String token, Object body) {
+    return http.post()
+        .uri(uri)
+        .headers(
+            h -> {
+              h.setBearerAuth(token);
+              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("X-Source-System", "backoffice");
+            })
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   /** DE-CASE(2026-11-16): 사건함이 도움요청으로 사건을 열면 도움요청에 사건 번호·처리 중, 그동안 옛 닫기 API 는 409, 사건을 닫으면 처리됨. */
   @Test
   void supportCaseOpenAndCloseFollowHelpRequest() throws Exception {

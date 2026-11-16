@@ -36,6 +36,9 @@ public class HelpRequestService {
   /** 처리함 닫기 결과(멱등 기록용). */
   public record Resolved(String deliveryId, String requestId, Instant resolvedAt) {}
 
+  /** 대화 조회 결과 — staff 면 상담원 ID 를 보인다. */
+  public record Thread(HelpRow help, List<ExecutionStore.HelpMessageRow> messages, boolean staff) {}
+
   private final ExecutionStore store;
   private final ExecutionEvents events;
   private final RequestIdempotency idempotency;
@@ -132,6 +135,106 @@ public class HelpRequestService {
       throw PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다.");
     }
     return new HelpView(h, p.type() != PmartPrincipal.PrincipalType.RIDER);
+  }
+
+  /** 도움요청 대화(0.6.0, 라이더 앱 요청 §11-3) — 볼 수 있는 사람은 {@link #get} 과 같다. after 뒤 메시지만(200개까지). */
+  public Thread messages(String deliveryId, String requestId, long after) {
+    HelpView v = get(deliveryId, requestId);
+    return new Thread(
+        v.help(), store.helpMessages(deliveryId, requestId, Math.max(0, after)), v.staff());
+  }
+
+  /**
+   * 대화에 메시지 보내기(0.6.0). 라이더는 요청한 본인(사진은 이 배송에 본인이 올린 것만), 직원은 처리 권한({@link
+   * Access#operatorCanDecide}). 처리된 도움요청은 409 HELP_REQUEST_CLOSED. 내용은 로그에 남기지 않는다.
+   */
+  public Thread postMessage(
+      String deliveryId,
+      String requestId,
+      String idempotencyKey,
+      String source,
+      String body,
+      List<String> photoRefs) {
+    PmartPrincipal p =
+        PmartPrincipal.current().orElseThrow(() -> ExecutionService.forbidden("인증이 필요합니다."));
+    String text = body == null ? "" : body.strip();
+    if (text.isEmpty()) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "메시지 내용을 입력해 주세요.");
+    }
+    String messageId =
+        idempotency
+            .execute(
+                new RequestKey(source, idempotencyKey, "postHelpRequestMessage", p.subject()),
+                Map.of(
+                    "deliveryId", deliveryId,
+                    "requestId", requestId,
+                    "body", text,
+                    "photoRefs", photoRefs),
+                String.class,
+                () -> {
+                  HelpRow h =
+                      store
+                          .lockHelp(deliveryId, requestId)
+                          .orElseThrow(
+                              () ->
+                                  PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다."));
+                  String mfcId = store.delivery(deliveryId).map(DeliveryRow::mfcId).orElse(null);
+                  String senderType;
+                  if (p.type() == PmartPrincipal.PrincipalType.RIDER) {
+                    if (!p.subject().equals(h.riderId())) {
+                      throw PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다.");
+                    }
+                    if (store.ownedPhotos(deliveryId, p.subject(), photoRefs)
+                        != new java.util.HashSet<>(photoRefs).size()) {
+                      throw new PmartException(
+                          "PHOTO_NOT_FOUND",
+                          org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                          "이 배송에 올린 사진만 붙일 수 있습니다.",
+                          false,
+                          List.of());
+                    }
+                    senderType = "RIDER";
+                  } else {
+                    if (!Access.operatorCanSee(p, mfcId)) {
+                      throw PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다.");
+                    }
+                    if (!Access.operatorCanDecide(p, mfcId)) {
+                      throw ExecutionService.forbidden("도움요청 대화에 답할 권한이 없습니다(센터 관리자·고객센터·라이더 운영).");
+                    }
+                    if (!photoRefs.isEmpty()) {
+                      throw new PmartException(
+                          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "직원은 사진을 붙이지 않습니다.");
+                    }
+                    senderType = "SUPPORT";
+                  }
+                  if ("RESOLVED".equals(h.state())) {
+                    throw new PmartException(
+                        "HELP_REQUEST_CLOSED",
+                        org.springframework.http.HttpStatus.CONFLICT,
+                        "처리가 끝난 도움요청입니다. 새로 도움요청을 보내 주세요.",
+                        false,
+                        List.of());
+                  }
+                  String id = "HM-" + java.util.UUID.randomUUID();
+                  store.insertHelpMessage(
+                      id,
+                      deliveryId,
+                      requestId,
+                      senderType,
+                      p.subject(),
+                      text,
+                      mapper.writeValueAsString(photoRefs),
+                      clock.instant());
+                  log.info("배송 {} 도움요청 {} 대화 — {}", deliveryId, requestId, senderType);
+                  return id;
+                })
+            .value();
+    HelpView v = get(deliveryId, requestId);
+    return new Thread(
+        v.help(),
+        store.helpMessage(messageId).map(List::of).orElse(List.of()),
+        p.type() != PmartPrincipal.PrincipalType.RIDER);
   }
 
   /**

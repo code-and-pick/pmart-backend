@@ -10,7 +10,10 @@ import com.pmart.delivery.execution.api.generated.model.DecideFailureRequest;
 import com.pmart.delivery.execution.api.generated.model.DeliveryExecution;
 import com.pmart.delivery.execution.api.generated.model.DropInfo;
 import com.pmart.delivery.execution.api.generated.model.EvidencePhoto;
+import com.pmart.delivery.execution.api.generated.model.HelpMessage;
 import com.pmart.delivery.execution.api.generated.model.HelpRequest;
+import com.pmart.delivery.execution.api.generated.model.ListHelpRequestMessages200Response;
+import com.pmart.delivery.execution.api.generated.model.PostHelpRequestMessageRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportFailureRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportPickupRequest;
 import com.pmart.delivery.execution.api.generated.model.ReportStoreArrival200Response;
@@ -19,6 +22,7 @@ import com.pmart.delivery.execution.application.DropInfoService;
 import com.pmart.delivery.execution.application.ExecutionService;
 import com.pmart.delivery.execution.application.FailureDecisionService;
 import com.pmart.delivery.execution.application.HelpRequestService;
+import com.pmart.delivery.execution.infrastructure.ExecutionStore;
 import com.pmart.delivery.execution.infrastructure.OrderClient;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -150,6 +154,48 @@ public class ExecutionController implements ExecutionApi {
   @Override
   public ResponseEntity<HelpRequest> getHelpRequest(String deliveryId, String requestId) {
     return ResponseEntity.ok(StaffController.helpRequest(helps.get(deliveryId, requestId), mapper));
+  }
+
+  /** 도움요청 대화(0.6.0, 라이더 앱 요청 §11-3). 라이더에게는 상담원 ID 를 보이지 않는다. */
+  @Override
+  public ResponseEntity<ListHelpRequestMessages200Response> listHelpRequestMessages(
+      String deliveryId, String requestId, @Nullable Long after) {
+    HelpRequestService.Thread t = helps.messages(deliveryId, requestId, after == null ? 0 : after);
+    return ResponseEntity.ok(
+        new ListHelpRequestMessages200Response()
+            .items(t.messages().stream().map(m -> message(m, t.staff())).toList())
+            .helpState(
+                ListHelpRequestMessages200Response.HelpStateEnum.fromValue(t.help().state())));
+  }
+
+  @Override
+  public ResponseEntity<HelpMessage> postHelpRequestMessage(
+      String deliveryId,
+      String requestId,
+      String idempotencyKey,
+      String xSourceSystem,
+      PostHelpRequestMessageRequest req) {
+    HelpRequestService.Thread t =
+        helps.postMessage(
+            deliveryId,
+            requestId,
+            idempotencyKey,
+            xSourceSystem,
+            req.getBody(),
+            req.getPhotoRefs() == null ? List.of() : req.getPhotoRefs());
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(message(t.messages().get(0), t.staff()));
+  }
+
+  private HelpMessage message(ExecutionStore.HelpMessageRow m, boolean staff) {
+    return new HelpMessage()
+        .messageId(m.messageId())
+        .seq(m.seq())
+        .senderType(HelpMessage.SenderTypeEnum.fromValue(m.senderType()))
+        .senderId(staff || "RIDER".equals(m.senderType()) ? m.senderId() : null)
+        .body(m.body())
+        .photoRefs(List.of(mapper.readValue(m.photoRefsJson(), String[].class)))
+        .createdAt(ExecutionViews.time(m.createdAt()));
   }
 
   @Override

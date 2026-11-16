@@ -635,6 +635,96 @@ public class ExecutionStore {
         "case:" + caseId);
   }
 
+  /** 도움요청 대화 한 줄(0.6.0). */
+  public record HelpMessageRow(
+      long seq,
+      String messageId,
+      String senderType,
+      String senderId,
+      String body,
+      String photoRefsJson,
+      Instant createdAt) {}
+
+  public HelpMessageRow insertHelpMessage(
+      String messageId,
+      String deliveryId,
+      String requestId,
+      String senderType,
+      String senderId,
+      String body,
+      String photoRefsJson,
+      Instant now) {
+    Long seq =
+        jdbc.queryForObject(
+            "INSERT INTO help_message (message_id, delivery_id, request_id, sender_type, sender_id,"
+                + " body, photo_refs, created_at) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?) RETURNING seq",
+            Long.class,
+            messageId,
+            deliveryId,
+            requestId,
+            senderType,
+            senderId,
+            body,
+            photoRefsJson,
+            ts(now));
+    return new HelpMessageRow(
+        seq == null ? 0 : seq, messageId, senderType, senderId, body, photoRefsJson, now);
+  }
+
+  public List<HelpMessageRow> helpMessages(String deliveryId, String requestId, long after) {
+    return jdbc.query(
+        "SELECT seq, message_id, sender_type, sender_id, body, photo_refs::text, created_at FROM"
+            + " help_message WHERE delivery_id = ? AND request_id = ? AND seq > ? ORDER BY seq LIMIT"
+            + " 200",
+        (rs, n) ->
+            new HelpMessageRow(
+                rs.getLong(1),
+                rs.getString(2),
+                rs.getString(3),
+                rs.getString(4),
+                rs.getString(5),
+                rs.getString(6),
+                rs.getTimestamp(7).toInstant()),
+        deliveryId,
+        requestId,
+        after);
+  }
+
+  public Optional<HelpMessageRow> helpMessage(String messageId) {
+    return jdbc
+        .query(
+            "SELECT seq, message_id, sender_type, sender_id, body, photo_refs::text, created_at FROM"
+                + " help_message WHERE message_id = ?",
+            (rs, n) ->
+                new HelpMessageRow(
+                    rs.getLong(1),
+                    rs.getString(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getString(5),
+                    rs.getString(6),
+                    rs.getTimestamp(7).toInstant()),
+            messageId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 이 배송에 이 라이더가 올린 사진 참조 수(대화에 붙일 수 있는지). */
+  public int ownedPhotos(String deliveryId, String riderId, List<String> refs) {
+    if (refs.isEmpty()) {
+      return 0;
+    }
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM evidence_photo WHERE delivery_id = ? AND rider_id = ? AND photo_ref"
+                + " = ANY (?)",
+            Integer.class,
+            deliveryId,
+            riderId,
+            refs.toArray(String[]::new));
+    return n == null ? 0 : n;
+  }
+
   /** 도움요청 처리함으로 닫기(0.4.0 — 사건함 전까지). 이미 닫혔으면 false. */
   public boolean resolveHelp(
       String deliveryId, String requestId, String by, @Nullable String note, Instant now) {

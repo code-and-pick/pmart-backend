@@ -77,6 +77,7 @@ GET /api/v1/deliveries/{deliveryId}/drop-info RIDER
 GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR
 GET /api/v1/deliveries/{deliveryId}/evidence-photos/{photoRef} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId} OPERATOR,RIDER
+GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/recovery-contact RIDER
 GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR
 GET /api/v1/delivery-conditions CUSTOMER,GUEST
@@ -312,6 +313,7 @@ POST /api/v1/deliveries/{deliveryId}/evidence-photos RIDER
 POST /api/v1/deliveries/{deliveryId}/failure-decisions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/failures RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests RIDER
+POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages OPERATOR,RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/resolutions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER
