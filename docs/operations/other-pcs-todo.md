@@ -44,7 +44,9 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 카카오모빌리티 키(ADR-0058): LAN 설정 `delivery-tracking-service-lan.yml` 의 `pmart.tracking.kakao-mobility.rest-api-key`(`{cipher}`)·`base-url`(2026-11-13 PC 1 등록 — 주소 판정 키와 다른 앱 키). 길찾기 코드를 만들 때 이 이름으로 읽는다(다른 서비스에서 부르면 PC 1 에 옮겨 달라고). 같은 키 원본은 PC 5 `deploy/lan/.secrets/kakao-rest-api-key`, PC 1 은 `kakao-mobility-rest-api-key`
 - 클라이언트 rider-app 영역도 PC 5(2026-11-13) — 라이더 앱 handoff `docs/handoff/clients/rider-app/`, 클라이언트 BR-23(포장 QR 원문)·BR-24(라이더 전달지 경로)는 배송·인계 쪽 열린 요청
 - [x] **2026-11-15 결정 다섯(사용자 "추천대로")** — 정지 라이더 로그인 끊기(rider-auth 구현, 브랜치 `delivery/rider-session-cut`), 위치 끊김 = 지원센터 알림만(case R-6 요청), 검토 알림 나중, 오배송 확인 = 상담원·지원센터(case R-7 요청), CP-1 = 주문 유지 + 지연 안내(구현 대기). `docs/delivery/HANDOVER.md` §4
-- [ ] CP-1 구현(`CapacityReduced` 구독 → 주문 유지 + 지연 가능 안내, 고객 선택), DD-2 회수 배차(case R-7 사건 뒤)
+- [x] DD-2 오배송 회수 배차(2026-11-16 PC 5 — 브랜치 `delivery/dd-2-misdelivery-recovery`, 사용자 "추천대로" a~d). PC 1: pmart-config `delivery-dispatch-service.yml` 에 `caseEvents` 바인딩(platform.case.v1, 소비 그룹 시작 위치 latest), 마이그레이션 dispatch V8·execution V7, 배포 순서 tracking → execution → dispatch
+- [ ] CP-1 구현(`CapacityReduced` 구독 → 주문 유지 + 지연 가능 안내, 고객 선택)
+- [ ] 회수 라이더가 원래 완료 사진을 볼 사진 보기 API(execution — 지금은 참조만), 라이더 앱 회수 화면(handoff 2026-11-16)
 - [ ] LAN 서비스가 많은 PC 다(남은 메모리 약 5GB, 2026-11-13) — 빌드·시험 중 LAN 서비스 상태가 나빠지면 PC 1 에 알린다
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC

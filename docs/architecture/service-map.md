@@ -300,8 +300,8 @@
 - **소유하지 않음**: 라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution).
 - **API**: 배차 요청(점원만 — 2026-11-13 BR-51 자동 요청 뺌), 제안 응답(라이더), 배차 취소, 배송 조회, 회수 배차 요청(claim), 배차 상태 조회(orchestration S3).
 - **발행**: `DeliveryCreated`, `DispatchOfferSent`, `DeliveryAssigned`, `DeliveryAssignmentChanged`, `DispatchFailed`(기사 없음/반복 거절/만료/장애 구분), `DispatchDelayed`, `DeliveryCancelledBeforePickup`.
-- **구독**: `ShipmentReady`, `PackingFinished`, `OrderCancelled`, `ReturnPickupRequested`, `ExchangeReshipmentApproved`, `RiderStateChanged`, `RiderRestricted`, `PackageHandedOver`, `DeliveryCompleted`·`DeliveryFailed`(배송 CLOSED — 2026-11-13 H2·전달 실패 확정).
-- **의존**: rider, delivery-tracking(거리), mfc-fulfillment(포장 정보), order(이행 계획). AI 추천 배차 계산은 **Python AI 최적화 서버**(GreedRL·RouteFinder, 내부 계산 서버 — ADR-0058), 거리·시간은 카카오모빌리티 길찾기, 알뜰배달 묶음은 OR-Tools 또는 AI(ADR-0050 일부 대체).
+- **구독**: `ShipmentReady`, `PackingFinished`, `OrderCancelled`, `ReturnPickupRequested`, `ExchangeReshipmentApproved`, `RiderStateChanged`, `RiderRestricted`, `PackageHandedOver`, `DeliveryCompleted`·`DeliveryFailed`(배송 CLOSED — 2026-11-13 H2·전달 실패 확정), `MisdeliveryConfirmed`(case — 오배송 회수 배송·배차, 2026-11-16 DD-2), `ReturnPickedUp`·`ReturnDelivered`(회수 배송 PICKED_UP·CLOSED).
+- **의존**: rider, delivery-tracking(거리, 오배송 회수지 = 원래 라이더 완료 시각 위치 — 2026-11-16), mfc-fulfillment(포장 정보), order(이행 계획). AI 추천 배차 계산은 **Python AI 최적화 서버**(GreedRL·RouteFinder, 내부 계산 서버 — ADR-0058), 거리·시간은 카카오모빌리티 길찾기, 알뜰배달 묶음은 OR-Tools 또는 AI(ADR-0050 일부 대체).
 
 ### delivery-execution-service `[1단계]`
 - **소유**: 배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수, 보관 장소, 촬영 시각; 업로드 실패 시 재시도 또는 지원센터 대체 증빙), 시간 경과 자동완료 없음 `[확정]`, 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 `[확정]`, 완료 후 사고 신고(기존 완료 유지·사건 별도), 상태 정정(처리자·근거), 도움요청(→case), 회수 수행(고객 수거→점포 반납→점원 수령 확인), 수행료 근거(수단·거리 구간 요율표 버전·할증·보상·공제·취소 시점별 기준; 요율 미등록=산정 불가), 정산 상태(예상/확정 대기/지급 확정/지급중/지급 완료/지급 실패/조정; 지급 실행은 외부 회계), 라이더 배송 이력·오늘 내역.
@@ -313,9 +313,9 @@
 ### delivery-tracking-service `[1단계]`
 - **소유**: 라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 어댑터 `[결정 필요]`), ETA(점원: 픽업지·배달지 둘 다 / 고객: 본인 배송지만; 타 고객 주소·전체 동선 비노출), 지연 자동 알림 트리거, WebSocket/SSE 푸시, "위치 확인 중/ETA 확인 중" 상태.
 - **소유하지 않음**: 배송 상태 확정(execution; GPS만으로 픽업·전달 처리 금지).
-- **API**: 위치 수신, ETA 조회, 실시간 구독, 거리 행렬(dispatch).
+- **API**: 위치 수신, ETA 조회, 실시간 구독, 거리 행렬(dispatch), 정한 시각의 위치 점(dispatch — 오배송 회수지, 2026-11-16).
 - **발행**: `DeliveryEtaUpdated`, `RiderLocationStale`.
-- **구독**: `DeliveryAssigned`·`DeliveryAssignmentChanged`·`DeliveryCancelledBeforePickup`·`DeliveryCompleted`·`DeliveryFailed`(진행 중 배송 → 위치 끊김 3분, 2026-11-14 구현). 위치 기록 보존 30일(사용자 2026-11-14).
+- **구독**: `DeliveryAssigned`·`DeliveryAssignmentChanged`·`DeliveryCancelledBeforePickup`·`DeliveryCompleted`·`DeliveryFailed`·`ReturnDelivered`(진행 중 배송 → 위치 끊김 3분, 2026-11-14 구현 — 회수 반납 2026-11-16). 위치 기록 보존 30일(사용자 2026-11-14).
 
 ---
 

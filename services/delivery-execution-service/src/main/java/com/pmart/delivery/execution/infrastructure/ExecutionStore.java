@@ -33,7 +33,16 @@ public class ExecutionStore {
       @Nullable Integer acceptedFee,
       @Nullable String vehicleType,
       @Nullable Integer distanceM,
-      @Nullable String failureJson) {}
+      @Nullable String failureJson,
+      @Nullable String purpose,
+      @Nullable String caseId,
+      @Nullable String originDeliveryId) {
+
+    /** 확인된 오배송 회수 배송(DD-2). */
+    public boolean recovery() {
+      return "RETURN".equals(type) && "MISDELIVERY_RECOVERY".equals(purpose);
+    }
+  }
 
   public record HelpRow(
       String requestId,
@@ -104,7 +113,8 @@ public class ExecutionStore {
   private static final String DELIVERY_COLUMNS =
       "delivery_id, version, type, order_id, shipment_id, mfc_id, state, rider_id,"
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
-          + " created_at, accepted_fee, vehicle_type, distance_m, failure::text";
+          + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
+          + " origin_delivery_id";
 
   private final JdbcTemplate jdbc;
 
@@ -204,6 +214,46 @@ public class ExecutionStore {
             + " updated_at = ? WHERE delivery_id = ?",
         ts(pickedUpAt),
         ts(now),
+        deliveryId);
+  }
+
+  /** DeliveryCreated 의 유형·목적(회수 배송 — DD-2). 배정 사건이 먼저 와 FORWARD 로 만들어졌어도 바로잡는다. */
+  public void describe(
+      String deliveryId,
+      @Nullable String type,
+      @Nullable String purpose,
+      @Nullable String caseId,
+      @Nullable String originDeliveryId) {
+    jdbc.update(
+        "UPDATE execution_delivery SET type = COALESCE(?, type), purpose = COALESCE(?, purpose),"
+            + " case_id = COALESCE(?, case_id), origin_delivery_id = COALESCE(?, origin_delivery_id)"
+            + " WHERE delivery_id = ?",
+        type,
+        purpose,
+        caseId,
+        originDeliveryId,
+        deliveryId);
+  }
+
+  /** 회수지에서 받음(DD-2) — RETURN_PICKED_UP. 증빙은 evidence 의 pickup 에. */
+  public void returnPickedUp(String deliveryId, String evidenceJson, Instant at) {
+    jdbc.update(
+        "UPDATE execution_delivery SET state = 'RETURN_PICKED_UP', picked_up_at = ?, evidence ="
+            + " ?::jsonb, version = version + 1, updated_at = ? WHERE delivery_id = ?",
+        ts(at),
+        evidenceJson,
+        ts(at),
+        deliveryId);
+  }
+
+  /** 회수 반납(DD-2) — RETURNED_TO_STORE, 배송 끝. 증빙(있으면 사진 참조·점원 확인 참조)은 evidence 에. */
+  public void returnedToStore(String deliveryId, String evidenceJson, Instant at) {
+    jdbc.update(
+        "UPDATE execution_delivery SET state = 'RETURNED_TO_STORE', evidence = ?::jsonb,"
+            + " completed_at = ?, version = version + 1, updated_at = ? WHERE delivery_id = ?",
+        evidenceJson,
+        ts(at),
+        ts(at),
         deliveryId);
   }
 
@@ -839,7 +889,10 @@ public class ExecutionStore {
         (Integer) rs.getObject(16),
         rs.getString(17),
         (Integer) rs.getObject(18),
-        rs.getString(19));
+        rs.getString(19),
+        rs.getString(20),
+        rs.getString(21),
+        rs.getString(22));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

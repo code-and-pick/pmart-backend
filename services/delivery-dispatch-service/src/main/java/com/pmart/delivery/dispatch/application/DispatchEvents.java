@@ -31,7 +31,15 @@ public class DispatchEvents {
     p.put("shipmentId", d.shipmentId());
     p.put("type", d.type());
     p.put("mfcId", d.mfcId());
-    p.put("dropAddressRef", "order:" + d.orderId()); // 원주문 주소 참조(주소 원문 없음)
+    if (d.recovery()) {
+      // 오배송 회수(DD-2) — 도착지는 MFC, 회수지 좌표는 싣지 않는다
+      p.put("dropAddressRef", "mfc:" + d.mfcId());
+      p.put("purpose", d.purpose());
+      p.put("caseId", d.caseId());
+      p.put("originDeliveryId", d.originDeliveryId());
+    } else {
+      p.put("dropAddressRef", "order:" + d.orderId()); // 원주문 주소 참조(주소 원문 없음)
+    }
     if (d.deliveryMode() != null) {
       p.put("deliveryMode", d.deliveryMode());
     }

@@ -86,6 +86,24 @@ public class LocationStore {
     return rows.stream().findFirst();
   }
 
+  /**
+   * {@code at} 앞뒤 {@code window} 안에서 단말 기록 시각이 가장 가까운 점(DD-2 — 오배송 회수지). 품질은 거르지 않는다(quality 로
+   * 알린다). 색인 {@code (rider_id, recorded_at)}.
+   */
+  public Optional<Latest> pointNear(String riderId, Instant at, java.time.Duration window) {
+    List<Latest> rows =
+        jdbc.query(
+            "SELECT rider_id, lat, lng, accuracy_m, recorded_at, received_at, quality FROM"
+                + " rider_location_point WHERE rider_id = ? AND recorded_at BETWEEN ? AND ? ORDER BY"
+                + " abs(extract(epoch FROM (recorded_at - ?::timestamptz))), point_id DESC LIMIT 1",
+            (rs, i) -> row(rs),
+            riderId,
+            Timestamp.from(at.minus(window)),
+            Timestamp.from(at.plus(window)),
+            Timestamp.from(at));
+    return rows.stream().findFirst();
+  }
+
   public List<Latest> latest(List<String> riderIds) {
     if (riderIds.isEmpty()) {
       return List.of();

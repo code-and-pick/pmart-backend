@@ -770,6 +770,124 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("PENDING_CONFIRMATION"); // 배송 조회는 가장 최근 수행료
   }
 
+  /**
+   * DD-2(사용자 2026-11-16 "추천대로"): 오배송 회수 배송 — 회수지에서 사진 → 회수(ReturnPickedUp, 원래 배송이 전달한 줄) → MFC 도착 =
+   * 반납(ReturnDelivered, 수행료 = 수락 당시 금액). 원래 고객 전달지는 열지 않고, 일반 배송 단계는 409. 회수 라이더에게 원래 완료 증빙을 보여 준다.
+   */
+  @Test
+  void misdeliveryRecoveryPicksUpAtSpotAndReturnsToStore() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String r1 = "RDR-" + UUID.randomUUID();
+    String r2 = "RDR-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, r1);
+    assertThat(post(origin, "customer-arrivals", r1, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String originPhoto = body(upload(origin, r1, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(
+                    origin,
+                    "completions",
+                    r1,
+                    completion(List.of(originPhoto), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+
+    String caseId = "CASE-" + UUID.randomUUID();
+    String rec = "DLV-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", rec);
+    created.put("orderId", order);
+    created.put("shipmentId", "RCV-" + caseId);
+    created.put("type", "RETURN");
+    created.put("purpose", "MISDELIVERY_RECOVERY");
+    created.put("caseId", caseId);
+    created.put("originDeliveryId", origin);
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "mfc:MFC-1");
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", rec, created);
+    assigned(rec, order, r2, 1);
+    awaitState(rec, "ASSIGNED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT type || ':' || purpose FROM execution_delivery WHERE delivery_id = ?",
+                String.class,
+                rec))
+        .isEqualTo("RETURN:MISDELIVERY_RECOVERY");
+
+    // 원래 고객 전달지는 열지 않는다, 일반 배송 단계는 409
+    ResponseEntity<String> drop = dropInfo(rec, r2);
+    assertThat(drop.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(drop).path("code").asString()).isEqualTo("NO_CUSTOMER_DROP");
+    assertThat(post(rec, "store-arrivals", r2, Map.of()).getStatusCode().value()).isEqualTo(409);
+    // 회수 라이더에게 원래 완료 증빙(놓은 곳·사진 참조)
+    JsonNode v = view(rec, r2);
+    assertThat(v.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
+    assertThat(v.path("originDeliveryId").asString()).isEqualTo(origin);
+    assertThat(v.path("recoveryOrigin").path("placement").asString()).isEqualTo("FRONT_DOOR");
+    assertThat(v.path("recoveryOrigin").path("photoRefs").get(0).asString()).isEqualTo(originPhoto);
+
+    // 사진 없이 회수 → 400(계약 minItems 1), 남의 사진 → 422, 회수지에서 사진(배정 상태에서 올릴 수 있다) → 회수
+    assertThat(
+            post(rec, "returns/pickups", r2, Map.of("items", List.of(), "evidenceRefs", List.of()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    ResponseEntity<String> notMine =
+        post(
+            rec,
+            "returns/pickups",
+            r2,
+            Map.of("items", List.of(), "evidenceRefs", List.of(originPhoto)));
+    assertThat(notMine.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(notMine).path("code").asString()).isEqualTo("EVIDENCE_REQUIRED");
+    String spotPhoto = body(upload(rec, r2, JPEG)).path("photoRef").asString();
+    assertThat(spotPhoto).isNotBlank();
+    assertThat(
+            post(
+                    rec,
+                    "returns/pickups",
+                    r2,
+                    Map.of("items", List.of(), "evidenceRefs", List.of(spotPhoto)))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(rec)).isEqualTo("RETURN_PICKED_UP");
+    JsonNode picked = outbox(rec, "ReturnPickedUp").path("payload");
+    assertThat(picked.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
+    assertThat(picked.path("caseId").asString()).isEqualTo(caseId);
+    assertThat(picked.path("originDeliveryId").asString()).isEqualTo(origin);
+    assertThat(picked.path("riderId").asString()).isEqualTo(r2);
+    assertThat(picked.path("lines").get(0).path("orderLineId").asString()).isEqualTo("L-1");
+    assertThat(picked.path("lines").get(0).path("qty").asInt()).isEqualTo(1);
+    // 전달 완료는 회수 배송에 쓰지 않는다
+    assertThat(
+            post(rec, "completions", r2, completion(List.of(spotPhoto), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+
+    // MFC 도착 = 반납 → 배송 끝, 수행료
+    assertThat(post(rec, "returns/store-deliveries", r2, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(state(rec)).isEqualTo("RETURNED_TO_STORE");
+    JsonNode returned = outbox(rec, "ReturnDelivered").path("payload");
+    assertThat(returned.path("mfcId").asString()).isEqualTo("MFC-1");
+    assertThat(returned.path("lines")).hasSize(1);
+    Map<String, Object> earning =
+        jdbc.queryForMap(
+            "SELECT rider_id, calculable, total, settlement_state FROM rider_earning WHERE"
+                + " delivery_id = ?",
+            rec);
+    assertThat(earning.get("rider_id")).isEqualTo(r2);
+    assertThat(earning.get("calculable")).isEqualTo(true);
+    assertThat(earning.get("total")).isEqualTo(3900);
+    assertThat(earning.get("settlement_state")).isEqualTo("PENDING_CONFIRMATION");
+    assertThat(view(rec, r2).path("evidence").path("photoRefs").get(0).asString())
+        .isEqualTo(spotPhoto);
+  }
+
   // ---- 도우미
 
   void created(String id, String shipment, String order) {

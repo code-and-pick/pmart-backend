@@ -70,6 +70,17 @@ public class InternalController implements InternalApi {
   }
 
   @Override
+  public ResponseEntity<RiderLocation> getRiderLocationAtInternal(
+      String riderId, OffsetDateTime at) {
+    var l =
+        tracking
+            .near(riderId, at.toInstant())
+            .orElseThrow(
+                () -> PmartException.notFound("LOCATION_NOT_FOUND", "그 시각 앞뒤에 받은 위치가 없습니다."));
+    return ResponseEntity.ok(TrackingViews.location(l, 0).staleSinceSeconds(null));
+  }
+
+  @Override
   public ResponseEntity<RiderLocation> getRiderLocationInternal(String riderId) {
     var l =
         tracking

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/DeliveryCreated.v1.json",
   "title": "DeliveryCreated",
-  "description": "배송 단위 생성(이행 계획 기준; 10,000g 초과 분할은 order-service 결정). 주소 원문 없음. 발행 delivery-dispatch. 구독 delivery-execution, delivery-tracking, order, commerce. 토픽 delivery.delivery.v1. 단계 ①",
+  "description": "배송 단위 생성(이행 계획 기준; 10,000g 초과 분할은 order-service 결정). 주소 원문 없음. 발행 delivery-dispatch. 구독 delivery-execution, delivery-tracking, order, commerce. 토픽 delivery.delivery.v1. 단계 ① 2026-11-16 DD-2: type RETURN + purpose MISDELIVERY_RECOVERY = 확인된 오배송 회수 배송(case MisdeliveryConfirmed → dispatch) — shipmentId 는 'RCV-<caseId>', dropAddressRef 는 'mfc:<mfcId>'(도착지가 MFC), caseId·originDeliveryId(오배송된 원래 배송). 회수지 좌표는 싣지 않는다.",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -67,6 +67,23 @@
             },
             "createdAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "purpose": {
+              "type": "string",
+              "enum": [
+                "DELIVERY",
+                "CLAIM_RETURN",
+                "MISDELIVERY_RECOVERY"
+              ],
+              "description": "2026-11-16 — 없으면 FORWARD 는 DELIVERY. RETURN 만 CLAIM_RETURN·MISDELIVERY_RECOVERY"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "MISDELIVERY_RECOVERY — 오배송 확인 사건(case)"
+            },
+            "originDeliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "MISDELIVERY_RECOVERY — 오배송된 원래 배송"
             }
           },
           "additionalProperties": true

@@ -29,3 +29,4 @@
 - 아직 없음: 권역 밖(OUT_OF_ZONE) 판정, ETA, 끊김 사건 받는 쪽 — 사용자 2026-11-15 "추천대로": 지원센터 알림만(case R-6), 배정 자동 해제 없음이라 dispatch 는 구독하지 않는다.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
+- **정한 시각의 위치 점(0.4.0, 2026-11-16 — DD-2 오배송 회수지)**: `GET /internal/riders/{id}/location-at?at=` — `pmart.tracking.location-at-window`(3분) 앞뒤에서 단말 기록 시각이 가장 가까운 점(품질 무관), 없으면 404. dispatch 가 원래 라이더가 전달 완료를 누른 곳을 회수지로 쓴다. `ReturnDelivered`(회수 반납)도 감시 끝 사건.

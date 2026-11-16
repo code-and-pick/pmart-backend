@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
+    0.4.0(2026-11-16, DD-2 오배송 회수): `GET /internal/riders/{riderId}/location-at` — 정한 시각에 가장 가까운 위치 점(dispatch 가 원래 라이더가 완료를 누른 곳을 회수지로).
     ETA 노출 범위는 점원 픽업지·배달지 둘 다, 고객 본인 배송지만. 타 고객 주소·전체 동선은 비노출. 산출 불가 시 "위치 확인 중/ETA 확인 중" 상태로 응답한다.
 servers:
   - url: /api/v1
@@ -170,6 +171,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RiderLocation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/riders/{riderId}/location-at:
+    get:
+      tags: [internal]
+      summary: "[dispatch→tracking] 정한 시각에 가장 가까운 라이더 위치 점 (토큰 없는 내부 호출)"
+      description: |
+        2026-11-16 DD-2(오배송 회수 — 사용자 "추천대로": 회수지는 원래 라이더가 전달 완료를 누른 곳). `at` 앞뒤 `pmart.tracking.location-at-window`(3분) 안에서
+        단말 기록 시각(recordedAt)이 가장 가까운 점 하나. 품질 무관(GPS 오류 점도 — quality 로 알린다). 없으면(보존 30일 지남·위치 안 보냄) 404 LOCATION_NOT_FOUND.
+        좌표는 응답 본문에만(URL 에는 시각만).
+      x-added-in: '2026-11-16'
+      operationId: getRiderLocationAtInternal
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+        - { name: at, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK — staleSinceSeconds·inServiceZone 은 비운다
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderLocation' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
 components:

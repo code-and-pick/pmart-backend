@@ -83,6 +83,50 @@ public class ExecutionEvents {
     publish("DeliveryCompleted", before, rider(before), p);
   }
 
+  /**
+   * 회수지에서 회수품을 받음(DD-2 오배송 회수 — ReturnPickedUp). lines = 원래 배송이 전달한 줄·수량(회수 대상), 증빙은 사진 참조 묶음 ID 만.
+   */
+  public void returnPickedUp(
+      DeliveryRow before, List<Map<String, Object>> lines, String evidenceId, Instant at) {
+    Map<String, Object> p = returnPayload(before, lines, evidenceId, at);
+    p.put("riderId", before.riderId());
+    p.put("pickedUpAt", at.toString());
+    publish("ReturnPickedUp", before, rider(before), p);
+  }
+
+  /** MFC 반납(DD-2 — mfc-inbound 점원 수령 확인 전까지 MFC 도착 = 반납, 사용자 2026-11-16 "추천대로"). 배송 끝. */
+  public void returnDelivered(
+      DeliveryRow before, List<Map<String, Object>> lines, String evidenceId, Instant at) {
+    Map<String, Object> p = returnPayload(before, lines, evidenceId, at);
+    p.put("deliveredAt", at.toString());
+    publish("ReturnDelivered", before, rider(before), p);
+  }
+
+  private static Map<String, Object> returnPayload(
+      DeliveryRow d, List<Map<String, Object>> lines, String evidenceId, Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("returnPickupId", d.deliveryId()); // 회수 배송 하나에 회수 하나
+    p.put("deliveryId", d.deliveryId());
+    if (d.orderId() != null) {
+      p.put("orderId", d.orderId());
+    }
+    if (d.mfcId() != null) {
+      p.put("mfcId", d.mfcId());
+    }
+    p.put("purpose", d.purpose());
+    if (d.caseId() != null) {
+      p.put("caseId", d.caseId());
+    }
+    if (d.originDeliveryId() != null) {
+      p.put("originDeliveryId", d.originDeliveryId());
+    }
+    p.put("lines", lines);
+    p.put(
+        "evidenceRef",
+        Map.of("evidenceId", evidenceId, "kind", "PHOTO", "capturedAt", at.toString()));
+    return p;
+  }
+
   /** 운영자가 실패를 확정(2026-11-13) — 배송 종료. 회수 배차는 새 배송(claim·case 판단). */
   public void failed(
       DeliveryRow before,

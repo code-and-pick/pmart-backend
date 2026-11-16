@@ -43,6 +43,15 @@ public class DropInfoService {
             .delivery(deliveryId)
             .filter(x -> p.subject().equals(x.riderId()))
             .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
+    if (d.recovery()) {
+      // 오배송 회수(DD-2) — 원래 고객은 상품을 갖고 있지 않다. 원래 고객 주소·전화를 회수 라이더에게 열지 않는다.
+      throw new PmartException(
+          "NO_CUSTOMER_DROP",
+          HttpStatus.CONFLICT,
+          "오배송 회수 배송에는 고객 전달지가 없습니다. 회수지는 배차 조회의 recovery 를 보세요.",
+          false,
+          java.util.List.of());
+    }
     if (!OPEN.contains(d.state())) {
       throw new PmartException(
           "DROP_INFO_CLOSED",

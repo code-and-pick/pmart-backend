@@ -160,6 +160,41 @@ public class Upstreams {
     return out;
   }
 
+  /** 위치 점 하나(정한 시각 근처). {@code at} 은 단말 기록 시각. */
+  public record PointAt(Geo at, Instant recordedAt) {}
+
+  /**
+   * 정한 시각에 가장 가까운 라이더 위치 점(DD-2 오배송 회수지 — 원래 라이더가 완료를 누른 곳). 그 앞뒤에 점이 없으면 empty. URL 에는 시각만(좌표는 응답
+   * 본문).
+   */
+  public Optional<PointAt> locationAt(String riderId, Instant at) {
+    JsonNode n;
+    try {
+      n =
+          json(
+              Downstream.call(
+                  "delivery-tracking location-at",
+                  () ->
+                      tracking
+                          .get()
+                          .uri(
+                              "/api/v1/internal/riders/{id}/location-at?at={at}",
+                              riderId,
+                              at.toString())
+                          .retrieve()
+                          .body(String.class)));
+    } catch (HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    }
+    if (!n.path("lat").isNumber() || !n.path("lng").isNumber()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new PointAt(
+            new Geo(n.path("lat").asDouble(), n.path("lng").asDouble()),
+            Instant.parse(n.path("recordedAt").asString())));
+  }
+
   public Optional<Location> location(String riderId) {
     return locations(List.of(riderId)).stream().findFirst();
   }

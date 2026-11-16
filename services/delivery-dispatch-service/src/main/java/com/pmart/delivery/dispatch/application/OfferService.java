@@ -354,6 +354,7 @@ public class OfferService {
                       .orElse(props.maxRadiusKm());
               if (late == null
                   && (attempt.isEmpty()
+                      || d.recovery() // 오배송 회수는 배달리스트에 없다 — AI 추천 제안으로만(DD-2)
                       || riderId.equals(attempt.get().excludedRiderId())
                       || d.mfcLat() == null
                       || loc.isEmpty()

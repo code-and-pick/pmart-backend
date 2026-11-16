@@ -496,11 +496,86 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(1);
   }
 
+  /**
+   * DD-2(2026-11-16): 정한 시각에 가장 가까운 위치 점(오배송 회수지 — 원래 라이더가 완료를 누른 곳), 앞뒤 3분 밖이면 404. 회수 반납
+   * (ReturnDelivered)은 회수 라이더 위치 감시를 끝낸다.
+   */
+  @Test
+  void locationAtGivesNearestPointAndReturnDeliveredEndsWatch() {
+    String rider = "RD-at-" + UUID.randomUUID();
+    Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    upload(
+        rider,
+        "k-" + rider,
+        List.of(
+            point(37.5000, 127.0300, 10, now.minusSeconds(300)),
+            point(37.5010, 127.0365, 10, now.minusSeconds(120)),
+            point(37.5020, 127.0400, 10, now.minusSeconds(30))));
+    JsonNode at =
+        json(
+            http.get()
+                .uri(
+                    "/internal/riders/{id}/location-at?at={at}",
+                    rider,
+                    now.minusSeconds(110).toString())
+                .header("X-Source-System", "delivery-dispatch-service")
+                .retrieve()
+                .body(String.class));
+    assertThat(at.path("lat").asDouble()).isEqualTo(37.501);
+    assertThat(at.path("recordedAt").asString())
+        .startsWith(now.minusSeconds(120).toString().substring(0, 19));
+    assertThat(
+            http.get()
+                .uri(
+                    "/internal/riders/{id}/location-at?at={at}",
+                    rider,
+                    now.minusSeconds(1200).toString())
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+
+    String deliveryId = "DLV-at-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        deliveryId,
+        Map.of(
+            "deliveryId",
+            deliveryId,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            now.toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'ACTIVE'");
+    deliveryEvent(
+        "ReturnDelivered",
+        deliveryId,
+        Map.of(
+            "returnPickupId",
+            deliveryId,
+            "deliveryId",
+            deliveryId,
+            "deliveredAt",
+            now.toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1))));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + deliveryId
+            + "' AND state = 'CLOSED'");
+  }
+
   private void deliveryEvent(String type, String deliveryId, Map<String, Object> payload) {
     String json =
         EventEnvelopeFixtures.envelope(type)
             .from(
-                type.equals("DeliveryCompleted")
+                type.equals("DeliveryCompleted") || type.equals("ReturnDelivered")
                     ? "delivery-execution-service"
                     : "delivery-dispatch-service")
             .aggregate("Delivery", deliveryId, System.nanoTime() % 100000)

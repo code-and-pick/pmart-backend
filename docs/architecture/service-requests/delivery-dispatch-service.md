@@ -31,6 +31,14 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - case-service 가 **`MisdeliveryConfirmed`** 를 낸다(case 0.4.0, 계약 `contracts/events/MisdeliveryConfirmed.v1.json`, 토픽 platform.case.v1, 키 caseId): caseId, deliveryId, riderId(그때 배정 라이더 — 없을 수 있음), confirmedBy, confirmedAt, evidenceRefs. 주소·좌표 원문은 없다.
 - dispatch 가 구독해 회수 배송(픽업지 = 오배송지, 도착지 = MFC)·인근 다른 라이더 배차(DD-2)를 만든다. 오배송지 좌표가 필요하면 tracking 위치·execution 증빙에서(사건에는 없음).
 
+## DD-2 구현 (2026-11-16, PC 5 — 브랜치 `delivery/dd-2-misdelivery-recovery`)
+- **사용자 결정(2026-11-16 "추천대로")**: (a) 회수 라이더 수행료 = 일반 배달 표(원문 §7.1) 그대로, 거리 = 회수지 → MFC 도로 거리(원배송 수행료와 별도). (b) 회수지 = 원래 라이더가 전달 완료를 누른 곳(tracking 위치 기록), 없으면 원래 배송지 좌표 — 정확한 호수는 지원센터가 전화로. 회수 라이더에게 원래 완료 증빙(놓은 곳·사진 참조)을 보여 준다. (c) 회수 실패(부재·거부)는 도움요청 → 지원센터 사건함, 자동 재시도 없음(끝내기는 운영자 배차 취소 reassign=false). (d) MFC 반납 = mfc-inbound 점원 수령 확인이 생기기 전까지 MFC 도착으로 끝.
+- **dispatch 0.4.0**(V8): `caseEvents-in-0` ← platform.case.v1 `MisdeliveryConfirmed` → 회수 배송(type RETURN, purpose MISDELIVERY_RECOVERY, 배송 ID 는 caseId 로 정함 — 같은 사건은 하나, shipment `RCV-<caseId>`) + 시도(원래 라이더 제외) + DeliveryCreated(purpose·caseId·originDeliveryId, dropAddressRef `mfc:<mfcId>`). 원래 배송이 없거나 픽업 전이면 만들지 않는다(경고 — 사건함에서 사람이). 좌표 준비 = tracking `GET /internal/riders/{원래 라이더}/location-at?at=<완료 시각>` → 없으면 원래 배송지 좌표, 회수지 → MFC 카카오 거리. 판단은 따로(회수지 중심 반경, 원래 라이더·이번 회차 제외, 회수지까지 가장 빠른 사람 1명, 묶지 않음, 배달리스트에 안 나옴). `GET /deliveries/{id}/dispatch` 에 `purpose`·`recovery`(caseId·originDeliveryId, 회수지 좌표는 배정 라이더·직원만, originRiderId 는 직원만), 제안에 `deliveryType`·`purpose`. `ReturnPickedUp` → PICKED_UP, `ReturnDelivered` → CLOSED. 전달 완료 시각 `completed_at`(회수지 기준).
+- **execution 0.5.0**(V7): 회수 배송 수행 — 배정 → 회수지에서 사진(ASSIGNED 에서 올릴 수 있음) → `returns/pickups`(RETURN_PICKED_UP, ReturnPickedUp — lines = 원래 배송이 전달한 줄) → `returns/store-deliveries`(RETURNED_TO_STORE, ReturnDelivered, 수행료 = 수락 당시 금액). 회수 배송에 일반 단계는 409, 전달지는 409 NO_CUSTOMER_DROP(원래 고객 정보 안 엶). 조회에 purpose·caseId·originDeliveryId·recoveryOrigin(원래 완료 증빙).
+- **tracking 0.4.0**: `GET /internal/riders/{id}/location-at?at=`(앞뒤 3분 안 가장 가까운 점), `ReturnDelivered` 로 회수 라이더 감시 끝.
+- **사건 계약**: `DeliveryCreated` purpose·caseId·originDeliveryId 추가. `ReturnPickedUp`·`ReturnDelivered` — claimId 를 필수에서 뺌(구독자 구현 전 확인), purpose·caseId·originDeliveryId·orderId(·mfcId) 추가.
+- **남은 것**: 원래 완료 사진을 회수 라이더가 볼 사진 보기 API(지금은 참조만 — 사진 보기 경로가 아직 없음), MFC 점원 수령 확인(mfc-inbound MI-1), 새 발송(order O-3), 회수 라이더 앱 화면(handoff `docs/handoff/clients/rider-app/2026-11-16-request-misdelivery-recovery.md`).
+
 
 ## 확인 요청 (2026-11-16, 보낸 영역 backoffice) — LAN 시험 배송이 배차 실패로 미배정
 - **본 것**: LAN 시험 주문 `ORD-0e67de38-7acf-3e71-8a28-7aeadd986bb0` 의 배송 `DLV-74422b51-7820-457d-8dbf-9d66395010a2` — 백오피스 배송 상세에서 수행 "미배정", 배차 "배차 실패", 시도 "2026-11-14 02:05 · FAILED · 시스템 오류", 배정 라이더 없음. 그 뒤 다시 시도한 기록이 없다.

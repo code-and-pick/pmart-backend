@@ -17,13 +17,17 @@ import org.springframework.stereotype.Service;
 public class DeliveryQueries {
 
   /**
-   * @param showAssignment false 면 배정(라이더 ID 등)을 숨긴다 — 제안만 받았던 라이더(PC 1 검토 L4)
+   * @param showAssignment false 면 배정(라이더 ID 등)을 숨긴다 — 제안만 받았던 라이더(PC 1 검토 L4). 회수지 좌표(DD-2)도 같이
+   * @param staff 직원·서비스(라이더가 아님) — 회수 배송의 원래 라이더 ID 는 이때만
+   * @param originRiderId 회수 배송이면 원래 배송의 라이더
    */
   public record DeliveryView(
       DeliveryRow delivery,
       List<AttemptRow> attempts,
       List<OfferRow> offers,
-      boolean showAssignment) {}
+      boolean showAssignment,
+      boolean staff,
+      @org.jspecify.annotations.Nullable String originRiderId) {}
 
   private final DispatchStore store;
 
@@ -63,7 +67,17 @@ public class DeliveryQueries {
       case SERVICE -> {}
       default -> throw OfferService.forbidden("볼 수 없습니다.");
     }
-    return new DeliveryView(d, attempts, offers, showAssignment);
+    String originRiderId =
+        d.originDeliveryId() == null
+            ? null
+            : store.delivery(d.originDeliveryId()).map(DeliveryRow::riderId).orElse(null);
+    return new DeliveryView(
+        d,
+        attempts,
+        offers,
+        showAssignment,
+        p.type() != PmartPrincipal.PrincipalType.RIDER,
+        originRiderId);
   }
 
   public DeliveryRow assignment(String deliveryId) {

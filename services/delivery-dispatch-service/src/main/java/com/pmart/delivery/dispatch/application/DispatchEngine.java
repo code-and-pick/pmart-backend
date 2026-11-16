@@ -49,6 +49,11 @@ import org.springframework.transaction.support.TransactionTemplate;
  * </ol>
  *
  * 일반 배차모드 라이더는 제안을 받지 않고 배달리스트에서 고른다({@link OfferService}). 상태 변경은 짧은 트랜잭션마다 행 잠금 아래에서 다시 확인한다.
+ *
+ * <p>오배송 회수 배송(DD-2, 2026-11-16 — {@link RecoveryHandler})은 픽업지가 MFC 가 아니라 따로 판단한다({@link
+ * #runRecovery}): 좌표 준비 = 회수지(원래 라이더가 완료를 누른 곳의 위치 점, 없으면 원래 배송지 좌표) + 회수지 → MFC 도로 거리, 후보 = 회수지 중심
+ * 직선 반경 안 AI 추천 라이더(원래 라이더 제외), 회수지까지 도로 시간이 가장 짧은 한 명에게 1건 제안(묶지 않음). 일반 배송 제안을 먼저 보낸 뒤라 살아 있는 제안은
+ * 다시 읽는다.
  */
 @Service
 public class DispatchEngine {
@@ -217,9 +222,17 @@ public class DispatchEngine {
       }
       ready.add(new Ready(row, a.get(), SearchRules.radiusKm(props.radiiKm(), a.get().stage())));
     }
-    if (ready.isEmpty()) {
-      return;
+    List<Ready> recoveries = ready.stream().filter(r -> r.delivery().recovery()).toList();
+    List<Ready> forward = ready.stream().filter(r -> !r.delivery().recovery()).toList();
+    if (!forward.isEmpty()) {
+      runForward(mfcId, forward, now);
     }
+    if (!recoveries.isEmpty()) {
+      runRecovery(mfcId, recoveries, now);
+    }
+  }
+
+  private void runForward(String mfcId, List<Ready> ready, Instant now) {
     Geo mfc = new Geo(ready.get(0).delivery().mfcLat(), ready.get(0).delivery().mfcLng());
 
     // 후보 라이더(AI 추천 모드만 제안을 받는다 — 일반 모드는 배달리스트)
@@ -427,6 +440,85 @@ public class DispatchEngine {
     }
   }
 
+  /**
+   * 오배송 회수(DD-2) — 한 건씩, 회수지 중심. 적격 AI 추천 라이더 중 살아 있는 제안 없음·계정 제한 없음·맡은 배송 한도 밑·위치 최신, 회수지 직선 반경(그
+   * 시도 단계) 안, 원래 라이더·시도 제외 라이더·이번 회차 제안받은 라이더 제외 → 회수지까지 도로 시간이 가장 짧은 사람(가까운 10명 안). 비용·지연 약속이 없어
+   * 묶음 계산(CP-SAT)을 쓰지 않는다.
+   */
+  private void runRecovery(String mfcId, List<Ready> recoveries, Instant now) {
+    List<Upstreams.Rider> eligible =
+        upstreams.eligibleRiders(mfcId, props.maxRadiusKm()).stream()
+            .filter(r -> r.acceptsNewDispatch() && "AI_RECOMMENDED".equals(r.dispatchMode()))
+            .toList();
+    Map<String, Upstreams.Rider> byId = new HashMap<>();
+    eligible.forEach(r -> byId.put(r.riderId(), r));
+    List<String> all = eligible.stream().map(Upstreams.Rider::riderId).toList();
+    Set<String> taken = new HashSet<>(); // 이번 주기에 회수 제안을 받은 라이더
+    for (Ready r : recoveries) {
+      DeliveryRow d = r.delivery();
+      Geo pickup = new Geo(d.pickupLat(), d.pickupLng());
+      Set<String> skip = new HashSet<>(store.ridersWithLiveOffer(now)); // 일반 배송 제안 뒤 다시 읽는다
+      skip.addAll(store.restrictedAmong(all, now));
+      skip.addAll(taken);
+      skip.addAll(store.offeredInRound(r.attempt().attemptId(), r.attempt().round()));
+      if (r.attempt().excludedRiderId() != null) {
+        skip.add(r.attempt().excludedRiderId());
+      }
+      if (d.originDeliveryId() != null) {
+        store
+            .delivery(d.originDeliveryId())
+            .map(DeliveryRow::riderId)
+            .ifPresent(skip::add); // 원래 라이더(ADR-0052 "인근 다른 라이더") — 재배차 시도에도
+      }
+      List<String> ids = all.stream().filter(id -> !skip.contains(id)).toList();
+      Map<String, Integer> active = store.activeCounts(ids);
+      List<String> free =
+          ids.stream()
+              .filter(
+                  id ->
+                      (byId.get(id).oneAtATime() ? 1 : props.maxActiveDeliveries())
+                          > active.getOrDefault(id, 0))
+              .toList();
+      Map<String, Geo> located = new HashMap<>();
+      Map<String, Double> straight = new HashMap<>();
+      for (Upstreams.Location l : upstreams.locations(free)) {
+        boolean fresh = !l.receivedAt().plus(props.locationMaxAge()).isBefore(now);
+        double m = l.at().metersTo(pickup);
+        if (fresh
+            && USABLE_QUALITY.contains(l.quality())
+            && free.contains(l.riderId())
+            && m <= r.radiusKm() * 1000.0) {
+          located.put(l.riderId(), l.at());
+          straight.put(l.riderId(), m);
+        }
+      }
+      List<String> near =
+          straight.keySet().stream()
+              .sorted(Comparator.comparingDouble(straight::get))
+              .limit(10)
+              .toList();
+      if (near.isEmpty()) {
+        noCandidate(r.attempt().attemptId(), d.deliveryId(), now);
+        continue;
+      }
+      Upstreams.Leg[][] legs =
+          upstreams.matrix(near.stream().map(located::get).toList(), List.of(pickup));
+      int best = -1;
+      for (int i = 0; i < near.size(); i++) {
+        if (legs[i][0].ok() && (best < 0 || legs[i][0].durationS() < legs[best][0].durationS())) {
+          best = i;
+        }
+      }
+      if (best < 0) {
+        noCandidate(r.attempt().attemptId(), d.deliveryId(), now);
+        continue;
+      }
+      String riderId = near.get(best);
+      offer(List.of(r), byId.get(riderId), legs[best][0], "RECOVERY nearest", now);
+      taken.add(riderId);
+    }
+  }
+
   /** 알뜰배달 고객 사이 도로 소요(카카오모빌리티). 알뜰배달이 2건 미만이면 부르지 않는다. 실패는 묶음 없이(1건씩) 계산. */
   private int[][] betweenDrops(List<Ready> ready, boolean[] bundlable) {
     int nd = ready.size();
@@ -620,6 +712,9 @@ public class DispatchEngine {
   // ---------- 좌표 준비 ----------
 
   private Optional<DeliveryRow> prepareGeo(DeliveryRow d, AttemptRow a, Instant now) {
+    if (d.recovery()) {
+      return prepareRecoveryGeo(d, a, now);
+    }
     try {
       Upstreams.Destination dest = upstreams.destination(d.orderId());
       if ("CANCELLED".equals(dest.status())) {
@@ -667,6 +762,73 @@ public class DispatchEngine {
       return store.delivery(d.deliveryId());
     } catch (PmartException e) {
       log.warn("배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
+      return later(d, a, e.code(), now);
+    }
+  }
+
+  /**
+   * 회수 배송 좌표(DD-2, 사용자 2026-11-16 "추천대로"): 회수지 = 원래 라이더가 전달 완료를 누른 시각(execution DeliveryCompleted
+   * deliveredAt — 이 열 전 완료분은 배송 갱신 시각)의 위치 점(tracking 앞뒤 3분), 없으면 원래 배송지 좌표. 도착 = MFC, 거리 = 회수지 →
+   * MFC 도로 거리(예상 배달료 — 일반 표). 원래 배송 완료가 아직 배차 쪽에 안 왔으면(PICKED_UP) 30초 뒤 다시.
+   */
+  private Optional<DeliveryRow> prepareRecoveryGeo(DeliveryRow d, AttemptRow a, Instant now) {
+    try {
+      Optional<Geo> mfc = upstreams.centerCoordinates(d.mfcId());
+      if (mfc.isEmpty()) {
+        return later(d, a, "NO_MFC_COORDINATES", now);
+      }
+      DeliveryRow origin =
+          d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null);
+      if (origin == null) {
+        return failSystem(d, a, "NO_ORIGIN_DELIVERY", now);
+      }
+      if (origin.completedAt() == null && !"CLOSED".equals(origin.state())) {
+        return later(d, a, "ORIGIN_NOT_COMPLETED", now);
+      }
+      Instant done = origin.completedAt() != null ? origin.completedAt() : origin.updatedAt();
+      Geo pickup = null;
+      String source = null;
+      Instant recordedAt = null;
+      if (origin.riderId() != null) {
+        Optional<Upstreams.PointAt> at = upstreams.locationAt(origin.riderId(), done);
+        if (at.isPresent()) {
+          pickup = at.get().at();
+          source = "RIDER_COMPLETION_LOCATION";
+          recordedAt = at.get().recordedAt();
+        }
+      }
+      if (pickup == null && origin.dropLat() != null && origin.dropLng() != null) {
+        pickup = new Geo(origin.dropLat(), origin.dropLng());
+        source = "DROP_ADDRESS";
+      }
+      if (pickup == null) {
+        return failSystem(d, a, "NO_PICKUP_POINT", now);
+      }
+      Upstreams.Leg leg = upstreams.matrix(List.of(pickup), List.of(mfc.get()))[0][0];
+      if (!leg.ok()) {
+        return failSystem(d, a, "NO_ROUTE_TO_MFC", now);
+      }
+      Geo p = pickup;
+      String src = source;
+      Instant rec = recordedAt;
+      tx.executeWithoutResult(
+          s ->
+              store.saveRecoveryGeo(
+                  d.deliveryId(),
+                  mfc.get().lat(),
+                  mfc.get().lng(),
+                  p.lat(),
+                  p.lng(),
+                  src,
+                  rec,
+                  origin.dropAreaLabel(),
+                  leg.distanceM(),
+                  leg.durationS(),
+                  now));
+      log.info("회수 배송 {} 회수지 준비 — {}, 회수지 → MFC {}m", d.deliveryId(), src, leg.distanceM());
+      return store.delivery(d.deliveryId());
+    } catch (PmartException e) {
+      log.warn("회수 배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
       return later(d, a, e.code(), now);
     }
   }

@@ -98,6 +98,11 @@ public class TrackingService {
     return store.latest(riderId);
   }
 
+  /** 정한 시각에 가장 가까운 위치 점(DD-2 오배송 회수지). 앞뒤 {@code location-at-window} 안에 없으면 empty. */
+  public Optional<LocationStore.Latest> near(String riderId, Instant at) {
+    return store.pointNear(riderId, at, props.locationAtWindow());
+  }
+
   public List<LocationStore.Latest> latest(List<String> riderIds) {
     return store.latest(riderIds.stream().distinct().limit(200).toList());
   }

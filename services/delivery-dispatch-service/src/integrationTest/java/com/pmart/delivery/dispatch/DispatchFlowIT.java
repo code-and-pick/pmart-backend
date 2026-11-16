@@ -1585,6 +1585,268 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(listIds(rider)).contains(deliveryId);
   }
 
+  /**
+   * DD-2(사용자 2026-11-16 "추천대로"): 오배송 확인(case MisdeliveryConfirmed) → 회수
+   * 배송(RETURN·MISDELIVERY_RECOVERY) — 회수지 = 원래 라이더가 완료를 누른 시각의 위치 점, 원래 라이더 빼고 회수지 반경 안 가장 빠른 라이더에게
+   * 1건 제안, 예상 배달료 = 일반 표(회수지 → MFC). 회수지 좌표는 배정된 라이더·직원에게만. 회수(ReturnPickedUp) → PICKED_UP,
+   * 반납(ReturnDelivered) → CLOSED.
+   */
+  @Test
+  void confirmedMisdeliveryDispatchesRecoveryToAnotherNearbyRider() {
+    String mfc = "MFC-D20";
+    String r1 = "RD-md1-" + UUID.randomUUID();
+    String r2 = "RD-md2-" + UUID.randomUUID();
+    String r3 = "RD-md3-" + UUID.randomUUID();
+    riders(
+        mfc,
+        rider(r1, "AI_RECOMMENDED", true),
+        rider(r2, "AI_RECOMMENDED", true),
+        rider(r3, "AI_RECOMMENDED", true));
+    riderLookup(
+        rider(r1, "AI_RECOMMENDED", true),
+        rider(r2, "AI_RECOMMENDED", true),
+        rider(r3, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String origin = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-md-" + UUID.randomUUID());
+    engine.tick();
+    String offer1 =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin);
+    assertThat(body(respond(r1, offer1, "a-" + origin, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    // 전달 완료(execution) — 완료 시각이 회수지 위치 점의 기준
+    Instant deliveredAt =
+        Instant.now().minusSeconds(600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    executionEvent(
+        "DeliveryCompleted",
+        origin,
+        Map.of(
+            "deliveryId",
+            origin,
+            "riderId",
+            r1,
+            "deliveredAt",
+            deliveredAt.toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1)),
+            "method",
+            "CONTACTLESS"));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + origin
+            + "' AND state = 'CLOSED' AND completed_at IS NOT NULL");
+
+    // tracking — 원래 라이더의 그 시각 위치(회수지), 회수지 → MFC 2,100m·500초, 라이더 → 회수지(가까운 순 150·400초)
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/riders/" + r1 + "/location-at"))
+            .withQueryParam("at", equalTo(deliveredAt.toString()))
+            .willReturn(
+                json(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "lat",
+                        37.501,
+                        "lng",
+                        127.0365,
+                        "recordedAt",
+                        deliveredAt.plusSeconds(5).toString(),
+                        "quality",
+                        "GOOD"))));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.origins[0].lat", equalTo("37.501")))
+            .willReturn(json(matrix(List.of(List.of(2100, 500))))));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(2)
+            .withRequestBody(matchingJsonPath("$.destinations[0].lat", equalTo("37.501")))
+            .willReturn(json(matrix(List.of(List.of(300, 150), List.of(900, 400))))));
+    // r1(원래 라이더)은 회수지 바로 옆이어도 빼고, r3 는 회수지 1km 밖(MFC 근처)
+    locations(
+        Map.of(
+            r1, new double[] {37.5010, 127.0365},
+            r2, new double[] {37.5013, 127.0368},
+            r3, new double[] {37.4900, 127.0200}));
+
+    String caseId = "CASE-" + UUID.randomUUID();
+    misdeliveryConfirmed(caseId, origin, r1);
+    misdeliveryConfirmed(caseId, origin, r1); // 같은 사건을 다시 받아도 회수는 하나
+    awaitSql("SELECT count(*) FROM delivery WHERE case_id = '" + caseId + "'");
+    String recovery =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE case_id = ?", String.class, caseId);
+    JsonNode created = outbox(recovery, "DeliveryCreated").path("payload");
+    assertThat(created.path("type").asString()).isEqualTo("RETURN");
+    assertThat(created.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
+    assertThat(created.path("caseId").asString()).isEqualTo(caseId);
+    assertThat(created.path("originDeliveryId").asString()).isEqualTo(origin);
+    assertThat(created.path("dropAddressRef").asString()).isEqualTo("mfc:" + mfc);
+    assertThat(created.path("shipmentId").asString()).isEqualTo("RCV-" + caseId);
+    // 아직 픽업 전인 배송·없는 배송의 오배송 확인은 회수를 만들지 않는다
+    misdeliveryConfirmed("CASE-" + UUID.randomUUID(), "DLV-none-" + UUID.randomUUID(), r1);
+
+    engine.tick();
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT pickup_lat, pickup_source, drop_distance_m, mfc_lat, drop_lat FROM delivery"
+                + " WHERE delivery_id = ?",
+            recovery);
+    assertThat(row.get("pickup_source")).isEqualTo("RIDER_COMPLETION_LOCATION");
+    assertThat(((Number) row.get("pickup_lat")).doubleValue()).isEqualTo(37.501);
+    assertThat(row.get("drop_distance_m")).isEqualTo(2100);
+    assertThat(row.get("drop_lat")).isEqualTo(row.get("mfc_lat")); // 도착지 = MFC
+    Map<String, Object> o =
+        jdbc.queryForMap(
+            "SELECT offer_id, rider_id, fee, bundle_id FROM dispatch_offer WHERE delivery_id = ?"
+                + " AND state = 'SENT'",
+            recovery);
+    assertThat(o.get("rider_id")).isEqualTo(r2);
+    assertThat(o.get("bundle_id")).isNull();
+    assertThat(o.get("fee"))
+        .isEqualTo(
+            com.pmart.delivery.dispatch.domain.FeeTable.estimate("MOTORCYCLE", 2100)); // 일반 표
+    JsonNode offers =
+        body(
+            http.get()
+                .uri("/offers")
+                .header("Authorization", "Bearer " + TestJwt.rider(r2))
+                .retrieve()
+                .toEntity(String.class));
+    JsonNode mine = null;
+    for (JsonNode n : offers.path("items")) {
+      if (recovery.equals(n.path("deliveryId").asString())) {
+        mine = n;
+      }
+    }
+    assertThat(mine).isNotNull();
+    assertThat(mine.path("deliveryType").asString()).isEqualTo("RETURN");
+    assertThat(mine.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
+    // 제안만 받은 라이더에게는 회수지 좌표를 아직 보이지 않는다
+    JsonNode before = dispatchView(TestJwt.rider(r2), recovery);
+    assertThat(before.path("recovery").path("caseId").asString()).isEqualTo(caseId);
+    assertThat(
+            before.path("recovery").path("pickup").isMissingNode()
+                || before.path("recovery").path("pickup").isNull())
+        .isTrue();
+    // 회수는 배달리스트에 없다
+    JsonNode list =
+        body(
+            http.get()
+                .uri("/delivery-list")
+                .header("Authorization", "Bearer " + TestJwt.rider(r3))
+                .retrieve()
+                .toEntity(String.class));
+    for (JsonNode n : list.path("items")) {
+      assertThat(n.path("deliveryId").asString()).isNotEqualTo(recovery);
+    }
+
+    assertThat(
+            body(respond(r2, (String) o.get("offer_id"), "a-" + recovery, "ACCEPT"))
+                .path("outcome")
+                .asString())
+        .isEqualTo("ASSIGNED");
+    JsonNode after = dispatchView(TestJwt.rider(r2), recovery);
+    assertThat(after.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
+    assertThat(after.path("recovery").path("pickup").path("lat").asDouble()).isEqualTo(37.501);
+    assertThat(after.path("recovery").path("pickup").path("source").asString())
+        .isEqualTo("RIDER_COMPLETION_LOCATION");
+    JsonNode originRider = after.path("recovery").path("originRiderId");
+    assertThat(originRider.isMissingNode() || originRider.isNull())
+        .isTrue(); // 라이더에게는 원래 라이더를 안 보인다
+    JsonNode staff =
+        dispatchView(TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()), recovery);
+    assertThat(staff.path("recovery").path("originRiderId").asString()).isEqualTo(r1);
+
+    // 회수(ReturnPickedUp) → PICKED_UP — 픽업 뒤라 라이더 배차 취소는 지원센터로
+    executionEvent(
+        "ReturnPickedUp",
+        recovery,
+        Map.of(
+            "returnPickupId",
+            recovery,
+            "deliveryId",
+            recovery,
+            "riderId",
+            r2,
+            "pickedUpAt",
+            Instant.now().toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1))));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + recovery
+            + "' AND state = 'PICKED_UP'");
+    assertThat(cancel(r2, recovery, "p-" + recovery).getStatusCode().value()).isEqualTo(422);
+    executionEvent(
+        "ReturnDelivered",
+        recovery,
+        Map.of(
+            "returnPickupId",
+            recovery,
+            "deliveryId",
+            recovery,
+            "mfcId",
+            mfc,
+            "deliveredAt",
+            Instant.now().toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1))));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + recovery
+            + "' AND state = 'CLOSED'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE type = 'RETURN' AND origin_delivery_id = ?",
+                Integer.class,
+                origin))
+        .isEqualTo(1);
+  }
+
+  void misdeliveryConfirmed(String caseId, String deliveryId, String riderId) {
+    String json =
+        EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+            .from("case-service")
+            .aggregate("Case", caseId, 1)
+            .payload(
+                Map.of(
+                    "caseId",
+                    caseId,
+                    "deliveryId",
+                    deliveryId,
+                    "riderId",
+                    riderId,
+                    "confirmedBy",
+                    "OP-CS",
+                    "confirmedAt",
+                    Instant.now().toString()))
+            .buildJson();
+    kafka.send("platform.case.v1", caseId, json).join();
+  }
+
+  void executionEvent(String type, String deliveryId, Map<String, Object> payload) {
+    String json =
+        EventEnvelopeFixtures.envelope(type)
+            .from("delivery-execution-service")
+            .aggregate("Delivery", deliveryId, 9)
+            .payload(payload)
+            .buildJson();
+    kafka.send("delivery.delivery.v1", deliveryId, json).join();
+  }
+
+  JsonNode dispatchView(String token, String deliveryId) {
+    return body(
+        http.get()
+            .uri("/deliveries/{id}/dispatch", deliveryId)
+            .header("Authorization", "Bearer " + token)
+            .retrieve()
+            .toEntity(String.class));
+  }
+
   ResponseEntity<String> cancel(String rider, String deliveryId, String key) {
     return http.post()
         .uri("/deliveries/{id}/assignment-cancellations", deliveryId)

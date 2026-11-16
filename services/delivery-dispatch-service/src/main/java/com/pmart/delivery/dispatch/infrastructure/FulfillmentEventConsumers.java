@@ -4,6 +4,7 @@ import com.pmart.common.messaging.EventConsumers;
 import com.pmart.common.messaging.PmartEventConsumer;
 import com.pmart.delivery.dispatch.application.ExecutionEventHandler;
 import com.pmart.delivery.dispatch.application.FulfillmentEventHandler;
+import com.pmart.delivery.dispatch.application.RecoveryHandler;
 import com.pmart.delivery.dispatch.application.RiderEventHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -47,5 +48,14 @@ class FulfillmentEventConsumers {
   @Bean
   PmartEventConsumer riderEvents(EventConsumers consumers, RiderEventHandler handler) {
     return consumers.of(e -> RiderEventHandler.TYPES.contains(e.eventType()), handler::on);
+  }
+
+  /**
+   * case 오배송 확인(토픽 platform.case.v1, 바인딩 {@code caseEvents-in-0}, DD-2 2026-11-16) → 회수 배송·배차. 다른
+   * 사건함 사건은 버린다. 처음 켜기 전 소비 그룹 시작 위치 = latest(지난 오배송 사건은 사건함에서 사람이 처리했다).
+   */
+  @Bean
+  PmartEventConsumer caseEvents(EventConsumers consumers, RecoveryHandler handler) {
+    return consumers.of(e -> RecoveryHandler.TYPES.contains(e.eventType()), handler::on);
   }
 }

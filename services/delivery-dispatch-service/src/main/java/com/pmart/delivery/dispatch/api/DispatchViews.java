@@ -4,6 +4,7 @@ import com.pmart.delivery.dispatch.api.generated.model.Assignment;
 import com.pmart.delivery.dispatch.api.generated.model.CreateDeliveryRequestArrivalWindow;
 import com.pmart.delivery.dispatch.api.generated.model.Delivery;
 import com.pmart.delivery.dispatch.api.generated.model.DeliveryListItem;
+import com.pmart.delivery.dispatch.api.generated.model.DeliveryPurpose;
 import com.pmart.delivery.dispatch.api.generated.model.DeliveryType;
 import com.pmart.delivery.dispatch.api.generated.model.DispatchAttempt;
 import com.pmart.delivery.dispatch.api.generated.model.DispatchState;
@@ -11,6 +12,8 @@ import com.pmart.delivery.dispatch.api.generated.model.Offer;
 import com.pmart.delivery.dispatch.api.generated.model.OfferResponseResult;
 import com.pmart.delivery.dispatch.api.generated.model.OfferSummary;
 import com.pmart.delivery.dispatch.api.generated.model.PackageSpec;
+import com.pmart.delivery.dispatch.api.generated.model.RecoveryInfo;
+import com.pmart.delivery.dispatch.api.generated.model.RecoveryInfoPickup;
 import com.pmart.delivery.dispatch.application.DispatchProperties;
 import com.pmart.delivery.dispatch.application.OfferService;
 import com.pmart.delivery.dispatch.domain.SearchRules;
@@ -81,6 +84,8 @@ class DispatchViews {
         .bundleId(o.bundleId())
         .bundleSize(o.bundleSize())
         .stopSequence(o.stopSeq())
+        .deliveryType(DeliveryType.fromValue(d.type()))
+        .purpose(purpose(d))
         .summary(
             new OfferSummary()
                 .mfcId(d.mfcId())
@@ -133,11 +138,38 @@ class DispatchViews {
         .decidedAt(time(r.decidedAt()));
   }
 
+  /** 목적 — 예전 행(목적 없음)은 일반 배송. */
+  static DeliveryPurpose purpose(DeliveryRow d) {
+    return d.purpose() == null ? DeliveryPurpose.DELIVERY : DeliveryPurpose.fromValue(d.purpose());
+  }
+
+  /** 오배송 회수 정보(DD-2). 회수지 좌표는 배정 라이더·직원에게만(showAssignment), 원래 라이더 ID 는 직원에게만. */
+  static @Nullable RecoveryInfo recovery(DeliveryRow d, boolean showAssignment, boolean staff) {
+    if (!d.recovery()) {
+      return null;
+    }
+    RecoveryInfo r = new RecoveryInfo().caseId(d.caseId()).originDeliveryId(d.originDeliveryId());
+    if (showAssignment && d.pickupLat() != null && d.pickupLng() != null) {
+      r.pickup(
+          new RecoveryInfoPickup()
+              .lat(BigDecimal.valueOf(d.pickupLat()))
+              .lng(BigDecimal.valueOf(d.pickupLng()))
+              .source(
+                  d.pickupSource() == null
+                      ? null
+                      : RecoveryInfoPickup.SourceEnum.fromValue(d.pickupSource()))
+              .recordedAt(time(d.pickupRecordedAt())));
+    }
+    return r;
+  }
+
   Delivery delivery(
       DeliveryRow d,
       List<AttemptRow> attempts,
       List<OfferRow> offers,
       boolean showAssignment,
+      boolean staff,
+      @Nullable String originRiderId,
       Instant now) {
     Packages p = packages(d);
     Delivery out =
@@ -158,7 +190,12 @@ class DispatchViews {
             .assignment(d.riderId() == null || !showAssignment ? null : assignment(d))
             .delayAlertedAt(time(d.delayAlertedAt()))
             .createdAt(time(d.createdAt()))
-            .updatedAt(time(d.updatedAt()));
+            .updatedAt(time(d.updatedAt()))
+            .purpose(purpose(d))
+            .recovery(recovery(d, showAssignment, staff));
+    if (staff && out.getRecovery() != null) {
+      out.getRecovery().originRiderId(originRiderId);
+    }
     if (d.arrivalDate() != null) {
       out.arrivalWindow(
           new CreateDeliveryRequestArrivalWindow()

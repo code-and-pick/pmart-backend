@@ -78,6 +78,13 @@ public class ExecutionEventHandler {
     DeliveryRow d = store.lockDelivery(deliveryId).orElseThrow();
     switch (e.eventType()) {
       case "DeliveryCreated" -> {
+        // 유형·목적(오배송 회수 — DD-2). 배정 사건이 먼저 와 FORWARD 로 만들어졌어도 여기서 바로잡는다
+        store.describe(
+            deliveryId,
+            p.path("type").asString(null),
+            p.path("purpose").asString(null),
+            p.path("caseId").asString(null),
+            p.path("originDeliveryId").asString(null));
         List<String> pkgs = strings(p.path("packageIds"));
         if (d.shipmentId() != null
             && !pkgs.isEmpty()

@@ -50,12 +50,16 @@ public class ExecutionService {
       @Nullable String placementDetail,
       @Nullable String substituteEvidenceCaseId) {}
 
+  /**
+   * @param origin 오배송 회수 배송(DD-2)이면 원래 배송 — 그 완료 증빙(놓은 곳·사진 참조)을 회수 라이더에게 보여 준다
+   */
   public record View(
       DeliveryRow delivery,
       List<HandoverRow> handovers,
       List<ExecutionStore.HistoryRow> history,
       List<ExecutionStore.HelpRow> helps,
-      ExecutionStore.@Nullable EarningRow earning) {}
+      ExecutionStore.@Nullable EarningRow earning,
+      @Nullable DeliveryRow origin) {}
 
   /** 전달 실패 등록(2026-11-13) — contactAttempts 는 [{attemptedAt, method, result}]. */
   public record Failure(
@@ -101,7 +105,8 @@ public class ExecutionService {
         store.handovers(d.deliveryId()),
         store.history(d.deliveryId()),
         store.helps(d.deliveryId()),
-        d.riderId() == null ? null : store.earningOf(d.deliveryId(), d.riderId()).orElse(null));
+        d.riderId() == null ? null : store.earningOf(d.deliveryId(), d.riderId()).orElse(null),
+        d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null));
   }
 
   // ---- 조회
@@ -148,6 +153,7 @@ public class ExecutionService {
         expectedVersion,
         Map.of(),
         (d, rider, now) -> {
+          forwardOnly(d);
           if (!"ASSIGNED".equals(d.state())) {
             throw PmartException.invalidState("배정된 배송만 가게 도착할 수 있습니다(지금 " + d.state() + ").");
           }
@@ -176,6 +182,7 @@ public class ExecutionService {
         expectedVersion,
         Map.of("handoverIds", handoverIds),
         (d, rider, now) -> {
+          forwardOnly(d);
           Map<String, HandoverRow> recorded =
               store.handovers(deliveryId).stream()
                   .collect(Collectors.toMap(HandoverRow::handoverId, h -> h, (a, b) -> a));
@@ -213,6 +220,7 @@ public class ExecutionService {
         expectedVersion,
         Map.of(),
         (d, rider, now) -> {
+          forwardOnly(d);
           if (!"PICKED_UP".equals(d.state())) {
             throw PmartException.invalidState("픽업 완료한 배송만 고객 도착할 수 있습니다(지금 " + d.state() + ").");
           }
@@ -266,7 +274,7 @@ public class ExecutionService {
                 .filter(
                     d ->
                         p.subject().equals(d.riderId())
-                            && ExecutionRules.PHOTO_FROM.contains(d.state()))
+                            && ExecutionRules.photoAllowed(d.type(), d.state()))
                 .isPresent();
     if (uploaded) {
       store.notePhotoUpload(key, deliveryId, clock.instant());
@@ -288,9 +296,11 @@ public class ExecutionService {
                 PhotoRow x = existing.get();
                 return new Photo(x.photoRef(), x.contentType(), x.sizeBytes(), x.uploadedAt());
               }
-              if (!ExecutionRules.PHOTO_FROM.contains(d.state())) {
+              if (!ExecutionRules.photoAllowed(d.type(), d.state())) {
                 throw PmartException.invalidState(
-                    "픽업 뒤 전달 전에만 사진을 올릴 수 있습니다(지금 " + d.state() + ").");
+                    "RETURN".equals(d.type())
+                        ? "회수 배송은 배정 뒤 반납 전에만 사진을 올릴 수 있습니다(지금 " + d.state() + ")."
+                        : "픽업 뒤 전달 전에만 사진을 올릴 수 있습니다(지금 " + d.state() + ").");
               }
               if (!uploaded) {
                 // 미리 확인과 잠금 사이에 상태가 바뀌었다(드묾) — 올린 사진이 없으니 다시 보내 달라고 한다
@@ -320,6 +330,7 @@ public class ExecutionService {
         expectedVersion,
         Map.of("completion", c),
         (d, rider, now) -> {
+          forwardOnly(d);
           if (!"ARRIVED_AT_CUSTOMER".equals(d.state())) {
             throw PmartException.invalidState("고객 도착한 배송만 전달 완료할 수 있습니다(지금 " + d.state() + ").");
           }
@@ -347,35 +358,7 @@ public class ExecutionService {
           if (c.substituteEvidenceCaseId() != null) {
             evidence.put("substituteEvidenceCaseId", c.substituteEvidenceCaseId());
           }
-          // 포장마다 마지막 인계만(다시 인계한 포장·재배차 전 라이더 인계를 두 번 세지 않는다 — PC 1 재검토 ③).
-          // 인계 기록은 인계 시각 순이라 같은 포장의 뒤 기록이 앞 기록을 덮는다. 출고 포장 목록을 알면 그 포장만.
-          Map<String, HandoverRow> lastByPackage = new LinkedHashMap<>();
-          for (HandoverRow h : store.handovers(deliveryId)) {
-            lastByPackage.put(h.packageId(), h);
-          }
-          Set<String> shipmentPackages = new java.util.HashSet<>();
-          if (d.shipmentId() != null) {
-            store
-                .shipmentPackages(d.shipmentId())
-                .ifPresent(
-                    json -> {
-                      for (var n : mapper.readTree(json)) {
-                        shipmentPackages.add(n.asString());
-                      }
-                    });
-          }
-          List<Map<String, Integer>> perPackage = new ArrayList<>();
-          for (HandoverRow h : lastByPackage.values()) {
-            if (!shipmentPackages.isEmpty() && !shipmentPackages.contains(h.packageId())) {
-              continue;
-            }
-            Map<String, Integer> lines = new LinkedHashMap<>();
-            for (var e : mapper.readTree(h.linesJson()).properties()) {
-              lines.put(e.getKey(), e.getValue().asInt());
-            }
-            perPackage.add(lines);
-          }
-          List<Map<String, Object>> delivered = ExecutionRules.deliveredLines(perPackage);
+          List<Map<String, Object>> delivered = deliveredLines(d);
           if (delivered.isEmpty()) {
             // 계약 lines minItems 1 — 인계 수량을 모르면 완료를 내지 않는다(인계 사건에는 줄이 반드시 있어 생기지 않아야 한다)
             throw PmartException.invalidState("인계된 상품 수량을 확인할 수 없습니다. 지원센터에 문의해 주세요.");
@@ -406,6 +389,7 @@ public class ExecutionService {
         expectedVersion,
         Map.of("failure", f),
         (d, rider, now) -> {
+          forwardOnly(d);
           if (!ExecutionRules.FAILURE_FROM.contains(d.state())) {
             throw PmartException.invalidState("픽업 뒤 전달 전에만 실패를 등록할 수 있습니다(지금 " + d.state() + ").");
           }
@@ -455,6 +439,165 @@ public class ExecutionService {
           events.helpRequested(d, incident, f.photoRefs(), store.bumpVersion(deliveryId, now));
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });
+  }
+
+  // ---- 오배송 회수(DD-2, 2026-11-16 — 사용자 "추천대로")
+
+  /**
+   * 회수지에서 회수품을 받음: ASSIGNED → RETURN_PICKED_UP + ReturnPickedUp. 이 배송에 같은 라이더가 올린 사진 1장 이상(아니면 422
+   * EVIDENCE_REQUIRED). 사건 lines = 원래 배송이 전달한 줄·수량(회수 대상). 고객 반품 회수(CLAIM_RETURN)는 아직 없다.
+   */
+  public Applied returnPickup(
+      String deliveryId,
+      String requestId,
+      String source,
+      @Nullable Integer expectedVersion,
+      List<String> evidenceRefs) {
+    return transition(
+        "reportReturnPickup",
+        deliveryId,
+        requestId,
+        source,
+        expectedVersion,
+        Map.of("evidenceRefs", evidenceRefs),
+        (d, rider, now) -> {
+          recoveryOnly(d);
+          if (!"ASSIGNED".equals(d.state())) {
+            throw PmartException.invalidState("배정된 회수 배송만 회수할 수 있습니다(지금 " + d.state() + ").");
+          }
+          requireMyPhotos(deliveryId, rider, evidenceRefs, true);
+          List<Map<String, Object>> lines = originLines(d);
+          String evidenceId = "EVD-" + UUID.randomUUID();
+          Map<String, Object> evidence = new LinkedHashMap<>();
+          evidence.put(
+              "pickup",
+              Map.of("evidenceRef", evidenceId, "photoRefs", evidenceRefs, "at", now.toString()));
+          store.returnPickedUp(deliveryId, mapper.writeValueAsString(evidence), now);
+          store.history(deliveryId, "RETURN_PICKED_UP", now, "RIDER", evidenceId, now);
+          events.returnPickedUp(d, lines, evidenceId, now);
+          return d.version() + 1;
+        });
+  }
+
+  /**
+   * MFC 반납: RETURN_PICKED_UP → RETURNED_TO_STORE(배송 끝) + ReturnDelivered + 수행료(수락 당시 금액 → 확정 대기).
+   * mfc-inbound 점원 수령 확인이 생기기 전까지 MFC 도착을 반납으로 본다(사용자 2026-11-16 "추천대로"). 사진·점원 확인 참조는 선택.
+   */
+  public Applied returnToStore(
+      String deliveryId,
+      String requestId,
+      String source,
+      @Nullable Integer expectedVersion,
+      List<String> evidenceRefs,
+      @Nullable String receivedByStaffRef) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("evidenceRefs", evidenceRefs);
+    body.put("receivedByStaffRef", String.valueOf(receivedByStaffRef));
+    return transition(
+        "reportReturnStoreDelivery",
+        deliveryId,
+        requestId,
+        source,
+        expectedVersion,
+        body,
+        (d, rider, now) -> {
+          recoveryOnly(d);
+          if (!"RETURN_PICKED_UP".equals(d.state())) {
+            throw PmartException.invalidState("회수한 배송만 반납할 수 있습니다(지금 " + d.state() + ").");
+          }
+          requireMyPhotos(deliveryId, rider, evidenceRefs, false);
+          List<Map<String, Object>> lines = originLines(d);
+          String evidenceId = "EVD-" + UUID.randomUUID();
+          Map<String, Object> evidence = new LinkedHashMap<>();
+          if (d.evidenceJson() != null) {
+            for (var e : mapper.readTree(d.evidenceJson()).properties()) {
+              evidence.put(e.getKey(), e.getValue());
+            }
+          }
+          Map<String, Object> returned = new LinkedHashMap<>();
+          returned.put("evidenceRef", evidenceId);
+          returned.put("photoRefs", evidenceRefs);
+          if (receivedByStaffRef != null) {
+            returned.put("receivedByStaffRef", receivedByStaffRef);
+          }
+          returned.put("at", now.toString());
+          evidence.put("returned", returned);
+          store.returnedToStore(deliveryId, mapper.writeValueAsString(evidence), now);
+          store.history(deliveryId, "RETURNED_TO_STORE", now, "RIDER", evidenceId, now);
+          events.returnDelivered(d, lines, evidenceId, now);
+          earnings.completed(d, now); // 회수 수행료 = 수락 당시 금액(일반 표, 회수지 → MFC — 사용자 2026-11-16)
+          return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
+        });
+  }
+
+  /** 원래 배송이 전달한 줄·수량(회수 대상). 모르면 회수를 내지 않는다(사건 lines 최소 1). */
+  private List<Map<String, Object>> originLines(DeliveryRow d) {
+    DeliveryRow origin =
+        d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null);
+    List<Map<String, Object>> lines = origin == null ? List.of() : deliveredLines(origin);
+    if (lines.isEmpty()) {
+      throw PmartException.invalidState("원래 배송의 전달 수량을 확인할 수 없습니다. 지원센터에 문의해 주세요.");
+    }
+    return lines;
+  }
+
+  /**
+   * 배송이 전달한 줄·수량 — 포장마다 마지막 인계만(다시 인계한 포장·재배차 전 라이더 인계를 두 번 세지 않는다 — PC 1 재검토 ③). 인계 기록은 인계 시각 순이라
+   * 같은 포장의 뒤 기록이 앞 기록을 덮는다. 출고 포장 목록을 알면 그 포장만.
+   */
+  private List<Map<String, Object>> deliveredLines(DeliveryRow d) {
+    Map<String, HandoverRow> lastByPackage = new LinkedHashMap<>();
+    for (HandoverRow h : store.handovers(d.deliveryId())) {
+      lastByPackage.put(h.packageId(), h);
+    }
+    Set<String> shipmentPackages = new java.util.HashSet<>();
+    if (d.shipmentId() != null) {
+      store
+          .shipmentPackages(d.shipmentId())
+          .ifPresent(
+              json -> {
+                for (var n : mapper.readTree(json)) {
+                  shipmentPackages.add(n.asString());
+                }
+              });
+    }
+    List<Map<String, Integer>> perPackage = new ArrayList<>();
+    for (HandoverRow h : lastByPackage.values()) {
+      if (!shipmentPackages.isEmpty() && !shipmentPackages.contains(h.packageId())) {
+        continue;
+      }
+      Map<String, Integer> lines = new LinkedHashMap<>();
+      for (var e : mapper.readTree(h.linesJson()).properties()) {
+        lines.put(e.getKey(), e.getValue().asInt());
+      }
+      perPackage.add(lines);
+    }
+    return ExecutionRules.deliveredLines(perPackage);
+  }
+
+  private void requireMyPhotos(
+      String deliveryId, String rider, List<String> refs, boolean atLeastOne) {
+    Set<String> mine =
+        store.photos(deliveryId).stream()
+            .filter(ph -> ph.riderId().equals(rider))
+            .map(PhotoRow::photoRef)
+            .collect(Collectors.toSet());
+    if ((atLeastOne && refs.isEmpty()) || !mine.containsAll(refs)) {
+      throw new PmartException(ErrorCode.EVIDENCE_REQUIRED, "이 배송에 올린 사진이 필요합니다. 사진을 먼저 올려 주세요.");
+    }
+  }
+
+  /** 일반 배송 단계(가게 도착·픽업·고객 도착·전달 완료·실패 등록)는 회수 배송에 쓰지 않는다. */
+  private static void forwardOnly(DeliveryRow d) {
+    if ("RETURN".equals(d.type())) {
+      throw PmartException.invalidState("회수 배송입니다. 회수·반납 단계를 써 주세요.");
+    }
+  }
+
+  private static void recoveryOnly(DeliveryRow d) {
+    if (!d.recovery()) {
+      throw unprocessable("RETURN_NOT_SUPPORTED", "오배송 회수 배송만 회수·반납할 수 있습니다(고객 반품 회수는 아직 없음).");
+    }
   }
 
   // ---- 공통

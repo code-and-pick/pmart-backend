@@ -34,7 +34,14 @@ public class DeliveriesController implements DeliveriesApi {
   public ResponseEntity<Delivery> getDeliveryDispatch(String deliveryId) {
     var v = queries.dispatch(deliveryId);
     return ResponseEntity.ok(
-        views.delivery(v.delivery(), v.attempts(), v.offers(), v.showAssignment(), Instant.now()));
+        views.delivery(
+            v.delivery(),
+            v.attempts(),
+            v.offers(),
+            v.showAssignment(),
+            v.staff(),
+            v.originRiderId(),
+            Instant.now()));
   }
 
   @Override

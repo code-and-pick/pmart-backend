@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/ReturnPickedUp.v1.json",
   "title": "ReturnPickedUp",
-  "description": "고객 수거. 발행 delivery-execution. 구독 claim, mfc-inbound. 토픽 delivery.delivery.v1. 단계 ②",
+  "description": "고객 수거. 발행 delivery-execution. 구독 claim, mfc-inbound. 토픽 delivery.delivery.v1. 단계 ② 2026-11-16 DD-2: 오배송 회수(purpose MISDELIVERY_RECOVERY)도 이 사건 — claimId 대신 caseId·originDeliveryId, lines 는 원래 배송이 전달한 줄·수량(회수 대상 — 실제 상태·폐기 여부는 MFC 검수). 구독자 구현 전이라(2026-11-16 확인 — claim·mfc-inbound 모두 아직) claimId 를 필수에서 뺐다: 고객 반품은 늘 claimId 가 있다.",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -20,7 +20,6 @@
           "type": "object",
           "required": [
             "returnPickupId",
-            "claimId",
             "lines",
             "pickedUpAt"
           ],
@@ -62,6 +61,29 @@
             },
             "pickedUpAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "purpose": {
+              "type": "string",
+              "enum": [
+                "CLAIM_RETURN",
+                "MISDELIVERY_RECOVERY"
+              ],
+              "description": "회수 목적(2026-11-16) — CLAIM_RETURN 고객 반품(claimId), MISDELIVERY_RECOVERY 확인된 오배송 회수(caseId·originDeliveryId, DD-2). 없으면 CLAIM_RETURN"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "MISDELIVERY_RECOVERY — 오배송 확인 사건"
+            },
+            "originDeliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "MISDELIVERY_RECOVERY — 오배송된 원래 배송"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId",
+              "description": "반납할 MFC"
             }
           },
           "additionalProperties": true

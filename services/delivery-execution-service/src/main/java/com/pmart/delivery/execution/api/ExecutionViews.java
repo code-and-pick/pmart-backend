@@ -3,6 +3,7 @@ package com.pmart.delivery.execution.api;
 import com.pmart.delivery.execution.api.generated.model.DeliveryExecution;
 import com.pmart.delivery.execution.api.generated.model.DeliveryExecutionFailure;
 import com.pmart.delivery.execution.api.generated.model.DeliveryExecutionIncidentsInner;
+import com.pmart.delivery.execution.api.generated.model.DeliveryExecutionRecoveryOrigin;
 import com.pmart.delivery.execution.api.generated.model.Earning;
 import com.pmart.delivery.execution.api.generated.model.EarningBasis;
 import com.pmart.delivery.execution.api.generated.model.Evidence;
@@ -59,8 +60,34 @@ class ExecutionViews {
                                 .sourceRef(h.sourceRef()))
                     .toList())
             .assignedAt(time(d.assignedAt()))
-            .completedAt(time(d.completedAt()));
-    if (d.evidenceJson() != null) {
+            .completedAt(time(d.completedAt()))
+            .purpose(
+                d.purpose() == null ? null : DeliveryExecution.PurposeEnum.fromValue(d.purpose()))
+            .caseId(d.caseId())
+            .originDeliveryId(d.originDeliveryId());
+    if (v.origin() != null && v.origin().evidenceJson() != null) {
+      // 오배송 회수(DD-2) — 원래 배송의 완료 증빙(놓은 곳·사진 참조)
+      JsonNode e = mapper.readTree(v.origin().evidenceJson());
+      out.recoveryOrigin(
+          new DeliveryExecutionRecoveryOrigin()
+              .placement(e.path("placement").asString(null))
+              .placementDetail(e.path("placementDetail").asString(null))
+              .photoRefs(strings(e.path("photoRefs")))
+              .takenAt(instantOf(e.path("takenAt")))
+              .completedAt(time(v.origin().completedAt())));
+    }
+    if ("RETURN".equals(d.type()) && d.evidenceJson() != null) {
+      // 회수 배송 증빙 = 회수지 사진 + 반납 사진
+      JsonNode e = mapper.readTree(d.evidenceJson());
+      List<String> refs = new ArrayList<>(strings(e.path("pickup").path("photoRefs")));
+      refs.addAll(strings(e.path("returned").path("photoRefs")));
+      JsonNode last = e.path("returned").isObject() ? e.path("returned") : e.path("pickup");
+      out.evidence(
+          new Evidence()
+              .evidenceRef(last.path("evidenceRef").asString(null))
+              .photoRefs(refs)
+              .takenAt(instantOf(last.path("at"))));
+    } else if (d.evidenceJson() != null) {
       JsonNode e = mapper.readTree(d.evidenceJson());
       List<String> photoRefs = new ArrayList<>();
       for (JsonNode n : e.path("photoRefs")) {
@@ -115,6 +142,14 @@ class ExecutionViews {
             .toList());
     if (v.earning() != null) {
       out.earning(earning(v.earning()));
+    }
+    return out;
+  }
+
+  private static List<String> strings(JsonNode arr) {
+    List<String> out = new ArrayList<>();
+    for (JsonNode n : arr) {
+      out.add(n.asString());
     }
     return out;
   }

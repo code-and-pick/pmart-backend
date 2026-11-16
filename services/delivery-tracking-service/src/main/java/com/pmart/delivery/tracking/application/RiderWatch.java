@@ -41,7 +41,8 @@ public class RiderWatch {
           "DeliveryAssignmentChanged",
           "DeliveryCancelledBeforePickup",
           "DeliveryCompleted",
-          "DeliveryFailed");
+          "DeliveryFailed",
+          "ReturnDelivered"); // 회수 배송 반납(DD-2, 2026-11-16) — 회수 라이더 감시 끝
   public static final String TOPIC = "delivery.tracking.v1";
 
   private static final Logger log = LoggerFactory.getLogger(RiderWatch.class);
@@ -98,7 +99,7 @@ public class RiderWatch {
               deliveryId, rider, version, eventTime(p, "changedAt", e.occurredAt(), now), now);
         }
       }
-      default -> store.closeDelivery(deliveryId, now); // 픽업 전 취소·완료·실패
+      default -> store.closeDelivery(deliveryId, now); // 픽업 전 취소·완료·실패·회수 반납
     }
   }
 

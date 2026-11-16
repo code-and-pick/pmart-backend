@@ -60,10 +60,26 @@ public class DispatchStore {
       @Nullable String bundleId,
       @Nullable Integer stopSeq,
       @Nullable Instant delayAlertedAt,
-      @Nullable Instant promisedAt) {
+      @Nullable Instant promisedAt,
+      @Nullable String purpose,
+      @Nullable String caseId,
+      @Nullable String originDeliveryId,
+      @Nullable Double pickupLat,
+      @Nullable Double pickupLng,
+      @Nullable String pickupSource,
+      @Nullable Instant pickupRecordedAt,
+      @Nullable Instant completedAt) {
+
+    /** 확인된 오배송 회수 배송(DD-2) — 회수지에서 받아 MFC 로. 픽업지가 MFC 가 아니라 따로 배차한다. */
+    public boolean recovery() {
+      return "RETURN".equals(type) && "MISDELIVERY_RECOVERY".equals(purpose);
+    }
 
     public boolean geoReady() {
-      return mfcLat != null && dropLat != null && dropDistanceM != null;
+      return mfcLat != null
+          && dropLat != null
+          && dropDistanceM != null
+          && (!recovery() || pickupLat != null);
     }
 
     /**
@@ -238,6 +254,73 @@ public class DispatchStore {
         deliveryId);
   }
 
+  /**
+   * 오배송 회수 배송(DD-2) — 바로 배차 대기(DISPATCHING). 같은 사건(shipment 'RCV-<caseId>')이면 넣지 않고 false. 출하 대기
+   * 없음(실물이 이미 밖에 있다).
+   */
+  public boolean insertRecovery(
+      String deliveryId,
+      String orderId,
+      String mfcId,
+      String caseId,
+      String originDeliveryId,
+      Instant now) {
+    return jdbc.update(
+            "INSERT INTO delivery (delivery_id, version, type, purpose, order_id, shipment_id, mfc_id,"
+                + " state, case_id, origin_delivery_id, request_trigger, created_at, updated_at) VALUES"
+                + " (?, 1, 'RETURN', 'MISDELIVERY_RECOVERY', ?, ?, ?, 'DISPATCHING', ?, ?, 'MISDELIVERY',"
+                + " ?, ?) ON CONFLICT DO NOTHING",
+            deliveryId,
+            orderId,
+            "RCV-" + caseId,
+            mfcId,
+            caseId,
+            originDeliveryId,
+            ts(now),
+            ts(now))
+        == 1;
+  }
+
+  /** 회수 배송 좌표: 픽업 = 회수지, 도착 = MFC, 거리·시간 = 회수지 → MFC(예상 배달료 기준). */
+  public void saveRecoveryGeo(
+      String deliveryId,
+      double mfcLat,
+      double mfcLng,
+      double pickupLat,
+      double pickupLng,
+      String pickupSource,
+      @Nullable Instant pickupRecordedAt,
+      @Nullable String areaLabel,
+      int distanceM,
+      int durationS,
+      Instant now) {
+    jdbc.update(
+        "UPDATE delivery SET mfc_lat = ?, mfc_lng = ?, drop_lat = ?, drop_lng = ?, pickup_lat = ?,"
+            + " pickup_lng = ?, pickup_source = ?, pickup_recorded_at = ?, drop_area_label = ?,"
+            + " drop_distance_m = ?, drop_duration_s = ?, delivery_mode = 'SINGLE', geo_error = NULL,"
+            + " updated_at = ? WHERE delivery_id = ?",
+        mfcLat,
+        mfcLng,
+        mfcLat,
+        mfcLng,
+        pickupLat,
+        pickupLng,
+        pickupSource,
+        ts(pickupRecordedAt),
+        areaLabel,
+        distanceM,
+        durationS,
+        ts(now),
+        deliveryId);
+  }
+
+  public void setCompletedAt(String deliveryId, Instant completedAt) {
+    jdbc.update(
+        "UPDATE delivery SET completed_at = COALESCE(completed_at, ?) WHERE delivery_id = ?",
+        ts(completedAt),
+        deliveryId);
+  }
+
   public void saveGeo(
       String deliveryId,
       double mfcLat,
@@ -371,7 +454,8 @@ public class DispatchStore {
             + " a.excluded_rider_id AS attempt_excluded FROM delivery d JOIN"
             + " dispatch_attempt a ON a.delivery_id ="
             + " d.delivery_id AND a.state IN ('SEARCHING', 'OFFERING') WHERE d.state = 'DISPATCHING'"
-            + " AND d.drop_distance_m IS NOT NULL ORDER BY d.created_at LIMIT 500",
+            + " AND d.drop_distance_m IS NOT NULL AND d.type <> 'RETURN' ORDER BY d.created_at LIMIT"
+            + " 500",
         (rs, i) ->
             new ListedDelivery(
                 delivery(rs),
@@ -990,7 +1074,15 @@ public class DispatchStore {
         rs.getString("bundle_id"),
         rs.getObject("stop_seq", Integer.class),
         instant(rs, "delay_alerted_at"),
-        instant(rs, "promised_at"));
+        instant(rs, "promised_at"),
+        rs.getString("purpose"),
+        rs.getString("case_id"),
+        rs.getString("origin_delivery_id"),
+        rs.getObject("pickup_lat", Double.class),
+        rs.getObject("pickup_lng", Double.class),
+        rs.getString("pickup_source"),
+        instant(rs, "pickup_recorded_at"),
+        instant(rs, "completed_at"));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {

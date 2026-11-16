@@ -23,6 +23,14 @@ public final class ExecutionRules {
   /** 증빙 사진을 올릴 수 있는 상태(원문 §6.2 — 전달 직전). */
   public static final Set<String> PHOTO_FROM = Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
 
+  /** 회수 배송(RETURN, DD-2)에서 사진을 올릴 수 있는 상태 — 회수지에서 받을 때·MFC 반납 때. */
+  public static final Set<String> RETURN_PHOTO_FROM = Set.of("ASSIGNED", "RETURN_PICKED_UP");
+
+  /** 배송 유형에 맞는 사진 올리기 상태. */
+  public static boolean photoAllowed(String type, String state) {
+    return "RETURN".equals(type) ? RETURN_PHOTO_FROM.contains(state) : PHOTO_FROM.contains(state);
+  }
+
   /** 전달 실패를 등록할 수 있는 상태 — 상품을 가지고 있을 때(픽업 전은 dispatch 배차 취소). */
   public static final Set<String> FAILURE_FROM = Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
 
@@ -35,10 +43,16 @@ public final class ExecutionRules {
   /** 도움요청을 낼 수 있는 상태 — 배정 뒤 끝나기 전(실패 등록 뒤에도 지원센터와 연락). */
   public static final Set<String> HELP_FROM =
       Set.of(
-          "ASSIGNED", "ARRIVED_AT_STORE", "PICKED_UP", "ARRIVED_AT_CUSTOMER", "FAILURE_REPORTED");
+          "ASSIGNED",
+          "ARRIVED_AT_STORE",
+          "PICKED_UP",
+          "ARRIVED_AT_CUSTOMER",
+          "FAILURE_REPORTED",
+          "RETURN_PICKED_UP"); // 회수 배송 — 회수 실패(부재·거부)는 도움요청 → 지원센터(DD-2, 사용자 2026-11-16)
 
   /** 라이더 "진행 중"이 끝난 상태(dispatch 가 CLOSED 로 바꾸는 사건을 낸 상태). */
-  public static final Set<String> ENDED = Set.of("COMPLETED", "FAILED", "CANCELLED");
+  public static final Set<String> ENDED =
+      Set.of("COMPLETED", "FAILED", "CANCELLED", "RETURNED_TO_STORE");
 
   /** 실패 등록 검사: 고객 사유면 연락 기록 2회 이상. */
   public static boolean enoughContacts(String reason, int attempts) {
