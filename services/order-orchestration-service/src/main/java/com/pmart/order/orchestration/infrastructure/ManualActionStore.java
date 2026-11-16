@@ -10,7 +10,10 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** 운영자 수동 개입 기록(V7, BO-12 2026-11-16)과 멈춘 사가 목록. 멈춘 사가는 네 사가 표를 합쳐 읽기만 한다(사가 상태는 각 사가 서비스가 정본). */
+/**
+ * 운영자 수동 개입 기록(V7, BO-12 2026-11-16)과 멈춘 사가 목록. 멈춘 사가는 다섯 사가 표(결제 진입·이행·취소·결품·오배송 재발송 — 재발송은
+ * 2026-11-16 사용자 "운영자 처리 대기 목록에 재발송 건 추가해")를 합쳐 읽기만 한다(사가 상태는 각 사가 서비스가 정본).
+ */
 @Repository
 public class ManualActionStore {
 
@@ -49,7 +52,21 @@ public class ManualActionStore {
           + part("cancellation_saga", "S3_CANCELLATION")
           + " UNION ALL "
           + part("shortage_saga", "SHORTAGE")
+          + " UNION ALL "
+          + reshipmentPart()
           + ") x";
+
+  /**
+   * 오배송 재발송 사가 — 주문을 찾기 전에 멈추면 주문 ID 가 없어 빈 값. 사람이 찾을 수 있게 오배송 사건·배송 ID 를 사유 앞에 붙인다(사건·배송 ID 는 개인정보
+   * 아님).
+   */
+  private static String reshipmentPart() {
+    return "SELECT s.saga_id, 'RESHIPMENT' AS saga_type, COALESCE(s.order_id, '') AS order_id,"
+        + " s.state, s.current_step, s.last_error_step, s.last_error_code, '오배송 사건 ' ||"
+        + " s.case_id || ' · 배송 ' || s.delivery_id || COALESCE(' — ' || s.last_error_message, '')"
+        + " AS last_error_message, s.updated_at FROM reshipment_saga s WHERE"
+        + STUCK;
+  }
 
   private static String part(String table, String type) {
     return "SELECT s.saga_id, '"

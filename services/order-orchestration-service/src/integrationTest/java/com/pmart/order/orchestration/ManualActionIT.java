@@ -76,6 +76,48 @@ class ManualActionIT extends PostgresKafkaContainerSupport {
     return id;
   }
 
+  /** 주문을 찾기 전에 멈춘 오배송 재발송 사가(2026-11-16). */
+  String escalatedReshipment() {
+    String id = "SAGA-R-MA-" + UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO reshipment_saga (saga_id, case_id, delivery_id, state, current_step,"
+            + " last_error_step, last_error_code, last_error_message, started_at, updated_at)"
+            + " VALUES (?, ?, 'DLV-MA-1', 'ESCALATED', 'RESOLVE_ORDER', 'RESOLVE_ORDER',"
+            + " 'DELIVERY_NOT_FOUND', '배송을 찾지 못했습니다', now() - interval '2 hour', now() -"
+            + " interval '2 hour')",
+        id,
+        "CASE-MA-" + id.substring(10, 18));
+    return id;
+  }
+
+  @Test
+  void escalatedReshipmentIsListedWithCaseAndCanBeResolved() {
+    String sagaId = escalatedReshipment();
+    JsonNode item =
+        find(call("GET", "/internal/stuck-sagas?size=200", null, "x").body().path("items"), sagaId);
+    assertThat(item).isNotNull();
+    assertThat(item.path("sagaType").asString()).isEqualTo("RESHIPMENT");
+    assertThat(item.path("orderId").asString()).isEmpty(); // 주문을 찾기 전
+    assertThat(item.path("lastErrorCode").asString()).isEqualTo("DELIVERY_NOT_FOUND");
+    assertThat(item.path("lastErrorMessage").asString())
+        .startsWith("오배송 사건 CASE-MA-")
+        .contains("배송 DLV-MA-1")
+        .endsWith("배송을 찾지 못했습니다");
+    assertThat(item.path("allowedActions").toString()).isEqualTo("[\"MARK_RESOLVED\"]");
+    Res r =
+        call(
+            "POST",
+            "/internal/sagas/" + sagaId + "/manual-actions",
+            Map.of("action", "MARK_RESOLVED", "reason", "상담원이 새 주문으로 다시 보냄", "operatorId", "op-cs"),
+            "k-rs");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(202);
+    assertThat(
+            find(
+                call("GET", "/internal/stuck-sagas?size=200", null, "x").body().path("items"),
+                sagaId))
+        .isNull();
+  }
+
   JsonNode find(JsonNode items, String sagaId) {
     for (JsonNode i : items) {
       if (sagaId.equals(i.path("sagaId").asString())) {

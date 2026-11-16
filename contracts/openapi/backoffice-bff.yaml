@@ -551,7 +551,7 @@ components:
         refId: { type: string, description: 'STUCK_SAGA = sagaId(명령 targetRef), FULFILLMENT_ISSUE = issueId, MFC_STOP_FAILED = stopRequestId, MFC_HANDOVER_REJECTED = handoverId(둘 다 명령 targetRef)' }
         orderId: { type: string }
         mfcId: { type: [string, 'null'] }
-        sagaType: { type: [string, 'null'], description: 'S1_CHECKOUT·S2_FULFILLMENT·S3_CANCELLATION·SHORTAGE' }
+        sagaType: { type: [string, 'null'], description: 'S1_CHECKOUT·S2_FULFILLMENT·S3_CANCELLATION·SHORTAGE·RESHIPMENT(오배송 재발송 — orchestration 이 2026-11-16 더함, BFF 는 그대로 전달)' }
         state: { type: string, description: '사가 상태(ESCALATED 등), 확인 필요 상태(OPEN), MFC 중지 PENDING·인계 REJECTED' }
         step: { type: [string, 'null'] }
         reasonCode: { type: [string, 'null'] }

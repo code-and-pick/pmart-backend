@@ -326,8 +326,8 @@ components:
       x-added-in: '2026-11-16'
       properties:
         sagaId: { type: string }
-        sagaType: { type: string, description: 'S1_CHECKOUT·S2_FULFILLMENT·S3_CANCELLATION·SHORTAGE(결품 사가)' }
-        orderId: { type: string }
+        sagaType: { type: string, description: 'S1_CHECKOUT·S2_FULFILLMENT·S3_CANCELLATION·SHORTAGE(결품 사가)·RESHIPMENT(오배송 재발송 사가 — 2026-11-16)' }
+        orderId: { type: string, description: 'RESHIPMENT 가 주문을 찾기 전에 멈췄으면 빈 문자열 — lastErrorMessage 앞에 오배송 사건·배송 ID' }
         state: { type: string, enum: [ESCALATED, RECONCILIATION_REQUIRED, UNKNOWN_TRACKING] }
         currentStep: { type: string }
         lastErrorStep: { type: [string, 'null'] }
