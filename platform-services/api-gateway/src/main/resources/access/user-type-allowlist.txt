@@ -48,6 +48,7 @@ GET /api/v1/carts/{cartId}/merges/{mergeId} CUSTOMER
 GET /api/v1/cases OPERATOR
 GET /api/v1/cases/{caseId} OPERATOR
 GET /api/v1/cases/{caseId}/action-requests/{actionRequestId} OPERATOR
+GET /api/v1/cases/{caseId}/notes OPERATOR
 GET /api/v1/categories/tree PUBLIC
 GET /api/v1/categories/{categoryId}/filters PUBLIC
 GET /api/v1/category-tree-versions/{version} OPERATOR
@@ -218,6 +219,7 @@ GET /api/v1/search/products PUBLIC
 GET /api/v1/search/suggestions PUBLIC
 GET /api/v1/serviceability-checks/{checkId} PUBLIC
 GET /api/v1/serviceability-versions/{version} OPERATOR
+GET /api/v1/shift-handovers OPERATOR
 GET /api/v1/shift-handovers/{shiftHandoverId} OPERATOR
 GET /api/v1/shipments/{shipmentId} OPERATOR
 GET /api/v1/sku-issuances/{requestId} OPERATOR
@@ -279,6 +281,8 @@ POST /api/v1/cases OPERATOR
 POST /api/v1/cases/{caseId}/action-requests OPERATOR
 POST /api/v1/cases/{caseId}/assignments OPERATOR
 POST /api/v1/cases/{caseId}/closures OPERATOR
+POST /api/v1/cases/{caseId}/notes OPERATOR
+POST /api/v1/cases/{caseId}/notes/{noteId}/maskings OPERATOR
 POST /api/v1/cases/{caseId}/obligations OPERATOR
 POST /api/v1/cases/{caseId}/reopenings OPERATOR
 POST /api/v1/cases/{caseId}/transfers OPERATOR
@@ -433,6 +437,8 @@ POST /api/v1/riders/{riderId}/restrictions OPERATOR
 POST /api/v1/serviceability-checks PUBLIC
 POST /api/v1/serviceability-versions OPERATOR
 POST /api/v1/shift-handovers OPERATOR
+POST /api/v1/shift-handovers/{shiftHandoverId}/acceptances OPERATOR
+POST /api/v1/shift-handovers/{shiftHandoverId}/cancellations OPERATOR
 POST /api/v1/shipments/{shipmentId}/dispatch-requests OPERATOR
 POST /api/v1/shipments/{shipmentId}/packages OPERATOR
 POST /api/v1/shipments/{shipmentId}/repackings OPERATOR
