@@ -91,6 +91,7 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
     String meTok = TestJwt.customer(me);
     String agent = TestJwt.operator("cs-1", List.of("CS_AGENT"), List.of());
     String md = TestJwt.operator("md-1", List.of("MD"), List.of());
+    String admin = TestJwt.operator("admin-1", List.of("OPERATOR_ADMIN"), List.of());
 
     // 일반 문의(주문 없이)
     Res created =
@@ -111,6 +112,16 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
     assertThat(send("GET", TestJwt.customer(other), "/inquiries/" + id, null, null).status())
         .isEqualTo(404);
     assertThat(send("GET", md, "/inquiries/" + id, null, null).status()).isEqualTo(403);
+    assertThat(send("GET", md, "/inquiries", null, null).status()).isEqualTo(403);
+    // 본사 관리자는 보기만(2026-11-16 사용자 (가)) — 목록·상세 200, 답변 403
+    assertThat(send("GET", admin, "/inquiries/" + id, null, null).status()).isEqualTo(200);
+    Res adminList = send("GET", admin, "/inquiries", null, null);
+    assertThat(adminList.status()).isEqualTo(200);
+    assertThat(adminList.body().path("items").findValuesAsString("inquiryId")).contains(id);
+    assertThat(
+            send("POST", admin, "/inquiries/" + id + "/replies", Map.of("body", "x"), null)
+                .status())
+        .isEqualTo(403);
     Res mine = send("GET", meTok, "/inquiries", null, null);
     assertThat(mine.body().path("items").findValuesAsString("inquiryId")).containsExactly(id);
     Res others = send("GET", TestJwt.customer(other), "/inquiries", null, null);

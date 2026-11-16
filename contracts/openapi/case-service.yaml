@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.4.1
+  version: 0.4.2
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -453,8 +453,8 @@ paths:
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
     get:
       tags: [inquiries]
-      summary: 문의 목록 (고객 = 본인 것, CS_AGENT = 전체)
-      description: 최근 접수 순. 고객 토큰은 본인 문의만, 운영자는 역할 CS_AGENT 만(그 밖 403). status 로 거른다.
+      summary: 문의 목록 (고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN = 전체)
+      description: 최근 접수 순. 고객 토큰은 본인 문의만, 운영자는 역할 CS_AGENT·OPERATOR_ADMIN 만(그 밖 403 — OPERATOR_ADMIN 은 보기만, 0.4.2). status 로 거른다.
       operationId: listInquiries
       x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:
@@ -476,8 +476,8 @@ paths:
   /inquiries/{inquiryId}:
     get:
       tags: [inquiries]
-      summary: 문의 상세 + 답변 (고객 = 본인 것, CS_AGENT)
-      description: 남의 문의는 404(존재를 드러내지 않음).
+      summary: 문의 상세 + 답변 (고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN)
+      description: 남의 문의는 404(존재를 드러내지 않음). OPERATOR_ADMIN 은 보기만(답변은 CS_AGENT — 0.4.2).
       operationId: getInquiry
       x-pmart-user-types: [CUSTOMER, OPERATOR]
       parameters:

@@ -119,13 +119,13 @@ public class InquiryService {
     return view(inquiryId);
   }
 
-  /** 고객 = 본인 것, CS_AGENT = 전체. */
+  /** 고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN = 전체(관리자는 보기만 — 2026-11-16 사용자 (가)). */
   public Page list(@Nullable String status, @Nullable String cursor, int size) {
     PmartPrincipal p = principal();
     String customerId = null;
     if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
       customerId = p.subject();
-    } else if (!isAgent(p)) {
+    } else if (!canRead(p)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "문의 목록을 볼 권한이 없습니다.");
     }
     List<InquiryRow> rows = store.page(customerId, status, cursor, size);
@@ -142,7 +142,7 @@ public class InquiryService {
       if (!row.customerId().equals(p.subject())) {
         throw notFound(inquiryId);
       }
-    } else if (!isAgent(p)) {
+    } else if (!canRead(p)) {
       throw new PmartException(ErrorCode.FORBIDDEN, "문의를 볼 권한이 없습니다.");
     }
     return new View(row, store.replies(inquiryId));
@@ -228,6 +228,13 @@ public class InquiryService {
 
   private static boolean isAgent(PmartPrincipal p) {
     return p.type() == PmartPrincipal.PrincipalType.OPERATOR && p.hasRole(InquiryRules.CS_AGENT);
+  }
+
+  /** 운영자 보기: 상담원 + 본사 관리자(보기만, 답변은 상담원 — 2026-11-16 사용자 (가)). */
+  private static boolean canRead(PmartPrincipal p) {
+    return isAgent(p)
+        || (p.type() == PmartPrincipal.PrincipalType.OPERATOR
+            && p.hasRole(InquiryRules.OPERATOR_ADMIN));
   }
 
   private static PmartException notFound(String inquiryId) {
