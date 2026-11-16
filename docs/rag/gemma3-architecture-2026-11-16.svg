@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 865" width="1160" height="865" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
+  <title>Gemma 3 모델 아키텍처 — 코퍼스 · 토크나이저 · 임베딩 레이어 · 디코더</title>
+  <style>
+    .bg { fill: #ffffff; }
+    .tt { fill: #1f2933; font-size: 22px; font-weight: 700; }
+    .th { fill: #1f2933; font-size: 15px; font-weight: 700; }
+    .tb { fill: #1f2933; font-size: 13.5px; font-weight: 700; }
+    .m  { fill: #52606d; font-size: 11.5px; }
+    .ll { fill: #1f2933; font-size: 13px; font-weight: 700; }
+    .lb { fill: #eef1f5; stroke: #cbd2d9; }
+    .s { fill: #f3ece4; stroke: #9a7b5c; }
+    .n { fill: #f5f7fa; stroke: #9aa5b1; stroke-dasharray: 5 4; }
+    .k { fill: #f6f1df; stroke: #a8902f; }
+    .p { fill: #efe7fa; stroke: #8a63c0; }
+    .g { fill: #e3f3e8; stroke: #4c9a68; }
+    .o { fill: #fcefdc; stroke: #c58a32; }
+    .r { fill: #fde8e8; stroke: #c25454; }
+    .y { fill: #e0f4f4; stroke: #3a9a9a; }
+    .hg { fill: #4c9a68; stroke: #4c9a68; }
+    .ho { fill: #c58a32; stroke: #c58a32; }
+    .hw { fill: #ffffff; font-size: 15px; font-weight: 700; }
+    .hm { fill: #ffffff; font-size: 11.5px; fill-opacity: 0.92; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #14181d; }
+      .tt, .th, .tb, .ll { fill: #e6e9ee; }
+      .m { fill: #a9b4c0; }
+      .lb { fill: #1f262e; stroke: #3e4c59; }
+      .s { fill: #33291f; stroke: #c4a07c; }
+      .n { fill: #181d23; stroke: #616e7c; }
+      .k { fill: #34301a; stroke: #cdb44f; }
+      .p { fill: #2e2442; stroke: #ab8ae0; }
+      .g { fill: #1b3527; stroke: #6cc08c; }
+      .o { fill: #3a2c17; stroke: #e0a85a; }
+      .r { fill: #3d1f1f; stroke: #e07a7a; }
+      .y { fill: #173535; stroke: #5cc0c0; }
+      .hg { fill: #2f6b47; stroke: #6cc08c; }
+      .ho { fill: #8a5d1c; stroke: #e0a85a; }
+    }
+  </style>
+  <rect class="bg" x="0" y="0" width="1160" height="865"/>
+  <text class="tt" x="20" y="40" text-anchor="start">Gemma 3 모델 아키텍처 — 코퍼스 · 토크나이저 · 임베딩 레이어 · 디코더</text>
+  <text class="m" x="20" y="64" text-anchor="start">Google DeepMind 2025-03 · 디코더 전용 Transformer (별도 인코더 없음) · 4B 이상은 SigLIP 비전 인코더가 붙은 멀티모달 · Gemma 이용 약관</text>
+  <rect class="lb" x="20" y="84" width="150" height="97" rx="8"/>
+  <text class="ll" x="95" y="137.5" text-anchor="middle">학습 코퍼스</text>
+  <rect class="s" x="186" y="84" width="471" height="97" rx="9"/>
+  <text class="tb" x="421.5" y="108" text-anchor="middle">사전학습 데이터</text>
+  <text class="m" x="421.5" y="128" text-anchor="middle">웹 문서 · 코드 · 수학 · 이미지-텍스트</text>
+  <text class="m" x="421.5" y="145" text-anchor="middle">다국어 데이터 비중 확대 · 140+ 언어 (한국어 포함)</text>
+  <text class="m" x="421.5" y="162" text-anchor="middle">1B 2T · 4B 4T · 12B 12T · 27B 14T 토큰</text>
+  <rect class="s" x="669" y="84" width="471" height="97" rx="9"/>
+  <text class="tb" x="904.5" y="108" text-anchor="middle">학습 방식</text>
+  <text class="m" x="904.5" y="128" text-anchor="middle">더 큰 교사 모델에서 지식 증류(distillation)</text>
+  <text class="m" x="904.5" y="145" text-anchor="middle">사후학습: 증류 + 강화학습 (BOND · WARM · WARP)</text>
+  <text class="m" x="904.5" y="162" text-anchor="middle">QAT 판: 양자화를 고려해 추가 학습 (int4)</text>
+  <rect class="lb" x="20" y="191" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="236" text-anchor="middle">토크나이저</text>
+  <rect class="p" x="186" y="191" width="310" height="80" rx="9"/>
+  <text class="tb" x="341" y="215" text-anchor="middle">SentencePiece BPE</text>
+  <text class="m" x="341" y="235" text-anchor="middle">Gemini 2.0 과 같은 토크나이저 · 문자(유니코드) 단위 BPE</text>
+  <text class="m" x="341" y="252" text-anchor="middle">byte fallback (미등록 문자 → 바이트) · 공백은 ▁</text>
+  <rect class="p" x="508" y="191" width="310" height="80" rx="9"/>
+  <text class="tb" x="663" y="215" text-anchor="middle">어휘 262,144</text>
+  <text class="m" x="663" y="235" text-anchor="middle">숫자는 자릿수별로 분리 · 공백 보존</text>
+  <text class="m" x="663" y="252" text-anchor="middle">비영어권 언어에 균형 (Qwen3 의 약 1.7배)</text>
+  <rect class="p" x="830" y="191" width="310" height="80" rx="9"/>
+  <text class="tb" x="985" y="215" text-anchor="middle">특수 토큰</text>
+  <text class="m" x="985" y="235" text-anchor="middle">&lt;bos&gt; · &lt;start_of_turn&gt; · &lt;end_of_turn&gt;</text>
+  <text class="m" x="985" y="252" text-anchor="middle">&lt;start_of_image&gt; · 이미지 soft token</text>
+  <rect class="lb" x="20" y="281" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="317" text-anchor="middle">비전 인코더</text>
+  <text class="ll" x="95" y="335" text-anchor="middle">4B 이상</text>
+  <rect class="y" x="186" y="281" width="954" height="80" rx="9"/>
+  <text class="tb" x="663" y="305" text-anchor="middle">SigLIP 비전 인코더 (약 417M)</text>
+  <text class="m" x="663" y="325" text-anchor="middle">896 × 896 이미지 → 256개 soft token 으로 압축 · 모든 크기가 같은 인코더 공유 (학습 때 고정)</text>
+  <text class="m" x="663" y="342" text-anchor="middle">Pan &amp; Scan: 큰 · 비정형 이미지는 잘라서 여러 장으로 · 이미지 토큰끼리는 양방향 어텐션</text>
+  <rect class="lb" x="20" y="371" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="416" text-anchor="middle">임베딩 레이어</text>
+  <rect class="g" x="186" y="371" width="954" height="80" rx="9"/>
+  <text class="tb" x="663" y="395" text-anchor="middle">토큰 임베딩 262,144 × d_model</text>
+  <text class="m" x="663" y="415" text-anchor="middle">토큰 ID → d_model 차원 벡터 (1B 1152 · 4B 2560 · 12B 3840 · 27B 5376) · √d_model 로 스케일</text>
+  <text class="m" x="663" y="432" text-anchor="middle">어휘가 커서 임베딩 파라미터 비중이 큼 (4B: 675M · 27B: 1,416M) · LM Head 와 가중치 공유(tied)</text>
+  <rect class="lb" x="20" y="461" width="150" height="97" rx="8"/>
+  <text class="ll" x="95" y="514.5" text-anchor="middle">디코더 블록</text>
+  <rect class="o" x="186" y="461" width="310" height="97" rx="9"/>
+  <text class="tb" x="341" y="485" text-anchor="middle">어텐션</text>
+  <text class="m" x="341" y="505" text-anchor="middle">GQA (Query 헤드 &gt; KV 헤드)</text>
+  <text class="m" x="341" y="522" text-anchor="middle">QK-Norm (Gemma 2 의 soft-capping 대체)</text>
+  <text class="m" x="341" y="539" text-anchor="middle">헤드 차원 256 (27B 는 128)</text>
+  <rect class="o" x="508" y="461" width="310" height="97" rx="9"/>
+  <text class="tb" x="663" y="485" text-anchor="middle">로컬 : 글로벌 = 5 : 1</text>
+  <text class="m" x="663" y="505" text-anchor="middle">로컬: 슬라이딩 윈도우 1,024 토큰 · RoPE 10K</text>
+  <text class="m" x="663" y="522" text-anchor="middle">글로벌: 전체 문맥 · RoPE 1M (128K 문맥)</text>
+  <text class="m" x="663" y="539" text-anchor="middle">KV 캐시 메모리 절감이 목적</text>
+  <rect class="o" x="830" y="461" width="310" height="97" rx="9"/>
+  <text class="tb" x="985" y="485" text-anchor="middle">FFN · 정규화</text>
+  <text class="m" x="985" y="505" text-anchor="middle">GeGLU 피드포워드</text>
+  <text class="m" x="985" y="522" text-anchor="middle">RMSNorm 을 블록 앞뒤에 (pre + post norm)</text>
+  <text class="m" x="985" y="539" text-anchor="middle">잔차 연결</text>
+  <rect class="lb" x="20" y="568" width="150" height="97" rx="8"/>
+  <text class="ll" x="95" y="621.5" text-anchor="middle">크기별 구성</text>
+  <rect class="n" x="186" y="568" width="229.5" height="97" rx="9"/>
+  <text class="tb" x="300.75" y="592" text-anchor="middle">Gemma 3 1B</text>
+  <text class="m" x="300.75" y="612" text-anchor="middle">26층 · d 1152 · Q 4 / KV 1</text>
+  <text class="m" x="300.75" y="629" text-anchor="middle">FFN 6,912 · 문맥 32K</text>
+  <text class="m" x="300.75" y="646" text-anchor="middle">텍스트만 · 비임베딩 698M</text>
+  <rect class="n" x="427.5" y="568" width="229.5" height="97" rx="9"/>
+  <text class="tb" x="542.25" y="592" text-anchor="middle">Gemma 3 4B</text>
+  <text class="m" x="542.25" y="612" text-anchor="middle">34층 · d 2560 · Q 8 / KV 4</text>
+  <text class="m" x="542.25" y="629" text-anchor="middle">FFN 10,240 · 문맥 128K</text>
+  <text class="m" x="542.25" y="646" text-anchor="middle">멀티모달 · 비임베딩 3,209M</text>
+  <rect class="n" x="669" y="568" width="229.5" height="97" rx="9"/>
+  <text class="tb" x="783.75" y="592" text-anchor="middle">Gemma 3 12B</text>
+  <text class="m" x="783.75" y="612" text-anchor="middle">48층 · d 3840 · Q 16 / KV 8</text>
+  <text class="m" x="783.75" y="629" text-anchor="middle">FFN 15,360 · 문맥 128K</text>
+  <text class="m" x="783.75" y="646" text-anchor="middle">멀티모달 · 비임베딩 10,759M</text>
+  <rect class="n" x="910.5" y="568" width="229.5" height="97" rx="9"/>
+  <text class="tb" x="1025.25" y="592" text-anchor="middle">Gemma 3 27B</text>
+  <text class="m" x="1025.25" y="612" text-anchor="middle">62층 · d 5376 · Q 32 / KV 16</text>
+  <text class="m" x="1025.25" y="629" text-anchor="middle">FFN 21,504 · 문맥 128K</text>
+  <text class="m" x="1025.25" y="646" text-anchor="middle">멀티모달 · 비임베딩 25,600M</text>
+  <rect class="lb" x="20" y="675" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="720" text-anchor="middle">출력 헤드</text>
+  <rect class="o" x="186" y="675" width="954" height="80" rx="9"/>
+  <text class="tb" x="663" y="699" text-anchor="middle">LM Head → 다음 토큰</text>
+  <text class="m" x="663" y="719" text-anchor="middle">d_model → 262,144 로짓 → softmax → 자기회귀 생성 (입력 임베딩과 가중치 공유)</text>
+  <text class="m" x="663" y="736" text-anchor="middle">대화 형식: &lt;start_of_turn&gt;user … &lt;end_of_turn&gt; &lt;start_of_turn&gt;model …</text>
+  <rect class="lb" x="20" y="765" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="801" text-anchor="middle">파생</text>
+  <text class="ll" x="95" y="819" text-anchor="middle">실행</text>
+  <rect class="r" x="186" y="765" width="310" height="80" rx="9"/>
+  <text class="tb" x="341" y="789" text-anchor="middle">EmbeddingGemma 308M</text>
+  <text class="m" x="341" y="809" text-anchor="middle">Gemma 3 기반 임베딩 모델 · 문맥 2K</text>
+  <text class="m" x="341" y="826" text-anchor="middle">MTEB 다국어 v2 61.15 (Qwen3-Emb-0.6B 64.33)</text>
+  <rect class="r" x="508" y="765" width="310" height="80" rx="9"/>
+  <text class="tb" x="663" y="789" text-anchor="middle">Ollama QAT int4</text>
+  <text class="m" x="663" y="809" text-anchor="middle">gemma3:4b-it-qat 약 2.6GB · 12B 6.6GB</text>
+  <text class="m" x="663" y="826" text-anchor="middle">27B 14.1GB (VRAM)</text>
+  <rect class="r" x="830" y="765" width="310" height="80" rx="9"/>
+  <text class="tb" x="985" y="789" text-anchor="middle">후속: Gemma 4 (2026-04)</text>
+  <text class="m" x="985" y="809" text-anchor="middle">E2B · E4B · 26B MoE · 31B</text>
+  <text class="m" x="985" y="826" text-anchor="middle">Apache 2.0 라이선스로 변경</text>
+</svg>

@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 703" width="1120" height="703" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
+  <title>RAG Architecture Applied to PMart — Advanced RAG</title>
+  <style>
+    .bg { fill: #ffffff; }
+    .tt { fill: #1f2933; font-size: 24px; font-weight: 700; }
+    .tb { fill: #1f2933; font-size: 13.5px; font-weight: 700; }
+    .tx { fill: #7b8794; font-size: 13.5px; font-weight: 700; }
+    .m  { fill: #52606d; font-size: 11.5px; }
+    .mx { fill: #9aa5b1; font-size: 11.5px; }
+    .ll { fill: #1f2933; font-size: 13px; font-weight: 700; }
+    .lb { fill: #eef1f5; stroke: #cbd2d9; }
+    .on  { fill: #e3f3e8; stroke: #4c9a68; }
+    .off { fill: #f5f7fa; stroke: #9aa5b1; stroke-dasharray: 5 4; }
+    .hi  { fill: #e3eefb; stroke: #2f6db5; stroke-width: 2.5; }
+    .dim { fill: #f5f7fa; stroke: #cbd2d9; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #14181d; }
+      .tt, .tb, .ll { fill: #e6e9ee; }
+      .tx, .mx { fill: #7b8794; }
+      .m { fill: #a9b4c0; }
+      .lb { fill: #1f262e; stroke: #3e4c59; }
+      .on  { fill: #1b3527; stroke: #6cc08c; }
+      .off { fill: #181d23; stroke: #616e7c; }
+      .hi  { fill: #1d2f45; stroke: #6ea1db; }
+      .dim { fill: #181d23; stroke: #3e4c59; }
+    }
+  </style>
+  <rect class="bg" x="0" y="0" width="1120" height="703"/>
+  <text class="tt" x="20" y="40" text-anchor="start">RAG Architecture Applied to PMart — Advanced RAG</text>
+  <text class="m" x="20" y="64" text-anchor="start">Hybrid retrieval + metadata re-ranking + verified (corrective) generation · Spring AI · Ollama · pgvector</text>
+  <rect class="on" x="870" y="50" width="22" height="14" rx="3"/>
+  <text class="m" x="900" y="62" text-anchor="start">Applied</text>
+  <rect class="off" x="980" y="50" width="22" height="14" rx="3"/>
+  <text class="m" x="1010" y="62" text-anchor="start">Not applied</text>
+  <rect class="lb" x="20" y="84" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="129" text-anchor="middle">RAG paradigm</text>
+  <rect class="dim" x="186" y="84" width="296.667" height="80" rx="9"/>
+  <text class="tx" x="334.333" y="108" text-anchor="middle">Naive RAG</text>
+  <text class="mx" x="334.333" y="128" text-anchor="middle">Index → vector search → generate</text>
+  <text class="mx" x="334.333" y="145" text-anchor="middle">No pre/post-processing or checks</text>
+  <rect class="hi" x="494.667" y="84" width="296.667" height="80" rx="9"/>
+  <text class="tb" x="643" y="108" text-anchor="middle">Advanced RAG  ✔ PMart</text>
+  <text class="m" x="643" y="128" text-anchor="middle">Optimized pre-, in- and post-retrieval</text>
+  <text class="m" x="643" y="145" text-anchor="middle">+ grounding check on answers</text>
+  <rect class="dim" x="803.333" y="84" width="296.667" height="80" rx="9"/>
+  <text class="tx" x="951.667" y="108" text-anchor="middle">Modular · Agentic RAG</text>
+  <text class="mx" x="951.667" y="128" text-anchor="middle">Agents · tool calls · multi-hop search</text>
+  <text class="mx" x="951.667" y="145" text-anchor="middle">LLM decides retrieval strategy</text>
+  <rect class="lb" x="20" y="182" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="218.5" text-anchor="middle">Indexing</text>
+  <rect class="on" x="186" y="182" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="206" text-anchor="middle">Structure-aware chunking</text>
+  <text class="m" x="334.333" y="226" text-anchor="middle">Keeps heading · paragraph · table</text>
+  <rect class="on" x="494.667" y="182" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="206" text-anchor="middle">Metadata enrichment</text>
+  <text class="m" x="643" y="226" text-anchor="middle">Source · authority · precedence · lifecycle</text>
+  <rect class="on" x="803.333" y="182" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="206" text-anchor="middle">Index versioning</text>
+  <text class="m" x="951.667" y="226" text-anchor="middle">Snapshots · embedding model pinned</text>
+  <rect class="lb" x="20" y="255" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="291.5" text-anchor="middle">Pre-Retrieval</text>
+  <rect class="on" x="186" y="255" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="279" text-anchor="middle">Intent routing</text>
+  <text class="m" x="334.333" y="299" text-anchor="middle">Rule-based — policy / realtime / out of scope</text>
+  <rect class="on" x="494.667" y="255" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="279" text-anchor="middle">Query instruction</text>
+  <text class="m" x="643" y="299" text-anchor="middle">Instruct prefix for embedding</text>
+  <rect class="off" x="803.333" y="255" width="296.667" height="63" rx="9"/>
+  <text class="tx" x="951.667" y="279" text-anchor="middle">✕ Query rewrite · HyDE</text>
+  <text class="mx" x="951.667" y="299" text-anchor="middle">No LLM query transformation</text>
+  <rect class="lb" x="20" y="328" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="364.5" text-anchor="middle">Retrieval</text>
+  <rect class="on" x="186" y="328" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="352" text-anchor="middle">Dense search</text>
+  <text class="m" x="334.333" y="372" text-anchor="middle">Embedding cosine similarity</text>
+  <rect class="on" x="494.667" y="328" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="352" text-anchor="middle">Sparse / keyword search</text>
+  <text class="m" x="643" y="372" text-anchor="middle">pg_trgm word similarity</text>
+  <rect class="on" x="803.333" y="328" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="352" text-anchor="middle">Hybrid fusion · pre-filter</text>
+  <text class="m" x="951.667" y="372" text-anchor="middle">Weighted sum · access-scope filter</text>
+  <rect class="lb" x="20" y="401" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="437.5" text-anchor="middle">Post-Retrieval</text>
+  <rect class="on" x="186" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tb" x="295.75" y="425" text-anchor="middle">Threshold filter</text>
+  <text class="m" x="295.75" y="445" text-anchor="middle">Drop below similarity floor</text>
+  <rect class="on" x="417.5" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tb" x="527.25" y="425" text-anchor="middle">Metadata re-ranking</text>
+  <text class="m" x="527.25" y="445" text-anchor="middle">Authority &amp; precedence → top-k</text>
+  <rect class="off" x="649" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tx" x="758.75" y="425" text-anchor="middle">✕ Cross-encoder reranker</text>
+  <text class="mx" x="758.75" y="445" text-anchor="middle">No separate rerank model</text>
+  <rect class="on" x="880.5" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tb" x="990.25" y="425" text-anchor="middle">Context expansion</text>
+  <text class="m" x="990.25" y="445" text-anchor="middle">Companion docs for supersession</text>
+  <rect class="lb" x="20" y="474" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="510.5" text-anchor="middle">Generation</text>
+  <rect class="on" x="186" y="474" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="498" text-anchor="middle">Grounded prompt</text>
+  <text class="m" x="334.333" y="518" text-anchor="middle">Tagged evidence · stay in context</text>
+  <rect class="on" x="494.667" y="474" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="498" text-anchor="middle">Local LLM</text>
+  <text class="m" x="643" y="518" text-anchor="middle">Ollama · structured JSON output</text>
+  <rect class="off" x="803.333" y="474" width="296.667" height="63" rx="9"/>
+  <text class="tx" x="951.667" y="498" text-anchor="middle">✕ Multi-step / agentic</text>
+  <text class="mx" x="951.667" y="518" text-anchor="middle">No tool calls or iterative search</text>
+  <rect class="lb" x="20" y="547" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="583.5" text-anchor="middle">Verify · Correct</text>
+  <rect class="on" x="186" y="547" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="571" text-anchor="middle">Citation check</text>
+  <text class="m" x="334.333" y="591" text-anchor="middle">Evidence IDs · overlap · numbers · negation</text>
+  <rect class="on" x="494.667" y="547" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="571" text-anchor="middle">Regenerate</text>
+  <text class="m" x="643" y="591" text-anchor="middle">Once on failure</text>
+  <rect class="on" x="803.333" y="547" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="571" text-anchor="middle">Extractive fallback</text>
+  <text class="m" x="951.667" y="591" text-anchor="middle">Source excerpt → no-grounding message</text>
+  <rect class="lb" x="20" y="620" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="656.5" text-anchor="middle">Base stack</text>
+  <rect class="on" x="186" y="620" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="644" text-anchor="middle">Spring AI</text>
+  <text class="m" x="334.333" y="664" text-anchor="middle">EmbeddingModel · ChatModel</text>
+  <rect class="on" x="494.667" y="620" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="644" text-anchor="middle">Ollama</text>
+  <text class="m" x="643" y="664" text-anchor="middle">Local embedding &amp; LLM (no data leaves)</text>
+  <rect class="on" x="803.333" y="620" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="644" text-anchor="middle">PostgreSQL + pgvector</text>
+  <text class="m" x="951.667" y="664" text-anchor="middle">Vector + keyword indexes</text>
+</svg>

@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 703" width="1120" height="703" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
+  <title>PMart 적용 RAG 아키텍처 — Advanced RAG</title>
+  <style>
+    .bg { fill: #ffffff; }
+    .tt { fill: #1f2933; font-size: 24px; font-weight: 700; }
+    .tb { fill: #1f2933; font-size: 13.5px; font-weight: 700; }
+    .tx { fill: #7b8794; font-size: 13.5px; font-weight: 700; }
+    .m  { fill: #52606d; font-size: 11.5px; }
+    .mx { fill: #9aa5b1; font-size: 11.5px; }
+    .ll { fill: #1f2933; font-size: 13px; font-weight: 700; }
+    .lb { fill: #eef1f5; stroke: #cbd2d9; }
+    .on  { fill: #e3f3e8; stroke: #4c9a68; }
+    .off { fill: #f5f7fa; stroke: #9aa5b1; stroke-dasharray: 5 4; }
+    .hi  { fill: #e3eefb; stroke: #2f6db5; stroke-width: 2.5; }
+    .dim { fill: #f5f7fa; stroke: #cbd2d9; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #14181d; }
+      .tt, .tb, .ll { fill: #e6e9ee; }
+      .tx, .mx { fill: #7b8794; }
+      .m { fill: #a9b4c0; }
+      .lb { fill: #1f262e; stroke: #3e4c59; }
+      .on  { fill: #1b3527; stroke: #6cc08c; }
+      .off { fill: #181d23; stroke: #616e7c; }
+      .hi  { fill: #1d2f45; stroke: #6ea1db; }
+      .dim { fill: #181d23; stroke: #3e4c59; }
+    }
+  </style>
+  <rect class="bg" x="0" y="0" width="1120" height="703"/>
+  <text class="tt" x="20" y="40" text-anchor="start">PMart 적용 RAG 아키텍처 — Advanced RAG</text>
+  <text class="m" x="20" y="64" text-anchor="start">Hybrid Retrieval + 메타데이터 재순위 + 근거 검증(Corrective) 생성 · Spring AI · Ollama · pgvector</text>
+  <rect class="on" x="870" y="50" width="22" height="14" rx="3"/>
+  <text class="m" x="900" y="62" text-anchor="start">적용</text>
+  <rect class="off" x="980" y="50" width="22" height="14" rx="3"/>
+  <text class="m" x="1010" y="62" text-anchor="start">적용 안 함</text>
+  <rect class="lb" x="20" y="84" width="150" height="80" rx="8"/>
+  <text class="ll" x="95" y="129" text-anchor="middle">RAG 유형</text>
+  <rect class="dim" x="186" y="84" width="296.667" height="80" rx="9"/>
+  <text class="tx" x="334.333" y="108" text-anchor="middle">Naive RAG</text>
+  <text class="mx" x="334.333" y="128" text-anchor="middle">색인 → 벡터 검색 → 생성</text>
+  <text class="mx" x="334.333" y="145" text-anchor="middle">전처리 · 후처리 · 검증 없음</text>
+  <rect class="hi" x="494.667" y="84" width="296.667" height="80" rx="9"/>
+  <text class="tb" x="643" y="108" text-anchor="middle">Advanced RAG  ✔ PMart</text>
+  <text class="m" x="643" y="128" text-anchor="middle">검색 전 · 검색 · 검색 후 단계 최적화</text>
+  <text class="m" x="643" y="145" text-anchor="middle">+ 생성 답변 근거 검증</text>
+  <rect class="dim" x="803.333" y="84" width="296.667" height="80" rx="9"/>
+  <text class="tx" x="951.667" y="108" text-anchor="middle">Modular · Agentic RAG</text>
+  <text class="mx" x="951.667" y="128" text-anchor="middle">에이전트 · 도구 호출 · 다단계 검색</text>
+  <text class="mx" x="951.667" y="145" text-anchor="middle">LLM 이 검색 전략 결정</text>
+  <rect class="lb" x="20" y="182" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="218.5" text-anchor="middle">색인 최적화</text>
+  <rect class="on" x="186" y="182" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="206" text-anchor="middle">구조 인식 청킹</text>
+  <text class="m" x="334.333" y="226" text-anchor="middle">제목 · 문단 · 표 경계 유지</text>
+  <rect class="on" x="494.667" y="182" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="206" text-anchor="middle">메타데이터 부여</text>
+  <text class="m" x="643" y="226" text-anchor="middle">출처 · 지위 · 우선순위 · 생애</text>
+  <rect class="on" x="803.333" y="182" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="206" text-anchor="middle">색인 버전 관리</text>
+  <text class="m" x="951.667" y="226" text-anchor="middle">스냅숏 · 임베딩 모델 고정</text>
+  <rect class="lb" x="20" y="255" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="282.5" text-anchor="middle">검색 전</text>
+  <text class="ll" x="95" y="300.5" text-anchor="middle">(Pre-Retrieval)</text>
+  <rect class="on" x="186" y="255" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="279" text-anchor="middle">의도 분류 · 라우팅</text>
+  <text class="m" x="334.333" y="299" text-anchor="middle">규칙 기반 — 정책 / 실시간 / 범위 밖</text>
+  <rect class="on" x="494.667" y="255" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="279" text-anchor="middle">질의 지시문</text>
+  <text class="m" x="643" y="299" text-anchor="middle">임베딩 모델 Instruct 접두</text>
+  <rect class="off" x="803.333" y="255" width="296.667" height="63" rx="9"/>
+  <text class="tx" x="951.667" y="279" text-anchor="middle">✕ 질의 재작성 · HyDE</text>
+  <text class="mx" x="951.667" y="299" text-anchor="middle">LLM 으로 질의 변환 안 함</text>
+  <rect class="lb" x="20" y="328" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="355.5" text-anchor="middle">검색</text>
+  <text class="ll" x="95" y="373.5" text-anchor="middle">(Retrieval)</text>
+  <rect class="on" x="186" y="328" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="352" text-anchor="middle">Dense 검색</text>
+  <text class="m" x="334.333" y="372" text-anchor="middle">임베딩 벡터 코사인 유사도</text>
+  <rect class="on" x="494.667" y="328" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="352" text-anchor="middle">Sparse / 키워드 검색</text>
+  <text class="m" x="643" y="372" text-anchor="middle">pg_trgm 단어 유사도</text>
+  <rect class="on" x="803.333" y="328" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="352" text-anchor="middle">Hybrid 결합 · 사전 필터</text>
+  <text class="m" x="951.667" y="372" text-anchor="middle">가중 합산 · 접근 범위 필터</text>
+  <rect class="lb" x="20" y="401" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="428.5" text-anchor="middle">검색 후</text>
+  <text class="ll" x="95" y="446.5" text-anchor="middle">(Post-Retrieval)</text>
+  <rect class="on" x="186" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tb" x="295.75" y="425" text-anchor="middle">임계값 필터</text>
+  <text class="m" x="295.75" y="445" text-anchor="middle">유사도 하한 미만 버림</text>
+  <rect class="on" x="417.5" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tb" x="527.25" y="425" text-anchor="middle">메타데이터 재순위</text>
+  <text class="m" x="527.25" y="445" text-anchor="middle">지위 · 우선순위 가중 → top-k</text>
+  <rect class="off" x="649" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tx" x="758.75" y="425" text-anchor="middle">✕ Cross-encoder 리랭커</text>
+  <text class="mx" x="758.75" y="445" text-anchor="middle">별도 재순위 모델 없음</text>
+  <rect class="on" x="880.5" y="401" width="219.5" height="63" rx="9"/>
+  <text class="tb" x="990.25" y="425" text-anchor="middle">문맥 보강</text>
+  <text class="m" x="990.25" y="445" text-anchor="middle">대체 관계 문서 동반 근거</text>
+  <rect class="lb" x="20" y="474" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="501.5" text-anchor="middle">생성</text>
+  <text class="ll" x="95" y="519.5" text-anchor="middle">(Generation)</text>
+  <rect class="on" x="186" y="474" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="498" text-anchor="middle">근거 프롬프트</text>
+  <text class="m" x="334.333" y="518" text-anchor="middle">근거 태그 · 근거 밖 생성 금지</text>
+  <rect class="on" x="494.667" y="474" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="498" text-anchor="middle">로컬 LLM 생성</text>
+  <text class="m" x="643" y="518" text-anchor="middle">Ollama · JSON 구조화 출력</text>
+  <rect class="off" x="803.333" y="474" width="296.667" height="63" rx="9"/>
+  <text class="tx" x="951.667" y="498" text-anchor="middle">✕ 다단계 추론 · 에이전트</text>
+  <text class="mx" x="951.667" y="518" text-anchor="middle">도구 호출 · 반복 검색 없음</text>
+  <rect class="lb" x="20" y="547" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="574.5" text-anchor="middle">검증 · 교정</text>
+  <text class="ll" x="95" y="592.5" text-anchor="middle">(Corrective)</text>
+  <rect class="on" x="186" y="547" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="571" text-anchor="middle">인용 검증</text>
+  <text class="m" x="334.333" y="591" text-anchor="middle">근거 ID · 문장 겹침 · 숫자 · 부정어</text>
+  <rect class="on" x="494.667" y="547" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="571" text-anchor="middle">재생성</text>
+  <text class="m" x="643" y="591" text-anchor="middle">검증 실패 시 1회</text>
+  <rect class="on" x="803.333" y="547" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="571" text-anchor="middle">발췌 폴백</text>
+  <text class="m" x="951.667" y="591" text-anchor="middle">원문 발췌 → 근거 없음 안내</text>
+  <rect class="lb" x="20" y="620" width="150" height="63" rx="8"/>
+  <text class="ll" x="95" y="656.5" text-anchor="middle">기반 스택</text>
+  <rect class="on" x="186" y="620" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="334.333" y="644" text-anchor="middle">Spring AI</text>
+  <text class="m" x="334.333" y="664" text-anchor="middle">EmbeddingModel · ChatModel</text>
+  <rect class="on" x="494.667" y="620" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="643" y="644" text-anchor="middle">Ollama</text>
+  <text class="m" x="643" y="664" text-anchor="middle">로컬 임베딩 · LLM (외부 전송 없음)</text>
+  <rect class="on" x="803.333" y="620" width="296.667" height="63" rx="9"/>
+  <text class="tb" x="951.667" y="644" text-anchor="middle">PostgreSQL + pgvector</text>
+  <text class="m" x="951.667" y="664" text-anchor="middle">벡터 + 키워드 인덱스</text>
+</svg>

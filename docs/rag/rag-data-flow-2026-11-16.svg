@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 1120" width="1180" height="1120" font-family="'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif">
+  <title>PMart RAG 데이터 흐름 — Java 서비스 · 임베딩 모델 · pgvector · LLM</title>
+  <style>
+    .bg { fill: #ffffff; }
+    .tt { fill: #1f2933; font-size: 22px; font-weight: 700; }
+    .tb { fill: #1f2933; font-size: 14px; font-weight: 700; }
+    .sh { fill: #1f2933; font-size: 14px; font-weight: 700; }
+    .m  { fill: #52606d; font-size: 11.5px; }
+    .lt, .lv, .ld, .st { paint-order: stroke; stroke: #ffffff; stroke-width: 4px; stroke-linejoin: round; }
+    .lt { fill: #2f6db5; font-size: 12px; }
+    .lv { fill: #2f8a55; font-size: 12px; font-weight: 700; }
+    .ld { fill: #b0702a; font-size: 12px; }
+    .st { fill: #1f2933; font-size: 12px; }
+    .ac { fill: #eef1f5; stroke: #7b8794; }
+    .as { fill: #e3eefb; stroke: #4a7fc1; }
+    .ae { fill: #e3f3e8; stroke: #4c9a68; }
+    .ap { fill: #e0f4f4; stroke: #3a9a9a; }
+    .al { fill: #fcefdc; stroke: #c58a32; }
+    .life { stroke: #9aa5b1; stroke-width: 1.2; stroke-dasharray: 4 5; }
+    .band { fill: #7b8794; fill-opacity: 0.06; stroke: #cbd2d9; }
+    .self { fill: #f5f7fa; stroke: #4a7fc1; }
+    .nt { fill: #f5f7fa; stroke: #cbd2d9; stroke-dasharray: 4 4; }
+    .et { stroke: #2f6db5; stroke-width: 1.7; fill: none; }
+    .ev { stroke: #2f8a55; stroke-width: 2.4; fill: none; }
+    .ed { stroke: #b0702a; stroke-width: 1.7; fill: none; stroke-dasharray: 7 4; }
+    .mt { fill: #2f6db5; } .mv { fill: #2f8a55; } .md { fill: #b0702a; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #14181d; }
+      .tt, .tb, .sh, .st { fill: #e6e9ee; }
+      .m { fill: #a9b4c0; }
+      .lt, .lv, .ld { stroke: #1a1f25; }
+      .st { stroke: #1f262e; }
+      .lt { fill: #8ab8ea; } .lv { fill: #79cf9a; } .ld { fill: #e7a85f; }
+      .ac { fill: #1f262e; stroke: #8d99a6; }
+      .as { fill: #1d2f45; stroke: #6ea1db; }
+      .ae { fill: #1b3527; stroke: #6cc08c; }
+      .ap { fill: #173535; stroke: #5cc0c0; }
+      .al { fill: #3a2c17; stroke: #e0a85a; }
+      .life { stroke: #616e7c; }
+      .band { fill: #9aa5b1; stroke: #3e4c59; }
+      .self { fill: #1f262e; stroke: #6ea1db; }
+      .nt { fill: #1f262e; stroke: #3e4c59; }
+      .et { stroke: #8ab8ea; } .ev { stroke: #79cf9a; } .ed { stroke: #e7a85f; }
+      .mt { fill: #8ab8ea; } .mv { fill: #79cf9a; } .md { fill: #e7a85f; }
+    }
+  </style>
+  <defs>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="mt" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="av" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="mv" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path class="md" d="M0 0L10 5L0 10z"/></marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1180" height="1120"/>
+  <text class="tt" x="20" y="38" text-anchor="start">PMart RAG 데이터 흐름 — Java 서비스 · 임베딩 모델 · pgvector · LLM</text>
+  <text class="m" x="20" y="62" text-anchor="start">pgvector 를 쓰는 주체는 Java 서비스뿐 — 모델들은 서비스가 넘겨준 것만 받는다</text>
+  <path class="et" d="M820 56H854"/>
+  <text class="lt" x="862" y="60" text-anchor="start">텍스트</text>
+  <path class="ev" d="M935 56H969"/>
+  <text class="lv" x="977" y="60" text-anchor="start">벡터</text>
+  <path class="ed" d="M1050 56H1084"/>
+  <text class="ld" x="1092" y="60" text-anchor="start">SQL · DB</text>
+  <path class="life" d="M120 136V1108"/>
+  <path class="life" d="M370 136V1108"/>
+  <path class="life" d="M610 136V1108"/>
+  <path class="life" d="M850 136V1108"/>
+  <path class="life" d="M1065 136V1108"/>
+  <rect class="band" x="16" y="154" width="1148" height="400" rx="10"/>
+  <text class="sh" x="32" y="180" text-anchor="start">① 색인 — PC 1 이 lan.sh rag-ingest 로 실행 (일회성 작업)</text>
+  <rect class="band" x="16" y="568" width="1148" height="532" rx="10"/>
+  <text class="sh" x="32" y="594" text-anchor="start">② 질문 — 사용자가 물을 때마다</text>
+  <rect class="ac" x="20" y="84" width="200" height="52" rx="9"/>
+  <text class="tb" x="120" y="106" text-anchor="middle">문서 파일 · 사용자</text>
+  <text class="m" x="120" y="124" text-anchor="middle">manifest 문서 / 운영자 · 고객</text>
+  <rect class="as" x="270" y="84" width="200" height="52" rx="9"/>
+  <text class="tb" x="370" y="106" text-anchor="middle">Java 서비스</text>
+  <text class="m" x="370" y="124" text-anchor="middle">ai- / customer-assistant-service</text>
+  <rect class="ae" x="510" y="84" width="200" height="52" rx="9"/>
+  <text class="tb" x="610" y="106" text-anchor="middle">qwen3-embedding:0.6b</text>
+  <text class="m" x="610" y="124" text-anchor="middle">Ollama · CPU</text>
+  <rect class="ap" x="750" y="84" width="200" height="52" rx="9"/>
+  <text class="tb" x="850" y="106" text-anchor="middle">PostgreSQL + pgvector</text>
+  <text class="m" x="850" y="124" text-anchor="middle">doc_chunk · embedding_cache</text>
+  <rect class="al" x="965" y="84" width="200" height="52" rx="9"/>
+  <text class="tb" x="1065" y="106" text-anchor="middle">qwen3:4b</text>
+  <text class="m" x="1065" y="124" text-anchor="middle">Ollama · GPU</text>
+  <path class="et" d="M124 220H366" marker-end="url(#at)"/>
+  <text class="lt" x="245" y="213" text-anchor="middle">1. manifest 에 적힌 Markdown 원문 읽기</text>
+  <rect class="self" x="220" y="246" width="300" height="28" rx="6"/>
+  <text class="st" x="370" y="265" text-anchor="middle">2. 청킹 (MarkdownChunker) · 본문 해시</text>
+  <path class="ed" d="M374 308H846" marker-end="url(#ad)"/>
+  <text class="ld" x="610" y="301" text-anchor="middle">3. embedding_cache 조회 (content_hash) — 있으면 4·5 생략</text>
+  <path class="et" d="M374 352H606" marker-end="url(#at)"/>
+  <text class="lt" x="490" y="345" text-anchor="middle">4. 청크 텍스트</text>
+  <path class="ev" d="M606 396H374" marker-end="url(#av)"/>
+  <text class="lv" x="490" y="389" text-anchor="middle">5. 1024차원 벡터</text>
+  <path class="ed" d="M374 440H846" marker-end="url(#ad)"/>
+  <text class="ld" x="610" y="433" text-anchor="middle">6. INSERT doc_chunk — content 원문 + embedding 벡터 + 메타데이터</text>
+  <path class="ed" d="M374 484H846" marker-end="url(#ad)"/>
+  <text class="ld" x="610" y="477" text-anchor="middle">7. 파일 해시 재확인 → 새 스냅숏 ACTIVE 전환</text>
+  <rect class="nt" x="985" y="510" width="160" height="28" rx="6"/>
+  <text class="m" x="1065" y="529" text-anchor="middle">색인에는 관여하지 않음</text>
+  <path class="et" d="M124 634H366" marker-end="url(#at)"/>
+  <text class="lt" x="245" y="627" text-anchor="middle">1. 질문</text>
+  <rect class="self" x="220" y="660" width="300" height="28" rx="6"/>
+  <text class="st" x="370" y="679" text-anchor="middle">2. 의도 분류 · 활성 스냅숏 고정</text>
+  <path class="et" d="M374 722H606" marker-end="url(#at)"/>
+  <text class="lt" x="490" y="715" text-anchor="middle">3. 질문 텍스트 (+ 검색 지시문)</text>
+  <path class="ev" d="M606 766H374" marker-end="url(#av)"/>
+  <text class="lv" x="490" y="759" text-anchor="middle">4. 질문 벡터 (1024차원)</text>
+  <path class="ed" d="M374 810H846" marker-end="url(#ad)"/>
+  <text class="ld" x="610" y="803" text-anchor="middle">5. SELECT … ORDER BY 0.6·(1 − embedding &lt;=&gt; 질문벡터) + 0.4·키워드</text>
+  <path class="et" d="M846 854H374" marker-end="url(#at)"/>
+  <text class="lt" x="610" y="847" text-anchor="middle">6. 후보 청크 40개 — content 원문 + 점수 + 메타데이터</text>
+  <rect class="self" x="220" y="880" width="300" height="28" rx="6"/>
+  <text class="st" x="370" y="899" text-anchor="middle">7. 임계값 · 지위 재순위 → 근거 4~5개</text>
+  <path class="et" d="M374 942H1061" marker-end="url(#at)"/>
+  <text class="lt" x="717.5" y="935" text-anchor="middle">8. 프롬프트 = 근거 원문 D1..Dn + 질문</text>
+  <path class="et" d="M1061 986H374" marker-end="url(#at)"/>
+  <text class="lt" x="717.5" y="979" text-anchor="middle">9. JSON 답변 (answer · usedIds · grounded)</text>
+  <rect class="self" x="220" y="1012" width="300" height="28" rx="6"/>
+  <text class="st" x="370" y="1031" text-anchor="middle">10. 인용 검증 → 실패 시 재생성 · 원문 발췌</text>
+  <path class="et" d="M366 1074H124" marker-end="url(#at)"/>
+  <text class="lt" x="245" y="1067" text-anchor="middle">11. 답변 + 출처(문서 · 절)</text>
+</svg>
