@@ -29,12 +29,10 @@
 6. 권한 흐름: `docs/business/flows/employee-account-provisioning.md` §1(BO-01 결정·구현), `docs/architecture/auth/keycloak-manage-users-and-grant-revocation.md`(권한 회수 구조)
 7. 클라이언트에 보낸 요청: §3 표의 파일들
 
-## 2. 서비스 상태 (2026-11-16)
+## 2. 서비스 상태 (2026-11-16 오후 갱신)
 
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
-| backoffice-bff 0.2.0(8504, LAN PC 4) | 승인함 `GET /views/approval-inbox`(11-03), **처리 대기 `GET /views/pending-work`**(멈춘 사가 + 이행 확인 필요, OPERATOR_ADMIN), **명령 `POST /commands/order-orchestration-service/saga-requery·saga-resolve`**(11-16) | 그 밖 `/views/*`(unified-lookup·case-inbox·trip-control …)·명령 결과 조회 501, MFC 인계 거절·중지 실패 목록(mfc 에 목록 API 없음 — 사용자 "지금은 요청 안 함") |
-| case-service 0.4.1(8506, LAN PC 4) | 고객 문의 `/inquiries`(0.2.0 — **답변 때 `InquiryAnswered` 발행**, 11-16, notification 이 고객 알림함에 쌓는다. 답변 내용은 사건에 없음), 라이더 컴플레인 `/rider-complaints`(0.3.0), **사건함 `/cases`**(11-16 — 도움요청·전달 실패·위치 끊김 구독, 오배송 확인 `POST /cases` + `MisdeliveryConfirmed`, 팀 공용 목록 집기·닫기, CaseOpened·Assigned·Closed; 0.4.1 도움요청·전달 실패 사건 `refs` 에 `requestId` — 그 전에 열린 사건은 incidentId 만) | R-3(사가·결제 상신 → 사건), 이관·재개·의무·행위 요청·CS 접수(501), 사건 알림(기한은 표시만) |
 
 PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
@@ -74,7 +72,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
 2. **case R-3** — ✅ **2026-11-16 PC 2 구현(계약 0.5.0, PR 대기 — 기한 1시간·"이상만"·멈춘 사가 안 함, `service-requests/case-service.md` R-3)**. 원래 내용: 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
 3. 배송 쪽 연결이 오면 확인: delivery-execution 이 `CaseOpened`·`CaseClosed` 로 도움요청에 사건 번호 붙이기(요청 DE-CASE), dispatch 가 `MisdeliveryConfirmed` 로 회수 배차(DD-2) — PC 5 작업. 그 뒤 execution 의 임시 "도움요청 처리함 닫기"(BOD-4) 정리.
-4. 나중(배차 실패 사건은 11-16 PR #21 로 됨): MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
+4. 나중(배차 실패 사건은 11-16 PR #21 로 됨, MFC 인계 거절·중지 실패는 PR #31 + PC 3 F-4): bff 의 다른 화면(`/views/*` 501), 사건 알림.
 5. 고객센터 문의 답변을 바꿀 때(`InquiryService.reply`) **`InquiryAnswered` 발행을 지킨다** — 고객 알림함이 이것만 보고 "답변이 등록되었어요"를 쌓는다(notification 이 구독, PC 1). 리뷰·알림 백오피스 화면은 정책이 정해질 때(리뷰 숨김·신고는 사용자 결정 "이번엔 뺌").
 - R-2(진행 중 주문 고객센터 취소)는 ADR-0060 으로 거둠 — 만들지 않는다.
 
