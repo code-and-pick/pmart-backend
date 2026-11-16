@@ -149,6 +149,32 @@ public class CaseStore {
         caseId);
   }
 
+  /**
+   * 재개(0.6.0): REOPENED, 담당 비움, 새 처리 기한. 마지막 종결 내용은 남긴다. 같은 dedupe_key 로 열린 사건이 있으면 열린 사건 유일
+   * 색인(V4)에 걸려 {@link org.springframework.dao.DuplicateKeyException}.
+   */
+  public void reopen(String caseId, @Nullable Instant slaDueAt, Instant at) {
+    jdbc.update(
+        "UPDATE case_record SET state = 'REOPENED', assignee_id = NULL, sla_due_at = ?,"
+            + " version = version + 1, updated_at = ? WHERE case_id = ?",
+        ts(slaDueAt),
+        ts(at),
+        caseId);
+  }
+
+  /** 같은 종류·같은 대상의 가장 최근 닫힌 사건(0.6.0 — 새 사건의 previousCaseId). */
+  public Optional<String> latestClosed(String kind, String subjectRef) {
+    return jdbc
+        .queryForList(
+            "SELECT case_id FROM case_record WHERE case_type = ? AND subject_ref = ?"
+                + " AND state = 'CLOSED' ORDER BY closed_at DESC NULLS LAST LIMIT 1",
+            String.class,
+            kind,
+            subjectRef)
+        .stream()
+        .findFirst();
+  }
+
   /** 배송별 배차 실패 횟수를 하나 올리고 올린 뒤 값을 돌려준다(V5). */
   public int countDispatchFailure(String deliveryId, String reason, Instant at) {
     Integer n =

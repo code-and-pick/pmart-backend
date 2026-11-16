@@ -675,4 +675,75 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     String supNoCenter = TestJwt.operator("op-sup2", List.of("MFC_SUPERVISOR"), List.of());
     assertThat(send("GET", supNoCenter, "/cases", null).body().path("items")).isEmpty();
   }
+
+  /**
+   * 재개(0.6.0 — 2026-11-16 사용자 "1번 + 이전 사건 연결"): 닫힌 뒤 같은 대상으로 새 사건이 열리면 previousCaseId 로 잇고, 열린 사건이
+   * 있는 동안 옛 사건 재개는 409 CASE_ALREADY_OPEN. 재개는 닫기와 같은 사람(팀·관리자), 사유 필수, 담당 비움·기한 새로,
+   * 이력·CaseReopened.
+   */
+  @Test
+  void reopenLinksPreviousAndClearsAssignee() {
+    String deliveryId = "DLV-RO-" + UUID.randomUUID().toString().substring(0, 8);
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    Map<String, Object> mis =
+        Map.of(
+            "kind", "MISDELIVERY",
+            "subjectType", "DELIVERY",
+            "subjectRef", deliveryId,
+            "summary", "고객 통화로 확인");
+    Map<String, Object> close = Map.of("resolution", "RESOLVED", "summary", "회수 완료");
+    Map<String, Object> reason = Map.of("reason", "회수 물건이 다른 집 것으로 확인됨");
+
+    String first = send("POST", cs, "/cases", mis).body().path("caseId").asString();
+    assertThat(
+            send("POST", ops, "/cases/" + first + "/assignments", Map.of("assigneeId", "op-ops-1"))
+                .status())
+        .isEqualTo(200);
+    assertThat(send("POST", ops, "/cases/" + first + "/reopenings", reason).status())
+        .as("닫히지 않은 사건")
+        .isEqualTo(409);
+    assertThat(send("POST", ops, "/cases/" + first + "/closures", close).status()).isEqualTo(200);
+
+    // 같은 배송으로 새 사건 — 이전 사건 연결, 그동안 옛 사건 재개는 409
+    Res second = send("POST", cs, "/cases", mis);
+    assertThat(second.status()).isEqualTo(201);
+    String secondId = second.body().path("caseId").asString();
+    assertThat(second.body().path("refs").toString()).contains("previousCaseId", first);
+    Res dup = send("POST", ops, "/cases/" + first + "/reopenings", reason);
+    assertThat(dup.status()).isEqualTo(409);
+    assertThat(dup.body().path("code").asString()).isEqualTo("CASE_ALREADY_OPEN");
+    assertThat(send("POST", admin, "/cases/" + secondId + "/closures", close).status())
+        .isEqualTo(200);
+
+    // 권한·입력
+    assertThat(send("POST", cs, "/cases/" + first + "/reopenings", reason).status())
+        .as("상담원은 보기만")
+        .isEqualTo(403);
+    assertThat(send("POST", md, "/cases/" + first + "/reopenings", reason).status()).isIn(403, 404);
+    assertThat(send("POST", ops, "/cases/" + first + "/reopenings", Map.of("reason", " ")).status())
+        .isEqualTo(400);
+
+    // 재개 — 담당 비움, 기한 지금부터, 마지막 종결 내용은 남김
+    Res r = send("POST", ops2, "/cases/" + first + "/reopenings", reason);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("state").asString()).isEqualTo("REOPENED");
+    assertThat(r.body().path("assigneeId").isNull() || r.body().path("assigneeId").isMissingNode())
+        .isTrue();
+    Instant due = Instant.parse(r.body().path("slaDueAt").asString());
+    assertThat(due).isAfter(Instant.now().plusSeconds(20 * 60));
+    assertThat(r.body().path("history").toString()).contains("REOPENED");
+    assertThat(outbox(first, "CaseReopened")).isEqualTo(1);
+    assertThat(
+            send("GET", ops, "/cases?subjectRef=" + deliveryId, null)
+                .body()
+                .path("items")
+                .findValuesAsString("caseId"))
+        .as("다시 열린 사건으로 목록에")
+        .containsExactly(first);
+
+    // 다시 열린 동안 같은 배송 새 오배송은 409(열린 사건 하나)
+    assertThat(send("POST", cs, "/cases", mis).status()).isEqualTo(409);
+  }
 }

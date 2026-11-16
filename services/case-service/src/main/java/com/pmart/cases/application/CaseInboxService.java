@@ -286,6 +286,7 @@ public class CaseInboxService {
       log.info("이미 열린 사건 — {} 무시", dedupeKey);
       return;
     }
+    refs = withPrevious(kind, subjectRef, refs);
     CaseRow c =
         new CaseRow(
             "CASE-" + UUID.randomUUID(),
@@ -353,6 +354,7 @@ public class CaseInboxService {
                   List<Ref> refs = new ArrayList<>();
                   refs.add(new Ref("deliveryId", deliveryId));
                   addRef(refs, "riderId", rider);
+                  refs = withPrevious(CaseRules.MISDELIVERY, deliveryId, refs);
                   CaseRow c =
                       new CaseRow(
                           "CASE-" + UUID.randomUUID(),
@@ -543,7 +545,81 @@ public class CaseInboxService {
     return detail(store.find(caseId).orElseThrow());
   }
 
+  /**
+   * 재개(0.6.0 — 2026-11-16 사용자 "1번 + 이전 사건 연결", 업무 원문 §5.3·BO-27): 사람이 사유를 적고 연다. 닫기와 같은 사람(그 종류
+   * 팀·관리자), 기간 제한 없음. 담당을 비우고(팀 공용 목록), 처리 기한은 지금부터 그 종류 기본값. 같은 일로 열린 사건이 있으면 409
+   * CASE_ALREADY_OPEN.
+   */
+  public Detail reopen(
+      String requestId,
+      String sourceSystem,
+      String caseId,
+      String reason,
+      @Nullable Integer expectedVersion) {
+    PmartPrincipal p = operator();
+    Set<String> roles = roles(p);
+    if (reason == null || reason.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(재개 사유)이 필요합니다.");
+    }
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "reopenCase:" + caseId, p.subject()),
+        reason,
+        String.class,
+        () -> {
+          CaseRow c = lockVisible(p, caseId);
+          checkVersion(c, expectedVersion);
+          if (!CaseRules.canWork(roles, c.kind())) {
+            throw new PmartException(ErrorCode.FORBIDDEN, "이 사건을 다시 열 권한이 없습니다.");
+          }
+          if (!"CLOSED".equals(c.state())) {
+            throw PmartException.invalidState("닫힌 사건만 다시 열 수 있습니다.");
+          }
+          Instant now = now();
+          try {
+            store.reopen(caseId, now.plus(sla(c.kind())), now);
+          } catch (org.springframework.dao.DuplicateKeyException e) {
+            throw new PmartException(
+                "CASE_ALREADY_OPEN",
+                HttpStatus.CONFLICT,
+                "같은 일로 열린 사건이 이미 있습니다 — 그 사건에서 처리하세요.",
+                false,
+                List.of());
+          }
+          store.history(caseId, now, p.subject(), "REOPENED", "CLOSED", "REOPENED", reason.strip());
+          CaseRow after = store.find(caseId).orElseThrow();
+          Map<String, Object> m = basePayload(after);
+          m.put("assignee", null);
+          m.put("reason", reason.strip());
+          m.put("reopenedAt", now.toString());
+          events.publish(
+              "CaseReopened",
+              1,
+              AGGREGATE,
+              caseId,
+              after.version(),
+              new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+              m);
+          log.info("사건 재개 {} by {}", caseId, p.subject());
+          return caseId;
+        });
+    return detail(store.find(caseId).orElseThrow());
+  }
+
   // ---------------------------------------------------------------- 공통
+
+  /** 같은 종류·같은 대상의 가장 최근 닫힌 사건을 previousCaseId 로 잇는다(0.6.0 — 근거가 뒤집혔으면 사람이 그 사건을 재개). */
+  private List<Ref> withPrevious(String kind, @Nullable String subjectRef, List<Ref> refs) {
+    if (subjectRef == null) {
+      return refs;
+    }
+    var prev = store.latestClosed(kind, subjectRef);
+    if (prev.isEmpty()) {
+      return refs;
+    }
+    List<Ref> out = new ArrayList<>(refs);
+    out.add(new Ref("previousCaseId", prev.get()));
+    return out;
+  }
 
   private void publishOpened(CaseRow c, EventEnvelope.Actor actor) {
     Map<String, Object> m = basePayload(c);
