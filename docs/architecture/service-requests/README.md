@@ -42,7 +42,7 @@
 | [R-7](case-service.md) | case | delivery-dispatch | 오배송 확인 기록 → 회수 배차 사건(DD-2 앞단) | 결정됨(2026-11-15: 상담원·지원센터가 확인해 기록) | **구현(2026-11-16, case 0.4.0)** — `POST /cases`(kind MISDELIVERY) + 사건 `MisdeliveryConfirmed`(platform.case.v1). 구독·회수 배차는 delivery(PC 5, DD-2) |
 | [N-1](notification-service.md) | notification | order, mfc | 결품 부분 취소·환불 고객 안내 | **필요**(보류 단계 안내) | 대기 |
 | [N-2](notification-service.md) | notification(·case) | case | 고객센터 문의 답변 알림(`InquiryAnswered`) | C4 | 대기 |
-| [N-3](notification-service.md) | notification | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | — | 대기 |
+| [N-3](notification-service.md) | notification | delivery | 오배송 다시 배송비 9,000원 결제 안내(`RedeliveryPaymentRequired`) | — | 구현(PR) |
 | [AP-1](approval-service.md) | approval | mfc-inventory, mfc-quality, mfc-capacity | MFC 승인 번호 실제 검증(지금 RECORD_ONLY) | **필요**(Q-11) | 대기 — 운영 전 필수 |
 | [AP-2](approval-service.md) | approval | hr, employee-auth (ADR-0056) | 직원 권한 요청 유형(BO-01)·등록 때 자동 제출·자동 승인 규칙(소속 센터 `MFC_WORKER`)·반영 대상 employee-auth | 결정됨(2026-11-12) | 구현(2026-11-13 5-4, LAN 배포 전) — 내부 API 대신 사건 GrantRequested |
 | [EA-1](employee-auth-service.md) | employee-auth | mfc-capacity | 권한 조기 회수·종료 사건(기간 전 회수 때 MFC 작업자 정지) | 없음 | 대기 |

@@ -20,7 +20,8 @@ class NotificationEventConsumers {
           "OrderPreparationStarted",
           "OrderCancelled",
           "OrderLineQuantityChanged");
-  private static final Set<String> DELIVERY = Set.of("PickupCompleted", "DeliveryCompleted");
+  private static final Set<String> DELIVERY =
+      Set.of("PickupCompleted", "DeliveryCompleted", "RedeliveryPaymentRequired");
 
   @Bean
   PmartEventConsumer orderEvents(EventConsumers consumers, NotificationService n) {

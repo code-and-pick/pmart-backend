@@ -129,6 +129,47 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     return m;
   }
 
+  /** N-3(ADR-0065): 오배송 다시 배송비 결제 필요 → 주문 소유자 알림함(결제 분류, 주문 상세로). */
+  @Test
+  void redeliveryPaymentRequiredNotifiesOrderOwner() throws Exception {
+    String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(orderId, me);
+    String token = TestJwt.customer(me);
+    String now = Instant.now().toString();
+    publish(
+        "delivery.delivery.v1",
+        "RedeliveryPaymentRequired",
+        "Delivery",
+        "DLV-RD-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-RD-" + orderId,
+            "orderId",
+            orderId,
+            "caseId",
+            "CASE-" + orderId,
+            "originDeliveryId",
+            "DLV-" + orderId,
+            "straightDistanceM",
+            850,
+            "fee",
+            9000,
+            "requiredAt",
+            now));
+    Res inbox =
+        await(
+            () -> send("GET", token, "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    assertThat(inbox.body().path("items")).hasSize(1);
+    JsonNode n = inbox.body().path("items").get(0);
+    assertThat(n.path("title").asString()).isEqualTo("실제 주소로 다시 보내려면 결제가 필요해요");
+    assertThat(n.path("category").asString()).isEqualTo("PAYMENT");
+    assertThat(n.path("body").asString()).contains("9,000원").contains("30분");
+    assertThat(n.path("destination").path("type").asString()).isEqualTo("ORDER");
+    assertThat(n.path("destination").path("ref").asString()).isEqualTo(orderId);
+  }
+
   @Test
   void customerInboxCollectsOrderJourney() throws Exception {
     String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);

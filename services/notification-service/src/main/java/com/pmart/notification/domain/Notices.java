@@ -79,6 +79,24 @@ public final class Notices {
         orderId);
   }
 
+  /**
+   * 오배송 다시 배송비 결제 필요(ADR-0065 — 고객이 잘못 입력한 주소로 배달됐고 실제 집이 200m 이상). 기한 30분은 ADR-0065 정한 값(결제 대기는
+   * order-orchestration 이 정본 — 화면의 남은 시간은 고객 API deadlineAt). 주소는 쓰지 않는다.
+   */
+  public static Notice redeliveryPaymentRequired(String orderId, long fee) {
+    return new Notice(
+        "REDELIVERY_PAYMENT_REQUIRED",
+        "PAYMENT",
+        "실제 주소로 다시 보내려면 결제가 필요해요",
+        "잘못 입력된 주소로 배달된 상품을 실제 주소로 다시 보내려면 "
+            + won(fee)
+            + " 결제가 필요해요. 30분 안에 결제하지 않으면 상품을 회수하고 상품값에서 "
+            + won(fee)
+            + "을 뺀 금액을 환불해 드려요. 주문 상세에서 결제할 수 있어요.",
+        "ORDER",
+        orderId);
+  }
+
   /** 주문 전체 취소. 환불은 결과가 나온 뒤 따로 알린다. */
   public static Notice orderCancelled(String orderId, @Nullable String reason) {
     boolean outOfStock = "OUT_OF_STOCK".equals(reason);

@@ -101,7 +101,7 @@ public class NotificationService {
     }
   }
 
-  /** delivery.delivery.v1 — 출발·완료. */
+  /** delivery.delivery.v1 — 출발·완료, 오배송 다시 배송비 결제 필요(N-3, 2026-11-16). */
   public void onDeliveryEvent(EventEnvelope e) {
     String orderId = text(e.payload(), "orderId");
     if (orderId == null) {
@@ -110,6 +110,15 @@ public class NotificationService {
     switch (e.eventType()) {
       case "PickupCompleted" -> notify(e, null, orderId, Notices.pickedUp(orderId), "");
       case "DeliveryCompleted" -> notify(e, null, orderId, Notices.delivered(orderId), "");
+      case "RedeliveryPaymentRequired" ->
+          notify(
+              e,
+              null,
+              orderId,
+              Notices.redeliveryPaymentRequired(
+                  orderId,
+                  e.payload().path("fee").isNumber() ? e.payload().path("fee").asLong() : 9_000),
+              "");
       default -> {}
     }
   }

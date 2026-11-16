@@ -23,7 +23,7 @@
 ## 상태
 3단계 스캐폴딩(2026-10-23).
 - **고객 앱 알림함 1차(2026-11-16, 계약 0.2.0, ADR-0064, V2)**: `application/NotificationService`, 문구 `domain/Notices`, 표 `infrastructure/NotificationStore`(`notification`·`refund_link`·`pending_refund_result`), 받는 고객 찾기 `OrderClient`(order `/internal/orders/{id}`, 설정 `pmart.notification.order-base-url`).
-  - 구독(`NotificationEventConsumers`): orderEvents(order.order.v1 — 확정·준비·취소·결품 부분 취소), deliveryEvents(delivery.delivery.v1 — PickupCompleted·DeliveryCompleted), claimEvents(order.claim.v1 — RefundIntentCreated 저장), paymentEvents(order.payment.v1 — RefundResult SUCCESS·FAILED), caseEvents(platform.case.v1 — InquiryAnswered). 같은 환불 건은 `pg_advisory_xact_lock` 으로 의도·결과를 한 줄로(결과가 먼저 오면 pending).
+  - 구독(`NotificationEventConsumers`): orderEvents(order.order.v1 — 확정·준비·취소·결품 부분 취소), deliveryEvents(delivery.delivery.v1 — PickupCompleted·DeliveryCompleted·**RedeliveryPaymentRequired**(N-3, 2026-11-16 — 오배송 다시 배송비 결제 필요, 분류 PAYMENT)), claimEvents(order.claim.v1 — RefundIntentCreated 저장), paymentEvents(order.payment.v1 — RefundResult SUCCESS·FAILED), caseEvents(platform.case.v1 — InquiryAnswered). 같은 환불 건은 `pg_advisory_xact_lock` 으로 의도·결과를 한 줄로(결과가 먼저 오면 pending).
   - API: `/me/notifications`(목록·unreadCount·category·unreadOnly), 상세, 읽음(멱등). 설정은 모두 켜짐·잠김(끄기 422 TRANSACTIONAL_CANNOT_DISABLE, IN_APP 밖 422 CHANNEL_NOT_APPROVED). 운영자 403, 라이더는 빈 알림함.
   - 문구에 개인정보 없음, 결과 모르는 일을 완료로 쓰지 않음. 알림 실패로 원래 업무를 다시 하지 않는다.
   - 아직 501: 설정 변경 결과 조회, `/internal/*`(범용 요청·발송 이력·배차 알림 기록). 푸시·발행(NotificationDelivered·Failed) 없음.
