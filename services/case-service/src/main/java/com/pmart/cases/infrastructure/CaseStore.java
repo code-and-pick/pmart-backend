@@ -206,7 +206,7 @@ public class CaseStore {
   }
 
   /**
-   * 사건함 한 쪽 — 열린 것은 P1 먼저, 기한 이른 것 먼저, 그다음 오래된 것. 닫힌 것(state=CLOSED)은 닫힌 시각 최근 순(0.5.0 — 통합 조회의 "지난
+   * 사건함 한 쪽 — 열린 것은 P1 먼저, 기한 이른 것 먼저, 그다음 오래된 것. 닫힌 것(state=CLOSED)은 닫힌 시각 최근 순(0.5.1 — 통합 조회의 "지난
    * 사건"). 커서 = 건너뛸 수.
    */
   public List<CaseRow> page(Filter f, int offset, int limit) {
