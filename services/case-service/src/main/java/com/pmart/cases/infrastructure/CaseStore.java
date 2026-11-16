@@ -205,7 +205,10 @@ public class CaseStore {
         caseId);
   }
 
-  /** 사건함 한 쪽 — P1 먼저, 기한 이른 것 먼저, 그다음 오래된 것. 커서 = 건너뛸 수. */
+  /**
+   * 사건함 한 쪽 — 열린 것은 P1 먼저, 기한 이른 것 먼저, 그다음 오래된 것. 닫힌 것(state=CLOSED)은 닫힌 시각 최근 순(0.5.0 — 통합 조회의 "지난
+   * 사건"). 커서 = 건너뛸 수.
+   */
   public List<CaseRow> page(Filter f, int offset, int limit) {
     if (f.kinds().isEmpty()) {
       return List.of();
@@ -238,7 +241,9 @@ public class CaseStore {
       args.add(ts(f.now()));
     }
     sql.append(
-        " ORDER BY priority NULLS LAST, sla_due_at NULLS LAST, created_at, case_id LIMIT ? OFFSET ?");
+        "CLOSED".equals(f.state())
+            ? " ORDER BY closed_at DESC NULLS LAST, case_id DESC LIMIT ? OFFSET ?"
+            : " ORDER BY priority NULLS LAST, sla_due_at NULLS LAST, created_at, case_id LIMIT ? OFFSET ?");
     args.add(limit);
     args.add(offset);
     return jdbc.query(sql.toString(), this::row, args.toArray());

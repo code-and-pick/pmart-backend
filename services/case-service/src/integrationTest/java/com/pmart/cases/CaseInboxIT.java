@@ -598,5 +598,22 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         send("POST", ops, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-1"));
     assertThat(claimed.status()).as(claimed.body().toString()).isEqualTo(200);
     assertThat(claimed.body().path("history").toString()).contains("RECURRED", "3번째");
+
+    // 닫힌 사건은 닫힌 시각 최근 순(0.5.0) — 먼저 연 retrying 을 먼저 닫고 broken 을 나중에 닫으면 broken 이 앞
+    Map<String, Object> close = Map.of("resolution", "RESOLVED", "summary", "배차 확인");
+    assertThat(send("POST", ops, "/cases/" + caseId + "/closures", close).status()).isEqualTo(200);
+    String brokenCase =
+        send("GET", ops, "/cases?subjectRef=" + broken, null)
+            .body()
+            .path("items")
+            .get(0)
+            .path("caseId")
+            .asString();
+    Thread.sleep(5);
+    assertThat(send("POST", ops, "/cases/" + brokenCase + "/closures", close).status())
+        .isEqualTo(200);
+    Res closedList = send("GET", ops, "/cases?kind=DISPATCH_FAILED&state=CLOSED", null);
+    assertThat(closedList.body().path("items").findValuesAsString("caseId"))
+        .containsSubsequence(brokenCase, caseId);
   }
 }

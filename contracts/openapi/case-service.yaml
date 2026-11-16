@@ -67,7 +67,7 @@ paths:
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       description: |
-        0.4.0(2026-11-16 사용자 "추천대로" — 사건함 공통 결정): state 를 비우면 열린 사건(CLOSED 제외). 우선순위 높은 것(P1)·기한 이른 것 먼저.
+        0.4.0(2026-11-16 사용자 "추천대로" — 사건함 공통 결정): state 를 비우면 열린 사건(CLOSED 제외). 우선순위 높은 것(P1)·기한 이른 것 먼저. state=CLOSED 는 닫힌 시각 최근 순(0.5.0).
         보이는 범위: OPERATOR_ADMIN 모두, RIDER_OPS·CS_AGENT 는 배송 쪽 사건(RIDER_HELP·DELIVERY_INCIDENT·RIDER_LOCATION_STALE·MISDELIVERY·DISPATCH_FAILED)만(CS_AGENT 는 보기만). 사가·결제 이상(RECONCILIATION·PAYMENT_UNKNOWN, 0.5.0)은 OPERATOR_ADMIN 만 보고 집고 닫는다(assigneeGroup ORDER_OPS).
         고객 문의(CS_INQUIRY)는 /inquiries 로 — 여기에 나오지 않는다.
       responses:
