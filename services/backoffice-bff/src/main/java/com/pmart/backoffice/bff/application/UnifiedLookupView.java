@@ -331,14 +331,15 @@ public class UnifiedLookupView {
         "UNSUPPORTED_LOOKUP", HttpStatus.UNPROCESSABLE_ENTITY, message, false, List.of());
   }
 
-  private static void requireRole() {
+  /** 배송·주문을 보는 직원 화면(통합 조회·실시간 배송 현황) 공통 — OPERATOR_ADMIN·CS_AGENT·RIDER_OPS. */
+  static void requireRole() {
     PmartPrincipal p =
         PmartPrincipal.current()
             .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
-            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "직원만 통합 조회를 쓸 수 있습니다."));
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "직원만 쓸 수 있는 화면입니다."));
     if (ROLES.stream().noneMatch(p::hasRole)) {
       throw new PmartException(
-          ErrorCode.FORBIDDEN, "통합 조회 권한이 없습니다(" + String.join("·", ROLES) + ").");
+          ErrorCode.FORBIDDEN, "이 화면을 볼 권한이 없습니다(" + String.join("·", ROLES) + ").");
     }
   }
 

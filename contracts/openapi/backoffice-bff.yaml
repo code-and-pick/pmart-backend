@@ -32,6 +32,9 @@ paths:
         CUSTOMER 는 그 고객의 주문 목록만(ORDER 요약 여럿, 최근 50건).
         원천이 실패하면 그 원천 이름을 unavailableSources 에, 그 항목은 없음(0건·정상으로 바꾸지 않는다). 403(그 원천을 볼 권한 없음)도 unavailableSources 로 —
         화면은 "권한 없음/조회 실패"로 보여 준다. 찾는 주문이 없으면 matches 비어 있음(404 아님).
+        **원천 이름(sources[].system·unavailableSources·matches[].source.system)**: order-service(ORDER), delivery-execution-service(DELIVERY),
+        delivery-dispatch-service(DISPATCH), claim-service(CLAIM), case-service(CASE), case-service/inquiries(INQUIRY). 이번 조회에서 부른 원천만 sources 에 나온다.
+        닫힌 사건은 닫힌 시각 최근 순(case 0.5.0).
         summary 에는 개인정보 원문을 싣지 않는다(이름·연락처·주소 없음 — 원문은 주문 화면의 열람 요청으로). MFC 현장은 아직 없다(PC 3 API).
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, maxLength: 128 }, description: '주문 ID·배송 ID·사건 ID·고객 ID(완전 일치)' }
@@ -269,9 +272,20 @@ paths:
       summary: 실시간 배송 현황 (MFC별 고객 배송·배차·라이더 — delivery-* 읽기)
       operationId: getLiveDeliveryView
       x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-16'
+      description: |
+        0.3.0(2026-11-16 사용자 "백오피스용부터 추천대로" — 배송 업무 원문 §10.1 "실시간 배송 현황", §1 고객센터·운영 관리자의 배송 관제 화면):
+        역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(그 밖 403) — 원천은 호출한 직원 토큰으로 다시 판정(이 셋은 모든 센터).
+        mfcId 를 비우면 모든 센터. state(delivery-execution ExecutionState 하나)를 비우면 **끝나지 않은 배송**(UNASSIGNED·ASSIGNED·ARRIVED_AT_STORE·
+        PICKED_UP·ARRIVED_AT_CUSTOMER·FAILURE_REPORTED·SUSPENDED·RETURN_IN_PROGRESS·RETURN_PICKED_UP)을 상태마다 읽어 생긴 순(오래된 것 먼저)으로 합쳐 size 건까지
+        (size 최대 50) — 이때 cursor 는 없고, 더 있으면 truncated=true(상태나 센터로 좁혀 다시 본다). state 를 주면 그 상태만, page.nextCursor 로 다음 쪽.
+        항목마다 원천을 따로: delivery(delivery-execution 수행 상태)·dispatch(delivery-dispatch 배차 상태 — 배송마다 한 번 읽음)·openCases(case 열린 사건 —
+        그 직원이 볼 수 있는 종류, 배송 번호로 이음). promisedAt = 배차의 arrivalWindow 끝(Asia/Seoul) — 없으면 null. latestEta 는 아직 null(tracking 미연결).
+        원천 이름: delivery-execution-service·delivery-dispatch-service·case-service. 원천 실패·403 은 unavailableSources — 배차 칸은 state null·source.confidence UNKNOWN, openCases 는 null(0건·정상으로 바꾸지 않음).
+        개인정보(고객 이름·연락처·주소) 없음.
       parameters:
-        - { name: mfcId, in: query, required: true, schema: { type: string } }
-        - { name: state, in: query, schema: { type: string } }
+        - { name: mfcId, in: query, required: false, schema: { type: string }, description: '센터 — 비우면 모든 센터(0.3.0)' }
+        - { name: state, in: query, schema: { type: string }, description: 'ExecutionState 하나 — 비우면 끝나지 않은 배송 전부(0.3.0)' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -291,11 +305,31 @@ paths:
                           properties:
                             deliveryId: { type: string }
                             orderId: { type: string }
+                            mfcId: { type: [string, 'null'] }
+                            type: { type: [string, 'null'], description: 'FORWARD·RETURN·RESHIPMENT(0.3.0)' }
                             delivery: { $ref: '#/components/schemas/StampedState' }
                             dispatch: { $ref: '#/components/schemas/StampedState' }
                             riderId: { type: [string, 'null'] }
-                            promisedAt: { type: string, format: date-time }
+                            createdAt: { type: [string, 'null'], format: date-time }
+                            assignedAt: { type: [string, 'null'], format: date-time }
+                            pickedUpAt: { type: [string, 'null'], format: date-time }
+                            arrivalWindow:
+                              type: [object, 'null']
+                              description: delivery-dispatch arrivalWindow 그대로(date·start·end, Asia/Seoul)
+                              additionalProperties: true
+                            promisedAt: { type: [string, 'null'], format: date-time }
                             latestEta: { type: [string, 'null'], format: date-time }
+                            openCases:
+                              description: 열린 사건(case — 보이는 종류만). case 원천 실패면 null(0.3.0)
+                              type: [array, 'null']
+                              items:
+                                type: object
+                                properties:
+                                  caseId: { type: string }
+                                  kind: { type: string }
+                                  priority: { type: [string, 'null'] }
+                                  overdue: { type: [boolean, 'null'] }
+                      truncated: { type: boolean, description: 'state 를 비웠을 때 size 를 넘는 배송이 더 있음(0.3.0)' }
                       page: { $ref: '_common.yaml#/components/schemas/Page' }
 
   /views/packing-handover:
