@@ -216,9 +216,7 @@ public class PolicyQuestionService {
         return failed(p, answerId, attempt, CONFIG_REQUIRED, "색인과 임베딩 모델 설정이 다릅니다. 재색인 뒤 다시 보내세요.");
       }
       log.warn(
-          "assistant answer={} dependency failure {}",
-          answerId,
-          e.getCause().getClass().getSimpleName());
+          "assistant answer={} dependency failure {}", answerId, FailureSummary.of(e.getCause()));
       return failed(
           p,
           answerId,

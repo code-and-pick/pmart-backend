@@ -80,59 +80,65 @@ def grade(q, st, r):
     return ok, missing, bad, src_hit, off_topic, mode, text, paths, cites
 
 
-token, _ = staff_token("claude-dev")
+def main():
+    # import 만으로 30문항 평가가 돌지 않게(2026-11-16 PC 4 — 함수만 쓰려고 import 했다가 PC 2 ollama 로 전체 평가가 돌았다)
+    token, _ = staff_token("claude-dev")
 
-with open(QFILE, encoding="utf-8") as f:
-    questions = json.load(f)["questions"]
+    with open(QFILE, encoding="utf-8") as f:
+        questions = json.load(f)["questions"]
 
-rows, raw = [], []
-for q in questions:
-    t0 = time.time()
-    st, r = http("POST", f"{GW}/assistant/policy-questions", token, {"question": q["q"]})
-    secs = time.time() - t0
-    ok, missing, bad, src_hit, off_topic, mode, text, paths, cites = grade(q, st, r)
-    rows.append((q, ok, missing, bad, src_hit, off_topic, mode, secs, st))
-    raw.append({"id": q["id"], "q": q["q"], "http": st, "seconds": round(secs, 1), "answerMode": mode,
-                "retrievalMode": r.get("retrievalMode"), "answer": r.get("answer"),
-                "citations": [{"path": c.get("path"), "section": c.get("section"), "authority": c.get("authority")}
-                              for c in cites], "model": r.get("model")})
-    print(f"{'OK  ' if ok else 'FAIL'} {q['id']} {secs:4.1f}s {mode or '-':20} 근거적중={'Y' if src_hit else '-'}"
-          f"{' 주제이탈' if off_topic else ''}{' 빠짐=' + str(missing) if missing else ''}{' 금지=' + str(bad) if bad else ''}")
+    rows, raw = [], []
+    for q in questions:
+        t0 = time.time()
+        st, r = http("POST", f"{GW}/assistant/policy-questions", token, {"question": q["q"]})
+        secs = time.time() - t0
+        ok, missing, bad, src_hit, off_topic, mode, text, paths, cites = grade(q, st, r)
+        rows.append((q, ok, missing, bad, src_hit, off_topic, mode, secs, st))
+        raw.append({"id": q["id"], "q": q["q"], "http": st, "seconds": round(secs, 1), "answerMode": mode,
+                    "retrievalMode": r.get("retrievalMode"), "answer": r.get("answer"),
+                    "citations": [{"path": c.get("path"), "section": c.get("section"), "authority": c.get("authority")}
+                                  for c in cites], "model": r.get("model")})
+        print(f"{'OK  ' if ok else 'FAIL'} {q['id']} {secs:4.1f}s {mode or '-':20} 근거적중={'Y' if src_hit else '-'}"
+              f"{' 주제이탈' if off_topic else ''}{' 빠짐=' + str(missing) if missing else ''}{' 금지=' + str(bad) if bad else ''}")
 
-n = len(rows)
-ans = [x for x in rows if x[0]["expect"] == "ANSWER"]
-correct = sum(1 for x in rows if x[1])
-ans_correct = sum(1 for x in ans if x[1])
-src = sum(1 for x in ans if x[4])
-off = sum(1 for x in ans if x[5])
-gen = sum(1 for x in ans if x[6] == "GENERATIVE")
-ext = sum(1 for x in ans if x[6] == "BASELINE_EXTRACTIVE")
-secs = sorted(x[7] for x in rows)
-model = raw[0].get("model") if raw else None
+    n = len(rows)
+    ans = [x for x in rows if x[0]["expect"] == "ANSWER"]
+    correct = sum(1 for x in rows if x[1])
+    ans_correct = sum(1 for x in ans if x[1])
+    src = sum(1 for x in ans if x[4])
+    off = sum(1 for x in ans if x[5])
+    gen = sum(1 for x in ans if x[6] == "GENERATIVE")
+    ext = sum(1 for x in ans if x[6] == "BASELINE_EXTRACTIVE")
+    secs = sorted(x[7] for x in rows)
+    model = raw[0].get("model") if raw else None
 
-os.makedirs(OUT, exist_ok=True)
-with open(os.path.join(OUT, "answers.json"), "w", encoding="utf-8", newline="\n") as f:
-    json.dump(raw, f, ensure_ascii=False, indent=1)
-lines = [
-    f"# 운영자 RAG 답변 정확도 평가 ({datetime.datetime.now():%Y-%m-%d %H:%M})", "",
-    f"- 대상: LAN 게이트웨이 `{GW}` · 모델 `{json.dumps(model, ensure_ascii=False)}`",
-    f"- 질문 정의: `services/ai-assistant-service/src/integrationTest/resources/eval/answers.json` (정답 사실은 원문을 읽고 먼저 정함)",
-    f"- **전체 정답 {correct}/{n}** · 근거로 답해야 하는 질문 {ans_correct}/{len(ans)} · 근거 적중 {src}/{len(ans)} · 주제 이탈 {off}",
-    f"- 답 방식(근거 질문): 생성 {gen} · 발췌로 전환 {ext} · 그 밖 {len(ans) - gen - ext}",
-    f"- 응답 시간: 중앙 {secs[n // 2]:.1f}초 · 최대 {secs[-1]:.1f}초", "",
-    "| id | 결과 | 시간 | 답 방식 | 근거 적중 | 빠진 사실 · 금지 표현 | 질문 |", "|---|---|---|---|---|---|---|",
-]
-for q, ok, missing, bad, src_hit, off_topic, mode, s, st in rows:
-    note = "; ".join(["빠짐 " + "/".join(g) for g in missing] + ["금지 " + x for x in bad]) or ""
-    lines.append(f"| {q['id']} | {'정답' if ok else '**오답**'} | {s:.1f}s | {mode or f'HTTP {st}'} | "
-                 f"{'Y' if src_hit else ('주제 이탈' if off_topic else '-')} | {note} | {q['q']} |")
-lines += ["", "## 오답 상세", ""]
-for (q, ok, missing, bad, src_hit, off_topic, mode, s, st), r in zip(rows, raw):
-    if ok:
-        continue
-    lines += [f"### {q['id']} — {q['q']}", f"- 기대: {q['expect']} · 정답 근거: {q.get('basis', '')}",
-              f"- 답({mode}): {norm(r['answer'])[:400]}",
-              "- 인용: " + ("; ".join(f"{c['path']} § {c['section']}" for c in r["citations"][:4]) or "없음"), ""]
-with open(os.path.join(OUT, "report.md"), "w", encoding="utf-8", newline="\n") as f:
-    f.write("\n".join(lines) + "\n")
-print(f"---- 정답 {correct}/{n} (근거 질문 {ans_correct}/{len(ans)}, 근거 적중 {src}/{len(ans)}, 주제 이탈 {off}) → {OUT}")
+    os.makedirs(OUT, exist_ok=True)
+    with open(os.path.join(OUT, "answers.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(raw, f, ensure_ascii=False, indent=1)
+    lines = [
+        f"# 운영자 RAG 답변 정확도 평가 ({datetime.datetime.now():%Y-%m-%d %H:%M})", "",
+        f"- 대상: LAN 게이트웨이 `{GW}` · 모델 `{json.dumps(model, ensure_ascii=False)}`",
+        f"- 질문 정의: `services/ai-assistant-service/src/integrationTest/resources/eval/answers.json` (정답 사실은 원문을 읽고 먼저 정함)",
+        f"- **전체 정답 {correct}/{n}** · 근거로 답해야 하는 질문 {ans_correct}/{len(ans)} · 근거 적중 {src}/{len(ans)} · 주제 이탈 {off}",
+        f"- 답 방식(근거 질문): 생성 {gen} · 발췌로 전환 {ext} · 그 밖 {len(ans) - gen - ext}",
+        f"- 응답 시간: 중앙 {secs[n // 2]:.1f}초 · 최대 {secs[-1]:.1f}초", "",
+        "| id | 결과 | 시간 | 답 방식 | 근거 적중 | 빠진 사실 · 금지 표현 | 질문 |", "|---|---|---|---|---|---|---|",
+    ]
+    for q, ok, missing, bad, src_hit, off_topic, mode, s, st in rows:
+        note = "; ".join(["빠짐 " + "/".join(g) for g in missing] + ["금지 " + x for x in bad]) or ""
+        lines.append(f"| {q['id']} | {'정답' if ok else '**오답**'} | {s:.1f}s | {mode or f'HTTP {st}'} | "
+                     f"{'Y' if src_hit else ('주제 이탈' if off_topic else '-')} | {note} | {q['q']} |")
+    lines += ["", "## 오답 상세", ""]
+    for (q, ok, missing, bad, src_hit, off_topic, mode, s, st), r in zip(rows, raw):
+        if ok:
+            continue
+        lines += [f"### {q['id']} — {q['q']}", f"- 기대: {q['expect']} · 정답 근거: {q.get('basis', '')}",
+                  f"- 답({mode}): {norm(r['answer'])[:400]}",
+                  "- 인용: " + ("; ".join(f"{c['path']} § {c['section']}" for c in r["citations"][:4]) or "없음"), ""]
+    with open(os.path.join(OUT, "report.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    print(f"---- 정답 {correct}/{n} (근거 질문 {ans_correct}/{len(ans)}, 근거 적중 {src}/{len(ans)}, 주제 이탈 {off}) → {OUT}")
+
+
+if __name__ == "__main__":
+    main()

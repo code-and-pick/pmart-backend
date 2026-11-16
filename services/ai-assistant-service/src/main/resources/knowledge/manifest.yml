@@ -44,7 +44,10 @@ documents:
   - { path: docs/business/flows/order-checkout-saga.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
   - { path: docs/business/flows/replenishment-transfer.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
   - { path: docs/business/flows/return-exchange-refund.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 }
-  - { path: docs/business/flows/employee-account-provisioning.md, domain: flows, kind: FLOW, authority: PROPOSAL, precedence: 4 } # 직원 등록·권한 요청·승인(ADR-0056 의 업무 부분 — ADR 자체는 인증 구현이라 뺌, 2026-11-15)
+  # 직원 등록·권한 요청·승인(ADR-0056 의 업무 부분 — ADR 자체는 인증 구현이라 뺌, 2026-11-15).
+  # 2026-11-16 PROPOSAL → ADOPTED_DESIGN: ADR-0056(승인)·BO-01(사용자 결정 2026-11-15)을 옮긴 흐름이고 구현·LAN 배포됨.
+  # 설계안으로 두면 권한 답마다 "확정 정책 근거 없음 — 설계안" 꼬리표가 붙었다(PC 1 재색인 확인 2026-11-16). 다른 흐름 문서는 그대로.
+  - { path: docs/business/flows/employee-account-provisioning.md, domain: flows, kind: FLOW, authority: ADOPTED_DESIGN, precedence: 4 }
   # --- 상태표 ---
   - { path: contracts/states/cdc-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }
   - { path: contracts/states/claim-refund-states.md, domain: states, kind: STATE, authority: ADOPTED_DESIGN, precedence: 4 }

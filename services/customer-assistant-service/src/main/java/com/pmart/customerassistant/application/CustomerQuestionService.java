@@ -315,7 +315,7 @@ public class CustomerQuestionService {
       log.warn(
           "customer-assistant answer={} dependency failure {}",
           answerId,
-          e.getCause().getClass().getSimpleName());
+          FailureSummary.of(e.getCause()));
       return failed(p, answerId, attempt, DEPENDENCY_UNAVAILABLE, "검색·모델 장애입니다. 같은 키로 다시 보내세요.");
     }
 
