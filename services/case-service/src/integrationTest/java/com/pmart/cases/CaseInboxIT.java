@@ -498,4 +498,105 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     assertThat(claimed.status()).as(claimed.body().toString()).isEqualTo(200);
     assertThat(claimed.body().path("history").toString()).contains("RECURRED");
   }
+
+  Map<String, Object> dispatchFailed(String deliveryId, String reason) {
+    return Map.of(
+        "deliveryId",
+        deliveryId,
+        "orderId",
+        "ORD-" + deliveryId,
+        "reason",
+        reason,
+        "attempts",
+        1,
+        "failedAt",
+        Instant.now().toString());
+  }
+
+  /**
+   * 배차 실패(2026-11-16 사용자 — 중간안·지원센터·10분): 라이더 없음은 첫 실패에 사건 없음 → 두 번째에 DISPATCH_FAILED → 세 번째는 이력,
+   * 시스템 장애는 첫 실패에 사건. 배송 쪽이라 RIDER_OPS 가 집고 상담원은 본다.
+   */
+  @Test
+  void dispatchFailureOpensOnSystemFailureOrSecondRetryFailure() throws Exception {
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String retrying = "DLV-DF-" + suffix;
+    String broken = "DLV-DS-" + suffix;
+    String dispatch = "delivery-dispatch-service";
+
+    publish(
+        "delivery.delivery.v1",
+        "DispatchFailed",
+        retrying,
+        dispatchFailed(retrying, "NO_RIDER"),
+        dispatch);
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM dispatch_failure_watch WHERE delivery_id = ? AND failures = 1",
+                retrying),
+        c -> c > 0);
+    assertThat(count("SELECT count(*) FROM case_record WHERE subject_ref = ?", retrying))
+        .as("라이더 없음 첫 실패 — 아직 사건 아님")
+        .isZero();
+
+    publish(
+        "delivery.delivery.v1",
+        "DispatchFailed",
+        retrying,
+        dispatchFailed(retrying, "EXPIRED"),
+        dispatch);
+    publish(
+        "delivery.delivery.v1",
+        "DispatchFailed",
+        retrying,
+        dispatchFailed(retrying, "NO_RIDER"),
+        dispatch);
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history h JOIN case_record c ON c.case_id = h.case_id"
+                    + " WHERE c.subject_ref = ? AND h.action = 'RECURRED'",
+                retrying),
+        c -> c > 0);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT case_type FROM case_record WHERE subject_ref = ?", String.class, retrying))
+        .containsExactly("DISPATCH_FAILED");
+
+    publish(
+        "delivery.delivery.v1",
+        "DispatchFailed",
+        broken,
+        dispatchFailed(broken, "SYSTEM_FAILURE"),
+        dispatch);
+    assertThat(
+            await(
+                () ->
+                    jdbc.queryForList(
+                        "SELECT case_type FROM case_record WHERE subject_ref = ?",
+                        String.class,
+                        broken),
+                l -> !l.isEmpty()))
+        .as("시스템 장애 — 첫 실패에 사건")
+        .containsExactly("DISPATCH_FAILED");
+
+    Res list = send("GET", ops, "/cases?subjectRef=" + retrying, null);
+    assertThat(list.status()).isEqualTo(200);
+    JsonNode item = list.body().path("items").get(0);
+    String caseId = item.path("caseId").asString();
+    assertThat(item.path("kind").asString()).isEqualTo("DISPATCH_FAILED");
+    assertThat(item.path("assigneeGroup").asString()).isEqualTo("DELIVERY_OPS");
+    assertThat(item.path("summary").asString()).contains("2번째", "응답 만료");
+    assertThat(item.path("refs").toString()).contains(retrying, "ORD-" + retrying);
+    Instant due = Instant.parse(item.path("slaDueAt").asString());
+    assertThat(due)
+        .isBetween(Instant.now().plusSeconds(8 * 60), Instant.now().plusSeconds(11 * 60));
+    assertThat(outbox(caseId, "CaseOpened")).isEqualTo(1);
+    assertThat(send("GET", cs, "/cases/" + caseId, null).status()).as("상담원은 본다").isEqualTo(200);
+    Res claimed =
+        send("POST", ops, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-1"));
+    assertThat(claimed.status()).as(claimed.body().toString()).isEqualTo(200);
+    assertThat(claimed.body().path("history").toString()).contains("RECURRED", "3번째");
+  }
 }

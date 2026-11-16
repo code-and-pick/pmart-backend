@@ -147,6 +147,22 @@ public class CaseStore {
         caseId);
   }
 
+  /** 배송별 배차 실패 횟수를 하나 올리고 올린 뒤 값을 돌려준다(V5). */
+  public int countDispatchFailure(String deliveryId, String reason, Instant at) {
+    Integer n =
+        jdbc.queryForObject(
+            "INSERT INTO dispatch_failure_watch (delivery_id, failures, first_failed_at, last_failed_at,"
+                + " last_reason) VALUES (?, 1, ?, ?, ?) ON CONFLICT (delivery_id) DO UPDATE SET"
+                + " failures = dispatch_failure_watch.failures + 1, last_failed_at = EXCLUDED.last_failed_at,"
+                + " last_reason = EXCLUDED.last_reason RETURNING failures",
+            Integer.class,
+            deliveryId,
+            ts(at),
+            ts(at),
+            reason);
+    return n == null ? 1 : n;
+  }
+
   public void touch(String caseId, Instant at) {
     jdbc.update(
         "UPDATE case_record SET version = version + 1, updated_at = ? WHERE case_id = ?",

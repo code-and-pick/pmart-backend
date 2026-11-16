@@ -12,6 +12,7 @@ pmart:
       "[DELIVERY_INCIDENT]": PT30M
       "[RIDER_LOCATION_STALE]": PT10M
       "[MISDELIVERY]": PT30M
+      "[DISPATCH_FAILED]": PT10M # 배차 실패(사용자 2026-11-16 "1번으로")
       "[RECONCILIATION]": PT1H # 사가·결제 이상(R-3, 사용자 2026-11-16 "한시간으로")
       "[PAYMENT_UNKNOWN]": PT1H
 spring:
@@ -21,7 +22,7 @@ spring:
       definition: deliveryEvents;trackingEvents;sagaEvents;paymentEvents
     stream:
       bindings:
-        deliveryEvents-in-0: # delivery-execution DeliveryIncidentRaised → 라이더 도움요청·전달 실패 사건(R-4)
+        deliveryEvents-in-0: # delivery-execution DeliveryIncidentRaised → 라이더 도움요청·전달 실패 사건(R-4), delivery-dispatch DispatchFailed → 배차 실패 사건
           destination: delivery.delivery.v1
         trackingEvents-in-0: # delivery-tracking RiderLocationStale → 위치 끊김 사건(R-6)
           destination: delivery.tracking.v1

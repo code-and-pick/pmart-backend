@@ -12,8 +12,9 @@ import org.springframework.context.annotation.Configuration;
  * delivery-execution 의 임시 처리함에 남아 있다).
  *
  * <ul>
- *   <li>{@code deliveryEvents-in-0} = delivery.delivery.v1 — {@code DeliveryIncidentRaised} 만(R-4).
- *       같은 토픽의 다른 배송 사건은 버린다.
+ *   <li>{@code deliveryEvents-in-0} = delivery.delivery.v1 — {@code
+ *       DeliveryIncidentRaised}(R-4)·{@code DispatchFailed}(배차 실패, 2026-11-16 — delivery-dispatch 가
+ *       같은 토픽에 낸다). 같은 토픽의 다른 배송 사건은 버린다.
  *   <li>{@code trackingEvents-in-0} = delivery.tracking.v1 — {@code RiderLocationStale} 만(R-6).
  *   <li>{@code sagaEvents-in-0} = order.saga.v1, {@code paymentEvents-in-0} = order.payment.v1 —
  *       사가·결제 이상(R-3, 2026-11-16). 처음 켤 때 latest(지난 이상은 처리 대기 BO-12 에 이미 보인다).
@@ -25,7 +26,14 @@ class CaseEventConsumers {
   @Bean
   PmartEventConsumer deliveryEvents(EventConsumers consumers, CaseInboxService cases) {
     return consumers.of(
-        e -> "DeliveryIncidentRaised".equals(e.eventType()), cases::onDeliveryIncident);
+        e -> DELIVERY_TYPES.contains(e.eventType()),
+        e -> {
+          if ("DispatchFailed".equals(e.eventType())) {
+            cases.onDispatchFailed(e);
+          } else {
+            cases.onDeliveryIncident(e);
+          }
+        });
   }
 
   @Bean
@@ -47,6 +55,8 @@ class CaseEventConsumers {
     return consumers.of(e -> PAYMENT_TYPES.contains(e.eventType()), cases::onOrderException);
   }
 
+  private static final Set<String> DELIVERY_TYPES =
+      Set.of("DeliveryIncidentRaised", "DispatchFailed");
   private static final Set<String> SAGA_TYPES =
       Set.of("ReconciliationRequired", "CompensationExecuted");
   private static final Set<String> PAYMENT_TYPES =

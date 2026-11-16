@@ -17,6 +17,8 @@ import org.jspecify.annotations.Nullable;
  *       열기: CS_AGENT·RIDER_OPS· OPERATOR_ADMIN.
  *   <li>우선순위: 사고(ACCIDENT)·안전 위협 P1, 도움요청·위치 끊김 P2, 그 밖 P3.
  *   <li>처리 기한: 종류별 기본값(설정으로 바꿈) — 표시만, 알림 없음.
+ *   <li>배차 실패(2026-11-16 사용자 — 중간안·지원센터·10분): DISPATCH_FAILED — 배송 쪽(DELIVERY_OPS). 시스템 장애는 첫 실패,
+ *       라이더 없음 등 자동 재배차 실패는 같은 배송 두 번째 실패부터. 배송마다 열린 사건 하나, 그 뒤 실패는 이력.
  *   <li>사가·결제 이상(R-3, 2026-11-16 사용자 — 기한 1시간·"이상만"·멈춘 사가는 지금 안 함): RECONCILIATION(대사 필요·결제 불일치·보상
  *       실패)·PAYMENT_UNKNOWN(결제 결과 불명 상신). 팀 ORDER_OPS = OPERATOR_ADMIN 만 보고 집고 닫는다. 사건은 알림·기록이고 조치는
  *       처리 대기(BO-12) 버튼·각 메뉴에서 한다.
@@ -33,12 +35,13 @@ public final class CaseRules {
   public static final String CS_INQUIRY = "CS_INQUIRY";
   public static final String RECONCILIATION = "RECONCILIATION";
   public static final String PAYMENT_UNKNOWN = "PAYMENT_UNKNOWN";
+  public static final String DISPATCH_FAILED = "DISPATCH_FAILED";
 
   public static final String GROUP_DELIVERY_OPS = "DELIVERY_OPS";
   public static final String GROUP_ORDER_OPS = "ORDER_OPS";
 
   public static final Set<String> DELIVERY_KINDS =
-      Set.of(RIDER_HELP, DELIVERY_INCIDENT, RIDER_LOCATION_STALE, MISDELIVERY);
+      Set.of(RIDER_HELP, DELIVERY_INCIDENT, RIDER_LOCATION_STALE, MISDELIVERY, DISPATCH_FAILED);
 
   /** 사가·결제 이상(R-3) — OPERATOR_ADMIN 만. */
   public static final Set<String> ORDER_KINDS = Set.of(RECONCILIATION, PAYMENT_UNKNOWN);
@@ -51,7 +54,7 @@ public final class CaseRules {
 
   /**
    * 종류별 처리 기한 기본값(설정 {@code pmart.cases.sla.<종류>} 로 바꾼다 — 값 확정 2026-11-16 사용자 "그대로 할게", 사가·결제 이상
-   * 1시간은 같은 날 "한시간으로").
+   * 1시간은 같은 날 "한시간으로", 배차 실패 10분은 같은 날 "1번으로").
    */
   public static final Map<String, Duration> DEFAULT_SLA =
       Map.of(
@@ -60,7 +63,8 @@ public final class CaseRules {
           RIDER_LOCATION_STALE, Duration.ofMinutes(10),
           MISDELIVERY, Duration.ofMinutes(30),
           RECONCILIATION, Duration.ofHours(1),
-          PAYMENT_UNKNOWN, Duration.ofHours(1));
+          PAYMENT_UNKNOWN, Duration.ofHours(1),
+          DISPATCH_FAILED, Duration.ofMinutes(10));
 
   public static String group(String kind) {
     if (DELIVERY_KINDS.contains(kind)) {
@@ -92,6 +96,7 @@ public final class CaseRules {
           DELIVERY_INCIDENT,
           RIDER_LOCATION_STALE,
           MISDELIVERY,
+          DISPATCH_FAILED,
           RECONCILIATION,
           PAYMENT_UNKNOWN);
 
@@ -106,6 +111,27 @@ public final class CaseRules {
       case "CompensationExecuted" -> "SUCCESS".equals(result) ? null : RECONCILIATION;
       case "PaymentResultUnknown" -> escalated ? PAYMENT_UNKNOWN : null;
       default -> null;
+    };
+  }
+
+  /**
+   * 배차 실패 사건을 여는가(2026-11-16 사용자 — 중간안). 시스템 장애(자동 재배차 없음)는 첫 실패에, 그 밖(라이더 없음·반복 거절·응답 만료 — 10분마다
+   * 자동 재배차)은 같은 배송의 두 번째 실패부터. {@code failures} = 이 배송의 배차 실패 횟수(이번 것 포함).
+   */
+  public static boolean dispatchFailureOpens(@Nullable String reason, int failures) {
+    return "SYSTEM_FAILURE".equals(reason) || failures >= 2;
+  }
+
+  public static String dispatchReasonName(@Nullable String reason) {
+    if (reason == null) {
+      return "-";
+    }
+    return switch (reason) {
+      case "NO_RIDER" -> "라이더 없음";
+      case "REPEATED_REJECTION" -> "반복 거절";
+      case "EXPIRED" -> "응답 만료";
+      case "SYSTEM_FAILURE" -> "시스템 장애";
+      default -> reason;
     };
   }
 

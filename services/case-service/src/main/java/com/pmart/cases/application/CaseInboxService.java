@@ -163,6 +163,48 @@ public class CaseInboxService {
   }
 
   /**
+   * 배차 실패(2026-11-16 사용자 — 중간안·지원센터·10분) → DISPATCH_FAILED. 배송별 실패 횟수를 세어({@code
+   * dispatch_failure_watch}) 시스템 장애는 첫 실패에, 그 밖은 두 번째 실패부터 연다. 열린 사건이 있으면 이력(재발)만. 배차가 뒤에 성공해도 자동으로
+   * 닫지 않는다(담당자가 확인하고 닫는다).
+   */
+  public void onDispatchFailed(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String deliveryId = text(p, "deliveryId");
+    if (deliveryId == null) {
+      throw new IllegalArgumentException("deliveryId 없음"); // 계약 위반 → DLT
+    }
+    String reason = text(p, "reason");
+    Instant now = now();
+    int failures = store.countDispatchFailure(deliveryId, reason == null ? "-" : reason, now);
+    String note = "배차 실패 " + failures + "번째 — " + CaseRules.dispatchReasonName(reason);
+    String key = "DISPATCH:" + deliveryId;
+    var open = store.lockOpenByDedupe(key);
+    if (open.isPresent()) {
+      store.touch(open.get().caseId(), now);
+      store.history(open.get().caseId(), now, SYSTEM, "RECURRED", null, null, note);
+      log.info("배차 실패 재발 — 사건 {} 에 이력만", open.get().caseId());
+      return;
+    }
+    if (!CaseRules.dispatchFailureOpens(reason, failures)) {
+      log.info("배송 {} 배차 실패 {}번째({}) — 아직 사건 아님", deliveryId, failures, reason);
+      return;
+    }
+    List<Ref> refs = new ArrayList<>();
+    refs.add(new Ref("deliveryId", deliveryId));
+    addRef(refs, "orderId", text(p, "orderId"));
+    openFromEvent(
+        e,
+        CaseRules.DISPATCH_FAILED,
+        "P2",
+        "DELIVERY",
+        deliveryId,
+        null,
+        note + ("SYSTEM_FAILURE".equals(reason) ? " (자동 재배차 없음)" : " (10분마다 자동 재배차 중)"),
+        refs,
+        key);
+  }
+
+  /**
    * R-3: 사가·결제 이상 → RECONCILIATION·PAYMENT_UNKNOWN(OPERATOR_ADMIN, 2026-11-16 사용자 "이상만"). 같은 주문으로
    * 열린 같은 종류 사건이 있으면 이력(재발)만 — 결제 결과 불명은 15분마다 다시 오므로 재발 이력도 남기지 않는다. 사건은 알림·기록이고 조치는 처리
    * 대기(BO-12)에서 한다. 금액·상세는 사건에 싣지 않는다(참조만).
