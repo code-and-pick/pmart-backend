@@ -262,6 +262,31 @@ public class Upstreams {
         n.path("confirmedAt").isString() ? Instant.parse(n.path("confirmedAt").asString()) : null);
   }
 
+  /** 오배송 다시 배송 실제 집 도로명주소(order 내부 — ADR-0065). 없으면 empty. 주소는 로그에 남기지 않는다. */
+  public Optional<String> redeliveryAddress(String orderId, String destinationId) {
+    JsonNode n;
+    try {
+      n =
+          json(
+              Downstream.call(
+                  "order-service redelivery-destination",
+                  () ->
+                      order
+                          .get()
+                          .uri(
+                              "/api/v1/internal/orders/{id}/redelivery-destinations/{d}",
+                              orderId,
+                              destinationId)
+                          .retrieve()
+                          .body(String.class)));
+    } catch (HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    }
+    return n.path("roadAddress").isString()
+        ? Optional.of(n.path("roadAddress").asString())
+        : Optional.empty();
+  }
+
   // ---------- center-master ----------
 
   public Optional<Geo> centerCoordinates(String mfcId) {

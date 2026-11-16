@@ -1810,8 +1810,10 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(1); // 고객 잘못·다시 배송 사건은 회수를 만들지 않았다
     assertThat(
             jdbc.queryForObject(
-                "SELECT count(*) FROM delivery WHERE case_id = ?", Integer.class, customerCase))
-        .isZero();
+                "SELECT count(*) FROM delivery WHERE case_id = ? AND type = 'RETURN'",
+                Integer.class,
+                customerCase))
+        .isZero(); // 고객 잘못·다시 배송은 MFC 회수가 아니라 다시 배송(ADR-0065)
   }
 
   /**
@@ -1897,6 +1899,224 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         dispatchView(TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()), deliveryId);
     assertThat(view.path("type").asString()).isEqualTo("RESHIPMENT");
     assertThat(view.path("purpose").asString()).isEqualTo("MISDELIVERY_RESHIPMENT");
+  }
+
+  /** 원래 배송 하나를 r1 이 배정받아 전달 완료까지(배차 쪽 기록). 완료 시각을 돌려준다. */
+  Instant completedOrigin(String mfc, String r1, String origin) {
+    String offerId =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin);
+    assertThat(body(respond(r1, offerId, "a-" + origin, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    Instant deliveredAt =
+        Instant.now().minusSeconds(600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    executionEvent(
+        "DeliveryCompleted",
+        origin,
+        Map.of(
+            "deliveryId",
+            origin,
+            "riderId",
+            r1,
+            "deliveredAt",
+            deliveredAt.toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1)),
+            "method",
+            "CONTACTLESS"));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + origin
+            + "' AND state = 'CLOSED' AND completed_at IS NOT NULL");
+    return deliveredAt;
+  }
+
+  /**
+   * ADR-0065 고객 잘못 다시 배송: 잘못 둔 곳 ↔ 실제 집 200m 미만이면 원래 기사에게 먼저(배달료 0), 200m 이상이면 9,000원 결제 대기(사건만 내고
+   * 배차 안 함). MFC 회수는 없다.
+   */
+  @Test
+  void customerFaultRedeliveryOriginalRiderWithin200mOrWaitsForPayment() {
+    String mfc = "MFC-D22";
+    String r1 = "RD-rd1-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String origin = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-rd-" + UUID.randomUUID());
+    engine.tick();
+    Instant done = completedOrigin(mfc, r1, origin);
+    String orderId =
+        jdbc.queryForObject(
+            "SELECT order_id FROM delivery WHERE delivery_id = ?", String.class, origin);
+    // 잘못 둔 곳 = r1 완료 위치(실제 집 좌표 37.5006,127.0360 과 약 60m), 실제 집 주소는 order 에
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/riders/" + r1 + "/location-at"))
+            .withQueryParam("at", equalTo(done.toString()))
+            .willReturn(
+                json(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "lat",
+                        37.501,
+                        "lng",
+                        127.0365,
+                        "recordedAt",
+                        done.toString(),
+                        "quality",
+                        "GOOD"))));
+    up.stubFor(
+        get(urlPathMatching("/api/v1/internal/orders/.*/redelivery-destinations/RDD-NEAR"))
+            .willReturn(json(Map.of("destinationId", "RDD-NEAR", "roadAddress", "IT-HOME"))));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.origins[0].lat", equalTo("37.501")))
+            .willReturn(json(matrix(List.of(List.of(120, 60))))));
+    locations(Map.of(r1, new double[] {37.5012, 127.0366}));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(2)
+            .withRequestBody(matchingJsonPath("$.destinations[0].lat", equalTo("37.501")))
+            .willReturn(json(matrix(List.of(List.of(30, 20))))));
+    String caseId = "CASE-" + UUID.randomUUID();
+    String json =
+        EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+            .from("case-service")
+            .aggregate("Case", caseId, 1)
+            .payload(
+                Map.of(
+                    "caseId",
+                    caseId,
+                    "deliveryId",
+                    origin,
+                    "riderId",
+                    r1,
+                    "confirmedBy",
+                    "OP-CS",
+                    "confirmedAt",
+                    Instant.now().toString(),
+                    "fault",
+                    "CUSTOMER",
+                    "resolution",
+                    "REDELIVER",
+                    "redeliveryDestinationId",
+                    "RDD-NEAR"))
+            .buildJson();
+    kafka.send("platform.case.v1", caseId, json).join();
+    awaitSql("SELECT count(*) FROM delivery WHERE case_id = '" + caseId + "'");
+    Map<String, Object> rd =
+        jdbc.queryForMap(
+            "SELECT delivery_id, type, purpose FROM delivery WHERE case_id = ?", caseId);
+    String redelivery = (String) rd.get("delivery_id");
+    assertThat(rd.get("type")).isEqualTo("RESHIPMENT");
+    assertThat(rd.get("purpose")).isEqualTo("MISDELIVERY_REDELIVERY");
+    JsonNode created = outbox(redelivery, "DeliveryCreated").path("payload");
+    assertThat(created.path("dropAddressRef").asString())
+        .isEqualTo("order:" + orderId + ":redelivery:RDD-NEAR");
+    engine.tick();
+    Map<String, Object> geo =
+        jdbc.queryForMap(
+            "SELECT straight_distance_m, payment_required, drop_distance_m FROM delivery WHERE"
+                + " delivery_id = ?",
+            redelivery);
+    assertThat((Integer) geo.get("straight_distance_m")).isLessThan(200);
+    assertThat(geo.get("payment_required")).isEqualTo(false);
+    Map<String, Object> o =
+        jdbc.queryForMap(
+            "SELECT rider_id, fee FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            redelivery);
+    assertThat(o.get("rider_id")).isEqualTo(r1); // 원래 기사
+    assertThat(o.get("fee")).isEqualTo(0); // 추가 운행료 없음
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE type = 'RETURN' AND origin_delivery_id = ?",
+                Integer.class,
+                origin))
+        .isZero(); // MFC 회수 없음
+
+    // 200m 이상 — 결제 대기(사건 RedeliveryPaymentRequired 9,000원), 배차 안 함
+    String origin2 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-rd2-" + UUID.randomUUID());
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    jdbc.update("UPDATE dispatch_offer SET state = 'EXPIRED' WHERE delivery_id = ?", redelivery);
+    engine.tick();
+    Instant done2 = completedOrigin(mfc, r1, origin2);
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/riders/" + r1 + "/location-at"))
+            .withQueryParam("at", equalTo(done2.toString()))
+            .willReturn(
+                json(
+                    Map.of(
+                        "riderId",
+                        r1,
+                        "lat",
+                        37.512,
+                        "lng",
+                        127.0365,
+                        "recordedAt",
+                        done2.toString(),
+                        "quality",
+                        "GOOD"))));
+    up.stubFor(
+        get(urlPathMatching("/api/v1/internal/orders/.*/redelivery-destinations/RDD-FAR"))
+            .willReturn(json(Map.of("destinationId", "RDD-FAR", "roadAddress", "IT-HOME"))));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.origins[0].lat", equalTo("37.512")))
+            .willReturn(json(matrix(List.of(List.of(1500, 400))))));
+    String case2 = "CASE-" + UUID.randomUUID();
+    kafka
+        .send(
+            "platform.case.v1",
+            case2,
+            EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+                .from("case-service")
+                .aggregate("Case", case2, 1)
+                .payload(
+                    Map.of(
+                        "caseId",
+                        case2,
+                        "deliveryId",
+                        origin2,
+                        "riderId",
+                        r1,
+                        "confirmedBy",
+                        "OP-CS",
+                        "confirmedAt",
+                        Instant.now().toString(),
+                        "fault",
+                        "CUSTOMER",
+                        "resolution",
+                        "REDELIVER",
+                        "redeliveryDestinationId",
+                        "RDD-FAR"))
+                .buildJson())
+        .join();
+    awaitSql("SELECT count(*) FROM delivery WHERE case_id = '" + case2 + "'");
+    String redelivery2 =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE case_id = ?", String.class, case2);
+    engine.tick();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payment_required FROM delivery WHERE delivery_id = ?",
+                Boolean.class,
+                redelivery2))
+        .isTrue();
+    JsonNode pay = outbox(redelivery2, "RedeliveryPaymentRequired").path("payload");
+    assertThat(pay.path("fee").asInt()).isEqualTo(9000);
+    assertThat(pay.path("caseId").asString()).isEqualTo(case2);
+    assertThat(pay.path("straightDistanceM").asInt()).isGreaterThanOrEqualTo(200);
+    engine.tick();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM dispatch_offer WHERE delivery_id = ?",
+                Integer.class,
+                redelivery2))
+        .isZero(); // 결제 전 배차 없음
   }
 
   void misdeliveryConfirmed(

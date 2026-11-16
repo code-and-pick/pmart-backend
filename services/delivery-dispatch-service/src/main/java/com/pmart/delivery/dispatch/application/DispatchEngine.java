@@ -222,8 +222,11 @@ public class DispatchEngine {
       }
       ready.add(new Ready(row, a.get(), SearchRules.radiusKm(props.radiiKm(), a.get().stage())));
     }
-    List<Ready> recoveries = ready.stream().filter(r -> r.delivery().recovery()).toList();
-    List<Ready> forward = ready.stream().filter(r -> !r.delivery().recovery()).toList();
+    List<Ready> recoveries =
+        ready.stream()
+            .filter(r -> r.delivery().pickupBased() && !r.delivery().awaitingPayment())
+            .toList();
+    List<Ready> forward = ready.stream().filter(r -> !r.delivery().pickupBased()).toList();
     if (!forward.isEmpty()) {
       runForward(mfcId, forward, now);
     }
@@ -464,11 +467,37 @@ public class DispatchEngine {
       if (r.attempt().excludedRiderId() != null) {
         skip.add(r.attempt().excludedRiderId());
       }
-      if (d.originDeliveryId() != null) {
-        store
-            .delivery(d.originDeliveryId())
-            .map(DeliveryRow::riderId)
-            .ifPresent(skip::add); // 원래 라이더(ADR-0052 "인근 다른 라이더") — 재배차 시도에도
+      String originRider =
+          d.originDeliveryId() == null
+              ? null
+              : store.delivery(d.originDeliveryId()).map(DeliveryRow::riderId).orElse(null);
+      if (d.recovery() && originRider != null) {
+        skip.add(originRider); // 회수: 원래 라이더(ADR-0052 "인근 다른 라이더") — 재배차 시도에도
+      }
+      // 다시 배송 200m 안(ADR-0065): 원래 기사에게 먼저 — 배달료 0(추가 운행료 없음), 반경 상관없이. 거절·만료면 다음부터 근처 다른 라이더
+      if (d.redelivery()
+          && !d.paymentRequired()
+          && originRider != null
+          && !skip.contains(originRider)
+          && byId.containsKey(originRider)) {
+        Integer busyCount = store.activeCounts(List.of(originRider)).getOrDefault(originRider, 0);
+        int limit = byId.get(originRider).oneAtATime() ? 1 : props.maxActiveDeliveries();
+        Upstreams.Location loc =
+            upstreams.locations(List.of(originRider)).stream().findFirst().orElse(null);
+        if (busyCount < limit
+            && loc != null
+            && !loc.receivedAt().plus(props.locationMaxAge()).isBefore(now)
+            && USABLE_QUALITY.contains(loc.quality())) {
+          Upstreams.Leg leg = upstreams.matrix(List.of(loc.at()), List.of(pickup))[0][0];
+          if (leg.ok()) {
+            offer(List.of(r), byId.get(originRider), leg, "REDELIVERY original rider", now, 0);
+            taken.add(originRider);
+            continue;
+          }
+        }
+      }
+      if (d.redelivery() && originRider != null && !d.paymentRequired()) {
+        skip.add(originRider); // 원래 기사가 지금 못 받으면 근처 다른 라이더(일반 배달료)
       }
       List<String> ids = all.stream().filter(id -> !skip.contains(id)).toList();
       Map<String, Integer> active = store.activeCounts(ids);
@@ -514,7 +543,12 @@ public class DispatchEngine {
         continue;
       }
       String riderId = near.get(best);
-      offer(List.of(r), byId.get(riderId), legs[best][0], "RECOVERY nearest", now);
+      offer(
+          List.of(r),
+          byId.get(riderId),
+          legs[best][0],
+          d.redelivery() ? "REDELIVERY nearest" : "RECOVERY nearest",
+          now);
       taken.add(riderId);
     }
   }
@@ -564,6 +598,19 @@ public class DispatchEngine {
       Upstreams.Leg leg,
       String solverName,
       Instant now) {
+    offer(members, rider, leg, solverName, now, null);
+  }
+
+  /**
+   * @param fee 정해진 배달료(다시 배송 원래 기사 0원 — ADR-0065). null 이면 원문 §7.1 표
+   */
+  private void offer(
+      List<Ready> members,
+      Upstreams.Rider rider,
+      Upstreams.Leg leg,
+      String solverName,
+      Instant now,
+      @org.jspecify.annotations.Nullable Integer fee) {
     tx.executeWithoutResult(
         s -> {
           // 라이더 잠금 아래 제한 사본을 다시 본다(RS-1, 사용자 2026-11-14 "제한된 계정에는 배차가 가면 안 된다") — 후보는 잠금 밖에서
@@ -616,7 +663,7 @@ public class DispatchEngine {
                     null,
                     leg.distanceM(),
                     leg.durationS(),
-                    FeeTable.estimate(rider.vehicleType(), x.dropDistanceM()),
+                    fee != null ? fee : FeeTable.estimate(rider.vehicleType(), x.dropDistanceM()),
                     rider.vehicleType(),
                     bundleId,
                     members.size(),
@@ -715,6 +762,9 @@ public class DispatchEngine {
     if (d.recovery()) {
       return prepareRecoveryGeo(d, a, now);
     }
+    if (d.redelivery()) {
+      return prepareRedeliveryGeo(d, a, now);
+    }
     try {
       Upstreams.Destination dest = upstreams.destination(d.orderId());
       if ("CANCELLED".equals(dest.status())) {
@@ -791,25 +841,13 @@ public class DispatchEngine {
       if (origin.completedAt() == null && !"CLOSED".equals(origin.state())) {
         return later(d, a, "ORIGIN_NOT_COMPLETED", now);
       }
-      Instant done = origin.completedAt() != null ? origin.completedAt() : origin.updatedAt();
-      Geo pickup = null;
-      String source = null;
-      Instant recordedAt = null;
-      if (origin.riderId() != null) {
-        Optional<Upstreams.PointAt> at = upstreams.locationAt(origin.riderId(), done);
-        if (at.isPresent()) {
-          pickup = at.get().at();
-          source = "RIDER_COMPLETION_LOCATION";
-          recordedAt = at.get().recordedAt();
-        }
-      }
-      if (pickup == null && origin.dropLat() != null && origin.dropLng() != null) {
-        pickup = new Geo(origin.dropLat(), origin.dropLng());
-        source = "DROP_ADDRESS";
-      }
-      if (pickup == null) {
+      Pickup pk = pickupOf(origin);
+      if (pk == null) {
         return failSystem(d, a, "NO_PICKUP_POINT", now);
       }
+      Geo pickup = pk.at();
+      String source = pk.source();
+      Instant recordedAt = pk.recordedAt();
       Upstreams.Leg leg = upstreams.matrix(List.of(pickup), List.of(mfc.get()))[0][0];
       if (!leg.ok()) {
         return failSystem(d, a, "NO_ROUTE_TO_MFC", now);
@@ -838,6 +876,107 @@ public class DispatchEngine {
       return later(d, a, e.code(), now);
     }
   }
+
+  /** 잘못 둔 곳(회수·다시 배송 픽업지). */
+  private record Pickup(
+      Geo at, String source, @org.jspecify.annotations.Nullable Instant recordedAt) {}
+
+  /** 원래 라이더가 완료를 누른 시각의 위치 점(앞뒤 3분), 없으면 원래 배송지 좌표. 둘 다 없으면 null. */
+  private @org.jspecify.annotations.Nullable Pickup pickupOf(DeliveryRow origin) {
+    Instant done = origin.completedAt() != null ? origin.completedAt() : origin.updatedAt();
+    if (origin.riderId() != null) {
+      Optional<Upstreams.PointAt> at = upstreams.locationAt(origin.riderId(), done);
+      if (at.isPresent()) {
+        return new Pickup(at.get().at(), "RIDER_COMPLETION_LOCATION", at.get().recordedAt());
+      }
+    }
+    if (origin.dropLat() != null && origin.dropLng() != null) {
+      return new Pickup(new Geo(origin.dropLat(), origin.dropLng()), "DROP_ADDRESS", null);
+    }
+    return null;
+  }
+
+  /**
+   * 오배송 다시 배송 좌표(ADR-0065): 픽업 = 잘못 둔 곳, 도착 = 상담원이 기록한 실제 집(order → serviceability 정확 일치 좌표), 잘못 둔
+   * 곳 ↔ 실제 집 직선 200m 미만이면 원래 기사에게 먼저, 200m 이상이면 고객 앱 9,000원 결제 뒤에만(RedeliveryPaymentRequired — 시도는
+   * 결제 확인까지 미룬다). 배달료 거리 = 픽업 → 집 도로 거리.
+   */
+  private Optional<DeliveryRow> prepareRedeliveryGeo(DeliveryRow d, AttemptRow a, Instant now) {
+    try {
+      DeliveryRow origin =
+          d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null);
+      if (origin == null) {
+        return failSystem(d, a, "NO_ORIGIN_DELIVERY", now);
+      }
+      if (origin.completedAt() == null && !"CLOSED".equals(origin.state())) {
+        return later(d, a, "ORIGIN_NOT_COMPLETED", now);
+      }
+      Pickup pk = pickupOf(origin);
+      if (pk == null) {
+        return failSystem(d, a, "NO_PICKUP_POINT", now);
+      }
+      Optional<String> road =
+          d.redeliveryDestinationId() == null
+              ? Optional.empty()
+              : upstreams.redeliveryAddress(d.orderId(), d.redeliveryDestinationId());
+      if (road.isEmpty()) {
+        return failSystem(d, a, "NO_REDELIVERY_ADDRESS", now);
+      }
+      Optional<Upstreams.Place> home = upstreams.geocode(road.get());
+      if (home.isEmpty()) {
+        return failSystem(d, a, "ADDRESS_NOT_GEOCODED", now);
+      }
+      Upstreams.Leg leg = upstreams.matrix(List.of(pk.at()), List.of(home.get().at()))[0][0];
+      if (!leg.ok()) {
+        return failSystem(d, a, "NO_ROUTE_TO_CUSTOMER", now);
+      }
+      int straight = (int) Math.round(pk.at().metersTo(home.get().at()));
+      boolean pay = straight >= REDELIVERY_FREE_WITHIN_M;
+      tx.executeWithoutResult(
+          s -> {
+            store.saveRedeliveryGeo(
+                d.deliveryId(),
+                origin.mfcLat() == null ? pk.at().lat() : origin.mfcLat(),
+                origin.mfcLng() == null ? pk.at().lng() : origin.mfcLng(),
+                pk.at().lat(),
+                pk.at().lng(),
+                pk.source(),
+                pk.recordedAt(),
+                home.get().at().lat(),
+                home.get().at().lng(),
+                home.get().areaLabel(),
+                leg.distanceM(),
+                leg.durationS(),
+                straight,
+                pay,
+                now);
+            store.setPromise(d.deliveryId(), reshipmentPromise(d));
+            if (pay) {
+              // 결제 확인까지 배차하지 않는다(orchestration 이 결제를 받으면 풀어 준다 — 4단계)
+              store.postpone(a.attemptId(), now.plus(java.time.Duration.ofDays(1)));
+              DeliveryRow x = store.lockDelivery(d.deliveryId()).orElseThrow();
+              events.redeliveryPaymentRequired(
+                  x, CUSTOMER_FAULT_FEE, store.bumpVersion(d.deliveryId(), now));
+            }
+          });
+      log.info(
+          "다시 배송 {} 준비 — {}, 직선 {}m{}",
+          d.deliveryId(),
+          pk.source(),
+          straight,
+          pay ? " → 9,000원 결제 대기" : " → 원래 기사 먼저");
+      return pay ? Optional.empty() : store.delivery(d.deliveryId());
+    } catch (PmartException e) {
+      log.warn("다시 배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
+      return later(d, a, e.code(), now);
+    }
+  }
+
+  /** 이 거리 미만이면 원래 기사가 무료로 다시 배송(ADR-0065 — 사용자 "200m이내는 기사가 다시 배송"). */
+  static final int REDELIVERY_FREE_WITHIN_M = 200;
+
+  /** 200m 이상 다시 배송 고객 부담(원문 §9.2 회수재배송 9000원, ADR-0065). */
+  static final long CUSTOMER_FAULT_FEE = 9_000;
 
   /**
    * 오배송 재발송 배송 약속(2026-11-16 — PC 5 추천, 문서 규칙 아님): 오배송 확인(같은 사건 회수 배송이 생긴 때 — 사건 소비 시각, 없으면 이 배송이

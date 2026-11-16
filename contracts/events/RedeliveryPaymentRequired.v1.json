@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RedeliveryPaymentRequired.v1.json",
+  "title": "RedeliveryPaymentRequired",
+  "description": "오배송 고객 잘못 다시 배송에 고객 추가 결제가 필요함(2026-11-16, ADR-0065 — 잘못 둔 곳과 실제 집이 직선 200m 이상, 9,000원). 발행 delivery-dispatch(다시 배송 좌표를 처음 준비할 때 한 번). 구독 order-orchestration(고객 앱 결제 요청 → 결제되면 배차 풀기, 30분 안 미결제면 회수 후 상품값 − 9,000원 환불 — 4단계). 토픽 delivery.delivery.v1, 집계 Delivery. 주소·좌표 없음.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RedeliveryPaymentRequired"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "orderId",
+            "caseId",
+            "fee",
+            "requiredAt"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "다시 배송"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "originDeliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "straightDistanceM": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "잘못 둔 곳 ↔ 실제 집 직선거리"
+            },
+            "fee": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "고객 부담(원) — 9,000"
+            },
+            "requiredAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -145,7 +145,7 @@ class DispatchViews {
 
   /** 오배송 회수 정보(DD-2). 회수지 좌표는 배정 라이더·직원에게만(showAssignment), 원래 라이더 ID 는 직원에게만. */
   static @Nullable RecoveryInfo recovery(DeliveryRow d, boolean showAssignment, boolean staff) {
-    if (!d.recovery()) {
+    if (!d.pickupBased()) {
       return null;
     }
     RecoveryInfo r = new RecoveryInfo().caseId(d.caseId()).originDeliveryId(d.originDeliveryId());

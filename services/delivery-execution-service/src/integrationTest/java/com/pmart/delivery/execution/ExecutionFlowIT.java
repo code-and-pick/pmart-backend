@@ -1015,6 +1015,139 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("PAID");
   }
 
+  /**
+   * ADR-0065 고객 잘못 다시 배송: 잘못 둔 곳에서 사진·받음 → PICKED_UP → 고객 도착 → 완료(DeliveryCompleted purpose, 원래 줄).
+   * 가게 도착은 409, 전달지 = 실제 집 주소 + 주문 당시 연락처, 원래 기사는 배달료 0.
+   */
+  @Test
+  void customerFaultRedeliveryPicksUpAtSpotAndDeliversToRealHome() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String r1 = "RDR-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, r1);
+    post(origin, "customer-arrivals", r1, Map.of());
+    String originPhoto = body(upload(origin, r1, JPEG)).path("photoRef").asString();
+    post(origin, "completions", r1, completion(List.of(originPhoto), Instant.now().toString()));
+
+    String rd = "DLV-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", rd);
+    created.put("orderId", order);
+    created.put("shipmentId", "RDL-CASE-1");
+    created.put("type", "RESHIPMENT");
+    created.put("purpose", "MISDELIVERY_REDELIVERY");
+    created.put("caseId", "CASE-RD");
+    created.put("originDeliveryId", origin);
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "order:" + order + ":redelivery:RDD-1");
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", rd, created);
+    send(
+        "delivery.delivery.v1",
+        "DeliveryAssigned",
+        "Delivery",
+        rd,
+        Map.of(
+            "deliveryId",
+            rd,
+            "orderId",
+            order,
+            "riderId",
+            r1,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString(),
+            "fee",
+            0,
+            "vehicleType",
+            "MOTORCYCLE",
+            "distanceM",
+            120));
+    awaitState(rd, "ASSIGNED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT redelivery_destination_id FROM execution_delivery WHERE delivery_id = ?",
+                String.class,
+                rd))
+        .isEqualTo("RDD-1");
+    assertThat(post(rd, "store-arrivals", r1, Map.of()).getStatusCode().value()).isEqualTo(409);
+    // 잘못 둔 곳에서 사진(배정 상태) → 받음 → PICKED_UP
+    String spot = body(upload(rd, r1, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(
+                    rd,
+                    "returns/pickups",
+                    r1,
+                    Map.of("items", List.of(), "evidenceRefs", List.of(spot)))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(rd)).isEqualTo("PICKED_UP");
+    assertThat(outbox(rd, "ReturnPickedUp").path("payload").path("purpose").asString())
+        .isEqualTo("MISDELIVERY_REDELIVERY");
+    // 전달지: 실제 집 + 주문 당시 연락처
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "orderId",
+                                order,
+                                "roadAddress",
+                                "잘못 입력한 주소",
+                                "detailAddress",
+                                "101동",
+                                "receiverName",
+                                "김고객",
+                                "receiverPhone",
+                                "01012345678")))));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/redelivery-destinations/RDD-1"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "destinationId",
+                                "RDD-1",
+                                "orderId",
+                                order,
+                                "deliveryId",
+                                origin,
+                                "roadAddress",
+                                "실제 집 주소",
+                                "detailAddress",
+                                "202동 1501호")))));
+    JsonNode drop = body(dropInfo(rd, r1));
+    assertThat(drop.path("roadAddress").asString()).isEqualTo("실제 집 주소");
+    assertThat(drop.path("detailAddress").asString()).isEqualTo("202동 1501호");
+    assertThat(drop.path("receiverPhone").asString()).isEqualTo("01012345678");
+    // 고객 도착 → 사진 → 완료
+    assertThat(post(rd, "customer-arrivals", r1, Map.of()).getStatusCode().value()).isEqualTo(200);
+    String door = body(upload(rd, r1, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(rd, "completions", r1, completion(List.of(door), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(rd)).isEqualTo("COMPLETED");
+    JsonNode done = outbox(rd, "DeliveryCompleted").path("payload");
+    assertThat(done.path("purpose").asString()).isEqualTo("MISDELIVERY_REDELIVERY");
+    assertThat(done.path("lines").get(0).path("orderLineId").asString()).isEqualTo("L-1");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT total FROM rider_earning WHERE delivery_id = ?", Integer.class, rd))
+        .isZero(); // 원래 기사 추가 운행료 없음
+  }
+
   void caseEvent(String deliveryId, String fault) {
     String caseId = "CASE-" + UUID.randomUUID();
     String json =

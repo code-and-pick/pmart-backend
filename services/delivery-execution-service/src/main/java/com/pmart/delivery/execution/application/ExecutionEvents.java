@@ -80,6 +80,9 @@ public class ExecutionEvents {
         "evidenceRef",
         Map.of("evidenceId", evidenceId, "kind", "PHOTO", "capturedAt", takenAt.toString()));
     p.put("deliveredAt", at.toString());
+    if (before.purpose() != null) {
+      p.put("purpose", before.purpose()); // 오배송 다시 배송이면 order 가 수량을 다시 세지 않는다(ADR-0065)
+    }
     publish("DeliveryCompleted", before, rider(before), p);
   }
 

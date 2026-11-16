@@ -11,6 +11,7 @@ info:
       배정(ASSIGNED) → 회수지에서 회수품 사진 올리기 → 회수(`returns/pickups` → RETURN_PICKED_UP, ReturnPickedUp) → MFC 도착 = 반납(`returns/store-deliveries` → RETURNED_TO_STORE, ReturnDelivered, 수행료).
       MFC 점원 수령 확인(mfc-inbound)이 생기기 전까지는 MFC 도착을 반납으로 본다. 회수 배송에서 일반 배송 단계(가게 도착·픽업·고객 도착·전달 완료·실패 등록)는 409, 전달지(drop-info)는 409 NO_CUSTOMER_DROP(원래 고객 정보를 열지 않는다).
       회수 라이더가 찾아갈 곳: 좌표는 dispatch `GET /deliveries/{id}/dispatch` 의 recovery.pickup, 원래 배송의 완료 증빙(놓은 곳·사진 참조)은 이 서비스 `GET /deliveries/{id}` 의 recoveryOrigin. 고객 반품 회수(CLAIM_RETURN)는 아직 없다.
+      ADR-0065(2026-11-16, 고객 잘못 다시 배송 purpose MISDELIVERY_REDELIVERY): 배정 → 잘못 둔 곳에서 사진 → `returns/pickups`(PICKED_UP, ReturnPickedUp purpose) → 고객 도착 → 사진 → 전달 완료(DeliveryCompleted purpose — lines 는 원래 배송 줄, order 는 수량을 다시 세지 않음). 가게 도착·MFC 픽업·반납 단계는 쓰지 않는다. 전달지는 실제 집 주소 + 주문 당시 수령인·연락처·출입. 원래 배송 사진 보기도 된다.
       같은 날(사용자 "원래 고객의 전화는 회수 라이더에게 보여야 해", "사진보기 기능 넣어"): 원래 고객 전화번호 `GET /deliveries/{id}/recovery-contact`(회수 라이더 — 전화만, 주소는 주지 않는다), 증빙 사진 보기 `GET /deliveries/{id}/evidence-photos/{photoRef}`(원본 이미지 — 배정 라이더·회수 라이더·운영자).
     배정(dispatch), 인계 fence·재고(mfc), 주문 완료 판단(order), 환불(claim/payment), 위치(tracking)는 소유하지 않는다.
     시간 경과 자동완료 없음 [확정]. 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 [확정]. GPS·버튼만으로 픽업 확정 금지(PackageHandedOver 근거 필요).
@@ -854,7 +855,7 @@ components:
         earning: { $ref: '#/components/schemas/Earning' }
         assignedAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time }
-        purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다)' }
+        purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다). MISDELIVERY_REDELIVERY(ADR-0065) = 고객 잘못 다시 배송 — 배정 → 잘못 둔 곳에서 사진·받음(returns/pickups → PICKED_UP) → 고객 도착 → 전달 완료(가게 도착·MFC 픽업 409, 전달지 = 실제 집 + 주문 당시 수령인·연락처)' }
         caseId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송 확인 사건' }
         originDeliveryId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송된 원래 배송' }
         recoveryOrigin:

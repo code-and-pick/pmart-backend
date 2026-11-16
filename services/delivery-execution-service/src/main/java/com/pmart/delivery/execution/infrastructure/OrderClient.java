@@ -85,6 +85,36 @@ public class OrderClient {
             geo.path("lng").isNumber() ? geo.path("lng").asDouble() : null));
   }
 
+  /** 다시 배송 실제 집 주소(order 내부 — ADR-0065). 없으면 empty. [0] 도로명 [1] 상세 [2] 우편번호. */
+  public Optional<String[]> redeliveryAddress(String orderId, String destinationId) {
+    String body;
+    try {
+      body =
+          Downstream.call(
+              "order-service redelivery-destination",
+              () ->
+                  order
+                      .get()
+                      .uri(
+                          "/api/v1/internal/orders/{id}/redelivery-destinations/{d}",
+                          orderId,
+                          destinationId)
+                      .retrieve()
+                      .body(String.class));
+    } catch (HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    } catch (HttpClientErrorException e) {
+      throw PmartException.dependencyUnavailable(
+          "order-service redelivery-destination 가 요청을 거절했습니다(" + e.getStatusCode().value() + ").",
+          e);
+    }
+    JsonNode n = mapper.readTree(body == null ? "{}" : body);
+    return Optional.of(
+        new String[] {
+          n.path("roadAddress").asString(""), text(n, "detailAddress"), text(n, "postalCode")
+        });
+  }
+
   private static @Nullable String text(JsonNode n, String field) {
     return n.path(field).isString() ? n.path(field).asString() : null;
   }

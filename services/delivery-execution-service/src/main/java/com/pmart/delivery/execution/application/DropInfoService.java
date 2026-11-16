@@ -111,8 +111,32 @@ public class DropInfoService {
     if (d.orderId() == null) {
       throw PmartException.notFound("DROP_INFO_NOT_FOUND", "주문이 없는 배송입니다.");
     }
-    return order
-        .dropInfo(d.orderId())
-        .orElseThrow(() -> PmartException.notFound("DROP_INFO_NOT_FOUND", "주문 당시 배송지 사본이 없습니다."));
+    DropInfo original =
+        order
+            .dropInfo(d.orderId())
+            .orElseThrow(
+                () -> PmartException.notFound("DROP_INFO_NOT_FOUND", "주문 당시 배송지 사본이 없습니다."));
+    if (!d.redelivery()) {
+      return original;
+    }
+    // 오배송 다시 배송(ADR-0065): 주소는 상담원이 기록한 실제 집, 수령인·연락처·출입·요청사항은 주문 당시 그대로, 지도 핀 없음
+    String[] home =
+        d.redeliveryDestinationId() == null
+            ? null
+            : order.redeliveryAddress(d.orderId(), d.redeliveryDestinationId()).orElse(null);
+    if (home == null) {
+      throw PmartException.notFound("DROP_INFO_NOT_FOUND", "다시 배송 주소가 없습니다.");
+    }
+    return new DropInfo(
+        home[0],
+        home[1] == null ? "" : home[1],
+        home[2],
+        original.receiverName(),
+        original.receiverPhone(),
+        original.entranceMethod(),
+        original.entranceNote(),
+        original.deliveryNote(),
+        null,
+        null);
   }
 }

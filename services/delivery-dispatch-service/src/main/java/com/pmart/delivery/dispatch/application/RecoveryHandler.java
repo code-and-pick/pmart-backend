@@ -53,10 +53,13 @@ public class RecoveryHandler {
       log.warn("오배송 확인 사건 {} — caseId·deliveryId 없음, 회수 배차 안 함", e.eventId());
       return;
     }
-    // ADR-0065(2026-11-16): 고객 잘못·다시 배송은 MFC 로 회수하지 않는다 — 잘못 간 상품을 실제 집으로(다시 배송 배차, 따로)
-    if ("CUSTOMER".equals(p.path("fault").asString(""))
-        && "REDELIVER".equals(p.path("resolution").asString(""))) {
-      log.info("오배송 확인 {} — 고객 잘못·다시 배송: MFC 회수 안 함", caseId);
+    // ADR-0065(2026-11-16): 고객 잘못·다시 배송은 MFC 로 회수하지 않는다 — 잘못 둔 상품을 실제 집으로(아래 다시 배송)
+    boolean redeliver =
+        "CUSTOMER".equals(p.path("fault").asString(""))
+            && "REDELIVER".equals(p.path("resolution").asString(""));
+    String destinationId = p.path("redeliveryDestinationId").asString("");
+    if (redeliver && destinationId.isBlank()) {
+      log.warn("오배송 확인 {} — 고객 잘못·다시 배송인데 실제 주소 ID 가 없음(사건함에서 처리)", caseId);
       return;
     }
     DeliveryRow origin = store.lockDelivery(originId).orElse(null);
@@ -74,6 +77,19 @@ public class RecoveryHandler {
       return;
     }
     Instant now = clock.instant();
+    if (redeliver) {
+      String id = redeliveryDeliveryId(caseId);
+      if (!store.insertRedelivery(
+          id, origin.orderId(), origin.mfcId(), caseId, originId, destinationId, now)) {
+        log.info("오배송 확인 {} — 다시 배송 {} 이미 있음", caseId, id);
+        return;
+      }
+      // 원래 기사를 빼지 않는다 — 200m 안이면 원래 기사에게 먼저(판단 주기)
+      store.insertAttempt("ATT-" + UUID.randomUUID(), id, "AUTO", now);
+      events.created(store.delivery(id).orElseThrow(), List.of());
+      log.info("오배송 확인 {} → 다시 배송 {}(원래 배송 {}, 고객 잘못)", caseId, id, originId);
+      return;
+    }
     String deliveryId = recoveryDeliveryId(caseId);
     if (!store.insertRecovery(
         deliveryId, origin.orderId(), origin.mfcId(), caseId, originId, now)) {
@@ -89,6 +105,12 @@ public class RecoveryHandler {
         deliveryId,
         originId,
         origin.mfcId());
+  }
+
+  static String redeliveryDeliveryId(String caseId) {
+    return "DLV-"
+        + UUID.nameUUIDFromBytes(
+            ("misdelivery-redelivery:" + caseId).getBytes(StandardCharsets.UTF_8));
   }
 
   /** 같은 사건은 같은 배송 ID — 다시 받아도 하나. */

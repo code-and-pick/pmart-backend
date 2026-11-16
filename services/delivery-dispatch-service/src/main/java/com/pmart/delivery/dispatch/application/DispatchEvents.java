@@ -31,7 +31,14 @@ public class DispatchEvents {
     p.put("shipmentId", d.shipmentId());
     p.put("type", d.type());
     p.put("mfcId", d.mfcId());
-    if (d.recovery()) {
+    if (d.redelivery()) {
+      // 오배송 다시 배송(ADR-0065) — 도착지는 상담원이 기록한 실제 집(주소 원문 없음)
+      p.put(
+          "dropAddressRef", "order:" + d.orderId() + ":redelivery:" + d.redeliveryDestinationId());
+      p.put("purpose", d.purpose());
+      p.put("caseId", d.caseId());
+      p.put("originDeliveryId", d.originDeliveryId());
+    } else if (d.recovery()) {
       // 오배송 회수(DD-2) — 도착지는 MFC, 회수지 좌표는 싣지 않는다
       p.put("dropAddressRef", "mfc:" + d.mfcId());
       p.put("purpose", d.purpose());
@@ -54,6 +61,22 @@ public class DispatchEvents {
     }
     p.put("createdAt", d.createdAt().toString());
     publish("DeliveryCreated", d, d.version(), system(), p);
+  }
+
+  /**
+   * 오배송 다시 배송 9,000원 결제 필요(ADR-0065 — 잘못 둔 곳과 실제 집이 200m 이상). orchestration 이 고객 앱 결제를 요청하고, 결제되면
+   * 배차를 풀고 30분 안에 안 되면 회수 후 환불로 바꾼다.
+   */
+  public void redeliveryPaymentRequired(DeliveryRow d, long fee, int version) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", d.deliveryId());
+    p.put("orderId", d.orderId());
+    p.put("caseId", d.caseId());
+    p.put("originDeliveryId", d.originDeliveryId());
+    p.put("straightDistanceM", d.straightDistanceM());
+    p.put("fee", fee);
+    p.put("requiredAt", d.updatedAt().toString());
+    publish("RedeliveryPaymentRequired", d, version, system(), p);
   }
 
   /**

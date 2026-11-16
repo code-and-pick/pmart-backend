@@ -68,7 +68,26 @@ public class DispatchStore {
       @Nullable Double pickupLng,
       @Nullable String pickupSource,
       @Nullable Instant pickupRecordedAt,
-      @Nullable Instant completedAt) {
+      @Nullable Instant completedAt,
+      @Nullable String redeliveryDestinationId,
+      @Nullable Integer straightDistanceM,
+      boolean paymentRequired,
+      @Nullable Instant releasedAt) {
+
+    /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 실제 집으로. */
+    public boolean redelivery() {
+      return "MISDELIVERY_REDELIVERY".equals(purpose);
+    }
+
+    /** 픽업지가 MFC 가 아닌 배송(회수·다시 배송) — 따로 판단한다. */
+    public boolean pickupBased() {
+      return recovery() || redelivery();
+    }
+
+    /** 9,000원 결제를 기다리는 다시 배송(200m 이상, 결제 확인 전). */
+    public boolean awaitingPayment() {
+      return paymentRequired && releasedAt == null;
+    }
 
     /** 확인된 오배송 회수 배송(DD-2) — 회수지에서 받아 MFC 로. 픽업지가 MFC 가 아니라 따로 배차한다. */
     public boolean recovery() {
@@ -79,7 +98,7 @@ public class DispatchStore {
       return mfcLat != null
           && dropLat != null
           && dropDistanceM != null
-          && (!recovery() || pickupLat != null);
+          && (!pickupBased() || pickupLat != null);
     }
 
     /**
@@ -281,6 +300,71 @@ public class DispatchStore {
         == 1;
   }
 
+  /** 오배송 다시 배송(ADR-0065) — 바로 배차 대기. 같은 사건(shipment 'RDL-<caseId>')이면 false. */
+  public boolean insertRedelivery(
+      String deliveryId,
+      String orderId,
+      String mfcId,
+      String caseId,
+      String originDeliveryId,
+      String destinationId,
+      Instant now) {
+    return jdbc.update(
+            "INSERT INTO delivery (delivery_id, version, type, purpose, order_id, shipment_id, mfc_id,"
+                + " state, case_id, origin_delivery_id, redelivery_destination_id, request_trigger,"
+                + " created_at, updated_at) VALUES (?, 1, 'RESHIPMENT', 'MISDELIVERY_REDELIVERY', ?, ?,"
+                + " ?, 'DISPATCHING', ?, ?, ?, 'MISDELIVERY', ?, ?) ON CONFLICT DO NOTHING",
+            deliveryId,
+            orderId,
+            "RDL-" + caseId,
+            mfcId,
+            caseId,
+            originDeliveryId,
+            destinationId,
+            ts(now),
+            ts(now))
+        == 1;
+  }
+
+  /** 다시 배송 좌표: 픽업 = 잘못 둔 곳, 도착 = 실제 집, 거리 = 픽업 → 집 도로(배달료), 직선(200m 판정)·결제 필요. */
+  public void saveRedeliveryGeo(
+      String deliveryId,
+      double mfcLat,
+      double mfcLng,
+      double pickupLat,
+      double pickupLng,
+      String pickupSource,
+      @Nullable Instant pickupRecordedAt,
+      double dropLat,
+      double dropLng,
+      @Nullable String areaLabel,
+      int distanceM,
+      int durationS,
+      int straightM,
+      boolean paymentRequired,
+      Instant now) {
+    jdbc.update(
+        "UPDATE delivery SET mfc_lat = ?, mfc_lng = ?, drop_lat = ?, drop_lng = ?, pickup_lat = ?,"
+            + " pickup_lng = ?, pickup_source = ?, pickup_recorded_at = ?, drop_area_label = ?,"
+            + " drop_distance_m = ?, drop_duration_s = ?, straight_distance_m = ?, payment_required"
+            + " = ?, delivery_mode = 'SINGLE', geo_error = NULL, updated_at = ? WHERE delivery_id = ?",
+        mfcLat,
+        mfcLng,
+        dropLat,
+        dropLng,
+        pickupLat,
+        pickupLng,
+        pickupSource,
+        ts(pickupRecordedAt),
+        areaLabel,
+        distanceM,
+        durationS,
+        straightM,
+        paymentRequired,
+        ts(now),
+        deliveryId);
+  }
+
   /** 회수 배송 좌표: 픽업 = 회수지, 도착 = MFC, 거리·시간 = 회수지 → MFC(예상 배달료 기준). */
   public void saveRecoveryGeo(
       String deliveryId,
@@ -471,8 +555,8 @@ public class DispatchStore {
             + " a.excluded_rider_id AS attempt_excluded FROM delivery d JOIN"
             + " dispatch_attempt a ON a.delivery_id ="
             + " d.delivery_id AND a.state IN ('SEARCHING', 'OFFERING') WHERE d.state = 'DISPATCHING'"
-            + " AND d.drop_distance_m IS NOT NULL AND d.type <> 'RETURN' ORDER BY d.created_at LIMIT"
-            + " 500",
+            + " AND d.drop_distance_m IS NOT NULL AND d.type <> 'RETURN' AND COALESCE(d.purpose, '') <>"
+            + " 'MISDELIVERY_REDELIVERY' ORDER BY d.created_at LIMIT 500",
         (rs, i) ->
             new ListedDelivery(
                 delivery(rs),
@@ -1099,7 +1183,11 @@ public class DispatchStore {
         rs.getObject("pickup_lng", Double.class),
         rs.getString("pickup_source"),
         instant(rs, "pickup_recorded_at"),
-        instant(rs, "completed_at"));
+        instant(rs, "completed_at"),
+        rs.getString("redelivery_destination_id"),
+        rs.getObject("straight_distance_m", Integer.class),
+        rs.getBoolean("payment_required"),
+        instant(rs, "released_at"));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {

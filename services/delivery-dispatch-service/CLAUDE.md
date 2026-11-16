@@ -50,3 +50,4 @@
 
 ## 이미지 (ADR-0053)
 - **OR-Tools 사용 중(2026-11-13, `libs.ortools.java` — CP-SAT 배정)** → GraalVM Native 로 만들지 않고 JVM 으로 실행한다(ADR-0053 표 갱신함). PC 5 Windows 에서 네이티브 로드 확인(`OrToolsAssignmentSolverTest`).
+- **오배송 고객 잘못 다시 배송(2026-11-16, 0.4.2, V9 — ADR-0065)**: `MisdeliveryConfirmed` fault CUSTOMER·resolution REDELIVER(+ redeliveryDestinationId) → MFC 회수 대신 다시 배송(`insertRedelivery` — type RESHIPMENT·purpose MISDELIVERY_REDELIVERY, shipment `RDL-<caseId>`, 원래 기사 빼지 않음). 좌표(`prepareRedeliveryGeo`): 픽업 = 잘못 둔 곳(`pickupOf` — 회수와 같음), 도착 = order 내부 실제 집 주소 → serviceability 좌표, 직선(`straight_distance_m`) **200m 미만** → `runRecovery` 에서 원래 기사에게 먼저(반경 무관, 배달료 0 — `offer(..., fee)`), 못 받거나 거절·만료면 근처 다른 라이더(일반 표). **200m 이상** → `payment_required`, `RedeliveryPaymentRequired`(9,000원) 사건, 시도 하루 미룸(결제 확인 때 풀기 — 4단계 `released_at`). 약속 = 사건 처음 보인 때 + 50분. 배달리스트 제외.

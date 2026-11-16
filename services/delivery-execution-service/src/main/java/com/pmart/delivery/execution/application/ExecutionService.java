@@ -154,6 +154,7 @@ public class ExecutionService {
         Map.of(),
         (d, rider, now) -> {
           forwardOnly(d);
+          mfcPickupOnly(d);
           if (!"ASSIGNED".equals(d.state())) {
             throw PmartException.invalidState("배정된 배송만 가게 도착할 수 있습니다(지금 " + d.state() + ").");
           }
@@ -183,6 +184,7 @@ public class ExecutionService {
         Map.of("handoverIds", handoverIds),
         (d, rider, now) -> {
           forwardOnly(d);
+          mfcPickupOnly(d);
           Map<String, HandoverRow> recorded =
               store.handovers(deliveryId).stream()
                   .collect(Collectors.toMap(HandoverRow::handoverId, h -> h, (a, b) -> a));
@@ -271,10 +273,7 @@ public class ExecutionService {
         !stored
             && store
                 .delivery(deliveryId)
-                .filter(
-                    d ->
-                        p.subject().equals(d.riderId())
-                            && ExecutionRules.photoAllowed(d.type(), d.state()))
+                .filter(d -> p.subject().equals(d.riderId()) && photoAllowed(d))
                 .isPresent();
     if (uploaded) {
       store.notePhotoUpload(key, deliveryId, clock.instant());
@@ -296,7 +295,7 @@ public class ExecutionService {
                 PhotoRow x = existing.get();
                 return new Photo(x.photoRef(), x.contentType(), x.sizeBytes(), x.uploadedAt());
               }
-              if (!ExecutionRules.photoAllowed(d.type(), d.state())) {
+              if (!photoAllowed(d)) {
                 throw PmartException.invalidState(
                     "RETURN".equals(d.type())
                         ? "회수 배송은 배정 뒤 반납 전에만 사진을 올릴 수 있습니다(지금 " + d.state() + ")."
@@ -358,7 +357,8 @@ public class ExecutionService {
           if (c.substituteEvidenceCaseId() != null) {
             evidence.put("substituteEvidenceCaseId", c.substituteEvidenceCaseId());
           }
-          List<Map<String, Object>> delivered = deliveredLines(d);
+          // 다시 배송(ADR-0065)은 MFC 인계가 없다 — 원래 배송이 전달한 줄(같은 상품)
+          List<Map<String, Object>> delivered = d.redelivery() ? originLines(d) : deliveredLines(d);
           if (delivered.isEmpty()) {
             // 계약 lines minItems 1 — 인계 수량을 모르면 완료를 내지 않는다(인계 사건에는 줄이 반드시 있어 생기지 않아야 한다)
             throw PmartException.invalidState("인계된 상품 수량을 확인할 수 없습니다. 지원센터에 문의해 주세요.");
@@ -499,9 +499,11 @@ public class ExecutionService {
         expectedVersion,
         Map.of("evidenceRefs", evidenceRefs),
         (d, rider, now) -> {
-          recoveryOnly(d);
+          if (!d.redelivery()) {
+            recoveryOnly(d);
+          }
           if (!"ASSIGNED".equals(d.state())) {
-            throw PmartException.invalidState("배정된 회수 배송만 회수할 수 있습니다(지금 " + d.state() + ").");
+            throw PmartException.invalidState("배정된 회수·다시 배송만 받을 수 있습니다(지금 " + d.state() + ").");
           }
           requireMyPhotos(deliveryId, rider, evidenceRefs, true);
           List<Map<String, Object>> lines = originLines(d);
@@ -510,8 +512,10 @@ public class ExecutionService {
           evidence.put(
               "pickup",
               Map.of("evidenceRef", evidenceId, "photoRefs", evidenceRefs, "at", now.toString()));
-          store.returnPickedUp(deliveryId, mapper.writeValueAsString(evidence), now);
-          store.history(deliveryId, "RETURN_PICKED_UP", now, "RIDER", evidenceId, now);
+          // 다시 배송은 받은 뒤 일반 배송처럼 고객 도착·전달 완료(PICKED_UP), 회수는 MFC 반납(RETURN_PICKED_UP)
+          String next = d.redelivery() ? "PICKED_UP" : "RETURN_PICKED_UP";
+          store.returnPickedUp(deliveryId, next, mapper.writeValueAsString(evidence), now);
+          store.history(deliveryId, next, now, "RIDER", evidenceId, now);
           events.returnPickedUp(d, lines, evidenceId, now);
           return d.version() + 1;
         });
@@ -622,6 +626,20 @@ public class ExecutionService {
             .collect(Collectors.toSet());
     if ((atLeastOne && refs.isEmpty()) || !mine.containsAll(refs)) {
       throw new PmartException(ErrorCode.EVIDENCE_REQUIRED, "이 배송에 올린 사진이 필요합니다. 사진을 먼저 올려 주세요.");
+    }
+  }
+
+  /** 사진 올리기 상태 — 다시 배송은 잘못 둔 곳(배정)부터 전달 전까지. */
+  private static boolean photoAllowed(DeliveryRow d) {
+    return d.redelivery()
+        ? java.util.Set.of("ASSIGNED", "PICKED_UP", "ARRIVED_AT_CUSTOMER").contains(d.state())
+        : ExecutionRules.photoAllowed(d.type(), d.state());
+  }
+
+  /** 가게 도착·MFC 인계 픽업은 다시 배송(ADR-0065)에 없다 — 잘못 둔 곳에서 받음(returns/pickups). */
+  private static void mfcPickupOnly(DeliveryRow d) {
+    if (d.redelivery()) {
+      throw PmartException.invalidState("오배송 다시 배송입니다. 잘못 둔 곳에서 받음(returns/pickups)을 써 주세요.");
     }
   }
 

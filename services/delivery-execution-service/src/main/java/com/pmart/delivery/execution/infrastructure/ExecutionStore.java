@@ -36,7 +36,13 @@ public class ExecutionStore {
       @Nullable String failureJson,
       @Nullable String purpose,
       @Nullable String caseId,
-      @Nullable String originDeliveryId) {
+      @Nullable String originDeliveryId,
+      @Nullable String redeliveryDestinationId) {
+
+    /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 받아 실제 집으로. */
+    public boolean redelivery() {
+      return "MISDELIVERY_REDELIVERY".equals(purpose);
+    }
 
     /** 확인된 오배송 회수 배송(DD-2). */
     public boolean recovery() {
@@ -114,7 +120,7 @@ public class ExecutionStore {
       "delivery_id, version, type, order_id, shipment_id, mfc_id, state, rider_id,"
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
-          + " origin_delivery_id";
+          + " origin_delivery_id, redelivery_destination_id";
 
   private final JdbcTemplate jdbc;
 
@@ -223,33 +229,43 @@ public class ExecutionStore {
       @Nullable String type,
       @Nullable String purpose,
       @Nullable String caseId,
-      @Nullable String originDeliveryId) {
+      @Nullable String originDeliveryId,
+      @Nullable String redeliveryDestinationId) {
     jdbc.update(
         "UPDATE execution_delivery SET type = COALESCE(?, type), purpose = COALESCE(?, purpose),"
-            + " case_id = COALESCE(?, case_id), origin_delivery_id = COALESCE(?, origin_delivery_id)"
-            + " WHERE delivery_id = ?",
+            + " case_id = COALESCE(?, case_id), origin_delivery_id = COALESCE(?, origin_delivery_id),"
+            + " redelivery_destination_id = COALESCE(?, redelivery_destination_id) WHERE delivery_id ="
+            + " ?",
         type,
         purpose,
         caseId,
         originDeliveryId,
+        redeliveryDestinationId,
         deliveryId);
   }
 
   /** 이 배송(원래 배송)을 지금 회수 중인 라이더들(오배송 회수 — ASSIGNED·RETURN_PICKED_UP). 사진 보기 권한. */
   public List<String> recoveringRiders(String originDeliveryId) {
     return jdbc.queryForList(
-        "SELECT rider_id FROM execution_delivery WHERE origin_delivery_id = ? AND purpose ="
-            + " 'MISDELIVERY_RECOVERY' AND state IN ('ASSIGNED', 'RETURN_PICKED_UP') AND rider_id IS"
-            + " NOT NULL",
+        "SELECT rider_id FROM execution_delivery WHERE origin_delivery_id = ? AND ((purpose ="
+            + " 'MISDELIVERY_RECOVERY' AND state IN ('ASSIGNED', 'RETURN_PICKED_UP')) OR (purpose ="
+            + " 'MISDELIVERY_REDELIVERY' AND state IN ('ASSIGNED', 'PICKED_UP',"
+            + " 'ARRIVED_AT_CUSTOMER'))) AND rider_id IS NOT NULL",
         String.class,
         originDeliveryId);
   }
 
   /** 회수지에서 받음(DD-2) — RETURN_PICKED_UP. 증빙은 evidence 의 pickup 에. */
   public void returnPickedUp(String deliveryId, String evidenceJson, Instant at) {
+    returnPickedUp(deliveryId, "RETURN_PICKED_UP", evidenceJson, at);
+  }
+
+  /** 잘못 둔 곳에서 받음 — 회수는 RETURN_PICKED_UP, 다시 배송은 PICKED_UP(그 뒤 고객 도착·전달 완료). */
+  public void returnPickedUp(String deliveryId, String state, String evidenceJson, Instant at) {
     jdbc.update(
-        "UPDATE execution_delivery SET state = 'RETURN_PICKED_UP', picked_up_at = ?, evidence ="
+        "UPDATE execution_delivery SET state = ?, picked_up_at = ?, evidence ="
             + " ?::jsonb, version = version + 1, updated_at = ? WHERE delivery_id = ?",
+        state,
         ts(at),
         evidenceJson,
         ts(at),
@@ -922,7 +938,8 @@ public class ExecutionStore {
         rs.getString(19),
         rs.getString(20),
         rs.getString(21),
-        rs.getString(22));
+        rs.getString(22),
+        rs.getString(23));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

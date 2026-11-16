@@ -83,6 +83,15 @@ public class ExecutionEventHandler {
         deliveryId, d.riderId(), p.path("caseId").asString(""), clock.instant());
   }
 
+  /**
+   * dropAddressRef {@code order:<orderId>:redelivery:<destinationId>} 의 실제 집 주소 ID(ADR-0065). 아니면
+   * null.
+   */
+  static @Nullable String redeliveryDestination(String dropAddressRef) {
+    int i = dropAddressRef.indexOf(":redelivery:");
+    return i < 0 ? null : dropAddressRef.substring(i + ":redelivery:".length());
+  }
+
   public void onDelivery(EventEnvelope e) {
     JsonNode p = e.payload();
     Instant now = clock.instant();
@@ -103,7 +112,8 @@ public class ExecutionEventHandler {
             p.path("type").asString(null),
             p.path("purpose").asString(null),
             p.path("caseId").asString(null),
-            p.path("originDeliveryId").asString(null));
+            p.path("originDeliveryId").asString(null),
+            redeliveryDestination(p.path("dropAddressRef").asString("")));
         List<String> pkgs = strings(p.path("packageIds"));
         if (d.shipmentId() != null
             && !pkgs.isEmpty()
