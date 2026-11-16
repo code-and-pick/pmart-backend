@@ -76,7 +76,9 @@ public class ShortageSagaService {
       return;
     }
     String preference = p.path("outOfStockPreference").asString(null);
-    String escalate = ShortageRules.escalationAtStart(preference);
+    // 오배송 재발송 작업의 결품(2026-11-16, ADR-0052 결정 4): 그 품목만 부분 취소·환불 — 주문 전체 취소 판정(CHECK_ORDER)을 건너뛴다
+    boolean reshipment = "MISDELIVERY_RESHIPMENT".equals(p.path("purpose").asString(""));
+    String escalate = reshipment ? null : ShortageRules.escalationAtStart(preference);
     Instant now = clock.instant();
     String sagaId = "SAGA-O-" + UUID.randomUUID();
     boolean created =
@@ -93,7 +95,7 @@ public class ShortageSagaService {
                 p.path("reason").asString(null),
                 preference,
                 escalate == null ? "RUNNING" : "ESCALATED",
-                ShortageRules.firstStep(preference),
+                reshipment ? ShortageRules.RESOLVE_WORK : ShortageRules.firstStep(preference),
                 null,
                 escalate == null ? null : ShortageRules.CHECK_ORDER,
                 escalate,

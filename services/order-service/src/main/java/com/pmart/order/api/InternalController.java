@@ -179,7 +179,8 @@ public class InternalController implements InternalApi {
               .productId(l.productId())
               .productName(l.productName())
               .deliveredQty(l.deliveredQty())
-              .returnedQty(l.returnedQty()));
+              .returnedQty(l.returnedQty())
+              .reshippedQty(l.reshippedQty()));
     }
     return ResponseEntity.ok(out);
   }

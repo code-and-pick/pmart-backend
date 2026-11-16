@@ -37,6 +37,121 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
 
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
+  @org.springframework.boot.test.web.server.LocalServerPort int port;
+
+  /**
+   * 오배송 재발송(2026-11-16, ADR-0052 결정 4·5): 다 전달된 주문에 RESHIPMENT → 미이행·재발송 +q(상태 그대로), 재고 없는 품목은 이어서
+   * SHORTAGE(취소 — 환불 근거), 재발송 상품의 인계·전달은 대사 불일치 없이 반영되고 보낼 수량을 넘으면 MISMATCH.
+   */
+  @Test
+  void reshipmentReopensDeliverableAndShortageCancelsOnlyMissingLine() throws Exception {
+    String orderId = order("PREPARING", 3, 2);
+    String deliveryId = "DLV-" + UUID.randomUUID();
+    handover(
+        orderId,
+        "HO-" + UUID.randomUUID(),
+        deliveryId,
+        List.of(line(orderId + "-L1", 3), line(orderId + "-L2", 2)));
+    delivered(orderId, deliveryId, List.of(line(orderId + "-L1", 3), line(orderId + "-L2", 2)));
+    await(() -> "COMPLETED".equals(status(orderId)));
+
+    String caseId = "CASE-" + UUID.randomUUID();
+    var r =
+        change(
+            orderId,
+            "rs-" + caseId,
+            Map.of(
+                "reason",
+                "RESHIPMENT",
+                "sourceRef",
+                caseId,
+                "changes",
+                List.of(line2(orderId + "-L1", 3), line2(orderId + "-L2", 2))));
+    assertThat(r.getStatusCode().value()).isEqualTo(200);
+    assertThat(qty(orderId + "-L1", "unfulfilled_qty")).isEqualTo(3);
+    assertThat(qty(orderId + "-L1", "reshipped_qty")).isEqualTo(3);
+    assertThat(status(orderId)).isEqualTo("COMPLETED"); // 뒤로 가지 않음
+    // 같은 키 재생, 한도 넘음 409
+    assertThat(
+            change(
+                    orderId,
+                    "rs-" + caseId,
+                    Map.of(
+                        "reason",
+                        "RESHIPMENT",
+                        "sourceRef",
+                        caseId,
+                        "changes",
+                        List.of(line2(orderId + "-L1", 3), line2(orderId + "-L2", 2))))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(qty(orderId + "-L1", "reshipped_qty")).isEqualTo(3);
+    assertThat(
+            change(
+                    orderId,
+                    "rs2-" + caseId,
+                    Map.of("reason", "RESHIPMENT", "changes", List.of(line2(orderId + "-L1", 1))))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    // L2 재고 없음 → SHORTAGE(재발송 안 함 — 환불 근거)
+    assertThat(
+            change(
+                    orderId,
+                    "sh-" + caseId,
+                    Map.of(
+                        "reason",
+                        "SHORTAGE",
+                        "sourceRef",
+                        caseId,
+                        "changes",
+                        List.of(line2(orderId + "-L2", 2))))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(qty(orderId + "-L2", "cancelled_before_ship_qty")).isEqualTo(2);
+    assertThat(status(orderId)).isEqualTo("COMPLETED");
+
+    // 재발송 상품 인계·전달 — 대사 불일치 없이
+    String reDelivery = "DLV-" + UUID.randomUUID();
+    handover(orderId, "HO-" + UUID.randomUUID(), reDelivery, List.of(line(orderId + "-L1", 3)));
+    delivered(orderId, reDelivery, List.of(line(orderId + "-L1", 3)));
+    await(() -> qty(orderId + "-L1", "delivered_qty") == 6);
+    assertThat(qty(orderId + "-L1", "unfulfilled_qty")).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM order_fulfillment_fact WHERE order_id = ? AND state ="
+                    + " 'MISMATCH'",
+                Integer.class,
+                orderId))
+        .isZero();
+    assertThat(status(orderId)).isEqualTo("COMPLETED");
+  }
+
+  private org.springframework.http.ResponseEntity<String> change(
+      String orderId, String key, Map<String, Object> body) {
+    return org.springframework.web.client.RestClient.builder()
+        .baseUrl("http://localhost:" + port + "/api/v1")
+        .defaultStatusHandler(org.springframework.http.HttpStatusCode::isError, (q, s) -> {})
+        .build()
+        .post()
+        .uri("/internal/orders/{id}/line-quantity-changes", orderId)
+        .headers(
+            h -> {
+              h.setBearerAuth(com.pmart.common.test.TestJwt.service("order-orchestration-service"));
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "order-orchestration-service");
+            })
+        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  private static Map<String, Object> line2(String orderLineId, int qty) {
+    return Map.of("orderLineId", orderLineId, "qty", qty);
+  }
 
   @Test
   void handoverThenDeliveryCompletesOrderOnce() throws Exception {

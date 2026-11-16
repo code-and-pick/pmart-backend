@@ -10,7 +10,7 @@ class OrchestrationPropertiesTest {
 
   static OrchestrationProperties with(Duration holdTtl) {
     return new OrchestrationProperties(
-        null, null, null, null, null, null, null, null, holdTtl, null);
+        null, null, null, null, null, null, null, null, holdTtl, null, null, null);
   }
 
   @Test

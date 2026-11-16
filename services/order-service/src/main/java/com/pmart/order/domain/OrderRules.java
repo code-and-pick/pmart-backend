@@ -257,14 +257,23 @@ public final class OrderRules {
 
   // ---------- 이행 진행(인계·전달, O-1 2026-11-16) ----------
 
-  /** 주문행 진행 누계. 불변식 원수량 = 미이행 + 인계 + 출고 전 취소, 전달 ≤ 원수량 − 출고 전 취소. */
+  /**
+   * 주문행 진행 누계. 불변식 원수량 + 재발송 = 미이행 + 인계 + 출고 전 취소, 전달 ≤ 원수량 − 출고 전 취소 + 재발송(오배송 재발송 — 2026-11-16).
+   */
   public record Progress(
       String orderLineId,
       int originalQty,
       int unfulfilledQty,
       int handedOverQty,
       int cancelledBeforeShipQty,
-      int deliveredQty) {}
+      int deliveredQty,
+      int reshippedQty) {
+
+    /** 보낼(전달할) 수량 = 원수량 − 출고 전 취소 + 재발송. */
+    public int deliverable() {
+      return originalQty - cancelledBeforeShipQty + reshippedQty;
+    }
+  }
 
   /** 진행 순서(뒤로 가지 않는다). 그 밖 상태(CANCELLED·EXPIRED 등)는 진행으로 바꾸지 않는다. */
   public static final List<String> PROGRESS_ORDER =
@@ -312,7 +321,8 @@ public final class OrderRules {
               l.unfulfilledQty() - q,
               l.handedOverQty() + q,
               l.cancelledBeforeShipQty(),
-              l.deliveredQty()));
+              l.deliveredQty(),
+              l.reshippedQty()));
     }
     if (!req.isEmpty()) {
       throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
@@ -333,7 +343,7 @@ public final class OrderRules {
         out.add(l);
         continue;
       }
-      int deliverable = l.originalQty() - l.cancelledBeforeShipQty();
+      int deliverable = l.deliverable();
       if (l.deliveredQty() + q > deliverable) {
         throw new IllegalArgumentException(
             "주문행 "
@@ -350,7 +360,42 @@ public final class OrderRules {
               l.unfulfilledQty(),
               l.handedOverQty(),
               l.cancelledBeforeShipQty(),
-              l.deliveredQty() + q));
+              l.deliveredQty() + q,
+              l.reshippedQty()));
+    }
+    if (!req.isEmpty()) {
+      throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
+    }
+    return out;
+  }
+
+  /**
+   * 오배송 재발송(RESHIPMENT, 2026-11-16 — ADR-0052 결정 4·5): 행마다 미이행 +q·재발송 +q. 한도 = 원수량 − 출고 전 취소 − 이미
+   * 재발송(배송된 만큼만 다시 보낸다). 넘거나 없는 행이면 {@link IllegalArgumentException}. 상태는 바꾸지 않는다(뒤로 가지 않음).
+   */
+  public static List<Progress> reship(List<Progress> lines, List<Change> changes) {
+    java.util.Map<String, Integer> req = sumByLine(changes);
+    List<Progress> out = new ArrayList<>();
+    for (Progress l : lines) {
+      Integer q = req.remove(l.orderLineId());
+      if (q == null) {
+        out.add(l);
+        continue;
+      }
+      int limit = l.originalQty() - l.cancelledBeforeShipQty() - l.reshippedQty();
+      if (q > limit) {
+        throw new IllegalArgumentException(
+            "주문행 " + l.orderLineId() + " 재발송 한도 " + limit + " 를 넘습니다: " + q);
+      }
+      out.add(
+          new Progress(
+              l.orderLineId(),
+              l.originalQty(),
+              l.unfulfilledQty() + q,
+              l.handedOverQty(),
+              l.cancelledBeforeShipQty(),
+              l.deliveredQty(),
+              l.reshippedQty() + q));
     }
     if (!req.isEmpty()) {
       throw new IllegalArgumentException("주문에 없는 주문행: " + req.keySet());
@@ -370,9 +415,7 @@ public final class OrderRules {
     }
     boolean anyDelivered = lines.stream().anyMatch(l -> l.deliveredQty() > 0);
     boolean anyHanded = lines.stream().anyMatch(l -> l.handedOverQty() > 0);
-    boolean allDelivered =
-        lines.stream()
-            .allMatch(l -> l.deliveredQty() + l.cancelledBeforeShipQty() == l.originalQty());
+    boolean allDelivered = lines.stream().allMatch(l -> l.deliveredQty() == l.deliverable());
     boolean noneUnfulfilled = lines.stream().allMatch(l -> l.unfulfilledQty() == 0);
     String derived;
     if (anyDelivered && allDelivered) {

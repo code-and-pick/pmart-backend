@@ -189,7 +189,8 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
             0,
             0,
             "사과",
-            null));
+            null,
+            0));
     lines.add(
         new LineRow(
             orderId + "-L2",
@@ -211,7 +212,8 @@ class StaffOrderLookupIT extends PostgresKafkaContainerSupport {
             0,
             0,
             "우유",
-            "1L"));
+            "1L",
+            0));
     store.insert(o, lines);
     if (phone != null) {
       store.insertShipping(

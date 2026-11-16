@@ -71,7 +71,8 @@ public class OrderStore {
       int deliveredQty,
       int returnedQty,
       @Nullable String productName,
-      @Nullable String optionLabel) {}
+      @Nullable String optionLabel,
+      int reshippedQty) {}
 
   /** 목록 한 줄(주문 요약). */
   public record Summary(
@@ -226,6 +227,15 @@ public class OrderStore {
   }
 
   /** 이행 진행(인계·전달, O-1) 반영 — 미이행·인계·전달 누계. */
+  /** 오배송 재발송(RESHIPMENT) — 미이행·재발송 누계. */
+  public void updateLineReshipped(String orderLineId, int unfulfilledQty, int reshippedQty) {
+    jdbc.update(
+        "UPDATE customer_order_line SET unfulfilled_qty = ?, reshipped_qty = ? WHERE order_line_id = ?",
+        unfulfilledQty,
+        reshippedQty,
+        orderLineId);
+  }
+
   public void updateLineProgress(
       String orderLineId, int unfulfilledQty, int handedOverQty, int deliveredQty) {
     jdbc.update(
@@ -320,7 +330,8 @@ public class OrderStore {
                 rs.getInt("delivered_qty"),
                 rs.getInt("returned_qty"),
                 rs.getString("product_name"),
-                rs.getString("option_label")),
+                rs.getString("option_label"),
+                rs.getInt("reshipped_qty")),
         orderId);
   }
 

@@ -89,10 +89,10 @@
 ### order-orchestration-service `[1단계]`
 - **소유**: 사가 인스턴스·단계·타임아웃·재시도 횟수·보상 로그(이번 시도 신규 확보 자원 ID), 결과 불명 추적(1분×5회→상신→15분), 대사 불일치 사건, 운영자 수동 개입 기록.
 - **소유하지 않음**: 주문 상태(order), 결제·재고·슬롯·작업의 성공 확정(각 정본).
-- **사가**: S1 결제 진입·확정, S2 이행·결품·부분취소, S3 취소 vs 인계, S4 예약 시간 변경 (`docs/business/flows/`).
+- **사가**: S1 결제 진입·확정, S2 이행·결품·부분취소, S3 취소 vs 인계, S4 예약 시간 변경, 오배송 재발송(2026-11-16 — `misdelivery-recovery-reshipment.md`) (`docs/business/flows/`).
 - **API**: 사가 조회(원요청 ID), 수동 재처리(승인 필요: 원결과 재조회/미전달 재전송/보상 실행 — 각각 분리).
 - **발행**: `CheckoutSagaStateChanged`, `CompensationExecuted`, `ReconciliationRequired`.
-- **구독**: `OrderConfirmed`(S2 시작, 2026-11-07), `PaymentApproved/Failed/Unknown`, `InventoryHeld/Released/Expired/Blocked`, `CapacityHoldResult`, `SlotHoldResult`, `WorkAccepted/Rejected`, `LineShortageReported`, `PackageHandedOver`, `WorkStopResult`.
+- **구독**: `OrderConfirmed`(S2 시작, 2026-11-07), `MisdeliveryConfirmed`(case — 재발송 사가, 2026-11-16), `PaymentApproved/Failed/Unknown`, `InventoryHeld/Released/Expired/Blocked`, `CapacityHoldResult`, `SlotHoldResult`, `WorkAccepted/Rejected`, `LineShortageReported`, `PackageHandedOver`, `WorkStopResult`.
 - **의존(동기)**: mfc-inventory, mfc-capacity, delivery-capacity, payment, mfc-fulfillment, order, claim, delivery-dispatch.
 
 ### fulfillment-routing-service `[1단계 얇게 / 3단계 완성]`

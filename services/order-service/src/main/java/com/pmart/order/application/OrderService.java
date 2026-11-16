@@ -184,12 +184,15 @@ public class OrderService {
       String sourceSystem,
       QuantityChange in,
       @Nullable Integer expectedVersion) {
+    if (RESHIPMENT.equals(in.reason())) {
+      return reship(orderId, requestId, sourceSystem, in, expectedVersion);
+    }
     // SHORTAGE(결품 — 품절 상품만 취소, ADR-0045)는 출고 전 취소와 같은 수량 규칙(미이행 −q, 출고 전 취소 +q)
     if (!CANCEL_BEFORE_SHIP.equals(in.reason()) && !"SHORTAGE".equals(in.reason())) {
       throw new PmartException(
           "UNSUPPORTED_ACTION",
           HttpStatus.UNPROCESSABLE_CONTENT,
-          "지금은 출고 전 취소(CANCEL_BEFORE_SHIP)·결품(SHORTAGE)만 반영합니다: " + in.reason(),
+          "지금은 출고 전 취소(CANCEL_BEFORE_SHIP)·결품(SHORTAGE)·오배송 재발송(RESHIPMENT)만 반영합니다: " + in.reason(),
           false,
           List.of());
     }
@@ -245,7 +248,8 @@ public class OrderService {
                         a.unfulfilledQty(),
                         a.handedOverQty(),
                         a.cancelledBeforeShipQty(),
-                        rows.get(i).deliveredQty()));
+                        rows.get(i).deliveredQty(),
+                        rows.get(i).reshippedQty()));
               }
               String status = full ? "CANCELLED" : OrderRules.progressStatus(o.status(), progress);
               orders.updateStatus(orderId, status, version);
@@ -259,6 +263,80 @@ public class OrderService {
                   in.changes().size(),
                   status,
                   in.sourceRef());
+              return applied(requestId, orderId, version, now);
+            })
+        .value();
+  }
+
+  public static final String RESHIPMENT = "RESHIPMENT";
+
+  /**
+   * 오배송 재발송(2026-11-16 — ADR-0052 결정 4·5, orchestration 재발송 사가): 행마다 미이행 +q·재발송 +q(보낼 수량이 늘어난다) →
+   * 행마다 OrderLineQuantityChanged(reason RESHIPMENT, sourceRef = 오배송 확인 사건). 상태는 그대로(뒤로 가지 않음). 한도
+   * 넘음·없는 행은 409. 같은 키는 재생. 재발송한 수량 중 재고가 없는 품목은 이어서 SHORTAGE 로 취소·환불한다(같은 수량을 재발송과 환불로 겹치지 않게).
+   */
+  private CommandResponse reship(
+      String orderId,
+      String requestId,
+      String sourceSystem,
+      QuantityChange in,
+      @Nullable Integer expectedVersion) {
+    Map<String, Object> request = new LinkedHashMap<>();
+    request.put("orderId", orderId);
+    request.put("change", in);
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "applyLineQuantityChange", actor()),
+            request,
+            CommandResponse.class,
+            () -> {
+              Instant now = clock.instant();
+              OrderRow o =
+                  orders
+                      .lock(orderId)
+                      .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문이 없습니다."));
+              if (expectedVersion != null && expectedVersion != o.version()) {
+                throw PmartException.versionConflict("주문이 이미 바뀌었습니다.");
+              }
+              if ("CANCELLED".equals(o.status())) {
+                throw PmartException.invalidState("이미 취소된 주문입니다.");
+              }
+              List<LineRow> rows = orders.lines(orderId);
+              List<OrderRules.Progress> before =
+                  rows.stream().map(OrderService::progressOf).toList();
+              List<OrderRules.Progress> after;
+              try {
+                after = OrderRules.reship(before, in.changes());
+              } catch (IllegalArgumentException e) {
+                throw PmartException.invalidState(e.getMessage());
+              }
+              int version = o.version() + 1;
+              for (int i = 0; i < after.size(); i++) {
+                OrderRules.Progress a = after.get(i);
+                if (a.equals(before.get(i))) {
+                  continue;
+                }
+                orders.updateLineReshipped(a.orderLineId(), a.unfulfilledQty(), a.reshippedQty());
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("orderId", orderId);
+                p.put("orderLineId", a.orderLineId());
+                p.put("sku", rows.get(i).sku());
+                p.put("originalQty", a.originalQty());
+                p.put("unfulfilledQty", a.unfulfilledQty());
+                p.put("handedOverQty", a.handedOverQty());
+                p.put("cancelledBeforeShipQty", a.cancelledBeforeShipQty());
+                p.put("reshippedQty", a.reshippedQty());
+                p.put("reason", RESHIPMENT);
+                if (in.sourceRef() != null) {
+                  p.put("sourceRef", in.sourceRef());
+                }
+                p.put("version", version);
+                p.put("changedAt", now.toString());
+                publishOrderEvent("OrderLineQuantityChanged", orderId, version, p);
+              }
+              orders.updateStatus(orderId, o.status(), version);
+              log.info(
+                  "주문 {} 오배송 재발송 반영 {}행 (근거 {})", orderId, in.changes().size(), in.sourceRef());
               return applied(requestId, orderId, version, now);
             })
         .value();
@@ -466,7 +544,8 @@ public class OrderService {
         l.unfulfilledQty(),
         l.handedOverQty(),
         l.cancelledBeforeShipQty(),
-        l.deliveredQty());
+        l.deliveredQty(),
+        l.reshippedQty());
   }
 
   private static List<OrderRules.Change> changes(tools.jackson.databind.JsonNode lines) {
@@ -731,7 +810,8 @@ public class OrderService {
               0,
               0,
               l.productName(), // 초안 때 뜬 사본(BR-35) — 확정 때 다시 조회하지 않는다
-              l.optionLabel()));
+              l.optionLabel(),
+              0));
     }
     return out;
   }

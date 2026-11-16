@@ -26,7 +26,15 @@ public class Participants {
   /** 성공. {@code expiresAt} 은 정본이 준 점유 만료(없으면 null). */
   public record Ok(String resultId, @Nullable Instant expiresAt, JsonNode body) implements Result {}
 
-  public record Rejected(String code, String message) implements Result {}
+  /**
+   * @param details Problem details(필드별 사유 — 재고 부족 수량 등). 없으면 null
+   */
+  public record Rejected(String code, String message, @Nullable JsonNode details)
+      implements Result {
+    public Rejected(String code, String message) {
+      this(code, message, null);
+    }
+  }
 
   public record Unknown(String code, String message) implements Result {}
 
@@ -37,6 +45,7 @@ public class Participants {
   public static final String ORDER = "order-service";
   public static final String FULFILLMENT = "mfc-fulfillment-service";
   public static final String CLAIM = "claim-service";
+  public static final String DISPATCH = "delivery-dispatch-service";
 
   private final RestClient inventory;
   private final RestClient capacity;
@@ -45,6 +54,7 @@ public class Participants {
   private final RestClient order;
   private final RestClient fulfillment;
   private final RestClient claim;
+  private final RestClient dispatch;
   private final ObjectMapper mapper;
 
   public Participants(
@@ -56,6 +66,7 @@ public class Participants {
     this.order = builder.clone().baseUrl(props.orderBaseUrl()).build();
     this.fulfillment = builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build();
     this.claim = builder.clone().baseUrl(props.claimBaseUrl()).build();
+    this.dispatch = builder.clone().baseUrl(props.deliveryDispatchBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -397,6 +408,23 @@ public class Participants {
         body);
   }
 
+  // ---------- 오배송 재발송(2026-11-16, ADR-0052 결정 4) ----------
+
+  /** 배송 → 주문(dispatch 내부 배정 조회 — orderId·mfcId). 없는 배송이면 404 그대로, 장애는 PmartException. */
+  public JsonNode deliveryAssignment(String deliveryId) {
+    return query(dispatch, DISPATCH, "/api/v1/internal/deliveries/{id}/assignment", deliveryId);
+  }
+
+  /** 재고 예약 확정(결제 없음 — 재발송은 고객 비용 0원). */
+  public Result confirmReservation(String reservationId, String requestId, String orderId) {
+    return post(
+        inventory,
+        INVENTORY + " confirmations",
+        "/api/v1/internal/reservations/" + reservationId + "/confirmations",
+        requestId,
+        Map.of("orderId", orderId));
+  }
+
   // ---------- 공통 ----------
 
   private Result post(RestClient client, String target, String uri, String requestId, Object body) {
@@ -419,7 +447,7 @@ public class Participants {
       JsonNode p = problem(e.getResponseBodyAsString());
       String code = p.path("code").asString("HTTP_" + e.getStatusCode().value());
       String message = p.path("detail").asString(e.getStatusText());
-      return new Rejected(code, message);
+      return new Rejected(code, message, p.has("details") ? p.get("details") : null);
     } catch (PmartException e) {
       // Downstream: 미전달(DEPENDENCY_UNAVAILABLE)·불명(UNKNOWN_RESULT) — 같은 키 재전송으로 해소
       return new Unknown(e.code(), e.getMessage());

@@ -19,7 +19,8 @@
 ## O-3. 확인된 오배송 — 새 발송 (2026-11-09, ADR-0052)
 - 오배송이 확인되면 같은 상품·수량을 MFC 에서 다시 확보·피킹·포장해 원주소로 보낸다(구매자 비용 0원). 재고 부족 품목은 그 품목만 부분 취소·환불(ADR-0049 방식).
 - 같은 피해 수량을 새 발송과 환불로 겹치지 않게 주문 수량 원장에 기록. 회수(DD-2)와 동시에 시작.
-- **2026-11-16**: 회수 쪽(DD-2)은 구현 — dispatch 가 case `MisdeliveryConfirmed` 로 회수 배송을 만든다. **새 발송은 아직 아무도 시작하지 않는다** — order(또는 orchestration)가 같은 사건을 받아 새 발송을 낼지 정해야 한다(platform·mfc).
+- **2026-11-16**: 회수 쪽(DD-2)은 구현 — dispatch 가 case `MisdeliveryConfirmed` 로 회수 배송을 만든다.
+- **구현(2026-11-16, 사용자 "새상품 재배차 서비스 넣어" → "전부 PR로" — PC 5 가 영역별 PR, PC 1·PC 3 검토)**: orchestration 재발송 사가가 같은 사건을 받아 order `RESHIPMENT` 원장 → 재고 예약(모자란 품목은 줄임) → MFC 재발송 작업 지시(kind RESHIPMENT) → 못 보내는 품목 SHORTAGE·부분 환불. 흐름 `docs/business/flows/misdelivery-recovery-reshipment.md`. 브랜치 `platform/misdelivery-reshipment-saga`(order·orchestration), `mfc/misdelivery-reshipment-work`(fulfillment), `delivery/misdelivery-reshipment`(dispatch 표시·약속).
 
 ## O-4. 배차용 배송지 조회 (2026-11-13, delivery DD-1 — **구현해 PR 에 넣음, platform 검토 필요**)
 - **요청한 곳**: delivery-dispatch(MFC → 고객 도로 거리·예상 배달료·알뜰배달 묶음 — ADR-0058, 원문 §2.1 ②).

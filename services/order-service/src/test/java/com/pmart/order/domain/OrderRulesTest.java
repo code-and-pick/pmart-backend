@@ -84,13 +84,13 @@ class OrderRulesTest {
 
   @Test
   void handoverAndDeliveryProgress() {
-    var a = new OrderRules.Progress("L1", 3, 3, 0, 0, 0);
-    var b = new OrderRules.Progress("L2", 2, 2, 0, 0, 0);
+    var a = new OrderRules.Progress("L1", 3, 3, 0, 0, 0, 0);
+    var b = new OrderRules.Progress("L2", 2, 2, 0, 0, 0, 0);
     // 같은 행이 LOT 별로 두 번 와도 합으로
     var half =
         OrderRules.handOver(
             List.of(a, b), List.of(new OrderRules.Change("L1", 1), new OrderRules.Change("L1", 1)));
-    assertThat(half.get(0)).isEqualTo(new OrderRules.Progress("L1", 3, 1, 2, 0, 0));
+    assertThat(half.get(0)).isEqualTo(new OrderRules.Progress("L1", 3, 1, 2, 0, 0, 0));
     assertThat(OrderRules.progressStatus("PREPARING", half)).isEqualTo("PARTIALLY_HANDED_OVER");
     var all =
         OrderRules.handOver(
@@ -119,7 +119,7 @@ class OrderRulesTest {
             early, List.of(new OrderRules.Change("L1", 3), new OrderRules.Change("L2", 2)));
     assertThat(OrderRules.progressStatus("COMPLETED", late)).isEqualTo("COMPLETED");
     // 출고 전 취소분은 전달할 것에서 빠진다 — 나머지를 다 전달하면 COMPLETED
-    var cut = new OrderRules.Progress("L1", 3, 0, 2, 1, 2);
+    var cut = new OrderRules.Progress("L1", 3, 0, 2, 1, 2, 0);
     assertThat(OrderRules.progressStatus("IN_DELIVERY", List.of(cut))).isEqualTo("COMPLETED");
     // 진행 순서 밖(CANCELLED)은 그대로, 인계·전달 없으면 지금 상태
     assertThat(OrderRules.progressStatus("CANCELLED", late)).isEqualTo("CANCELLED");
@@ -180,5 +180,25 @@ class OrderRulesTest {
     String longName = "가".repeat(150);
     String name = OrderRules.orderName(List.of(longName, "대파"));
     assertThat(name).hasSize(OrderRules.ORDER_NAME_MAX).endsWith("… 외 1건");
+  }
+
+  /** 오배송 재발송(2026-11-16): 미이행 +q·재발송 +q, 한도 = 원수량 − 출고 전 취소 − 이미 재발송. 재발송분까지 전달돼야 COMPLETED. */
+  @org.junit.jupiter.api.Test
+  void reshipmentAddsDeliverableAndCompletesOnlyAfterResentDelivered() {
+    var delivered = new OrderRules.Progress("L1", 2, 0, 2, 0, 2, 0);
+    var r = OrderRules.reship(List.of(delivered), List.of(new OrderRules.Change("L1", 2)));
+    assertThat(r.get(0)).isEqualTo(new OrderRules.Progress("L1", 2, 2, 2, 0, 2, 2));
+    assertThat(r.get(0).deliverable()).isEqualTo(4);
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> OrderRules.reship(r, List.of(new OrderRules.Change("L1", 1))))
+        .isInstanceOf(IllegalArgumentException.class); // 이미 다 재발송
+    assertThat(OrderRules.progressStatus("COMPLETED", r)).isEqualTo("COMPLETED"); // 뒤로 가지 않음
+    var handed = OrderRules.handOver(r, List.of(new OrderRules.Change("L1", 2)));
+    var done = OrderRules.deliver(handed, List.of(new OrderRules.Change("L1", 2)));
+    assertThat(done.get(0).deliveredQty()).isEqualTo(4);
+    assertThat(OrderRules.progressStatus("IN_DELIVERY", done)).isEqualTo("COMPLETED");
+    org.assertj.core.api.Assertions.assertThatThrownBy(
+            () -> OrderRules.deliver(done, List.of(new OrderRules.Change("L1", 1))))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

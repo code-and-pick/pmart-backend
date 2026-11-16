@@ -19,6 +19,8 @@ import org.springframework.cloud.context.config.annotation.RefreshScope;
  *     CONFIG_REQUIRED 보류.
  *     <p>실행 중 갱신(ADR-0033): {@code @RefreshScope} — Bus 갱신 뒤 다음 사용 때 새 값으로 다시 만든다(record 는 final 이라
  *     refresh 프록시를 못 만들어 클래스). 쓰는 쪽은 호출마다 읽는다. 주소(*BaseUrl)는 클라이언트를 만들 때 한 번 읽으므로 바꾸면 재시작.
+ * @param reshipment 오배송 재발송 사가(2026-11-16). {@code start-cases-confirmed-after} = 이 시각 이후 확인된 오배송만
+ *     시작(새 구독 그룹이 platform.case.v1 을 처음부터 읽으므로 — 없으면 시작하지 않는다)
  */
 @RefreshScope
 @ConfigurationProperties(prefix = "pmart.orchestration")
@@ -31,6 +33,8 @@ public class OrchestrationProperties {
   private final String orderBaseUrl;
   private final String mfcFulfillmentBaseUrl;
   private final String claimBaseUrl;
+  private final String deliveryDispatchBaseUrl;
+  private final Reshipment reshipment;
   private final @Nullable Duration stuckAfter;
   private final @Nullable Duration holdTtl;
   private final Fulfillment fulfillment;
@@ -50,6 +54,9 @@ public class OrchestrationProperties {
     }
   }
 
+  /** 오배송 재발송 설정. 비면 시작하지 않는다. */
+  public record Reshipment(@Nullable Instant startCasesConfirmedAfter) {}
+
   public OrchestrationProperties(
       String mfcInventoryBaseUrl,
       String mfcCapacityBaseUrl,
@@ -60,7 +67,9 @@ public class OrchestrationProperties {
       String claimBaseUrl,
       @Nullable Duration stuckAfter,
       @Nullable Duration holdTtl,
-      @Nullable Fulfillment fulfillment) {
+      @Nullable Fulfillment fulfillment,
+      @Nullable String deliveryDispatchBaseUrl,
+      @Nullable Reshipment reshipment) {
     mfcInventoryBaseUrl = or(mfcInventoryBaseUrl, "http://mfc-inventory-service:8301");
     mfcCapacityBaseUrl = or(mfcCapacityBaseUrl, "http://mfc-capacity-service:8303");
     deliveryCapacityBaseUrl = or(deliveryCapacityBaseUrl, "http://delivery-capacity-service:8402");
@@ -79,6 +88,17 @@ public class OrchestrationProperties {
     this.stuckAfter = stuckAfter;
     this.holdTtl = holdTtl;
     this.fulfillment = fulfillment == null ? new Fulfillment(null, null, null) : fulfillment;
+    this.deliveryDispatchBaseUrl =
+        or(deliveryDispatchBaseUrl, "http://delivery-dispatch-service:8404");
+    this.reshipment = reshipment == null ? new Reshipment(null) : reshipment;
+  }
+
+  public String deliveryDispatchBaseUrl() {
+    return deliveryDispatchBaseUrl;
+  }
+
+  public Reshipment reshipment() {
+    return reshipment;
   }
 
   public String mfcInventoryBaseUrl() {
