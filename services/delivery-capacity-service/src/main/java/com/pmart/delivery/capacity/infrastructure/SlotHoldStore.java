@@ -43,6 +43,10 @@ public class SlotHoldStore {
 
   private final JdbcTemplate jdbc;
 
+  /** 확정된 도착 시간대(CP-1 — 영향 주문 고객 안내). */
+  public record ConfirmedSlot(
+      String orderId, String mfcId, java.time.LocalDate date, int startMinute, int endMinute) {}
+
   public SlotHoldStore(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
@@ -252,5 +256,23 @@ public class SlotHoldStore {
 
   private static @Nullable Instant instant(@Nullable Timestamp t) {
     return t == null ? null : t.toInstant();
+  }
+
+  /** 이 주문들의 확정 점유(도착 시간대). 점유가 없는 주문(바로 배송 등)은 빠진다. */
+  public java.util.List<ConfirmedSlot> confirmedFor(java.util.Collection<String> orderIds) {
+    if (orderIds.isEmpty()) {
+      return java.util.List.of();
+    }
+    return jdbc.query(
+        "SELECT order_id, mfc_id, slot_date, start_minute, end_minute FROM slot_hold WHERE state ="
+            + " 'CONFIRMED' AND order_id = ANY (?) ORDER BY slot_date, start_minute, order_id",
+        (rs, n) ->
+            new ConfirmedSlot(
+                rs.getString("order_id"),
+                rs.getString("mfc_id"),
+                rs.getObject("slot_date", java.time.LocalDate.class),
+                rs.getInt("start_minute"),
+                rs.getInt("end_minute")),
+        (Object) orderIds.toArray(String[]::new));
   }
 }

@@ -33,6 +33,12 @@ class NotificationEventConsumers {
     return consumers.of(e -> DELIVERY.contains(e.eventType()), n::onDeliveryEvent);
   }
 
+  /** delivery.slot.v1 — 배송 지연 가능 안내(CP-1, 2026-11-16). */
+  @Bean
+  PmartEventConsumer slotEvents(EventConsumers consumers, NotificationService n) {
+    return consumers.of(e -> "SlotCapacityReduced".equals(e.eventType()), n::onSlotEvent);
+  }
+
   @Bean
   PmartEventConsumer claimEvents(EventConsumers consumers, NotificationService n) {
     return consumers.of(e -> "RefundIntentCreated".equals(e.eventType()), n::onClaimEvent);

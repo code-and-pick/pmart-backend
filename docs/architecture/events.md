@@ -132,7 +132,7 @@
 | `ReturnItemReceived` | mfc-inbound | **mfc-quality(검수 사본, 2026-11-08)**, claim(예정) | returnReceiptId, claimId, returnPickupId, lines[{sku, lot, qty, locationCode}], receivedBy, receivedAt | 회수품 점포 수령 — 격리(검수 대기, 판매 재고 아님) | ② |
 | `MfcLocationStateChanged` | mfc-location | mfc-inventory, mfc-fulfillment | locationId, state, locationCode·zone·temperatureZone·version(전체 속성, 2026-11-07) | 위치 등록·속성 변경·폐쇄·활성(투영용 — version 큰 것만) | ① |
 | `CapacityHoldResult` | mfc-capacity | order-orchestration | holdId, orderId, result, expiresAt | HoldCapacity 결과 | ① |
-| `CapacityReduced` | mfc-capacity | delivery-capacity, order, notification | mfcId, window, oldCapacity, newCapacity, affectedOrders[] | 용량 축소(기존 약속 삭제 없음) | ① |
+| `CapacityReduced` | mfc-capacity | delivery-capacity(2026-11-16 CP-1 구현 — 도착 시간대별 SlotCapacityReduced 로), order, notification | mfcId, window, oldCapacity, newCapacity, affectedOrders[] | 용량 축소(기존 약속 삭제 없음) | ① |
 | `ReceivingCapabilityChanged` | mfc-capacity | replenishment, transport-planning | mfcId, windows[], maxPerArrival, staff | 수령창·수용량 변경 | ② |
 | `AssignmentPublished` | mfc-capacity | mfc-fulfillment, mfc-inbound | planVersion, assignments[{taskId, workerId, assignmentVersion}] | 계획 발행(COMMITTED) | ① |
 | `QualityDecisionMade` | mfc-quality | mfc-inventory, case(리콜), order(참조) | sku, lot, decision(QUARANTINE/RELEASE/DISPOSAL_PENDING), qty, approverRef | 판정·승인 | ① |
@@ -186,7 +186,7 @@
 |---|---|---|---|---|---|
 | `ServiceabilityVersionApplied` | delivery-serviceability | order, customer, cart, approval | mappingVersion, effectiveAt, changedZones[] | 권역 매핑 발효(기존 주문 불변) | ① |
 | `SlotHoldResult` | delivery-capacity | order-orchestration | slotHoldId, orderId, window, result, expiresAt | HoldSlot 결과 | ① |
-| `SlotCapacityReduced` | delivery-capacity | order, notification | mfcId, window, affectedOrders[] | 정원 축소 | ① |
+| `SlotCapacityReduced` | delivery-capacity(2026-11-16 CP-1 — MFC 작업 여력 축소 때) | order(구독 전), notification(2026-11-16 — "배송이 늦어질 수 있어요") | mfcId, window(ARRIVAL 도착 시간대 / WORK 시간대 없는 주문), previousCapacity, newCapacity, affectedOrders[], reason | 정원 축소·지연 가능 | ① |
 | `RiderStateChanged` | rider | delivery-dispatch, delivery-tracking | riderId, operatingState, newDispatchEnabled, vehicleType | 운행 시작/종료·신규배차 ON/OFF | ① |
 | `RiderRestricted` | rider | delivery-dispatch(픽업 전 배정 풀고 재배차 — 2026-11-14 구현), rider-auth(SUSPENDED·TERMINATED 는 진행 중 배송이 끝난 뒤 로그인 끊기 — 2026-11-15 구현), audit. mfc-fulfillment 는 구독하지 않고 `DeliveryAssignmentChanged` 로 인계를 막는다(D-4) | riderId, restriction(풀기는 NORMAL), previous, from, to, basis, evidenceRefs, approvalRef | 계정 제한(증빙 기반, 운영자 — RS-1) | ① |
 | `RiderComplaintRecorded` | case(구현됨 2026-11-15 — 상담원 기록 `POST /rider-complaints`, case 0.3.0, service-requests case R-5) | rider | complaintId, riderId, deliveryId, complaintType(REPORT/MISDELIVERY/DAMAGE), recordedAt, caseId | 라이더 컴플레인 한 건(신고·오배송·파손) — rider 가 같은 종류 7일 안 서로 다른 배송 3건 이상이면 제한 검토 대상(RS-3, 2026-11-14, 자동 제재 없음). 토픽 platform.case.v1 | ① |

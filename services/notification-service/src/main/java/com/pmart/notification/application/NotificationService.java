@@ -123,6 +123,34 @@ public class NotificationService {
     }
   }
 
+  /**
+   * delivery.slot.v1 — SlotCapacityReduced(CP-1, 2026-11-16): 영향 주문마다 "배송이 늦어질 수 있어요"(도착 시간대가 있으면 그
+   * 시간). 한 사건에 주문이 여럿이라 주문 ID 로 구분해 한 번씩.
+   */
+  public void onSlotEvent(EventEnvelope e) {
+    if (!"SlotCapacityReduced".equals(e.eventType())) {
+      return;
+    }
+    JsonNode w = e.payload().path("window");
+    boolean arrival = "ARRIVAL".equals(w.path("meaning").asString(""));
+    Instant start = arrival ? parse(w.path("start").asString(null)) : null;
+    Instant end = arrival ? parse(w.path("end").asString(null)) : null;
+    for (JsonNode o : e.payload().path("affectedOrders")) {
+      String orderId = o.asString("");
+      if (!orderId.isBlank()) {
+        notify(e, null, orderId, Notices.mayBeDelayed(orderId, start, end), ":" + orderId);
+      }
+    }
+  }
+
+  private static @Nullable Instant parse(@Nullable String s) {
+    try {
+      return s == null ? null : Instant.parse(s);
+    } catch (RuntimeException ex) {
+      return null;
+    }
+  }
+
   /** order.claim.v1 — 환불 의도로 주문·클레임을 잇고, 먼저 와 있던 결과가 있으면 알린다. */
   public void onClaimEvent(EventEnvelope e) {
     if (!"RefundIntentCreated".equals(e.eventType())) {

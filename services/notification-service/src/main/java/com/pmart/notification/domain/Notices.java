@@ -97,6 +97,39 @@ public final class Notices {
         orderId);
   }
 
+  /**
+   * 배송 지연 가능 안내(CP-1, 2026-11-16 — 결정 2026-11-15 "이미 잡힌 주문은 유지하고 지연될 수 있다고 안내, 고객이 원하면 취소·시간대 변경").
+   * 시간대 변경은 아직 없어 취소만 안내한다(고객 취소는 상품 준비 전까지). 도착 시간대가 있으면 Asia/Seoul 로 적는다.
+   */
+  public static Notice mayBeDelayed(
+      String orderId,
+      java.time.@Nullable Instant arrivalStart,
+      java.time.@Nullable Instant arrivalEnd) {
+    String when = "";
+    if (arrivalStart != null && arrivalEnd != null) {
+      java.time.ZoneId seoul = java.time.ZoneId.of("Asia/Seoul");
+      var s = arrivalStart.atZone(seoul);
+      var e = arrivalEnd.atZone(seoul);
+      when =
+          String.format(
+              Locale.ROOT,
+              "%d월 %d일 %02d:%02d~%02d:%02d 도착 예정 ",
+              s.getMonthValue(),
+              s.getDayOfMonth(),
+              s.getHour(),
+              s.getMinute(),
+              e.getHour(),
+              e.getMinute());
+    }
+    return new Notice(
+        "DELIVERY_MAY_BE_DELAYED",
+        DELIVERY,
+        "배송이 늦어질 수 있어요",
+        "센터 사정으로 " + when + "배송이 늦어질 수 있어요. 기다리기 어려우시면 상품 준비가 시작되기 전까지 주문을 취소할 수 있어요.",
+        "ORDER",
+        orderId);
+  }
+
   /** 주문 전체 취소. 환불은 결과가 나온 뒤 따로 알린다. */
   public static Notice orderCancelled(String orderId, @Nullable String reason) {
     boolean outOfStock = "OUT_OF_STOCK".equals(reason);

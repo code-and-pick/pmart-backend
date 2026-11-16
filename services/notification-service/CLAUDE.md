@@ -30,3 +30,4 @@
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/notification-service.md`(N-1 결품 처리 고객 안내·보류 단계 안내 여부, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
+- **배송 지연 가능 안내(CP-1, 2026-11-16)**: 구독 `slotEvents-in-0` ← delivery.slot.v1 `SlotCapacityReduced` → 영향 주문마다 "배송이 늦어질 수 있어요"(DELIVERY, 목적지 ORDER, 도착 시간대 KST, 상품 준비 전까지 취소 안내 — 시간대 변경은 아직 없어 안 씀). 한 사건에 주문이 여럿이라 주문 ID 로 한 번씩.

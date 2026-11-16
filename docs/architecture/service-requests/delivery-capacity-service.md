@@ -7,3 +7,4 @@
 - **할 것**: 구독 → 슬롯 반영, 영향 주문 처리. 주문·고객 안내는 order·notification(N-1 과 같은 채널)과 함께.
 - **사용자 결정**: #15 는 임시 구현값 — 영향 주문을 어떻게 다룰지(옮김·취소·안내만)는 질문 필요(`mfc-defaults-status.md` #15).
 - **결정(2026-11-15, 사용자 "추천대로")**: 이미 잡힌 주문은 **유지**하고 고객에게 **지연될 수 있다고 안내**한다. 고객이 원하면 **다른 시간대로 바꾸거나 취소**한다(자동으로 옮기거나 취소하지 않는다). 구현 때 필요한 것: 안내 채널(notification N-1), 고객의 시간대 변경(order·capacity 교체 점유 — `SlotHoldResult` 는 아직)·취소(claim/order 기존 흐름) 경로 확인.
+- **1부 구현(2026-11-16, PC 5)**: delivery-capacity 가 `CapacityReduced`(mfc.capacity.v1, 바인딩 `capacityEvents`)를 받아 영향 주문을 **확정된 도착 시간대별**로 묶어 `SlotCapacityReduced`(delivery.slot.v1, window ARRIVAL — 시간대 점유 없는 주문은 MFC 작업 창 WORK 로 한 건, reason MFC_CAPACITY_REDUCED) — 점유·정원은 그대로(자동으로 옮기거나 취소 안 함). notification 이 받아 고객마다 "배송이 늦어질 수 있어요"(도착 시간대, 상품 준비 전까지 취소 가능, 목적지 주문). **2부(남음)**: 고객 시간대 변경(S4 — order·orchestration·capacity 교체 점유 `newSlotFor` 422 UNSUPPORTED_ACTION) — 생기면 안내 문구에 더한다.

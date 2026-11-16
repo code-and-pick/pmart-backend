@@ -129,6 +129,46 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     return m;
   }
 
+  /** CP-1: 정원 축소 → 영향 주문 고객마다 "배송이 늦어질 수 있어요"(도착 시간대 KST), 주문 상세로. */
+  @Test
+  void slotCapacityReducedTellsEachAffectedCustomer() throws Exception {
+    String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String other = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String o1 = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    String o2 = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(o1, me);
+    stubOrder(o2, other);
+    publish(
+        "delivery.slot.v1",
+        "SlotCapacityReduced",
+        "Slot",
+        "MFC-1:slot",
+        m(
+            "mfcId",
+            "MFC-1",
+            "window",
+            m("start", "2026-11-17T09:00:00Z", "end", "2026-11-17T10:00:00Z", "meaning", "ARRIVAL"),
+            "affectedOrders",
+            List.of(o1, o2),
+            "reason",
+            "MFC_CAPACITY_REDUCED"));
+    Res mine =
+        await(
+            () -> send("GET", TestJwt.customer(me), "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    JsonNode n = mine.body().path("items").get(0);
+    assertThat(n.path("title").asString()).isEqualTo("배송이 늦어질 수 있어요");
+    assertThat(n.path("body").asString()).contains("11월 17일 18:00~19:00 도착 예정").contains("취소");
+    assertThat(n.path("destination").path("ref").asString()).isEqualTo(o1);
+    Res theirs =
+        await(
+            () -> send("GET", TestJwt.customer(other), "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    assertThat(theirs.body().path("items")).hasSize(1);
+    assertThat(theirs.body().path("items").get(0).path("destination").path("ref").asString())
+        .isEqualTo(o2);
+  }
+
   /** N-3(ADR-0065): 오배송 다시 배송비 결제 필요 → 주문 소유자 알림함(결제 분류, 주문 상세로). */
   @Test
   void redeliveryPaymentRequiredNotifiesOrderOwner() throws Exception {

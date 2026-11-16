@@ -36,3 +36,4 @@
 - 확정·해제 결과는 `slot_hold_command` 에 남겨 `.../{requestId}` 로 조회한다. 모든 변경은 RequestIdempotency 안(같은 키 재전송은 마감 뒤에도 기존 점유 반환).
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
+- **배송 지연 가능 안내(CP-1 1부, 2026-11-16)**: 구독 `capacityEvents-in-0` ← mfc.capacity.v1 `CapacityReduced` → `CapacityReductionHandler` — 영향 주문의 CONFIRMED 점유를 도착 시간대별로 묶어 `SlotCapacityReduced`(delivery.slot.v1, aggregate Slot `mfcId:날짜:시작분`, window ARRIVAL), 점유 없는 주문은 MFC 작업 창(WORK)으로 한 건. 점유·정원은 바꾸지 않는다(결정 2026-11-15 — 유지 + 안내). 이 서비스의 첫 구독·발행.
