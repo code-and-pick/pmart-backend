@@ -166,6 +166,51 @@ public class WorkOrderStore {
         fulfillmentId);
   }
 
+  /** S4: 행을 잠그고 준비 시작 시각(없으면 empty 안의 null)을 읽는다. 행이 없으면 empty. */
+  public Optional<Optional<Instant>> lockForReschedule(String fulfillmentId) {
+    return jdbc
+        .query(
+            "SELECT preparation_started_at FROM work_order WHERE fulfillment_id = ? FOR UPDATE",
+            (rs, i) -> Optional.ofNullable(instant(rs, "preparation_started_at")),
+            fulfillmentId)
+        .stream()
+        .findFirst();
+  }
+
+  /** S4: 도착 시간대 바꾸기. */
+  public void reschedule(String fulfillmentId, Instant start, Instant end, Instant now) {
+    jdbc.update(
+        "UPDATE work_order SET arrival_start = ?, arrival_end = ?, version = version + 1, updated_at"
+            + " = ? WHERE fulfillment_id = ?",
+        ts(start),
+        ts(end),
+        ts(now),
+        fulfillmentId);
+  }
+
+  /**
+   * S4: 시작 전 PICK 의 준비 시각 다시 정하기. waiting 이면 WAITING(미래 준비 시각·또는 설정 없음), 아니면 WAITING 만 READY
+   * 로(READY·배정은 그대로). 반환 = 바꾼 PICK 수.
+   */
+  public int reschedulePicks(
+      String fulfillmentId,
+      boolean waiting,
+      @Nullable Instant readyAt,
+      @Nullable String holdReason,
+      Instant now) {
+    return jdbc.update(
+        "UPDATE task t SET state = CASE WHEN ? THEN 'WAITING' WHEN t.state = 'WAITING' THEN 'READY'"
+            + " ELSE t.state END, ready_at = ?, hold_reason = ?, version = t.version + 1, updated_at ="
+            + " ? FROM shipment s WHERE s.shipment_id = t.shipment_id AND s.fulfillment_id = ? AND"
+            + " t.task_type = 'PICK' AND t.state IN ('WAITING', 'READY', 'ASSIGNED') AND t.started_at"
+            + " IS NULL",
+        waiting,
+        ts(readyAt),
+        holdReason,
+        ts(now),
+        fulfillmentId);
+  }
+
   public void touch(String fulfillmentId, Instant now) {
     jdbc.update(
         "UPDATE work_order SET version = version + 1, updated_at = ? WHERE fulfillment_id = ?",

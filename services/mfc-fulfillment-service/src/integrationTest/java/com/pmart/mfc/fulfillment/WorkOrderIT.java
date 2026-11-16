@@ -279,6 +279,70 @@ class WorkOrderIT extends PostgresKafkaContainerSupport {
         .isEqualTo("CONFIG_REQUIRED");
   }
 
+  /**
+   * S4(0.6.0): 준비 시작 전이면 도착 시간대·PICK 준비 시각을 바꾼다(READY 였어도 새 시각이 미래면 WAITING), 준비가 먼저 시작되면 409
+   * PREPARATION_STARTED, 예약배달이 아니면 422 NOT_SCHEDULED.
+   */
+  @Test
+  void rescheduleMovesPickReadyTimeUntilPreparationStarts() {
+    Instant slot = Instant.now().plus(Duration.ofHours(1)).truncatedTo(ChronoUnit.SECONDS);
+    String a = order();
+    reservation(a, "CONFIRMED", "CONFIRMED");
+    post("/internal/work-orders", "k-" + a, confirmBody(a, "MFC-T1", 1, slot));
+    JsonNode wo = get("/internal/work-orders?orderId=" + a).body();
+    String fid = wo.path("fulfillmentId").asString();
+    assertThat(task(wo, "PICK").path("state").asString()).isEqualTo("READY"); // 1시간 뒤 − 90분 = 지남
+    Instant later = slot.plus(Duration.ofHours(3));
+    Map<String, Object> body =
+        Map.of(
+            "orderId",
+            a,
+            "arrivalWindow",
+            Map.of("start", later.toString(), "end", later.plus(Duration.ofHours(1)).toString()));
+    Res r = post("/internal/work-orders/" + fid + "/reschedules", "rs-" + a, body);
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().path("status").asString()).isEqualTo("APPLIED");
+    JsonNode pick = task(get("/internal/work-orders?orderId=" + a).body(), "PICK");
+    assertThat(pick.path("state").asString()).isEqualTo("WAITING");
+    assertThat(Instant.parse(pick.path("readyAt").asString()))
+        .isEqualTo(later.minus(Duration.ofMinutes(90)));
+    // 같은 키 재전송 = 같은 결과
+    assertThat(post("/internal/work-orders/" + fid + "/reschedules", "rs-" + a, body).status())
+        .isEqualTo(200);
+    // 준비가 먼저 시작되면 409
+    jdbc.update(
+        "UPDATE work_order SET preparation_started_at = now() WHERE fulfillment_id = ?", fid);
+    Instant again = later.plus(Duration.ofHours(1));
+    Res late =
+        post(
+            "/internal/work-orders/" + fid + "/reschedules",
+            "rs2-" + a,
+            Map.of(
+                "orderId",
+                a,
+                "arrivalWindow",
+                Map.of(
+                    "start", again.toString(), "end", again.plus(Duration.ofHours(1)).toString())));
+    assertThat(late.status()).isEqualTo(409);
+    assertThat(late.body().path("code").asString()).isEqualTo("PREPARATION_STARTED");
+    // 즉시 배송은 422
+    String b = order();
+    reservation(b, "CONFIRMED", "CONFIRMED");
+    post("/internal/work-orders", "k-" + b, confirmBody(b, "MFC-T1", 1, null));
+    String fb = get("/internal/work-orders?orderId=" + b).body().path("fulfillmentId").asString();
+    Res imm =
+        post(
+            "/internal/work-orders/" + fb + "/reschedules",
+            "rs-" + b,
+            Map.of(
+                "orderId",
+                b,
+                "arrivalWindow",
+                Map.of(
+                    "start", later.toString(), "end", later.plus(Duration.ofHours(1)).toString())));
+    assertThat(imm.body().path("code").asString()).isEqualTo("NOT_SCHEDULED");
+  }
+
   @Test
   void inventoryMismatchRejectedRetryableThenNewWorkVersionAccepted() {
     String o = order();

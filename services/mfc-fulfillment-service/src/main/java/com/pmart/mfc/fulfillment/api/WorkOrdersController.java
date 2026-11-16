@@ -112,6 +112,34 @@ public class WorkOrdersController implements WorkOrdersApi {
     return ResponseEntity.status(HttpStatus.CREATED).body(decision(d));
   }
 
+  /** S4 예약 시간 변경(0.6.0). */
+  @Override
+  public ResponseEntity<com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response>
+      rescheduleWorkOrder(
+          String fulfillmentId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.mfc.fulfillment.api.generated.model.RescheduleWorkOrderRequest body) {
+    com.pmart.common.web.CommandResponse r =
+        works.reschedule(
+            idempotencyKey,
+            xSourceSystem,
+            fulfillmentId,
+            body.getOrderId(),
+            body.getArrivalWindow().getStart().toInstant(),
+            body.getArrivalWindow().getEnd().toInstant());
+    return ResponseEntity.ok(
+        new com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response()
+            .status(
+                com.pmart.mfc.fulfillment.api.generated.model.ResolveShortage200Response.StatusEnum
+                    .APPLIED)
+            .requestId(r.requestId())
+            .resultId(r.resultId())
+            .version(r.version())
+            .occurredAt(
+                java.time.OffsetDateTime.ofInstant(r.occurredAt(), java.time.ZoneOffset.UTC)));
+  }
+
   @Override
   public ResponseEntity<WorkOrder> getWorkOrder(String fulfillmentId) {
     return ResponseEntity.ok(workOrder(works.get(fulfillmentId)));

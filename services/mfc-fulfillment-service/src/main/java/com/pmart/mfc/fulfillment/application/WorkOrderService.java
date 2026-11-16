@@ -392,6 +392,96 @@ public class WorkOrderService {
     }
   }
 
+  /**
+   * S4 예약 시간 변경(0.6.0): 작업 지시 행을 잠근 뒤 실제 준비 시작(PICK 시작)이 없을 때만 도착 시간대·PICK 준비 시각을 바꾼다. 준비가 먼저 시작됐으면
+   * 409 PREPARATION_STARTED — 먼저 확정된 쪽만 유효(OMS §4). 재고·출고·포장은 그대로.
+   */
+  public com.pmart.common.web.CommandResponse reschedule(
+      String requestId,
+      String sourceSystem,
+      String fulfillmentId,
+      String orderId,
+      Instant start,
+      Instant end) {
+    if (!end.isAfter(start)) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "도착 시간대의 끝이 시작보다 뒤여야 합니다.");
+    }
+    return idempotency
+        .execute(
+            new RequestKey(sourceSystem, requestId, "rescheduleWorkOrder", "system"),
+            java.util.Map.of(
+                "fulfillmentId",
+                fulfillmentId,
+                "orderId",
+                orderId,
+                "start",
+                start.toString(),
+                "end",
+                end.toString()),
+            com.pmart.common.web.CommandResponse.class,
+            () -> {
+              Instant now = clock.instant();
+              java.util.Optional<Instant> started =
+                  store
+                      .lockForReschedule(fulfillmentId)
+                      .orElseThrow(
+                          () ->
+                              PmartException.notFound(
+                                  "WORK_ORDER_NOT_FOUND", "작업 지시가 없습니다: " + fulfillmentId));
+              WorkOrderRow w = store.find(fulfillmentId).orElseThrow();
+              if (!w.orderId().equals(orderId)) {
+                throw new PmartException(
+                    com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "다른 주문의 작업 지시입니다.");
+              }
+              if (!"ACCEPTED".equals(w.acceptance())) {
+                throw PmartException.invalidState("접수되지 않은 작업 지시입니다(" + w.acceptance() + ").");
+              }
+              if (!"SCHEDULED".equals(w.deliveryMode()) || w.arrivalStart() == null) {
+                throw new PmartException(
+                    "NOT_SCHEDULED",
+                    org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+                    "예약배달 작업 지시만 시간을 바꿀 수 있습니다.",
+                    false,
+                    List.of());
+              }
+              if (started.isPresent()) {
+                throw new PmartException(
+                    "PREPARATION_STARTED",
+                    org.springframework.http.HttpStatus.CONFLICT,
+                    "상품 준비가 이미 시작되었습니다(" + started.get() + ").",
+                    false,
+                    List.of());
+              }
+              if (start.equals(w.arrivalStart()) && end.equals(w.arrivalEnd())) {
+                return applied(requestId, fulfillmentId, w.version(), now);
+              }
+              PickStart p = WorkRules.pickStart(start, props.pickLeadTime(w.mfcId()), now);
+              store.reschedule(fulfillmentId, start, end, now);
+              int picks =
+                  store.reschedulePicks(
+                      fulfillmentId, "WAITING".equals(p.state()), p.readyAt(), p.holdReason(), now);
+              if (picks == 0) {
+                throw PmartException.invalidState("시작 전 PICK 작업이 없습니다(중지·취소된 작업).");
+              }
+              log.info(
+                  "작업 지시 {} 예약 시간 변경 {} → {} (PICK {}건 {})",
+                  fulfillmentId,
+                  w.arrivalStart(),
+                  start,
+                  picks,
+                  p.state());
+              return applied(requestId, fulfillmentId, w.version() + 1, now);
+            })
+        .value();
+  }
+
+  private static com.pmart.common.web.CommandResponse applied(
+      String requestId, String id, int version, Instant now) {
+    return new com.pmart.common.web.CommandResponse(
+        com.pmart.common.web.CommandStatus.APPLIED, requestId, id, null, version, false, null, now);
+  }
+
   // ---------- 내부 ----------
 
   private record Ids(List<String> shipmentIds, List<String> taskIds) {}

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -210,6 +210,56 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/work-orders/{fulfillmentId}/reschedules:
+    post:
+      tags: [work-orders]
+      summary: "[orchestration S4→fulfillment] 예약 시간 변경 — 작업 지시의 도착 시간대·PICK 준비 시각 바꾸기 (0.6.0)"
+      x-added-in: '2026-11-16'
+      description: |
+        S4 예약 시간 변경(OMS §4 — "준비 시작과 시간 변경을 같은 주문에 대해 순서 판정, 먼저 확정된 결과만 유효"). 작업 지시 행을 잠근 뒤
+        **실제 준비 시작(PICK 시작 — preparation_started_at)이 아직 없을 때만** 도착 시간대를 바꾸고 PICK 준비 시각을 다시 계산한다(새 시작 − 센터 N분;
+        미래면 WAITING — 이미 READY·배정된 PICK 도 시작 전이면 WAITING 으로 돌아가고 담당은 그대로, 지났으면 READY 그대로). 작업 배정만으로는 준비 시작이 아니다.
+        준비가 먼저 시작됐으면 409 PREPARATION_STARTED(바꾸지 않음), 예약배달이 아니면 422 NOT_SCHEDULED, 거절·중지된 작업은 409 INVALID_STATE.
+        같은 시간대면 그대로 성공. 같은 Idempotency-Key 재전송은 같은 결과. 재고·출고 단위·포장은 바꾸지 않는다(새 피킹 없음).
+      operationId: rescheduleWorkOrder
+      parameters:
+        - { name: fulfillmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, arrivalWindow]
+              properties:
+                orderId: { type: string }
+                sagaId: { type: string }
+                arrivalWindow:
+                  type: object
+                  required: [start, end]
+                  properties:
+                    start: { type: string, format: date-time }
+                    end: { type: string, format: date-time }
+      responses:
+        '200':
+          description: APPLIED (resultId = fulfillmentId)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: PREPARATION_STARTED / INVALID_STATE / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: NOT_SCHEDULED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/stop-requests:
     post:
