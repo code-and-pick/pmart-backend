@@ -1039,4 +1039,74 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .contains("OBLIGATION_CREATED", "OBLIGATION_RESOLVED");
     assertThat(send("GET", md, "/obligations/" + pickupId, null).status()).isEqualTo(404);
   }
+
+  /**
+   * 접수 건 메모(0.10.0 — 2026-11-16 사용자 "고친 안"): 볼 수 있는 본사 직원(상담원 포함)이 덧붙이기만, 처리 끝난 건에도(상태 그대로), 관리자
+   * 가림(사유 필수 — 글은 지우고 누가·언제·왜는 남김), 못 보는 직원 404.
+   */
+  @Test
+  void notesAreAppendOnlyAndAdminCanMask() {
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String caseId =
+        send(
+                "POST",
+                cs,
+                "/cases",
+                Map.of(
+                    "kind", "MISDELIVERY",
+                    "subjectType", "DELIVERY",
+                    "subjectRef", "DLV-NT-" + UUID.randomUUID().toString().substring(0, 8),
+                    "summary", "메모 시험"))
+            .body()
+            .path("caseId")
+            .asString();
+    String notes = "/cases/" + caseId + "/notes";
+
+    Res byCs = send("POST", cs, notes, Map.of("text", "고객과 통화 — 내일 오전 회수 가능"));
+    assertThat(byCs.status()).as(byCs.body().toString()).isEqualTo(201);
+    assertThat(byCs.body().path("authorId").asString()).isEqualTo("op-cs-1");
+    assertThat(send("POST", ops, notes, Map.of("text", " ")).status()).isEqualTo(400);
+    assertThat(send("POST", md, notes, Map.of("text", "x")).status()).as("못 보는 직원").isEqualTo(404);
+
+    // 처리 끝난 건에도 — 상태 그대로
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    "/cases/" + caseId + "/closures",
+                    Map.of("resolution", "RESOLVED", "summary", "회수 끝"))
+                .status())
+        .isEqualTo(200);
+    Res late = send("POST", ops, notes, Map.of("text", "늦은 보고: 실제로는 두 개였음"));
+    assertThat(late.status()).isEqualTo(201);
+    assertThat(send("GET", ops, "/cases/" + caseId, null).body().path("state").asString())
+        .isEqualTo("CLOSED");
+
+    JsonNode list = send("GET", ops, notes, null).body().path("items");
+    assertThat(list).hasSize(2);
+    assertThat(list.get(0).path("text").asString()).startsWith("고객과 통화");
+
+    // 가림 — 관리자만, 사유 필수, 글은 지움
+    String noteId = byCs.body().path("noteId").asString();
+    String mask = notes + "/" + noteId + "/maskings";
+    assertThat(send("POST", ops, mask, Map.of("reason", "x")).status()).isEqualTo(403);
+    assertThat(send("POST", admin, mask, Map.of("reason", " ")).status()).isEqualTo(400);
+    Res masked = send("POST", admin, mask, Map.of("reason", "전화번호를 적음"));
+    assertThat(masked.status()).as(masked.body().toString()).isEqualTo(200);
+    assertThat(masked.body().path("masked").asBoolean()).isTrue();
+    assertThat(masked.body().path("text").isNull()).isTrue();
+    assertThat(masked.body().path("maskedBy").asString()).isEqualTo("op-admin");
+    assertThat(masked.body().path("authorId").asString()).as("누가 남겼는지는 남음").isEqualTo("op-cs-1");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT text FROM case_note WHERE note_id = ?", String.class, noteId))
+        .as("DB 에서도 지움")
+        .isNull();
+    assertThat(
+            send("POST", admin, mask, Map.of("reason", "다시")).body().path("maskReason").asString())
+        .as("이미 가린 메모는 그대로")
+        .isEqualTo("전화번호를 적음");
+  }
 }

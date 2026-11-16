@@ -6,23 +6,29 @@ import com.pmart.cases.api.generated.model.AssigneeGroup;
 import com.pmart.cases.api.generated.model.CaseAllOfClosure;
 import com.pmart.cases.api.generated.model.CaseAllOfHistory;
 import com.pmart.cases.api.generated.model.CaseKind;
+import com.pmart.cases.api.generated.model.CaseNote;
 import com.pmart.cases.api.generated.model.CaseState;
 import com.pmart.cases.api.generated.model.CaseSummary;
 import com.pmart.cases.api.generated.model.CaseSummaryRefsInner;
 import com.pmart.cases.api.generated.model.CloseCaseRequest;
+import com.pmart.cases.api.generated.model.CreateCaseNoteRequest;
 import com.pmart.cases.api.generated.model.CreateCaseRequest;
 import com.pmart.cases.api.generated.model.EvidenceReference;
+import com.pmart.cases.api.generated.model.ListCaseNotes200Response;
 import com.pmart.cases.api.generated.model.ListCases200Response;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
+import com.pmart.cases.api.generated.model.MaskCaseNoteRequest;
 import com.pmart.cases.api.generated.model.ModelCase;
 import com.pmart.cases.api.generated.model.Obligation;
 import com.pmart.cases.api.generated.model.Priority;
 import com.pmart.cases.api.generated.model.ReopenCaseRequest;
 import com.pmart.cases.api.generated.model.TransferCaseRequest;
 import com.pmart.cases.application.CaseInboxService;
+import com.pmart.cases.application.CaseNoteService;
 import com.pmart.cases.application.ObligationService;
 import com.pmart.cases.domain.CaseRules;
 import com.pmart.cases.domain.ObligationRules;
+import com.pmart.cases.infrastructure.CaseNoteStore;
 import com.pmart.cases.infrastructure.CaseStore.CaseRow;
 import com.pmart.common.web.PmartException;
 import java.time.Instant;
@@ -44,10 +50,53 @@ public class CasesController implements CasesApi {
 
   private final CaseInboxService cases;
   private final ObligationService obligations;
+  private final CaseNoteService notes;
 
-  public CasesController(CaseInboxService cases, ObligationService obligations) {
+  public CasesController(
+      CaseInboxService cases, ObligationService obligations, CaseNoteService notes) {
     this.cases = cases;
     this.obligations = obligations;
+    this.notes = notes;
+  }
+
+  @Override
+  public ResponseEntity<CaseNote> createCaseNote(
+      String caseId, String idempotencyKey, String xSourceSystem, CreateCaseNoteRequest body) {
+    CaseNoteStore.NoteRow n = notes.add(idempotencyKey, xSourceSystem, caseId, body.getText());
+    return ResponseEntity.created(
+            java.net.URI.create("/api/v1/cases/" + caseId + "/notes/" + n.noteId()))
+        .body(note(n));
+  }
+
+  @Override
+  public ResponseEntity<ListCaseNotes200Response> listCaseNotes(String caseId) {
+    return ResponseEntity.ok(
+        new ListCaseNotes200Response()
+            .items(notes.list(caseId).stream().map(CasesController::note).toList()));
+  }
+
+  @Override
+  public ResponseEntity<CaseNote> maskCaseNote(
+      String caseId,
+      String noteId,
+      String idempotencyKey,
+      String xSourceSystem,
+      MaskCaseNoteRequest body) {
+    return ResponseEntity.ok(
+        note(notes.mask(idempotencyKey, xSourceSystem, caseId, noteId, body.getReason())));
+  }
+
+  private static CaseNote note(CaseNoteStore.NoteRow n) {
+    return new CaseNote()
+        .noteId(n.noteId())
+        .caseId(n.caseId())
+        .text(n.text())
+        .authorId(n.authorId())
+        .createdAt(odt(n.createdAt()))
+        .masked(n.maskedAt() != null)
+        .maskedAt(odt(n.maskedAt()))
+        .maskedBy(n.maskedBy())
+        .maskReason(n.maskReason());
   }
 
   @Override

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.8.0
+  version: 0.10.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -277,6 +277,93 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cases/{caseId}/notes:
+    post:
+      tags: [cases]
+      summary: 접수 건 메모 남기기 (덧붙이기만 — 0.10.0)
+      x-added-in: '2026-11-16'
+      description: |
+        0.10.0(2026-11-16 사용자 "고친 안" — 업무 원문 BO-27 "전임의 늦은 보고는 버리지 않고 원사건으로", §5.3 "넘긴 건은 상대 처리 중"):
+        - 그 건을 볼 수 있는 **본사 직원**(OPERATOR_ADMIN·RIDER_OPS·CS_AGENT)이 남긴다. 센터 관리자(MFC_SUPERVISOR 만)는 아직 403.
+        - **처리 끝난 건에도** 남길 수 있다 — 상태는 바꾸지 않는다(근거가 뒤집혔으면 사람이 따로 재개).
+        - 고치기·지우기 없음(잘못 쓰면 정정 메모). 개인정보를 쓰지 않는다(화면 안내) — 실수로 쓰면 관리자 가림(…/maskings).
+        - 500자, 이벤트 없음, 로그에 남기지 않음.
+      operationId: createCaseNote
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '201':
+          description: 남김
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseNote' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    get:
+      tags: [cases]
+      summary: 접수 건 메모 목록 (볼 수 있는 직원 — 오래된 것부터)
+      x-added-in: '2026-11-16'
+      operationId: listCaseNotes
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CaseNote' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cases/{caseId}/notes/{noteId}/maskings:
+    post:
+      tags: [cases]
+      summary: 메모 가림 (관리자만, 사유 필수 — 0.10.0)
+      x-added-in: '2026-11-16'
+      description: |
+        OPERATOR_ADMIN 만. 글을 지우고(text null) 누가·언제·왜 가렸는지를 남긴다 — 감사 근거와 개인정보 삭제를 함께(ADR-0062). 이미 가린 메모는 그대로 돌려준다.
+      operationId: maskCaseNote
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: noteId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 가린 메모
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseNote' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /cases/{caseId}/obligations:
     post:
@@ -921,6 +1008,20 @@ components:
                   fromState: { type: string }
                   toState: { type: string }
                   note: { type: string }
+    CaseNote:
+      type: object
+      x-added-in: '2026-11-16'
+      description: 접수 건 메모(0.10.0) — 덧붙이기만. 가리면 text null 이고 maskedAt·maskedBy·maskReason 이 있다.
+      properties:
+        noteId: { type: string }
+        caseId: { type: string }
+        text: { type: [string, 'null'] }
+        authorId: { type: string }
+        createdAt: { type: string, format: date-time }
+        masked: { type: boolean }
+        maskedAt: { type: [string, 'null'], format: date-time }
+        maskedBy: { type: [string, 'null'] }
+        maskReason: { type: [string, 'null'] }
     ObligationBody:
       type: object
       required: [kind]
