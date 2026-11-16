@@ -28,6 +28,7 @@ public class ReshipmentStore {
       @Nullable String reservationId,
       @Nullable String fulfillmentId,
       @Nullable String claimId,
+      String mode,
       String state,
       String currentStep,
       @Nullable String lastErrorStep,
@@ -51,16 +52,18 @@ public class ReshipmentStore {
       String deliveryId,
       @Nullable String orderId,
       @Nullable Instant confirmedAt,
+      String mode,
       String firstStep,
       Instant now) {
     return jdbc.update(
-            "INSERT INTO reshipment_saga (saga_id, case_id, delivery_id, order_id, state,"
+            "INSERT INTO reshipment_saga (saga_id, case_id, delivery_id, order_id, mode, state,"
                 + " current_step, confirmed_at, started_at, updated_at) VALUES"
-                + " (?,?,?,?,'RUNNING',?,?,?,?) ON CONFLICT (case_id) DO NOTHING",
+                + " (?,?,?,?,?,'RUNNING',?,?,?,?) ON CONFLICT (case_id) DO NOTHING",
             sagaId,
             caseId,
             deliveryId,
             orderId,
+            mode,
             firstStep,
             confirmedAt == null ? null : Timestamp.from(confirmedAt),
             Timestamp.from(now),
@@ -114,15 +117,17 @@ public class ReshipmentStore {
       String mfcId,
       String shipmentId,
       String linesJson,
+      String shortJson,
       String nextStep,
       Instant at) {
     jdbc.update(
         "UPDATE reshipment_saga SET order_id = ?, mfc_id = ?, shipment_id = ?, lines = ?::jsonb,"
-            + " current_step = ?, updated_at = ? WHERE saga_id = ?",
+            + " short_lines = ?::jsonb, current_step = ?, updated_at = ? WHERE saga_id = ?",
         orderId,
         mfcId,
         shipmentId,
         linesJson,
+        shortJson,
         nextStep,
         Timestamp.from(at),
         sagaId);
@@ -213,6 +218,7 @@ public class ReshipmentStore {
         rs.getString("reservation_id"),
         rs.getString("fulfillment_id"),
         rs.getString("claim_id"),
+        rs.getString("mode"),
         rs.getString("state"),
         rs.getString("current_step"),
         rs.getString("last_error_step"),

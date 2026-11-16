@@ -49,3 +49,4 @@ S1 a~j 구현(결제 사건 구독 order.payment.v1 → 대사 → 자원 확정
 - 결품 사가: `LineShortageReported` 의 `purpose: MISDELIVERY_RESHIPMENT`(재발송 작업 결품)면 CHECK_ORDER(주문 전체 취소 판정)·사전 선택 없이 RESOLVE_WORK 부터 — 그 품목만 부분 취소·환불(2026-11-16).
 - **처리 대기에 재발송 사가(2026-11-16, 사용자 "운영자 처리 대기 목록에 재발송 건 추가해")**: `ManualActionStore` 다섯 번째 표 `reshipment_saga`(sagaType `RESHIPMENT`, ESCALATED → MARK_RESOLVED). 주문을 찾기 전에 멈추면 orderId 빈 값 — lastErrorMessage 앞에 `오배송 사건 <caseId> · 배송 <deliveryId>`. backoffice-bff 처리 대기는 sagaType 을 그대로 전달.
 - 아직: 재발송 지연 기한·고객 안내(ADR-0052 남은 것).
+- **오배송 귀책(2026-11-16, ADR-0065)**: `MisdeliveryConfirmed` fault CUSTOMER 는 재발송 사가를 만들지 않는다(고객 잘못 — 다시 배송·9,000원 결제·상품값 − 9,000원 환불은 다음 단계). RIDER·SYSTEM(또는 귀책 없는 예전 사건): resolution REFUND → `reshipment_saga.mode` REFUND — RESOLVE_ORDER → RECORD_RESHIPMENT → APPLY_SHORTAGE(전 줄) → REQUEST_REFUND(전 품목, 재고 예약·작업 없음), 그 밖 RESHIP(재발송).

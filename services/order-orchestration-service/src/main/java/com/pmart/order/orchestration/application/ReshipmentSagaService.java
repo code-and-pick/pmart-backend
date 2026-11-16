@@ -90,6 +90,13 @@ public class ReshipmentSagaService {
     }
     String caseId = p.path("caseId").asString("");
     String deliveryId = p.path("deliveryId").asString("");
+    // ADR-0065(2026-11-16): 고객 잘못은 이 사가가 아니다(다시 배송·9,000원 결제·상품값 − 9,000원 환불은 따로). 라이더·시스템 잘못(또는 귀책
+    // 없는 예전 사건)만 — 고객 선택 REFUND 면 전 품목 환불, 아니면 재발송
+    if ("CUSTOMER".equals(p.path("fault").asString(""))) {
+      log.info("오배송 확인 {} — 고객 잘못: 재발송 사가 아님", caseId);
+      return;
+    }
+    String mode = "REFUND".equals(p.path("resolution").asString("")) ? "REFUND" : "RESHIP";
     if (caseId.isBlank() || deliveryId.isBlank()) {
       log.warn("오배송 확인 사건 {} 에 caseId·deliveryId 가 없어 재발송 안 함", e.eventId());
       return;
@@ -101,11 +108,12 @@ public class ReshipmentSagaService {
         deliveryId,
         p.path("orderId").asString(null),
         confirmed,
+        mode,
         ReshipmentRules.RESOLVE_ORDER,
         clock.instant())) {
       return;
     }
-    log.info("오배송 재발송 사가 {} 시작 — 사건 {} 배송 {}", sagaId, caseId, deliveryId);
+    log.info("오배송 재발송 사가 {} 시작({}) — 사건 {} 배송 {}", sagaId, mode, caseId, deliveryId);
     TransactionSynchronizationManager.registerSynchronization(
         new TransactionSynchronization() {
           @Override
@@ -185,7 +193,14 @@ public class ReshipmentSagaService {
                       "sourceRef", s.caseId(),
                       "changes", changes(lines))),
               now,
-              ok -> store.step(s.sagaId(), next(step, true, false), now));
+              // 환불이면 재고 예약·작업 없이 못 보내는 줄(= 전부)을 SHORTAGE·환불로
+              ok ->
+                  store.step(
+                      s.sagaId(),
+                      "REFUND".equals(s.mode())
+                          ? ReshipmentRules.APPLY_SHORTAGE
+                          : next(step, true, false),
+                      now));
       case ReshipmentRules.RESERVE_INVENTORY -> reserve(s, key, lines, shortLines, now);
       case ReshipmentRules.CONFIRM_RESERVATION ->
           handle(
@@ -220,7 +235,10 @@ public class ReshipmentSagaService {
                   Map.of(
                       "orderId", s.orderId(),
                       "lines", changes(shortLines),
-                      "reasonDetail", "오배송 재발송 재고 부족(사건 " + s.caseId() + ")",
+                      "reasonDetail",
+                          "REFUND".equals(s.mode())
+                              ? "오배송 환불(사건 " + s.caseId() + ")"
+                              : "오배송 재발송 재고 부족(사건 " + s.caseId() + ")",
                       "sourceRef", s.sagaId())),
               now,
               ok -> finish(s, ok.body().path("claimId").asString(null), now));
@@ -278,6 +296,7 @@ public class ReshipmentSagaService {
         o.path("mfcId").asString(),
         ReshipmentRules.shipmentId(orderId, s.caseId()),
         json(resend),
+        "REFUND".equals(s.mode()) ? json(resend) : "[]", // 환불 = 다시 보낼 줄 전부를 못 보내는 줄로
         ReshipmentRules.RECORD_RESHIPMENT,
         now);
     log.info("오배송 재발송 사가 {} — 주문 {} {}줄 다시 보냄", s.sagaId(), orderId, resend.size());

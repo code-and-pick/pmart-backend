@@ -18,6 +18,7 @@ CREATE TABLE reshipment_saga (
     reservation_id     VARCHAR(64),
     fulfillment_id     VARCHAR(64),
     claim_id           VARCHAR(64),
+    mode               VARCHAR(16)  NOT NULL DEFAULT 'RESHIP', -- RESHIP(다시 피킹해 보냄) / REFUND(전 품목 환불 — ADR-0065 라이더·시스템 잘못 + 고객 선택)
     state              VARCHAR(16)  NOT NULL,       -- RUNNING / COMPLETED / ESCALATED
     current_step       VARCHAR(24)  NOT NULL,
     last_error_step    VARCHAR(24),
@@ -28,7 +29,8 @@ CREATE TABLE reshipment_saga (
     updated_at         TIMESTAMPTZ  NOT NULL,
     finished_at        TIMESTAMPTZ,
     CONSTRAINT uq_reshipment_saga_case UNIQUE (case_id),
-    CONSTRAINT ck_reshipment_saga_state CHECK (state IN ('RUNNING', 'COMPLETED', 'ESCALATED'))
+    CONSTRAINT ck_reshipment_saga_state CHECK (state IN ('RUNNING', 'COMPLETED', 'ESCALATED')),
+    CONSTRAINT ck_reshipment_saga_mode CHECK (mode IN ('RESHIP', 'REFUND'))
 );
 CREATE INDEX ix_reshipment_saga_open ON reshipment_saga (updated_at) WHERE state = 'RUNNING';
 CREATE INDEX ix_reshipment_saga_order ON reshipment_saga (order_id);

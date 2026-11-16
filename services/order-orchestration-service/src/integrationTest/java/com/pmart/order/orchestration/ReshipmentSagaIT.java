@@ -75,6 +75,59 @@ class ReshipmentSagaIT extends PostgresKafkaContainerSupport {
         .withBody(mapper.writeValueAsString(body));
   }
 
+  void confirmed(String caseId, String deliveryId, Instant at, String fault, String resolution) {
+    String json =
+        EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+            .from("case-service")
+            .aggregate("Case", caseId, 1)
+            .payload(
+                Map.of(
+                    "caseId",
+                    caseId,
+                    "deliveryId",
+                    deliveryId,
+                    "riderId",
+                    "RD-1",
+                    "confirmedBy",
+                    "OP-CS",
+                    "confirmedAt",
+                    at.toString(),
+                    "fault",
+                    fault,
+                    "resolution",
+                    resolution))
+            .buildJson();
+    kafka.send("platform.case.v1", caseId, json).join();
+  }
+
+  /** ADR-0065: 라이더 잘못 + 고객 환불 선택 → 재고·작업 없이 전 품목 SHORTAGE·환불. 고객 잘못은 이 사가가 아니다. */
+  @Test
+  void riderFaultRefundSkipsReservationAndRefundsAllLines() throws Exception {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String deliveryId = "DLV-" + UUID.randomUUID();
+    String caseId = "CASE-" + UUID.randomUUID();
+    orderOf(deliveryId, o);
+    participants(o);
+    String customerCase = "CASE-" + UUID.randomUUID();
+    confirmed(customerCase, deliveryId, Instant.now(), "CUSTOMER", "REDELIVER");
+    confirmed(caseId, deliveryId, Instant.now(), "RIDER", "REFUND");
+    ReshipmentRow s = await(caseId, "COMPLETED");
+    assertThat(s.mode()).isEqualTo("REFUND");
+    assertThat(s.claimId()).isEqualTo("CLM-RS-" + o);
+    assertThat(sagas.byCase(customerCase)).isEmpty();
+    parts.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations")));
+    parts.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/work-orders")));
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/orders/" + o + "/line-quantity-changes"))
+            .withRequestBody(matchingJsonPath("$.reason", WireMock.equalTo("SHORTAGE")))
+            .withRequestBody(
+                matchingJsonPath("$.changes[1].orderLineId", WireMock.equalTo(o + "-L2"))));
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds"))
+            .withRequestBody(matchingJsonPath("$.lines[0].qty", WireMock.equalTo("2")))
+            .withRequestBody(matchingJsonPath("$.lines[1].qty", WireMock.equalTo("1"))));
+  }
+
   void confirmed(String caseId, String deliveryId, Instant at) {
     String json =
         EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
