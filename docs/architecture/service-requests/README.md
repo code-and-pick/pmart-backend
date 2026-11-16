@@ -25,7 +25,7 @@
 | [RS-2](rider-service.md) | rider | rider-auth | 라이더 토큰(`sub`=riderId)으로 가입 — 전화번호·지역·수단·약관 → 즉시 운행 승인(ADR-0054 G) | 결정됨(2026-11-10: 전화번호 중복 확인만, 면허·주민번호 받지 않음) | 대기 |
 | [RS-확인](rider-service.md) | rider | backoffice(PC 2) | 확인 요청: LAN 라이더 찾기(`GET /riders`)가 0명 — 가입 라이더가 없는지, 목록이 비는 다른 이유인지 | 없음 | **회신(PC 5, 2026-11-16)** — 가입한 라이더가 없었음. LAN E2E 로 시험 라이더 2명 가입, `GET /riders` 2명 확인 |
 | [CP-1](delivery-capacity-service.md) | delivery-capacity | mfc-capacity | `CapacityReduced` 구독 → 영향 주문 처리 | 결정됨(2026-11-15: 주문 유지 + 지연 가능 안내, 고객이 원하면 시간대 변경·취소) | 대기(PC 5) |
-| [O-1](order-service.md) | order | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태, `DeliveryCompleted` → 전달 수량·주문 완료 | 없음 | **구현**(2026-11-16 PC 1, V10·계약 0.8.1) — `DeliveryFailed` 반영은 남음 |
+| [O-1](order-service.md) | order | mfc-fulfillment | `PackageHandedOver` → 인계 수량·주문 상태, `DeliveryCompleted` → 전달 수량·주문 완료 | 없음 | **구현**(2026-11-16 PC 1, V10·계약 0.7.1) — `DeliveryFailed` 반영은 남음 |
 | [O-2](order-service.md) | order(·orchestration) | 사용자 | 고객 자율 취소는 상품준비 전까지 | ADR-0052 | 대기 |
 | [O-3](order-service.md) | order(·orchestration, mfc) | 사용자 | 확인된 오배송 새 발송(원주소, 비용 0원) | ADR-0052 | 대기 |
 | [F-1](mfc-fulfillment-service.md) | mfc-fulfillment | mfc-capacity | 운영 제한 사건 구독 → `OPERATION_RESTRICTED` 거절 | 진행 중 작업 처리 | 대기 |
