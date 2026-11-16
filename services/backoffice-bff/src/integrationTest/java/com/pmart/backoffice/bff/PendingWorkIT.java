@@ -139,6 +139,9 @@ class PendingWorkIT {
     assertThat(items.get(1).path("reasonCode").asString()).isEqualTo("WORK_ALREADY_HANDED_OVER");
     assertThat(items.get(1).path("allowedActions").toString()).isEqualTo("[\"MARK_RESOLVED\"]");
     assertThat(r.body().path("unavailableSources")).isEmpty();
+    assertThat(r.body().path("sources").toString())
+        .as("MFC 목록은 설정을 켜기 전엔 부르지 않음(F-4 전)")
+        .doesNotContain("mfc-fulfillment-service");
     order.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/fulfillment-issues"))
             .withHeader("Authorization", equalTo("Bearer " + ADMIN))

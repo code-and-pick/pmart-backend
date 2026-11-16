@@ -11,6 +11,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,17 +36,21 @@ public class PendingWorkView {
 
   static final String ORCHESTRATION = "order-orchestration-service";
   static final String ORDER = "order-service";
+  static final String MFC = "mfc-fulfillment-service";
   static final Map<String, String> COMMANDS =
       Map.of("saga-requery", "REQUERY_RESULT", "saga-resolve", "MARK_RESOLVED");
+  static final Set<String> MFC_COMMANDS = Set.of("stop-retry", "handover-retry");
 
   private static final Logger log = LoggerFactory.getLogger(PendingWorkView.class);
 
   private final PendingWorkClients clients;
   private final Clock clock;
+  private final boolean mfcLists;
 
-  public PendingWorkView(PendingWorkClients clients, Clock clock) {
+  public PendingWorkView(PendingWorkClients clients, Clock clock, BffProperties props) {
     this.clients = clients;
     this.clock = clock;
+    this.mfcLists = Boolean.TRUE.equals(props.mfcPendingLists());
   }
 
   public Map<String, Object> view() {
@@ -116,6 +121,10 @@ public class PendingWorkView {
       sources.add(stamp(ORDER, now, "UNAVAILABLE", "UNKNOWN"));
     }
 
+    if (mfcLists) {
+      mfcItems(token, now, items, sources, unavailable);
+    }
+
     items.sort(Comparator.comparing(i -> String.valueOf(i.get("since"))));
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("composedAt", now.toString());
@@ -134,12 +143,16 @@ public class PendingWorkView {
       String targetRef,
       @Nullable String reason) {
     PmartPrincipal p = requireAdmin();
+    if (MFC.equals(targetService) && MFC_COMMANDS.contains(command)) {
+      return mfcRetry(command, idempotencyKey, targetRef, reason);
+    }
     String action = COMMANDS.get(command);
     if (!ORCHESTRATION.equals(targetService) || action == null) {
       throw new PmartException(
           "UNSUPPORTED_ACTION",
           HttpStatus.UNPROCESSABLE_CONTENT,
-          "지원하지 않는 명령입니다(지금은 order-orchestration-service 의 saga-requery·saga-resolve).",
+          "지원하지 않는 명령입니다(order-orchestration-service 의 saga-requery·saga-resolve,"
+              + " mfc-fulfillment-service 의 stop-retry·handover-retry).",
           false,
           List.of());
     }
@@ -169,6 +182,133 @@ public class PendingWorkView {
           false,
           List.of());
     }
+  }
+
+  /**
+   * MFC 재시도(BO-12 대상 2·3번). 사유 필수(BO-12 결정) — 단, MFC 재시도는 아직 사유·운영자를 받지 않아 저장되지 않는다(F-4 에 요청). 응답은
+   * CommandResponse 로 옮긴다(계약 0.4.0).
+   */
+  private JsonNode mfcRetry(
+      String command, String idempotencyKey, String targetRef, @Nullable String reason) {
+    if (reason == null || reason.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(조치 사유)이 필요합니다.");
+    }
+    if (targetRef == null || targetRef.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "targetRef(중지 요청 ID 또는 인계 ID)가 필요합니다.");
+    }
+    String id = targetRef.strip();
+    try {
+      if ("stop-retry".equals(command)) {
+        JsonNode r = clients.retryStopRequest(id, idempotencyKey);
+        String state = text(r, "state");
+        String status;
+        String next;
+        if ("RESOLVED".equals(state)) {
+          status = "APPLIED";
+          next = null;
+        } else if ("PENDING".equals(state) && text(r, "lastError") != null) {
+          status = "REJECTED";
+          next = "FIX_AND_RETRY";
+        } else if ("PENDING".equals(state)) {
+          status = "ACCEPTED";
+          next = "QUERY_RESULT";
+        } else {
+          status = "UNKNOWN_RESULT";
+          next = "QUERY_RESULT";
+        }
+        return commandResponse(status, idempotencyKey, id, next);
+      }
+      JsonNode r = clients.retryHandover(id, idempotencyKey);
+      return commandResponse(
+          r.path("status").asString("UNKNOWN_RESULT"), idempotencyKey, id, text(r, "nextAction"));
+    } catch (HttpClientErrorException e) {
+      JsonNode problem = readProblem(e);
+      throw new PmartException(
+          problem.path("code").asString("TARGET_REJECTED"),
+          HttpStatus.valueOf(e.getStatusCode().value()),
+          problem.path("detail").asString("대상 서비스가 거절했습니다."),
+          false,
+          List.of());
+    }
+  }
+
+  private static JsonNode commandResponse(
+      String status, String requestId, String resultId, @Nullable String nextAction) {
+    var n = new tools.jackson.databind.ObjectMapper().createObjectNode();
+    n.put("status", status);
+    n.put("requestId", requestId);
+    n.put("resultId", resultId);
+    if (nextAction != null) {
+      n.put("nextAction", nextAction);
+    }
+    return n;
+  }
+
+  /** MFC 두 목록(F-4, 설정으로 켰을 때만). 원천 장애면 그 항목 없이 unavailableSources. */
+  private void mfcItems(
+      String token,
+      Instant now,
+      List<Map<String, Object>> items,
+      List<Map<String, Object>> sources,
+      List<String> unavailable) {
+    try {
+      JsonNode stops = clients.failedStopRequests(token);
+      for (JsonNode s : stops.path("items")) {
+        Map<String, Object> i = new LinkedHashMap<>();
+        i.put("kind", "MFC_STOP_FAILED");
+        i.put("refId", text(s, "stopRequestId"));
+        i.put("orderId", text(s, "orderId"));
+        i.put("mfcId", text(s, "mfcId"));
+        i.put("sagaType", null);
+        i.put("state", text(s, "state"));
+        i.put("step", null);
+        i.put("reasonCode", code(text(s, "lastError")));
+        i.put("reasonMessage", text(s, "lastError"));
+        i.put("since", text(s, "failedAt") != null ? text(s, "failedAt") : text(s, "requestedAt"));
+        i.put("allowedActions", List.of("RETRY"));
+        i.put("source", stamp(MFC, now, "CURRENT", "DIRECT"));
+        items.add(i);
+      }
+      JsonNode handovers = clients.rejectedHandovers(token);
+      for (JsonNode h : handovers.path("items")) {
+        Map<String, Object> i = new LinkedHashMap<>();
+        i.put("kind", "MFC_HANDOVER_REJECTED");
+        i.put("refId", text(h, "handoverId"));
+        i.put("orderId", text(h, "orderId"));
+        i.put("mfcId", text(h, "mfcId"));
+        i.put("sagaType", null);
+        i.put("state", text(h, "status") != null ? text(h, "status") : "REJECTED");
+        i.put("step", null);
+        i.put("reasonCode", code(text(h, "rejectReason")));
+        i.put("reasonMessage", text(h, "rejectReason"));
+        i.put("since", text(h, "rejectedAt"));
+        i.put("allowedActions", List.of("RETRY"));
+        i.put("source", stamp(MFC, now, "CURRENT", "DIRECT"));
+        items.add(i);
+      }
+      sources.add(stamp(MFC, now, "CURRENT", "DIRECT"));
+    } catch (PmartException | HttpClientErrorException e) {
+      log.warn("처리 대기: MFC 목록 조회 실패 — {}", e.getClass().getSimpleName());
+      // 두 목록 중 하나만 읽힌 채로 내보내지 않는다 — MFC 항목은 모두 빼고 원천 실패로
+      items.removeIf(i -> MFC.equals(sourceSystem(i)));
+      unavailable.add(MFC);
+      sources.add(stamp(MFC, now, "UNAVAILABLE", "UNKNOWN"));
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static @Nullable Object sourceSystem(Map<String, Object> item) {
+    Object s = item.get("source");
+    return s instanceof Map<?, ?> m ? ((Map<String, Object>) m).get("system") : null;
+  }
+
+  /** MFC 사유는 "코드: 상세" — 앞 코드만. */
+  private static @Nullable String code(@Nullable String reason) {
+    if (reason == null) {
+      return null;
+    }
+    int c = reason.indexOf(':');
+    return (c > 0 ? reason.substring(0, c) : reason).strip();
   }
 
   private JsonNode readProblem(HttpClientErrorException e) {

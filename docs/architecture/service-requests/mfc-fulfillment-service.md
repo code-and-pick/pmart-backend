@@ -31,3 +31,5 @@
   - 재시도도 직원 토큰으로 부를 수 있게(지금 `/internal/…/retries` 는 서비스 간 경로): 예 `POST /api/v1/stop-requests/{id}/retries`·`POST /api/v1/package-handovers/{id}/retries`, OPERATOR_ADMIN, 판정·결과는 지금 응답 그대로.
 - **받는 쪽(backoffice)**: bff 처리 대기에 두 묶음을 붙이고(원천 이름 `mfc-fulfillment-service`, 장애면 unavailableSources), "다시 시도" 버튼을 위 재시도로 잇는다(BO-12 결정: 메모 필수, 인계 재시도는 "실물 확인 → 재고 정정 → 재시도" 안내). "처리 완료로 표시"는 MFC 쪽에 그런 상태가 없으면 넣지 않는다 — 필요하면 이 절에 적어 주면 사용자에게 묻는다.
 - 급하지 않음 — PC 3 일정에 맞춰. 모양을 바꿔야 하면 이 절에 적어 주면 맞춘다.
+- **bff 쪽 준비됨(같은 날, backoffice-bff 0.4.0 PR)**: 위 예 경로·필드 이름으로 읽게 만들어 두고 설정(`pmart.bff.mfc-pending-lists`)으로 꺼 두었다 — 목록이 생기면 켠다(경로·필드가 다르면 bff 를 맞춘다). 기대하는 필드: 중지 `stopRequestId·orderId·mfcId·state·lastError·failedAt(없으면 requestedAt)`, 인계 `handoverId·orderId·mfcId·status·rejectReason·rejectedAt`, 둘 다 `items` 배열.
+- **재시도는 이미 연결함**: bff 명령 `stop-retry`·`handover-retry` 가 지금의 `/internal/…/retries` 를 부른다(직원용 경로는 없어도 됨 — 위 "재시도도 직원 토큰으로" 는 취소). 대신 **재시도에 운영자 ID·사유를 받아 남겨 주기**를 요청한다 — BO-12 결정이 "재시도 메모 필수"인데 지금은 bff 가 받은 사유를 MFC 에 넘길 곳이 없어 저장되지 않는다. 예: 본문 `{operatorId, reason}`(선택 필드 — 다른 호출자는 그대로).

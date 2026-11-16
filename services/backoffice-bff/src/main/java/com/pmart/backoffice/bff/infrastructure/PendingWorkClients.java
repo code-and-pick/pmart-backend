@@ -20,11 +20,13 @@ public class PendingWorkClients {
 
   private final RestClient orchestration;
   private final RestClient order;
+  private final RestClient mfc;
   private final ObjectMapper mapper;
 
   public PendingWorkClients(RestClient.Builder builder, BffProperties props, ObjectMapper mapper) {
     this.orchestration = builder.clone().baseUrl(props.orchestrationBaseUrl()).build();
     this.order = builder.clone().baseUrl(props.orderBaseUrl()).build();
+    this.mfc = builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build();
     this.mapper = mapper;
   }
 
@@ -57,6 +59,66 @@ public class PendingWorkClients {
                                 .queryParam("state", "OPEN")
                                 .build())
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
+                    .header("X-Source-System", "backoffice-bff")
+                    .retrieve()
+                    .body(String.class));
+    return mapper.readTree(raw == null ? "{}" : raw);
+  }
+
+  /**
+   * MFC 실패로 멈춘 중지 요청 목록(PC 3 요청 F-4 — <b>아직 없다</b>, 경로·모양은 그쪽이 정하면 맞춘다). 운영자 토큰 전달. 설정 {@code
+   * pmart.bff.mfc-pending-lists} 가 켜졌을 때만 부른다.
+   */
+  public JsonNode failedStopRequests(String bearerToken) {
+    return mfcList("mfc stop-requests", "/api/v1/stop-requests", "failed", "true", bearerToken);
+  }
+
+  /** MFC 재고가 거절한 인계 목록(F-4 — 아직 없다). {@link #failedStopRequests} 와 같다. */
+  public JsonNode rejectedHandovers(String bearerToken) {
+    return mfcList(
+        "mfc package-handovers", "/api/v1/package-handovers", "status", "REJECTED", bearerToken);
+  }
+
+  private JsonNode mfcList(String what, String path, String key, String value, String bearerToken) {
+    String raw =
+        Downstream.call(
+            what,
+            () ->
+                mfc.get()
+                    .uri(u -> u.path(path).queryParam(key, value).queryParam("size", 200).build())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
+                    .header("X-Source-System", "backoffice-bff")
+                    .retrieve()
+                    .body(String.class));
+    return mapper.readTree(raw == null ? "{}" : raw);
+  }
+
+  /** 실패로 멈춘 집품 뒤 중지 다시 시도 — MFC 내부 경로(0.3.1), StopRequestResult 그대로. */
+  public JsonNode retryStopRequest(String stopRequestId, String idempotencyKey) {
+    return mfcPost(
+        "mfc stop-request retry",
+        "/api/v1/internal/stop-requests/{id}/retries",
+        stopRequestId,
+        idempotencyKey);
+  }
+
+  /** 재고가 거절한 인계 다시 보내기 — MFC 내부 경로(0.4.1, D-8), HandoverCommitResult 그대로. */
+  public JsonNode retryHandover(String handoverId, String idempotencyKey) {
+    return mfcPost(
+        "mfc handover retry",
+        "/api/v1/internal/package-handovers/{id}/retries",
+        handoverId,
+        idempotencyKey);
+  }
+
+  private JsonNode mfcPost(String what, String path, String id, String idempotencyKey) {
+    String raw =
+        Downstream.call(
+            what,
+            () ->
+                mfc.post()
+                    .uri(path, id)
+                    .header("Idempotency-Key", idempotencyKey)
                     .header("X-Source-System", "backoffice-bff")
                     .retrieve()
                     .body(String.class));
