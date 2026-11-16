@@ -17,5 +17,5 @@
     - order-orchestration 0.2.0: `GET /internal/stuck-sagas`(네 사가 표의 ESCALATED·RECONCILIATION_REQUIRED·UNKNOWN_TRACKING, 처리 완료 표시 전, allowedActions), `POST /internal/sagas/{id}/manual-actions` 의 REQUERY_RESULT(결제 확인 대기만 — 원결과 다시 확인)·**MARK_RESOLVED(새 — 밖에서 해결함 표시, 사가 상태·자원 그대로)** — 둘 다 승인 없이, operatorId·reason 필수. V7 `saga_manual_action`·`saga_manual_resolution`.
     - 재시도 판단: 업무 거절로 멈춘 사가(ESCALATED)는 같은 키로 다시 보내도 같은 거절이라 "다시 확인"을 주지 않고 "처리 완료"만.
     - backoffice-bff 0.2.0: `GET /views/pending-work`(멈춘 사가 + order 이행 확인 필요, OPERATOR_ADMIN, 원천 장애면 unavailableSources), `POST /commands/order-orchestration-service/saga-requery|saga-resolve`(targetRef = sagaId, reason 필수).
-    - **없는 것**: MFC 인계 거절(D-8)·중지 실패 목록 — mfc-fulfillment 에 목록 API 가 없어 화면에 안 나온다(재시도 API 는 있음). 사용자 2026-11-16: 지금은 요청하지 않음.
+    - **없는 것**: MFC 인계 거절(D-8)·중지 실패 목록 — mfc-fulfillment 에 목록 API 가 없어 화면에 안 나온다(재시도 API 는 있음). 사용자 2026-11-16 처음엔 "지금은 요청하지 않음" → 같은 날 확인(중지 실패면 취소 사가가 WAITING_RESULT 로 조용히 멈춰 처리 대기에 안 나옴) 뒤 **"A안" — PC 3 에 목록·직원용 재시도 요청 [F-4](mfc-fulfillment-service.md)**. 받으면 PC 2 가 bff 처리 대기에 붙인다.
 - 화면은 pmart-clients 몫 — 정해지면 `docs/handoff/clients/` 로 알린다.

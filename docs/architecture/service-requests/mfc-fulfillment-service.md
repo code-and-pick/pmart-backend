@@ -19,3 +19,15 @@
 - **요청**: 직원 토큰용 조회 하나 — 예 `GET /api/v1/work-orders?orderId=`(또는 `/orders/{orderId}/fulfillment`). 권한: OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터(백오피스), 그 센터 직원은 자기 센터. 응답(개인정보 없이): fulfillmentId·mfcId·workVersion·결정(ACCEPTED/REJECTED·사유)·출고(shipment)별 Task(PICK·PACK 상태·작업자 ID·시작/끝 시각)·부족(SKU·수량·처리)·포장(packageId·상태·인계 허가/확정 시각)·중지 요청 상태, 원천 기준 시각.
 - **받는 쪽(backoffice)**: bff 통합 조회에 `matches.kind = FULFILLMENT`(원천 이름 `mfc-fulfillment-service`)로 붙인다. 재고 예약(mfc-inventory)은 필요하면 다음.
 - 급하지 않음 — PC 3 일정에 맞춰. 모양을 바꿔야 하면 이 절에 적어 주면 맞춘다.
+
+## F-4. 멈춘 중지 요청·거절된 인계 목록 — 처리 대기(BO-12)용 (2026-11-16, 보낸 영역 backoffice)
+- **왜**: 사용자 결정(2026-11-16 "A안으로 진행") — BO-12 대상 2·3번(재고가 거절한 인계 재시도 D-8, 중지 실패 재시도)이 처리 대기(bff `GET /views/pending-work`)에 나오지 않는다. 재시도 API 는 있는데 **무엇이 멈췄는지 찾을 목록이 없다**.
+  - 중지 실패: 판정이 `PENDING` + `lastError` 로 남고 자동 재시도에서 빠진다. 주문의 취소 사가는 RESOLVED 가 아니면 모두 기다림으로 보고 `WAITING_RESULT` 로 다시 조회만 한다 → 멈춘 사가 목록(ESCALATED·RECONCILIATION_REQUIRED·UNKNOWN_TRACKING)에도 안 들어가 **고객 취소·환불이 표시 없이 멈춘다**(피킹 뒤 취소·결품 전체 취소).
+  - 인계 거절(D-8): 인계 사실이 `REJECTED` 로 멈추고 재인계·취소가 막힌다. 사가가 관여하지 않아 어디에도 나오지 않는다(ERROR 로그만).
+- **요청**: 운영자(OPERATOR_ADMIN) 토큰용 목록 둘 — 이름·경로는 PC 3 이 정한다. 예:
+  1. `GET /api/v1/stop-requests?state=PENDING&failed=true` — `lastError` 가 있는 중지 요청: stopRequestId·fulfillmentId·orderId·mfcId·범위·lastError(코드: 상세)·실패 시각·요청 시각.
+  2. `GET /api/v1/package-handovers?status=REJECTED` — handoverId·packageId·fulfillmentId·orderId·deliveryId·mfcId·rejectReason·거절 시각.
+  - 공통: 오래된 순, 커서, 원천 기준 시각. 개인정보 없이. 처리되면(RESOLVED·APPLIED) 목록에서 빠진다.
+  - 재시도도 직원 토큰으로 부를 수 있게(지금 `/internal/…/retries` 는 서비스 간 경로): 예 `POST /api/v1/stop-requests/{id}/retries`·`POST /api/v1/package-handovers/{id}/retries`, OPERATOR_ADMIN, 판정·결과는 지금 응답 그대로.
+- **받는 쪽(backoffice)**: bff 처리 대기에 두 묶음을 붙이고(원천 이름 `mfc-fulfillment-service`, 장애면 unavailableSources), "다시 시도" 버튼을 위 재시도로 잇는다(BO-12 결정: 메모 필수, 인계 재시도는 "실물 확인 → 재고 정정 → 재시도" 안내). "처리 완료로 표시"는 MFC 쪽에 그런 상태가 없으면 넣지 않는다 — 필요하면 이 절에 적어 주면 사용자에게 묻는다.
+- 급하지 않음 — PC 3 일정에 맞춰. 모양을 바꿔야 하면 이 절에 적어 주면 맞춘다.
