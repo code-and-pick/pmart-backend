@@ -758,7 +758,13 @@ public class DispatchEngine {
                   dest.arrivalStart(),
                   dest.arrivalEnd(),
                   now));
-      tx.executeWithoutResult(s -> store.setPromise(d.deliveryId(), promise(dest)));
+      tx.executeWithoutResult(
+          s ->
+              store.setPromise(
+                  d.deliveryId(),
+                  "MISDELIVERY_RESHIPMENT".equals(d.purpose())
+                      ? reshipmentPromise(d)
+                      : promise(dest)));
       return store.delivery(d.deliveryId());
     } catch (PmartException e) {
       log.warn("배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
@@ -831,6 +837,15 @@ public class DispatchEngine {
       log.warn("회수 배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
       return later(d, a, e.code(), now);
     }
+  }
+
+  /**
+   * 오배송 재발송 배송 약속(2026-11-16 — PC 5 추천, 문서 규칙 아님): 오배송 확인(같은 사건 회수 배송이 생긴 때 — 사건 소비 시각, 없으면 이 배송이
+   * 생긴 때) + deliveryPromise(50분). 원래 주문의 약속은 이미 지났다.
+   */
+  private Instant reshipmentPromise(DeliveryRow d) {
+    Instant from = d.caseId() == null ? null : store.caseFirstSeen(d.caseId());
+    return (from == null ? d.createdAt() : from).plus(props.deliveryPromise());
   }
 
   /**

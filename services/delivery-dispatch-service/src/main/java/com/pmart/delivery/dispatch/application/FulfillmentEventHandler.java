@@ -71,6 +71,11 @@ public class FulfillmentEventHandler {
   public void on(EventEnvelope e) {
     JsonNode p = e.payload();
     Instant now = clock.instant();
+    // 오배송 재발송 출고(2026-11-16 — mfc-fulfillment 재발송 작업 지시의 출고)
+    String reshipmentCase =
+        "MISDELIVERY_RESHIPMENT".equals(p.path("purpose").asString(""))
+            ? p.path("caseId").asString(null)
+            : null;
     switch (e.eventType()) {
       case "DispatchRequested" ->
           ensure(
@@ -83,6 +88,7 @@ public class FulfillmentEventHandler {
               null,
               null,
               true,
+              reshipmentCase,
               now);
       case "ShipmentReady" ->
           ensure(
@@ -95,6 +101,7 @@ public class FulfillmentEventHandler {
               packages(p.path("packages")),
               p.path("deliveryMode").asString(null),
               false,
+              reshipmentCase,
               now);
       case "PackingFinished" -> {
         String shipmentId = p.path("shipmentId").asString();
@@ -119,12 +126,16 @@ public class FulfillmentEventHandler {
       @Nullable String packagesJson,
       @Nullable String deliveryMode,
       boolean requested,
+      @Nullable String reshipmentCase,
       Instant now) {
     store.lockOrderKey(orderId); // 작업 중지·주문 취소와 같은 잠금(주문 → 출고 순서)
     store.lockShipmentKey(shipmentId);
     var existing = store.lockByShipment(shipmentId);
     if (existing.isPresent()) {
       DeliveryRow d = existing.get();
+      if (reshipmentCase != null) {
+        store.markReshipment(d.deliveryId(), reshipmentCase);
+      }
       if (trigger != null || estimatedReadyAt != null) {
         store.updateRequest(d.deliveryId(), trigger, estimatedReadyAt, now);
       }
@@ -164,6 +175,9 @@ public class FulfillmentEventHandler {
         deliveryMode,
         stopped ? "BLOCKED" : requested ? "DISPATCHING" : "CREATED",
         now);
+    if (reshipmentCase != null) {
+      store.markReshipment(deliveryId, reshipmentCase); // DeliveryCreated 전에 — 사건에 RESHIPMENT 로 싣는다
+    }
     if (stopped) {
       log.info("배송 {} 기록만 — 주문 {} 작업 중지됨(배차 안 함)", deliveryId, orderId);
     } else if (requested) {

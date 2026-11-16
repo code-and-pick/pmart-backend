@@ -73,9 +73,10 @@
               "enum": [
                 "DELIVERY",
                 "CLAIM_RETURN",
-                "MISDELIVERY_RECOVERY"
+                "MISDELIVERY_RECOVERY",
+                "MISDELIVERY_RESHIPMENT"
               ],
-              "description": "2026-11-16 — 없으면 FORWARD 는 DELIVERY. RETURN 만 CLAIM_RETURN·MISDELIVERY_RECOVERY"
+              "description": "2026-11-16 — 없으면 FORWARD 는 DELIVERY. RETURN 만 CLAIM_RETURN·MISDELIVERY_RECOVERY. MISDELIVERY_RESHIPMENT(2026-11-16) — type RESHIPMENT, 오배송 재발송(caseId)"
             },
             "caseId": {
               "$ref": "_defs.v1.json#/$defs/Ref",

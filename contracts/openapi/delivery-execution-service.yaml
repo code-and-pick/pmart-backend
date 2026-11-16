@@ -854,7 +854,7 @@ components:
         earning: { $ref: '#/components/schemas/Earning' }
         assignedAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time }
-        purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY], description: '0.5.0 — RETURN 의 목적' }
+        purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다)' }
         caseId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송 확인 사건' }
         originDeliveryId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송된 원래 배송' }
         recoveryOrigin:

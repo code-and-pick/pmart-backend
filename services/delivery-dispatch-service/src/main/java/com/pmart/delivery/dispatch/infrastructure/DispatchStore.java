@@ -314,6 +314,23 @@ public class DispatchStore {
         deliveryId);
   }
 
+  /** 오배송 재발송 출고의 배송(2026-11-16) — type RESHIPMENT·purpose·caseId. 이미 표시됐으면 그대로. */
+  public void markReshipment(String deliveryId, String caseId) {
+    jdbc.update(
+        "UPDATE delivery SET type = 'RESHIPMENT', purpose = 'MISDELIVERY_RESHIPMENT', case_id ="
+            + " COALESCE(case_id, ?) WHERE delivery_id = ?",
+        caseId,
+        deliveryId);
+  }
+
+  /** 같은 오배송 사건으로 처음 만든 배송 시각(회수 배송 — 오배송 확인 때). 없으면 null. */
+  public @Nullable Instant caseFirstSeen(String caseId) {
+    Timestamp t =
+        jdbc.queryForObject(
+            "SELECT MIN(created_at) FROM delivery WHERE case_id = ?", Timestamp.class, caseId);
+    return t == null ? null : t.toInstant();
+  }
+
   public void setCompletedAt(String deliveryId, Instant completedAt) {
     jdbc.update(
         "UPDATE delivery SET completed_at = COALESCE(completed_at, ?) WHERE delivery_id = ?",

@@ -39,6 +39,12 @@ public class DispatchEvents {
       p.put("originDeliveryId", d.originDeliveryId());
     } else {
       p.put("dropAddressRef", "order:" + d.orderId()); // 원주문 주소 참조(주소 원문 없음)
+      if (d.purpose() != null) {
+        p.put("purpose", d.purpose()); // 오배송 재발송(2026-11-16)
+      }
+      if (d.caseId() != null) {
+        p.put("caseId", d.caseId());
+      }
     }
     if (d.deliveryMode() != null) {
       p.put("deliveryMode", d.deliveryMode());

@@ -968,6 +968,33 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(byte[].class);
   }
 
+  /**
+   * 오배송 재발송 배송(2026-11-16): type RESHIPMENT·purpose MISDELIVERY_RESHIPMENT — 수행은 일반 배송과 같다(고객 전달지
+   * 열림).
+   */
+  @Test
+  void reshipmentDeliveryIsExecutedLikeForward() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", id);
+    created.put("orderId", order);
+    created.put("shipmentId", order + "-RS-1a2b3c4d");
+    created.put("type", "RESHIPMENT");
+    created.put("purpose", "MISDELIVERY_RESHIPMENT");
+    created.put("caseId", "CASE-1");
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "order:" + order);
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", id, created);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    JsonNode v = view(id, rider);
+    assertThat(v.path("type").asString()).isEqualTo("RESHIPMENT");
+    assertThat(v.path("purpose").asString()).isEqualTo("MISDELIVERY_RESHIPMENT");
+    assertThat(post(id, "store-arrivals", rider, Map.of()).getStatusCode().value()).isEqualTo(200);
+  }
+
   // ---- 도우미
 
   void created(String id, String shipment, String order) {

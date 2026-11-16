@@ -29,7 +29,8 @@ public class InternalController implements InternalApi {
     if (d.riderId() == null) {
       throw PmartException.notFound("ASSIGNMENT_NOT_FOUND", "아직 배정되지 않았습니다.");
     }
-    return ResponseEntity.ok(views.assignment(d));
+    // 내부 조회에만 주문·센터(orchestration 재발송 사가가 배송으로 주문을 찾는다 — 2026-11-16)
+    return ResponseEntity.ok(views.assignment(d).orderId(d.orderId()).mfcId(d.mfcId()));
   }
 
   @Override

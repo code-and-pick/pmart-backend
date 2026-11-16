@@ -1807,6 +1807,91 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(1);
   }
 
+  /**
+   * 오배송 재발송(2026-11-16, ADR-0052 결정 4): MFC 재발송 출고(purpose MISDELIVERY_RESHIPMENT·caseId)로 만든 배송은
+   * RESHIPMENT, DeliveryCreated 에 purpose·caseId, 약속 = 같은 사건이 처음 보인 때 + 50분. 내부 배정 조회에
+   * orderId·mfcId.
+   */
+  @Test
+  void reshipmentShipmentBecomesReshipmentDeliveryWithFreshPromise() {
+    String mfc = "MFC-D21";
+    String r1 = "RD-rs-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String caseId = "CASE-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String shipment = order + "-RS-1a2b3c4d";
+    Map<String, Object> ready = new LinkedHashMap<>();
+    ready.put("orderId", order);
+    ready.put("shipmentId", shipment);
+    ready.put("mfcId", mfc);
+    ready.put("readyAt", Instant.now().toString());
+    ready.put(
+        "packages",
+        List.of(
+            Map.of(
+                "packageId", "PKG-rs-" + caseId, "bagCount", 1, "weightG", 500, "alcohol", false)));
+    ready.put("purpose", "MISDELIVERY_RESHIPMENT");
+    ready.put("caseId", caseId);
+    send("ShipmentReady", shipment, ready);
+    String deliveryId = awaitDelivery(shipment);
+    Map<String, Object> req = new LinkedHashMap<>();
+    req.put("orderId", order);
+    req.put("shipmentId", shipment);
+    req.put("mfcId", mfc);
+    req.put("trigger", "MANUAL");
+    req.put("estimatedReadyAt", Instant.now().toString());
+    req.put("requestedAt", Instant.now().toString());
+    req.put("purpose", "MISDELIVERY_RESHIPMENT");
+    req.put("caseId", caseId);
+    send("DispatchRequested", shipment, req);
+    awaitSql(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = '"
+            + deliveryId
+            + "' AND type = 'DeliveryCreated'");
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT type, purpose, case_id, created_at FROM delivery WHERE delivery_id = ?",
+            deliveryId);
+    assertThat(row.get("type")).isEqualTo("RESHIPMENT");
+    assertThat(row.get("purpose")).isEqualTo("MISDELIVERY_RESHIPMENT");
+    assertThat(row.get("case_id")).isEqualTo(caseId);
+    JsonNode created = outbox(deliveryId, "DeliveryCreated").path("payload");
+    assertThat(created.path("type").asString()).isEqualTo("RESHIPMENT");
+    assertThat(created.path("purpose").asString()).isEqualTo("MISDELIVERY_RESHIPMENT");
+    assertThat(created.path("caseId").asString()).isEqualTo(caseId);
+    assertThat(created.path("dropAddressRef").asString()).isEqualTo("order:" + order);
+
+    engine.tick(); // 좌표 준비 — 약속은 원래 주문 확정이 아니라 이 사건 기준
+    java.sql.Timestamp promised =
+        jdbc.queryForObject(
+            "SELECT promised_at FROM delivery WHERE delivery_id = ?",
+            java.sql.Timestamp.class,
+            deliveryId);
+    assertThat(promised.toInstant())
+        .isEqualTo(((java.sql.Timestamp) row.get("created_at")).toInstant().plusSeconds(3000));
+    String offerId =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            deliveryId);
+    assertThat(body(respond(r1, offerId, "a-" + deliveryId, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    JsonNode a =
+        body(
+            http.get()
+                .uri("/internal/deliveries/{id}/assignment", deliveryId)
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(a.path("orderId").asString()).isEqualTo(order);
+    assertThat(a.path("mfcId").asString()).isEqualTo(mfc);
+    JsonNode view =
+        dispatchView(TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()), deliveryId);
+    assertThat(view.path("type").asString()).isEqualTo("RESHIPMENT");
+    assertThat(view.path("purpose").asString()).isEqualTo("MISDELIVERY_RESHIPMENT");
+  }
+
   void misdeliveryConfirmed(String caseId, String deliveryId, String riderId) {
     String json =
         EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")

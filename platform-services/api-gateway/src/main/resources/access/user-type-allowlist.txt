@@ -144,6 +144,7 @@ GET /api/v1/mfcs/{mfcId}/workers/{workerId} OPERATOR
 GET /api/v1/mfcs/{mfcId}/workers/{workerId}/shifts OPERATOR
 GET /api/v1/move-orders OPERATOR
 GET /api/v1/move-orders/{moveId} OPERATOR
+GET /api/v1/obligations OPERATOR
 GET /api/v1/obligations/{obligationId} OPERATOR
 GET /api/v1/offers RIDER
 GET /api/v1/offers/{offerId} RIDER
