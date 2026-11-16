@@ -42,7 +42,7 @@ RAG 영역(`docs/operations/pc-split.md` §1-1)을 받는 PC 4·사람·Claude �
 
 **여기 적힌 파일만 색인한다.** 문서를 더하거나 빼면 manifest 를 고치고 재색인한다(§4).
 
-### 운영자 RAG — `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` (49개, 1,642 청크 — 2026-11-15 LAN. 2026-11-16 manifest 52개 — ADR-0062·0063·0064 더함, LAN 재색인 전)
+### 운영자 RAG — `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml` (52개, 1,677 청크 — 2026-11-16 LAN 재색인 `0f477c29`. 그 전 11-15 는 49개·1,642 청크)
 
 **범위 = 업무 직원이 고객 응대·업무 판단에 쓰는 문서만**(사용자 2026-11-15). ADR 61개를 남김 14·뺌 41·애매함 6(뺌)으로 나눈 표와 이유: [`operator-index-scope.md`](operator-index-scope.md). 새 ADR·문서를 넣을 때 이 기준을 먼저 본다.
 

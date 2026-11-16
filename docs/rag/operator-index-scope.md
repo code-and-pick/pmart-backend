@@ -5,7 +5,7 @@
   - 기술 문서가 섞이면 업무 질문에 기술 문서가 근거로 끼어들고(11-15 "직원 휴가 신청"에 `service-map.md` 의 hr-service 절로 없는 API 를 지어 답함), 내부 구조가 직원에게 답으로 나간다.
 - 정본: 색인 목록 `services/ai-assistant-service/src/main/resources/knowledge/manifest.yml`, 뺀 ADR 과 이유 `RealDocumentsIngestTest.EXCLUDED_ADRS`. **새 ADR 은 둘 중 하나에 넣어야 시험이 통과**한다 — 이 표도 같이 고친다.
 - ADR 말고 뺀 것: `docs/architecture/service-map.md`(서비스 책임 경계, 2026-11-15).
-- 결과(LAN 2026-11-15): 운영자 색인 49개·1,642 청크, `rag_e2e` 6/6. 2026-11-16 manifest 52개(ADR 3개 더함) — LAN 재색인 전.
+- 결과(LAN 2026-11-15): 운영자 색인 49개·1,642 청크, `rag_e2e` 6/6. 2026-11-16 ADR 3개를 더해 재색인(PC 1, 스냅숏 `0f477c29`): 52개·1,677 청크, `rag_e2e` 6/6.
 
 ## 1. 남김 (17개) — 업무 직원이 고객 응대·업무 판단에 쓰는 결정
 
