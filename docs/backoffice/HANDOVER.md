@@ -33,6 +33,8 @@
 
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
+| backoffice-bff **0.3.0 배포**(8504, LAN PC 4) · 0.3.1(#27)·0.4.0(#31) PR 대기 | 승인함(11-03), 처리 대기 `pending-work`(멈춘 사가 + 이행 확인 필요, OPERATOR_ADMIN) + 명령 `saga-requery·saga-resolve`, **통합 조회 `unified-lookup`**(주문·배송·배차·클레임·사건·문의 원천별), **실시간 배송 현황 `live-delivery`**(11-16 배포). PR: 센터 관리자 자기 센터 실시간 배송(0.3.1), 처리 대기 MFC 중지 실패·인계 거절 + `stop-retry·handover-retry`(0.4.0 — 목록은 F-4 뒤 설정으로 켬) | `case-inbox`·`replenishment-status`·`trip-control`·`packing-handover`·`metrics`·명령 결과 조회 501. 통합 조회 MFC 칸(F-3 대기), latestEta(tracking 미연결) |
+| case-service **0.5.1 배포**(8506, LAN PC 4) · 0.5.2(#27) PR 대기 | 고객 문의 `/inquiries`(답변 때 `InquiryAnswered`, 관리자 보기 0.4.2, `?orderId=` 0.5.0), 라이더 컴플레인, **사건함 `/cases`**(도움요청·전달 실패·위치 끊김·오배송 확인 + **사가·결제 이상 RECONCILIATION·PAYMENT_UNKNOWN(관리자, 1시간)·배차 실패 DISPATCH_FAILED(지원센터, 10분)** 0.5.0, 닫힌 사건 닫힌 시각 순 0.5.1). PR: 센터 관리자는 자기 센터 배차 실패만(0.5.2 — PC 5 DD-MFC 전엔 0건) | 이관·재개·의무·행위 요청·CS 접수·도움요청 접수·교대 인계(501), 사건 알림(ADR-0064 — 직원 알림 없음) |
 
 PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
