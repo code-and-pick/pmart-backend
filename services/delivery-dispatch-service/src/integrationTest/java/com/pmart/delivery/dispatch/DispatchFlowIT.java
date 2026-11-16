@@ -1688,6 +1688,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(created.path("shipmentId").asString()).isEqualTo("RCV-" + caseId);
     // 아직 픽업 전인 배송·없는 배송의 오배송 확인은 회수를 만들지 않는다
     misdeliveryConfirmed("CASE-" + UUID.randomUUID(), "DLV-none-" + UUID.randomUUID(), r1);
+    // 고객 잘못·다시 배송(ADR-0065)은 MFC 회수 없음
+    String customerCase = "CASE-" + UUID.randomUUID();
+    misdeliveryConfirmed(customerCase, origin, r1, "CUSTOMER", "REDELIVER");
 
     engine.tick();
     Map<String, Object> row =
@@ -1804,7 +1807,11 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT count(*) FROM delivery WHERE type = 'RETURN' AND origin_delivery_id = ?",
                 Integer.class,
                 origin))
-        .isEqualTo(1);
+        .isEqualTo(1); // 고객 잘못·다시 배송 사건은 회수를 만들지 않았다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE case_id = ?", Integer.class, customerCase))
+        .isZero();
   }
 
   /**
@@ -1890,6 +1897,34 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         dispatchView(TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()), deliveryId);
     assertThat(view.path("type").asString()).isEqualTo("RESHIPMENT");
     assertThat(view.path("purpose").asString()).isEqualTo("MISDELIVERY_RESHIPMENT");
+  }
+
+  void misdeliveryConfirmed(
+      String caseId, String deliveryId, String riderId, String fault, String resolution) {
+    String json =
+        EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+            .from("case-service")
+            .aggregate("Case", caseId, 1)
+            .payload(
+                Map.of(
+                    "caseId",
+                    caseId,
+                    "deliveryId",
+                    deliveryId,
+                    "riderId",
+                    riderId,
+                    "confirmedBy",
+                    "OP-CS",
+                    "confirmedAt",
+                    Instant.now().toString(),
+                    "fault",
+                    fault,
+                    "resolution",
+                    resolution,
+                    "redeliveryDestinationId",
+                    "RDD-1"))
+            .buildJson();
+    kafka.send("platform.case.v1", caseId, json).join();
   }
 
   void misdeliveryConfirmed(String caseId, String deliveryId, String riderId) {

@@ -968,6 +968,77 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(byte[].class);
   }
 
+  /** 라이더 귀책 오배송(ADR-0065): 원래 수행료 지급 전 → ADJUSTED·산정 제외, 이미 지급 → 메모만. 시스템 귀책은 그대로. */
+  @Test
+  void riderFaultMisdeliveryWithholdsOriginalFee() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), order, rider);
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "completions", rider, completion(List.of(photo), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    caseEvent(id, "SYSTEM");
+    caseEvent(id, "RIDER");
+    awaitSql(
+        "SELECT count(*) FROM rider_earning WHERE delivery_id = '"
+            + id
+            + "' AND settlement_state = 'ADJUSTED'");
+    Map<String, Object> e =
+        jdbc.queryForMap("SELECT calculable, note FROM rider_earning WHERE delivery_id = ?", id);
+    assertThat(e.get("calculable")).isEqualTo(false);
+    assertThat((String) e.get("note")).contains("배달료 미지급");
+
+    // 이미 지급된 수행료는 상태 그대로, 메모만
+    String id2 = "DLV-" + UUID.randomUUID();
+    String rider2 = "RDR-" + UUID.randomUUID();
+    pickedUp(id2, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider2);
+    post(id2, "customer-arrivals", rider2, Map.of());
+    String photo2 = body(upload(id2, rider2, JPEG)).path("photoRef").asString();
+    post(id2, "completions", rider2, completion(List.of(photo2), Instant.now().toString()));
+    jdbc.update("UPDATE rider_earning SET settlement_state = 'PAID' WHERE delivery_id = ?", id2);
+    caseEvent(id2, "RIDER");
+    awaitSql(
+        "SELECT count(*) FROM rider_earning WHERE delivery_id = '"
+            + id2
+            + "' AND note LIKE '%회수 필요%'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT settlement_state FROM rider_earning WHERE delivery_id = ?",
+                String.class,
+                id2))
+        .isEqualTo("PAID");
+  }
+
+  void caseEvent(String deliveryId, String fault) {
+    String caseId = "CASE-" + UUID.randomUUID();
+    String json =
+        EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+            .from("case-service")
+            .aggregate("Case", caseId, 1)
+            .payload(
+                Map.of(
+                    "caseId",
+                    caseId,
+                    "deliveryId",
+                    deliveryId,
+                    "confirmedBy",
+                    "OP-CS",
+                    "confirmedAt",
+                    Instant.now().toString(),
+                    "fault",
+                    fault,
+                    "resolution",
+                    "RESHIP"))
+            .buildJson();
+    kafka.send("platform.case.v1", caseId, json).join();
+  }
+
   /**
    * 오배송 재발송 배송(2026-11-16): type RESHIPMENT·purpose MISDELIVERY_RESHIPMENT — 수행은 일반 배송과 같다(고객 전달지
    * 열림).

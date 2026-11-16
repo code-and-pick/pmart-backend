@@ -39,3 +39,4 @@
 - 아직 501: 운영자 상태 정정. aggregateVersion 은 이 서비스 수행 버전 — 같은 Delivery 의 dispatch 사건과 따로 오른다(발행 서비스마다 — `docs/architecture/events.md` §7 머리말, 2026-11-14). 서비스 사이 순서는 assignmentVersion·상태로.
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
+- **오배송 귀책(2026-11-16, ADR-0065)**: 구독 `caseEvents-in-0` ← platform.case.v1 `MisdeliveryConfirmed`(`ExecutionEventHandler.onCase`, 처음 켜기 전 시작 위치 latest) — fault RIDER 면 원래 배송 수행료(`EarningService.withholdForMisdelivery`): 지급 전이면 ADJUSTED·산정 제외(calculable false)·메모 "배달료 미지급", 지급 중·지급됐으면 상태 그대로 메모 "회수 필요(지원센터 조정)" — RiderEarningRecorded. SYSTEM·CUSTOMER 는 그대로 지급.

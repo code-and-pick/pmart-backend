@@ -22,6 +22,15 @@ class ExecutionEventConsumers {
         e -> ExecutionEventHandler.DELIVERY_TYPES.contains(e.eventType()), handler::onDelivery);
   }
 
+  /**
+   * case 오배송 확인(platform.case.v1, 바인딩 {@code caseEvents-in-0}, ADR-0065 2026-11-16) — 라이더 귀책이면 원래
+   * 수행료 미지급. 처음 켜기 전 소비 그룹 시작 위치 latest.
+   */
+  @Bean
+  PmartEventConsumer caseEvents(EventConsumers consumers, ExecutionEventHandler handler) {
+    return consumers.of(e -> "MisdeliveryConfirmed".equals(e.eventType()), handler::onCase);
+  }
+
   @Bean
   PmartEventConsumer fulfillmentEvents(EventConsumers consumers, ExecutionEventHandler handler) {
     return consumers.of(

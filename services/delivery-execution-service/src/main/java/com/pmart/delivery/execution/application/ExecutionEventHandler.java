@@ -64,6 +64,25 @@ public class ExecutionEventHandler {
     this.clock = clock;
   }
 
+  /**
+   * case 오배송 확인(platform.case.v1 MisdeliveryConfirmed, ADR-0065): 귀책 RIDER 면 원래 배송 수행료
+   * 미지급(SYSTEM·CUSTOMER 는 지급). inbox 트랜잭션 안.
+   */
+  public void onCase(EventEnvelope e) {
+    JsonNode p = e.payload();
+    if (!"RIDER".equals(p.path("fault").asString(""))) {
+      return;
+    }
+    String deliveryId = p.path("deliveryId").asString("");
+    DeliveryRow d = store.delivery(deliveryId).orElse(null);
+    if (d == null || d.riderId() == null) {
+      log.warn("라이더 귀책 오배송 {} — 배송 {} 의 라이더를 몰라 수행료를 바꾸지 않음", e.eventId(), deliveryId);
+      return;
+    }
+    earnings.withholdForMisdelivery(
+        deliveryId, d.riderId(), p.path("caseId").asString(""), clock.instant());
+  }
+
   public void onDelivery(EventEnvelope e) {
     JsonNode p = e.payload();
     Instant now = clock.instant();

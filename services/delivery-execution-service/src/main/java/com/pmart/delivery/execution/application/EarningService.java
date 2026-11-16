@@ -134,6 +134,51 @@ public class EarningService {
     }
   }
 
+  /**
+   * 라이더 귀책 오배송(ADR-0065, 2026-11-16 — 업무 원문 §9.3 "라이더 귀책이면 배달료 미지급"): 원래 배송의 수행료를 지급 전이면
+   * ADJUSTED(산정 제외), 이미 지급 중·지급됐으면 상태는 그대로 두고 "회수 필요 — 지원센터 조정" 메모만(사용자 "지원센터 조정 기록만"). 사건
+   * RiderEarningRecorded.
+   */
+  public void withholdForMisdelivery(String deliveryId, String riderId, String caseId, Instant at) {
+    store
+        .earningOf(deliveryId, riderId)
+        .ifPresentOrElse(
+            e -> {
+              boolean paid =
+                  "PAYING".equals(e.settlementState()) || "PAID".equals(e.settlementState());
+              if ("ADJUSTED".equals(e.settlementState())) {
+                return;
+              }
+              String note =
+                  paid
+                      ? "라이더 귀책 오배송(사건 " + caseId + ") — 이미 지급, 회수 필요(지원센터 조정)"
+                      : "라이더 귀책 오배송(사건 " + caseId + ") — 배달료 미지급";
+              if (store.withholdEarning(e.earningId(), !paid, note, at) == 0) {
+                return;
+              }
+              EarningRow after =
+                  new EarningRow(
+                      e.earningId(),
+                      e.deliveryId(),
+                      e.riderId(),
+                      paid && e.calculable(),
+                      e.rateTableVersion(),
+                      e.vehicleType(),
+                      e.distanceM(),
+                      e.baseFee(),
+                      e.total(),
+                      paid ? e.settlementState() : "ADJUSTED",
+                      e.performedOn(),
+                      e.confirmAt(),
+                      e.payoutDate(),
+                      note,
+                      e.recordedAt());
+              events.earningRecorded(after, store.bumpVersion(deliveryId, at), at);
+              log.info("배송 {} 라이더 귀책 오배송 — 수행료 {}", deliveryId, paid ? "지급됨(조정 메모)" : "미지급");
+            },
+            () -> log.warn("배송 {} 라이더 귀책 오배송 — 수행료 기록이 없음", deliveryId));
+  }
+
   /** 확정 시각이 지난 확정 대기 → CONFIRMED(원문 §7.2 "배달 완료 5시간 이후 수익 확정"). */
   @Scheduled(
       initialDelayString = "${pmart.execution.confirm-interval:PT1M}",

@@ -790,6 +790,26 @@ public class ExecutionStore {
         limit);
   }
 
+  /**
+   * 라이더 귀책 오배송(ADR-0065) — 지급 전이면 ADJUSTED·산정 제외(calculable false)로, 지급 중·지급됐으면 상태는 그대로 두고 메모만(지원센터
+   * 조정). 바꾼 행 수.
+   */
+  public int withholdEarning(String earningId, boolean beforePayout, String note, Instant now) {
+    return beforePayout
+        ? jdbc.update(
+            "UPDATE rider_earning SET settlement_state = 'ADJUSTED', calculable = false, note = ?,"
+                + " updated_at = ? WHERE earning_id = ? AND settlement_state NOT IN ('PAYING',"
+                + " 'PAID', 'ADJUSTED')",
+            note,
+            ts(now),
+            earningId)
+        : jdbc.update(
+            "UPDATE rider_earning SET note = ?, updated_at = ? WHERE earning_id = ?",
+            note,
+            ts(now),
+            earningId);
+  }
+
   public void settlementState(String earningId, String state, Instant now) {
     jdbc.update(
         "UPDATE rider_earning SET settlement_state = ?, updated_at = ? WHERE earning_id = ?",

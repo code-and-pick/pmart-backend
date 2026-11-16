@@ -53,6 +53,12 @@ public class RecoveryHandler {
       log.warn("오배송 확인 사건 {} — caseId·deliveryId 없음, 회수 배차 안 함", e.eventId());
       return;
     }
+    // ADR-0065(2026-11-16): 고객 잘못·다시 배송은 MFC 로 회수하지 않는다 — 잘못 간 상품을 실제 집으로(다시 배송 배차, 따로)
+    if ("CUSTOMER".equals(p.path("fault").asString(""))
+        && "REDELIVER".equals(p.path("resolution").asString(""))) {
+      log.info("오배송 확인 {} — 고객 잘못·다시 배송: MFC 회수 안 함", caseId);
+      return;
+    }
     DeliveryRow origin = store.lockDelivery(originId).orElse(null);
     if (origin == null) {
       log.warn("오배송 확인 {} — 배송 {} 이 배차 기록에 없어 회수 배차 안 함(사건함에서 처리)", caseId, originId);
