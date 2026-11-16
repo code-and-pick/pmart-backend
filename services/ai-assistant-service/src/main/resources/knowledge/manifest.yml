@@ -72,6 +72,10 @@ documents:
   - { path: docs/adr/0049-shortage-always-partial-cancel.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0052-customer-cancel-deadline-and-misdelivery-parallel-resend.md, domain: adr, kind: ADR, precedence: 5 }
   - { path: docs/adr/0060-no-customer-center-cancel-after-preparing.md, domain: adr, kind: ADR, precedence: 5 }
+  # 2026-11-16 애매함에서 남김으로(사용자 "셋 다 넣고") — 직원 응대 규칙이 이 ADR 에만 있음(docs/rag/operator-index-scope.md §1)
+  - { path: docs/adr/0062-staff-pii-reveal-recorded-in-audit-service.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0063-review-service-first-implementation.md, domain: adr, kind: ADR, precedence: 5 }
+  - { path: docs/adr/0064-notification-in-app-inbox-first.md, domain: adr, kind: ADR, precedence: 5 }
 
 # 규칙으로 판정되지 않는 지위·생애 예외. 근거(reason)를 함께 적는다.
 overrides:
