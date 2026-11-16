@@ -1,0 +1,175 @@
+package com.pmart.backoffice.bff;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.ResponseDefinitionBuilder;
+import com.github.tomakehurst.wiremock.client.WireMock;
+import com.pmart.common.test.TestJwt;
+import com.pmart.common.test.TestJwtConfiguration;
+import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 사건함 화면 조합(0.5.0 — 2026-11-16): case 목록을 직원 토큰으로(필터 이름 옮김), 사건마다 연결 배송·주문의 지금 상태를 같은 ID 한 번만, 연결
+ * 원천 실패·403 은 그 칸만 UNKNOWN + unavailableSources, 404 는 없음(원천 정상), case 403 은 그대로, case 장애는 빈 목록 +
+ * unavailableSources.
+ */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+      "spring.main.banner-mode=off",
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration"
+    })
+@Import(TestJwtConfiguration.class)
+@EnableWireMock({
+  @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
+  @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
+  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url")
+})
+class CaseInboxViewIT {
+
+  static final String RIDER_OPS = TestJwt.operator("op-ro", List.of("RIDER_OPS"), List.of());
+
+  @LocalServerPort int port;
+  @Autowired ObjectMapper mapper;
+
+  @InjectWireMock("case")
+  WireMockServer cases;
+
+  @InjectWireMock("execution")
+  WireMockServer execution;
+
+  @InjectWireMock("order")
+  WireMockServer order;
+
+  RestClient http;
+
+  @BeforeEach
+  void setUp() {
+    for (WireMockServer w : List.of(cases, execution, order)) {
+      w.resetAll();
+    }
+    http =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1/backoffice")
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build();
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[
+                      {"caseId":"CASE-1","kind":"RIDER_HELP","state":"OPEN","priority":"P1","subjectType":"DELIVERY","subjectRef":"DLV-1",
+                       "summary":"라이더 도움요청","overdue":true,"slaDueAt":"2026-11-16T01:10:00Z","openObligationCount":0,
+                       "refs":[{"refType":"deliveryId","refId":"DLV-1"},{"refType":"orderId","refId":"ORD-1"},{"refType":"incidentId","refId":"DLV-1:R1"}]},
+                      {"caseId":"CASE-2","kind":"MISDELIVERY","state":"ASSIGNED","priority":"P2","subjectType":"DELIVERY","subjectRef":"DLV-1",
+                       "refs":[{"refType":"orderId","refId":"ORD-404"}]}],
+                     "page":{"nextCursor":"n2"}}""")));
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-1"))
+            .willReturn(
+                json(200, "{\"deliveryId\":\"DLV-1\",\"state\":\"PICKED_UP\",\"version\":5}")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-1"))
+            .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-404"))
+            .willReturn(json(404, "{\"code\":\"NOT_FOUND\"}")));
+  }
+
+  record Res(int status, JsonNode body) {}
+
+  Res inbox(String query) {
+    var e =
+        http.get()
+            .uri("/views/case-inbox" + (query.isEmpty() ? "" : "?" + query))
+            .headers(h -> h.setBearerAuth(RIDER_OPS))
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(
+        e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
+  }
+
+  static ResponseDefinitionBuilder json(int s, String b) {
+    return aResponse().withStatus(s).withHeader("Content-Type", "application/json").withBody(b);
+  }
+
+  @Test
+  void casesCarryLinkedDeliveryAndOrderStatePerSource() {
+    Res r = inbox("assignee=op-x&unassigned=false&overdue=true&size=50");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode items = r.body().path("items");
+    assertThat(items.findValuesAsString("caseId")).containsExactly("CASE-1", "CASE-2");
+
+    JsonNode c1 = items.get(0);
+    assertThat(c1.path("kind").asString()).isEqualTo("RIDER_HELP");
+    assertThat(c1.path("overdue").asBoolean()).isTrue();
+    assertThat(c1.path("linkedRefs")).hasSize(3);
+    JsonNode dl = c1.path("linked").get(0);
+    assertThat(dl.path("kind").asString()).isEqualTo("DELIVERY");
+    assertThat(dl.path("state").asString()).isEqualTo("PICKED_UP");
+    assertThat(dl.path("version").asLong()).isEqualTo(5);
+    assertThat(dl.path("source").path("confidence").asString()).isEqualTo("DIRECT");
+    JsonNode od = c1.path("linked").get(1);
+    assertThat(od.path("kind").asString()).isEqualTo("ORDER");
+    assertThat(od.path("state").isNull()).as("주문을 못 보는 역할 — 그 칸만 모름").isTrue();
+    assertThat(od.path("source").path("confidence").asString()).isEqualTo("UNKNOWN");
+
+    JsonNode c2 = items.get(1);
+    JsonNode notFound = c2.path("linked").get(1);
+    assertThat(notFound.path("id").asString()).isEqualTo("ORD-404");
+    assertThat(notFound.path("state").isNull()).isTrue();
+    assertThat(notFound.path("source").path("confidence").asString())
+        .as("404 는 원천의 답(없음)")
+        .isEqualTo("DIRECT");
+
+    assertThat(r.body().path("unavailableSources").toString())
+        .contains("order-service")
+        .doesNotContain("delivery-execution-service")
+        .doesNotContain("\"case-service\"");
+    assertThat(r.body().path("page").path("nextCursor").asString()).isEqualTo("n2");
+
+    // 같은 배송은 한 번만, case 에는 직원 토큰·옮긴 필터
+    execution.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/deliveries/DLV-1")));
+    cases.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/cases"))
+            .withHeader("Authorization", equalTo("Bearer " + RIDER_OPS))
+            .withQueryParam("assigneeId", equalTo("op-x"))
+            .withQueryParam("overdue", equalTo("true"))
+            .withQueryParam("size", equalTo("50")));
+  }
+
+  @Test
+  void caseForbiddenPassesThroughAndCaseDownIsReported() {
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
+    assertThat(inbox("").status()).isEqualTo(403);
+
+    cases.stubFor(WireMock.get(urlPathEqualTo("/api/v1/cases")).willReturn(json(503, "{}")));
+    Res r = inbox("");
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().path("items")).isEmpty();
+    assertThat(r.body().path("unavailableSources").toString()).contains("case-service");
+  }
+}
