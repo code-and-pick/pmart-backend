@@ -198,7 +198,7 @@ public class CaseInboxService {
         "P2",
         "DELIVERY",
         deliveryId,
-        null,
+        text(p, "mfcId"), // 센터 관리자가 자기 센터 것을 본다 — dispatch 가 싣기 전(DD 요청)에는 null
         note + ("SYSTEM_FAILURE".equals(reason) ? " (자동 재배차 없음)" : " (10분마다 자동 재배차 중)"),
         refs,
         key);
@@ -420,7 +420,8 @@ public class CaseInboxService {
                 q.assigneeGroup(),
                 q.unassigned(),
                 q.overdue(),
-                now()),
+                now(),
+                CaseRules.centerScoped(roles(p)) ? p.centerScope() : null),
             offset,
             n + 1);
     boolean more = rows.size() > n;
@@ -580,7 +581,7 @@ public class CaseInboxService {
 
   private CaseRow visible(PmartPrincipal p, String caseId) {
     CaseRow c = store.find(caseId).orElseThrow(() -> notFound(caseId));
-    if (!CaseRules.visibleKinds(roles(p)).contains(c.kind())) {
+    if (!CaseRules.visibleKinds(roles(p)).contains(c.kind()) || !inCenterScope(p, c)) {
       throw notFound(caseId); // 볼 수 없으면 있는지도 알리지 않는다
     }
     return c;
@@ -588,10 +589,16 @@ public class CaseInboxService {
 
   private CaseRow lockVisible(PmartPrincipal p, String caseId) {
     CaseRow c = store.lock(caseId).orElseThrow(() -> notFound(caseId));
-    if (!CaseRules.visibleKinds(roles(p)).contains(c.kind())) {
+    if (!CaseRules.visibleKinds(roles(p)).contains(c.kind()) || !inCenterScope(p, c)) {
       throw notFound(caseId);
     }
     return c;
+  }
+
+  /** 센터 관리자는 자기 센터(토큰 centers) 사건만 — 센터가 없는 사건은 보이지 않는다. */
+  private static boolean inCenterScope(PmartPrincipal p, CaseRow c) {
+    return !CaseRules.centerScoped(roles(p))
+        || (c.centerId() != null && p.centerScope().contains(c.centerId()));
   }
 
   private static void checkVersion(CaseRow c, @Nullable Integer expected) {

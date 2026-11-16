@@ -36,3 +36,8 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **본 것**: LAN 시험 주문 `ORD-0e67de38-7acf-3e71-8a28-7aeadd986bb0` 의 배송 `DLV-74422b51-7820-457d-8dbf-9d66395010a2` — 백오피스 배송 상세에서 수행 "미배정", 배차 "배차 실패", 시도 "2026-11-14 02:05 · FAILED · 시스템 오류", 배정 라이더 없음. 그 뒤 다시 시도한 기록이 없다.
 - **궁금한 것**: 실패 원인(LAN 에 라이더가 없어서인지 — rider-service 확인 요청 참고 — 아니면 다른 오류인지), 다시 배차할 길(자동 재시도·운영자 재요청)이 있는지. 이 배송은 처리 대기(BO-12)·사건함 어디에도 나오지 않는다 — 배차 실패를 운영자가 볼 곳이 필요하면 알려 주면 사건함 종류(`DISPATCH_FAILED`, case 계약에 이름만 있음)로 받는 것을 사용자에게 묻겠다.
 - **갱신(같은 날)**: 사용자 결정으로 case 가 `DispatchFailed` 를 사건함(`DISPATCH_FAILED`, 지원센터·10분)으로 받는다 — 시스템 장애는 첫 실패, 그 밖은 두 번째 실패부터(`service-requests/case-service.md` 끝). dispatch 쪽 변경은 필요 없다. 원인·재배차 방법 질문은 그대로.
+
+## DD-MFC. `DispatchFailed` 에 센터(`mfcId`) 싣기 (2026-11-16, 보낸 영역 backoffice)
+- **왜**: 사용자 결정(2026-11-16 "추천대로") — 센터 관리자(MFC_SUPERVISOR)가 **자기 센터의 배차 실패 사건**을 백오피스 사건함에서 본다(배송 원문 §3.6 "배차 지연·불가는 MFC 관리자·고객센터에 안내"). case 0.5.2 는 사건의 센터를 `DispatchFailed.payload.mfcId` 로 정하는데, 지금 payload 에 없다(deliveryId·orderId·reason·attempts·failedAt) → 센터 관리자에게 하나도 안 보인다.
+- **할 것(작음, 필드 추가만)**: `DispatchEvents.failed(...)` 가 `p.put("mfcId", before.mfcId())` — 계약 `contracts/events/DispatchFailed.v1.json` payload 에 `mfcId`(선택, `_defs` CenterId) 추가(필드 추가라 하위 호환). `DispatchDelayed` 도 같은 이유로 있으면 좋다(지금 사건함은 구독 안 함).
+- **case 쪽**: 이미 읽는다(값이 없으면 센터 없음 → 지원센터·관리자만 봄). 바꿀 것 없음.

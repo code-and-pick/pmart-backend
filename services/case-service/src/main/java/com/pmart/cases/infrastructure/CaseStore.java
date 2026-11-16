@@ -67,7 +67,9 @@ public class CaseStore {
       @Nullable String assigneeGroup,
       boolean unassigned,
       boolean overdue,
-      Instant now) {}
+      Instant now,
+      /** null 이 아니면 이 센터들의 사건만(센터 관리자 — 2026-11-16). 비어 있으면 하나도 없음. */
+      @Nullable Collection<String> centers) {}
 
   private static final TypeReference<List<Ref>> REFS = new TypeReference<>() {};
 
@@ -229,6 +231,19 @@ public class CaseStore {
     }
     eq(sql, args, "case_type", f.kind());
     eq(sql, args, "center_id", f.centerId());
+    if (f.centers() != null) {
+      if (f.centers().isEmpty()) {
+        return List.of();
+      }
+      sql.append(" AND center_id IN (");
+      String csep = "";
+      for (String c : f.centers()) {
+        sql.append(csep).append('?');
+        args.add(c);
+        csep = ",";
+      }
+      sql.append(')');
+    }
     eq(sql, args, "assignee_id", f.assigneeId());
     eq(sql, args, "priority", f.priority());
     eq(sql, args, "subject_ref", f.subjectRef());

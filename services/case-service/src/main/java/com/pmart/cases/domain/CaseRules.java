@@ -50,6 +50,11 @@ public final class CaseRules {
   public static final String RIDER_OPS = "RIDER_OPS";
   public static final String CS_AGENT = "CS_AGENT";
 
+  /** 센터 관리자 — 자기 센터(토큰 centers)의 배차 실패 사건만 보기(2026-11-16 사용자 "추천대로", 배송 원문 §3.6). */
+  public static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
+
+  public static final Set<String> MFC_SUPERVISOR_KINDS = Set.of(DISPATCH_FAILED);
+
   public static final List<String> CREATE_MISDELIVERY_ROLES = List.of(CS_AGENT, RIDER_OPS, ADMIN);
 
   /**
@@ -81,7 +86,18 @@ public final class CaseRules {
     if (roles.contains(RIDER_OPS) || roles.contains(CS_AGENT)) {
       return DELIVERY_KINDS;
     }
+    if (roles.contains(MFC_SUPERVISOR)) {
+      return MFC_SUPERVISOR_KINDS;
+    }
     return Set.of();
+  }
+
+  /** 자기 센터 사건만 보는가 — 센터 관리자만 가진 직원(관리자·지원센터·상담원 역할이 있으면 센터와 관계없이 그 역할 범위). 집기·닫기는 없다. */
+  public static boolean centerScoped(Set<String> roles) {
+    return roles.contains(MFC_SUPERVISOR)
+        && !roles.contains(ADMIN)
+        && !roles.contains(RIDER_OPS)
+        && !roles.contains(CS_AGENT);
   }
 
   /** 집기·닫기 할 수 있는가(그 종류 팀). */

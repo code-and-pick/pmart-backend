@@ -44,5 +44,7 @@
 
 - **0.5.1(2026-11-16)**: 사건 목록 `state=CLOSED` 는 닫힌 시각 최근 순(열린 것은 그대로 P1·기한·오래된 것) — 통합 조회의 "지난 사건 최근 20건"·사건함 "닫힌 것" 탭.
 
+- **센터 관리자(2026-11-16, 계약 0.5.2 — 사용자 "추천대로", 배송 원문 §3.6)**: `MFC_SUPERVISOR` 만 가진 직원은 자기 센터(토큰 centers)의 `DISPATCH_FAILED` 만 보기(`CaseRules.centerScoped`, 목록 `Filter.centers`, 단건은 다른 센터면 404). 집기·닫기 없음. 사건 센터 = `DispatchFailed.mfcId`(dispatch 가 싣기 전엔 null → 안 보임 — 요청 `service-requests/delivery-dispatch-service.md`).
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

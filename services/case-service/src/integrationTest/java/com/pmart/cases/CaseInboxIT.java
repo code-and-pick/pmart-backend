@@ -616,4 +616,63 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     assertThat(closedList.body().path("items").findValuesAsString("caseId"))
         .containsSubsequence(brokenCase, caseId);
   }
+
+  /**
+   * 센터 관리자(2026-11-16 사용자 "추천대로", 배송 원문 §3.6): 자기 센터(토큰 centers)의 배차 실패 사건만 보기 — 다른 센터·센터 없는 사건·다른
+   * 종류는 안 보이고(목록에 없음·단건 404), 집기는 없다(403).
+   */
+  @Test
+  void mfcSupervisorSeesOwnCenterDispatchFailuresOnly() throws Exception {
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String mine = "DLV-SM-" + suffix;
+    String other = "DLV-SO-" + suffix;
+    String noCenter = "DLV-SN-" + suffix;
+    String dispatchSvc = "delivery-dispatch-service";
+    Map<String, Object> pm = new LinkedHashMap<>(dispatchFailed(mine, "SYSTEM_FAILURE"));
+    pm.put("mfcId", "MFC-SUP-" + suffix);
+    Map<String, Object> po = new LinkedHashMap<>(dispatchFailed(other, "SYSTEM_FAILURE"));
+    po.put("mfcId", "MFC-OTHER-" + suffix);
+    publish("delivery.delivery.v1", "DispatchFailed", mine, pm, dispatchSvc);
+    publish("delivery.delivery.v1", "DispatchFailed", other, po, dispatchSvc);
+    publish(
+        "delivery.delivery.v1",
+        "DispatchFailed",
+        noCenter,
+        dispatchFailed(noCenter, "SYSTEM_FAILURE"),
+        dispatchSvc);
+    for (String d : List.of(mine, other, noCenter)) {
+      await(() -> count("SELECT count(*) FROM case_record WHERE subject_ref = ?", d), c -> c > 0);
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT center_id FROM case_record WHERE subject_ref = ?", String.class, mine))
+        .as("사건에 실린 mfcId 가 사건 센터")
+        .isEqualTo("MFC-SUP-" + suffix);
+
+    String sup =
+        TestJwt.operator("op-sup", List.of("MFC_SUPERVISOR"), List.of("MFC-SUP-" + suffix));
+    Res list = send("GET", sup, "/cases?kind=DISPATCH_FAILED", null);
+    assertThat(list.status()).isEqualTo(200);
+    assertThat(list.body().path("items").findValuesAsString("subjectRef"))
+        .contains(mine)
+        .doesNotContain(other, noCenter);
+    String mineCase = list.body().path("items").get(0).path("caseId").asString();
+    assertThat(send("GET", sup, "/cases/" + mineCase, null).status()).isEqualTo(200);
+    String otherCase =
+        jdbc.queryForObject(
+            "SELECT case_id FROM case_record WHERE subject_ref = ?", String.class, other);
+    assertThat(send("GET", sup, "/cases/" + otherCase, null).status())
+        .as("다른 센터 — 있는지도 알리지 않음")
+        .isEqualTo(404);
+    assertThat(
+            send("POST", sup, "/cases/" + mineCase + "/assignments", Map.of("assigneeId", "op-sup"))
+                .status())
+        .as("보기만")
+        .isEqualTo(403);
+    assertThat(send("GET", sup, "/cases?kind=RIDER_HELP", null).body().path("items"))
+        .as("다른 종류는 안 보임")
+        .isEmpty();
+    String supNoCenter = TestJwt.operator("op-sup2", List.of("MFC_SUPERVISOR"), List.of());
+    assertThat(send("GET", supNoCenter, "/cases", null).body().path("items")).isEmpty();
+  }
 }
