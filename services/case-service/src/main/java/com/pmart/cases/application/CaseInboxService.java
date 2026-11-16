@@ -334,6 +334,39 @@ public class CaseInboxService {
   }
 
   /**
+   * 오배송 재발송(2026-11-16 사용자 "진행해 줘" — PC 5·PC 1 의 재발송 #39~#41 과 잇기): 재발송 배송 생성(DeliveryCreated,
+   * purpose MISDELIVERY_RESHIPMENT, caseId)을 그 오배송 사건에 — refs {@code reshipmentDeliveryId}(한 번만)와
+   * 이력 RESHIPMENT_CREATED. 상태는 그대로, 자동 종결 없음. 재발송 작업(MFC — mfc.fulfillment.v1)은 구독하지 않는다(바인딩 변경 필요
+   * — 지금은 배송 상태로 본다).
+   */
+  private void onReshipmentCreated(EventEnvelope e, JsonNode p) {
+    String caseId = text(p, "caseId");
+    String reshipment = text(p, "deliveryId");
+    if (caseId == null || reshipment == null) {
+      log.warn("재발송 {} — caseId·deliveryId 없음, 무시", e.eventType());
+      return;
+    }
+    var found = store.lock(caseId);
+    if (found.isEmpty()) {
+      log.warn("재발송 — 사건 {} 없음, 무시", caseId);
+      return;
+    }
+    CaseRow c = found.get();
+    Instant now = now();
+    if (c.refs().stream()
+        .noneMatch(
+            r -> "reshipmentDeliveryId".equals(r.refType()) && reshipment.equals(r.refId()))) {
+      List<Ref> refs = new ArrayList<>(c.refs());
+      refs.add(new Ref("reshipmentDeliveryId", reshipment));
+      store.replaceRefs(caseId, refs, now);
+    } else {
+      store.touch(caseId, now);
+    }
+    store.history(caseId, now, SYSTEM, "RESHIPMENT_CREATED", null, null, "재발송 배송 " + reshipment);
+    log.info("재발송 배송 — 사건 {}", caseId);
+  }
+
+  /**
    * 오배송 회수 진행(2026-11-16 사용자 "진행해" — DD-2 와 잇기): delivery-dispatch·execution 의 회수 배송 사건(purpose
    * MISDELIVERY_RECOVERY, caseId 실림)을 그 오배송 사건에 — 회수 배송 번호를 refs {@code recoveryDeliveryId} 로,
    * 생성·회수함·매장 반납을 이력으로. 사건 상태는 바꾸지 않고 자동으로 닫지 않는다(사건은 알림·기록). 후속 처리(의무)도 자동으로 해소하지 않는다. 다른 회수(고객
@@ -341,6 +374,11 @@ public class CaseInboxService {
    */
   public void onRecoveryProgress(EventEnvelope e) {
     JsonNode p = e.payload();
+    if ("MISDELIVERY_RESHIPMENT".equals(text(p, "purpose"))
+        && "DeliveryCreated".equals(e.eventType())) {
+      onReshipmentCreated(e, p);
+      return;
+    }
     if (!"MISDELIVERY_RECOVERY".equals(text(p, "purpose"))) {
       return;
     }

@@ -294,7 +294,8 @@ public class LiveDeliveryView {
     for (JsonNode r : c.path("refs")) {
       String id = text(r, "refId");
       if (("deliveryId".equals(text(r, "refType"))
-              || "recoveryDeliveryId".equals(text(r, "refType")))
+              || "recoveryDeliveryId".equals(text(r, "refType"))
+              || "reshipmentDeliveryId".equals(text(r, "refType")))
           && id != null
           && !out.contains(id)) {
         out.add(id);

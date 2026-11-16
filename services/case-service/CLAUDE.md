@@ -69,6 +69,8 @@
 
 - **접수 건 메모(2026-11-16, 계약 0.10.0, V9 case_note — 사용자 "고친 안", 업무 원문 BO-27 "늦은 보고는 원사건으로")**: `CaseNoteService`·`CaseNoteStore`, `CasesController`. 남기기 `POST /cases/{id}/notes` — 볼 수 있는 **본사 직원**(OPERATOR_ADMIN·RIDER_OPS·CS_AGENT, 센터 관리자는 403), **처리 끝난 건에도**(상태 그대로), 500자. 고치기·지우기 없음. 가림 `…/notes/{noteId}/maskings` — 관리자만·사유 필수, **글을 DB 에서 지우고**(text NULL) 누가·언제·왜는 남김(ADR-0062). 목록 GET. 이벤트 없음, 글은 로그 금지.
 
+- **오배송 재발송 연결(2026-11-16, 계약 0.10.2 — 사용자 "진행해 줘", PC 5·PC 1 재발송 #39~#41 과 잇기)**: `CaseInboxService.onReshipmentCreated`(`onRecoveryProgress` 에서 나눔). 배송 토픽 `DeliveryCreated` 중 purpose **MISDELIVERY_RESHIPMENT** + caseId → 오배송 사건 refs `reshipmentDeliveryId`(한 번만)·이력 RESHIPMENT_CREATED, 상태 그대로. 재발송 작업 사건(mfc.fulfillment.v1 — WorkAccepted·LineShortageReported 등, caseId 실림)은 구독하지 않는다(바인딩 변경 필요) — 진행은 bff 사건함의 재발송 배송 상태로 본다.
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
 - **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).

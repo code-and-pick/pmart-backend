@@ -1501,4 +1501,52 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .as("이미 가린 메모는 그대로")
         .isEqualTo("전화번호를 적음");
   }
+
+  /**
+   * 오배송 재발송(0.10.2 — 2026-11-16): 재발송 배송 생성(DeliveryCreated, purpose MISDELIVERY_RESHIPMENT,
+   * caseId)을 그 오배송 사건에 — refs reshipmentDeliveryId·이력 RESHIPMENT_CREATED, 상태 그대로.
+   */
+  @Test
+  void misdeliveryReshipmentIsLinkedToTheCase() throws Exception {
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String deliveryId = "DLV-RS-" + UUID.randomUUID().toString().substring(0, 8);
+    String caseId =
+        send(
+                "POST",
+                cs,
+                "/cases",
+                Map.of(
+                    "kind", "MISDELIVERY",
+                    "subjectType", "DELIVERY",
+                    "subjectRef", deliveryId,
+                    "summary", "재발송 시험"))
+            .body()
+            .path("caseId")
+            .asString();
+    String reship = "RSH-" + deliveryId;
+    Map<String, Object> created = new LinkedHashMap<>();
+    created.put("deliveryId", reship);
+    created.put("orderId", "ORD-1");
+    created.put("shipmentId", "SHP-RS");
+    created.put("type", "RESHIPMENT");
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "ADDR-REF-1");
+    created.put("purpose", "MISDELIVERY_RESHIPMENT");
+    created.put("caseId", caseId);
+    publish(
+        "delivery.delivery.v1", "DeliveryCreated", reship, created, "delivery-dispatch-service");
+
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'RESHIPMENT_CREATED'",
+                caseId),
+        n -> n > 0);
+    JsonNode detail = send("GET", ops, "/cases/" + caseId, null).body();
+    assertThat(detail.path("state").asString()).isEqualTo("OPEN");
+    assertThat(detail.path("refs").toString()).contains("reshipmentDeliveryId", reship);
+    assertThat(detail.path("history").toString()).contains("재발송 배송 " + reship);
+  }
 }

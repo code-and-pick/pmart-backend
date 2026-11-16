@@ -83,7 +83,7 @@ class CaseInboxViewIT {
                        "summary":"라이더 도움요청","overdue":true,"slaDueAt":"2026-11-16T01:10:00Z","openObligationCount":0,
                        "refs":[{"refType":"deliveryId","refId":"DLV-1"},{"refType":"orderId","refId":"ORD-1"},{"refType":"incidentId","refId":"DLV-1:R1"}]},
                       {"caseId":"CASE-2","kind":"MISDELIVERY","state":"ASSIGNED","priority":"P2","subjectType":"DELIVERY","subjectRef":"DLV-1",
-                       "refs":[{"refType":"orderId","refId":"ORD-404"},{"refType":"recoveryDeliveryId","refId":"DLV-R"}]}],
+                       "refs":[{"refType":"orderId","refId":"ORD-404"},{"refType":"recoveryDeliveryId","refId":"DLV-R"},{"refType":"reshipmentDeliveryId","refId":"DLV-S"}]}],
                      "page":{"nextCursor":"n2"}}""")));
     execution.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-1"))
@@ -95,6 +95,10 @@ class CaseInboxViewIT {
                 json(
                     200,
                     "{\"deliveryId\":\"DLV-R\",\"state\":\"RETURN_IN_PROGRESS\",\"version\":2}")));
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-S"))
+            .willReturn(
+                json(200, "{\"deliveryId\":\"DLV-S\",\"state\":\"ASSIGNED\",\"version\":1}")));
     order.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-1"))
             .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
@@ -146,7 +150,11 @@ class CaseInboxViewIT {
         .as("오배송 회수 배송도 배송으로(0.5.1)")
         .isEqualTo("DLV-R");
     assertThat(c2.path("linked").get(1).path("state").asString()).isEqualTo("RETURN_IN_PROGRESS");
-    JsonNode notFound = c2.path("linked").get(2);
+    assertThat(c2.path("linked").get(2).path("id").asString())
+        .as("오배송 재발송 배송도 배송으로(0.5.2)")
+        .isEqualTo("DLV-S");
+    assertThat(c2.path("linked").get(2).path("state").asString()).isEqualTo("ASSIGNED");
+    JsonNode notFound = c2.path("linked").get(3);
     assertThat(notFound.path("id").asString()).isEqualTo("ORD-404");
     assertThat(notFound.path("state").isNull()).isTrue();
     assertThat(notFound.path("source").path("confidence").asString())

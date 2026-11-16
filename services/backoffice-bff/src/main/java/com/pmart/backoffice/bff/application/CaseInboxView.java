@@ -125,7 +125,8 @@ public class CaseInboxView {
       i.put("linkedRefs", refs);
 
       List<Map<String, Object>> linked = new ArrayList<>();
-      for (String d : ids(c, "DELIVERY", Set.of("deliveryId", "recoveryDeliveryId"))) {
+      for (String d :
+          ids(c, "DELIVERY", Set.of("deliveryId", "recoveryDeliveryId", "reshipmentDeliveryId"))) {
         used.add(Source.EXECUTION);
         if (!deliveryOk.containsKey(d)) {
           JsonNode n = fetch(token, Source.EXECUTION, "/deliveries/{id}", d, failed, deliveryOk, d);
