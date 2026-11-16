@@ -26,6 +26,7 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
   - 입력·처리는 ADR-0054 결정 G: Google 로그인 → **전화번호·배달 지역·배달 수단·약관** 입력 → **즉시 운행 승인**(업무 원문 §1.1). 전화번호는 본인인증 API 가 없어 **중복 확인만**.
   - `GET /riders/me` 가 미가입이면 404 — 라이더 앱은 로그인 뒤 이것으로 가입 화면 여부를 정한다(rider-auth 응답 `newAccount` 는 참고).
 - **지금(임시 방식)**: rider-service 는 501. LAN 시험은 auth-service 서명 시험 라이더 토큰(`RD-claude-*`).
+- **구현됨(2026-11-13, 상태 정리 2026-11-16 PC 5)**: `POST /riders/signups`(라이더 토큰 주체 = riderId, 전화번호 중복만 409 DUPLICATE_RIDER, 즉시 OFF_DUTY·NORMAL)·`GET /riders/signups/{requestId}`·`GET /riders/me`(미가입 404). 계약의 면허·주민번호·PHONE_NOT_VERIFIED 는 2026-11-13 뺐다. LAN 에서 rider-auth 서명 시험 토큰으로 가입 201(2026-11-16 rider_e2e·misdelivery_e2e). 남은 것은 '나중'(정지 → rider-auth 세션 끊기)뿐.
 - **계약과 어긋난 곳(구현 때 고칠 것)**: 지금 `rider-service.yaml` 가입 설명은 "전화 본인확인 후, 면허·주민번호 중복 차단", `422 PHONE_NOT_VERIFIED(auth 본인확인 미완료)` — 결정 G(본인확인 없음, 전화번호 중복 확인만)와 다르다. **사용자 결정(2026-11-10): 가입 때 면허·주민번호를 받지 않고, 중복 확인은 전화번호만 한다.** 구현 때 계약에서 `PHONE_NOT_VERIFIED` 와 면허·주민번호 중복 차단 문구를 빼고, 전화번호 중복은 `409` 로 둔다.
 - **나중**: 정지(`RiderRestricted`)를 rider-auth-service 가 받아 세션을 끊는 일(ADR-0054 ⑤ 차단 목록).
 - 근거: `docs/adr/0054-auth-split-keycloak-staff-rider-auth-service.md` 결정 G, `docs/adr/0055-google-login-id-token-only-customer-rider.md`, `contracts/openapi/rider-auth-service.yaml`.

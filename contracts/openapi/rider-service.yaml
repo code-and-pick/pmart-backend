@@ -27,7 +27,6 @@ paths:
         같은 주체가 이미 가입했으면 409 DUPLICATE_RIDER(같은 Idempotency-Key 재전송은 기존 결과). 가입 직후 OFF_DUTY·NORMAL — 즉시 운행 승인(원문 §1.2).
       operationId: createRiderSignup
       x-pmart-user-types: [RIDER]
-      x-pmart-user-types-note: "추정 — 가입 전 라이더 auth(Google 로그인) 토큰으로 호출한다고 봄, 구현 코드 없음"
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -56,7 +55,6 @@ paths:
       summary: 가입 신청 결과 조회
       operationId: getRiderSignup
       x-pmart-user-types: [RIDER]
-      x-pmart-user-types-note: "추정 — 가입 신청자(라이더 토큰) 조회로 봄, 구현 코드 없음"
       parameters:
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
