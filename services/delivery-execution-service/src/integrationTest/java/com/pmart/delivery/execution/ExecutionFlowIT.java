@@ -69,6 +69,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         }
 
         @Override
+        public java.util.Optional<byte[]> get(String key) {
+          return java.util.Optional.ofNullable(STORED.get(key));
+        }
+
+        @Override
         public boolean delete(String key) {
           STORED.remove(key);
           return true;
@@ -828,6 +833,59 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(v.path("recoveryOrigin").path("placement").asString()).isEqualTo("FRONT_DOOR");
     assertThat(v.path("recoveryOrigin").path("photoRefs").get(0).asString()).isEqualTo(originPhoto);
 
+    // 원래 고객 전화(사용자 2026-11-16 "원래 고객의 전화는 회수 라이더에게 보여야 해") — 전화만, 주소는 없다
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "orderId",
+                                order,
+                                "roadAddress",
+                                "서울 강남구 테헤란로 1",
+                                "detailAddress",
+                                "101동 1001호",
+                                "receiverName",
+                                "김고객",
+                                "receiverPhone",
+                                "01012345678")))));
+    ResponseEntity<String> contact = riderGet("/deliveries/{id}/recovery-contact", rec, r2);
+    assertThat(contact.getStatusCode().value()).isEqualTo(200);
+    assertThat(contact.getHeaders().getCacheControl()).contains("no-store");
+    assertThat(body(contact).path("receiverPhone").asString()).isEqualTo("01012345678");
+    assertThat(body(contact).path("originDeliveryId").asString()).isEqualTo(origin);
+    assertThat(body(contact).has("roadAddress")).isFalse();
+    assertThat(body(contact).has("detailAddress")).isFalse();
+    assertThat(riderGet("/deliveries/{id}/recovery-contact", rec, r1).getStatusCode().value())
+        .isEqualTo(404); // 회수 라이더가 아니면 있는지도 모른다
+    ResponseEntity<String> notRecovery = riderGet("/deliveries/{id}/recovery-contact", origin, r1);
+    assertThat(notRecovery.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(notRecovery).path("code").asString()).isEqualTo("NOT_RECOVERY");
+
+    // 사진 보기(사용자 2026-11-16 "사진보기 기능 넣어") — 회수 라이더는 원래 배송 사진을, 원래 라이더·운영자도 본다
+    ResponseEntity<byte[]> img = photo(origin, originPhoto, TestJwt.rider(r2));
+    assertThat(img.getStatusCode().value()).isEqualTo(200);
+    assertThat(img.getBody()).isEqualTo(JPEG);
+    assertThat(img.getHeaders().getContentType().toString()).isEqualTo("image/jpeg");
+    assertThat(img.getHeaders().getCacheControl()).contains("no-store");
+    assertThat(photo(origin, originPhoto, TestJwt.rider(r1)).getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(
+            photo(origin, originPhoto, TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(photo(origin, originPhoto, TestJwt.rider("RDR-other")).getStatusCode().value())
+        .isEqualTo(404);
+    assertThat(photo(rec, originPhoto, TestJwt.rider(r2)).getStatusCode().value())
+        .isEqualTo(404); // 다른 배송의 사진
+    assertThat(photo(origin, "EVP-none", TestJwt.rider(r2)).getStatusCode().value()).isEqualTo(404);
+
     // 사진 없이 회수 → 400(계약 minItems 1), 남의 사진 → 422, 회수지에서 사진(배정 상태에서 올릴 수 있다) → 회수
     assertThat(
             post(rec, "returns/pickups", r2, Map.of("items", List.of(), "evidenceRefs", List.of()))
@@ -886,6 +944,28 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(earning.get("settlement_state")).isEqualTo("PENDING_CONFIRMATION");
     assertThat(view(rec, r2).path("evidence").path("photoRefs").get(0).asString())
         .isEqualTo(spotPhoto);
+    // 반납 뒤에는 원래 고객 전화·원래 배송 사진을 닫는다(자기 회수 사진은 본다)
+    assertThat(body(riderGet("/deliveries/{id}/recovery-contact", rec, r2)).path("code").asString())
+        .isEqualTo("RECOVERY_CONTACT_CLOSED");
+    assertThat(photo(origin, originPhoto, TestJwt.rider(r2)).getStatusCode().value())
+        .isEqualTo(404);
+    assertThat(photo(rec, spotPhoto, TestJwt.rider(r2)).getStatusCode().value()).isEqualTo(200);
+  }
+
+  ResponseEntity<String> riderGet(String uri, String id, String rider) {
+    return http.get()
+        .uri(uri, id)
+        .header("Authorization", "Bearer " + TestJwt.rider(rider))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  ResponseEntity<byte[]> photo(String id, String photoRef, String token) {
+    return http.get()
+        .uri("/deliveries/{id}/evidence-photos/{ref}", id, photoRef)
+        .header("Authorization", "Bearer " + token)
+        .retrieve()
+        .toEntity(byte[].class);
   }
 
   // ---- 도우미

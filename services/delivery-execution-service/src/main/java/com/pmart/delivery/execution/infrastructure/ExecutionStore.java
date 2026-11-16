@@ -235,6 +235,16 @@ public class ExecutionStore {
         deliveryId);
   }
 
+  /** 이 배송(원래 배송)을 지금 회수 중인 라이더들(오배송 회수 — ASSIGNED·RETURN_PICKED_UP). 사진 보기 권한. */
+  public List<String> recoveringRiders(String originDeliveryId) {
+    return jdbc.queryForList(
+        "SELECT rider_id FROM execution_delivery WHERE origin_delivery_id = ? AND purpose ="
+            + " 'MISDELIVERY_RECOVERY' AND state IN ('ASSIGNED', 'RETURN_PICKED_UP') AND rider_id IS"
+            + " NOT NULL",
+        String.class,
+        originDeliveryId);
+  }
+
   /** 회수지에서 받음(DD-2) — RETURN_PICKED_UP. 증빙은 evidence 의 pickup 에. */
   public void returnPickedUp(String deliveryId, String evidenceJson, Instant at) {
     jdbc.update(

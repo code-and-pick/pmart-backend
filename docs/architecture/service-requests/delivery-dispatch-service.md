@@ -37,7 +37,8 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **execution 0.5.0**(V7): 회수 배송 수행 — 배정 → 회수지에서 사진(ASSIGNED 에서 올릴 수 있음) → `returns/pickups`(RETURN_PICKED_UP, ReturnPickedUp — lines = 원래 배송이 전달한 줄) → `returns/store-deliveries`(RETURNED_TO_STORE, ReturnDelivered, 수행료 = 수락 당시 금액). 회수 배송에 일반 단계는 409, 전달지는 409 NO_CUSTOMER_DROP(원래 고객 정보 안 엶). 조회에 purpose·caseId·originDeliveryId·recoveryOrigin(원래 완료 증빙).
 - **tracking 0.4.0**: `GET /internal/riders/{id}/location-at?at=`(앞뒤 3분 안 가장 가까운 점), `ReturnDelivered` 로 회수 라이더 감시 끝.
 - **사건 계약**: `DeliveryCreated` purpose·caseId·originDeliveryId 추가. `ReturnPickedUp`·`ReturnDelivered` — claimId 를 필수에서 뺌(구독자 구현 전 확인), purpose·caseId·originDeliveryId·orderId(·mfcId) 추가.
-- **남은 것**: 원래 완료 사진을 회수 라이더가 볼 사진 보기 API(지금은 참조만 — 사진 보기 경로가 아직 없음), MFC 점원 수령 확인(mfc-inbound MI-1), 새 발송(order O-3), 회수 라이더 앱 화면(handoff `docs/handoff/clients/rider-app/2026-11-16-request-misdelivery-recovery.md`).
+- **같은 날 더함(사용자 2026-11-16 "원래 고객의 전화는 회수 라이더에게 보여야 해", "사진보기 기능 넣어")**: execution `GET /deliveries/{id}/recovery-contact`(회수 라이더 — 원래 고객 전화번호만), `GET /deliveries/{id}/evidence-photos/{photoRef}`(사진 원본 — 배정 라이더·회수 라이더·직원).
+- **남은 것**: MFC 점원 수령 확인(mfc-inbound MI-1), 새 발송(order O-3), 회수 라이더 앱 화면(handoff `docs/handoff/clients/rider-app/2026-11-16-request-misdelivery-recovery.md`).
 
 
 ## 확인 요청 (2026-11-16, 보낸 영역 backoffice) — LAN 시험 배송이 배차 실패로 미배정

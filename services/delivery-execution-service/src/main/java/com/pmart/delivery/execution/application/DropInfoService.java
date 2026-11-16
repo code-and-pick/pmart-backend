@@ -32,6 +32,54 @@ public class DropInfoService {
     this.order = order;
   }
 
+  /** 회수 연락처를 여는 상태 — 회수 진행 중. */
+  public static final Set<String> RECOVERY_OPEN = Set.of("ASSIGNED", "RETURN_PICKED_UP");
+
+  /** 원래 고객 전화(회수 라이더 — 전화만). */
+  public record RecoveryContact(String originDeliveryId, String receiverPhone) {
+    @Override
+    public String toString() {
+      return "RecoveryContact[가림]";
+    }
+  }
+
+  /**
+   * 오배송 회수 라이더에게 원래 고객 전화번호(사용자 2026-11-16 "원래 고객의 전화는 회수 라이더에게 보여야 해"). 회수 배송에 배정된 라이더 본인만, 회수 진행
+   * 중(ASSIGNED·RETURN_PICKED_UP)만. 주소·출입 정보는 주지 않는다. 매번 order 에서 읽고 저장·로그하지 않는다.
+   */
+  public RecoveryContact recoveryContact(String deliveryId) {
+    PmartPrincipal p =
+        PmartPrincipal.current().orElseThrow(() -> ExecutionService.forbidden("라이더 토큰이 필요합니다."));
+    if (p.type() != PmartPrincipal.PrincipalType.RIDER) {
+      throw ExecutionService.forbidden("배정된 회수 라이더만 볼 수 있습니다.");
+    }
+    DeliveryRow d =
+        store
+            .delivery(deliveryId)
+            .filter(x -> p.subject().equals(x.riderId()))
+            .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
+    if (!d.recovery()) {
+      throw conflict("NOT_RECOVERY", "오배송 회수 배송이 아닙니다.");
+    }
+    if (!RECOVERY_OPEN.contains(d.state())) {
+      throw conflict("RECOVERY_CONTACT_CLOSED", "회수 중에만 볼 수 있습니다(지금 " + d.state() + ").");
+    }
+    if (d.orderId() == null) {
+      throw PmartException.notFound("DROP_INFO_NOT_FOUND", "주문이 없는 배송입니다.");
+    }
+    String phone =
+        order
+            .dropInfo(d.orderId())
+            .map(OrderClient.DropInfo::receiverPhone)
+            .orElseThrow(
+                () -> PmartException.notFound("DROP_INFO_NOT_FOUND", "주문 당시 배송지 사본이 없습니다."));
+    return new RecoveryContact(d.originDeliveryId(), phone);
+  }
+
+  private static PmartException conflict(String code, String message) {
+    return new PmartException(code, HttpStatus.CONFLICT, message, false, java.util.List.of());
+  }
+
   public DropInfo dropInfo(String deliveryId) {
     PmartPrincipal p =
         PmartPrincipal.current().orElseThrow(() -> ExecutionService.forbidden("라이더 토큰이 필요합니다."));
@@ -48,7 +96,7 @@ public class DropInfoService {
       throw new PmartException(
           "NO_CUSTOMER_DROP",
           HttpStatus.CONFLICT,
-          "오배송 회수 배송에는 고객 전달지가 없습니다. 회수지는 배차 조회의 recovery 를 보세요.",
+          "오배송 회수 배송에는 고객 전달지가 없습니다. 회수지는 배차 조회의 recovery, 원래 고객 전화는 recovery-contact 를 보세요.",
           false,
           java.util.List.of());
     }

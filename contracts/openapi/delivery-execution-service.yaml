@@ -11,6 +11,7 @@ info:
       배정(ASSIGNED) → 회수지에서 회수품 사진 올리기 → 회수(`returns/pickups` → RETURN_PICKED_UP, ReturnPickedUp) → MFC 도착 = 반납(`returns/store-deliveries` → RETURNED_TO_STORE, ReturnDelivered, 수행료).
       MFC 점원 수령 확인(mfc-inbound)이 생기기 전까지는 MFC 도착을 반납으로 본다. 회수 배송에서 일반 배송 단계(가게 도착·픽업·고객 도착·전달 완료·실패 등록)는 409, 전달지(drop-info)는 409 NO_CUSTOMER_DROP(원래 고객 정보를 열지 않는다).
       회수 라이더가 찾아갈 곳: 좌표는 dispatch `GET /deliveries/{id}/dispatch` 의 recovery.pickup, 원래 배송의 완료 증빙(놓은 곳·사진 참조)은 이 서비스 `GET /deliveries/{id}` 의 recoveryOrigin. 고객 반품 회수(CLAIM_RETURN)는 아직 없다.
+      같은 날(사용자 "원래 고객의 전화는 회수 라이더에게 보여야 해", "사진보기 기능 넣어"): 원래 고객 전화번호 `GET /deliveries/{id}/recovery-contact`(회수 라이더 — 전화만, 주소는 주지 않는다), 증빙 사진 보기 `GET /deliveries/{id}/evidence-photos/{photoRef}`(원본 이미지 — 배정 라이더·회수 라이더·운영자).
     배정(dispatch), 인계 fence·재고(mfc), 주문 완료 판단(order), 환불(claim/payment), 위치(tracking)는 소유하지 않는다.
     시간 경과 자동완료 없음 [확정]. 주류 전달은 PG 인증 통합이므로 현장 신분증 절차 없음 [확정]. GPS·버튼만으로 픽업 확정 금지(PackageHandedOver 근거 필요).
     완료 후 사고 신고는 기존 완료를 유지하고 사건을 별도로 올린다. 지급 실행은 외부 회계.
@@ -52,7 +53,7 @@ paths:
         주소·상세주소·우편번호·수령인·**고객 전화번호**(안심번호 아님 — 사용자 결정 2026-11-14)·출입 방법·출입 메모·배송 요청사항·지도 핀. 원천은 order 주문 당시 사본(O-5) — 이 서비스는 저장·로그하지 않는다(매번 order 에서 읽음, `Cache-Control: no-store`).
         열리는 때: 상태 PICKED_UP·ARRIVED_AT_CUSTOMER·FAILURE_REPORTED(아직 진행 중). 그 전(픽업 전)·뒤(전달 완료·실패 확정·취소)는 409 DROP_INFO_CLOSED. 배정 라이더가 아니면 404(있는지 알리지 않음).
         주문 당시 사본이 없는 주문(2026-11-02 이전)은 404 DROP_INFO_NOT_FOUND. order 를 못 부르면 503.
-        오배송 회수 배송(purpose MISDELIVERY_RECOVERY, 0.5.0)은 409 NO_CUSTOMER_DROP — 원래 고객은 상품을 갖고 있지 않으니 원래 고객 정보를 열지 않는다.
+        오배송 회수 배송(purpose MISDELIVERY_RECOVERY, 0.5.0)은 409 NO_CUSTOMER_DROP — 원래 고객 주소는 열지 않는다. 원래 고객 전화번호는 `recovery-contact` 로.
       x-added-in: '2026-11-14'
       operationId: getDeliveryDropInfo
       x-pmart-user-types: [RIDER]
@@ -628,6 +629,57 @@ paths:
                   appliedAt: { type: string, format: date-time }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /deliveries/{deliveryId}/recovery-contact:
+    get:
+      tags: [returns]
+      summary: 오배송 회수 — 원래 고객 전화번호 (회수 라이더 본인)
+      description: |
+        2026-11-16 사용자 "원래 고객의 전화는 회수 라이더에게 보여야 해". 회수 배송(purpose MISDELIVERY_RECOVERY)에 배정된 라이더 본인만(아니면 404 — 있는지 알리지 않음, 직원 토큰 403).
+        열리는 때: ASSIGNED·RETURN_PICKED_UP(회수 진행 중). 반납 뒤·취소는 409 RECOVERY_CONTACT_CLOSED, 회수 배송이 아니면 409 NOT_RECOVERY.
+        **전화번호만** 준다(원래 고객 주소·출입 정보는 주지 않는다). 원천은 order 주문 당시 사본(O-5) — 저장·로그하지 않는다(`Cache-Control: no-store`). 사본 없음 404 DROP_INFO_NOT_FOUND, order 장애 503.
+      x-added-in: '2026-11-16'
+      operationId: getRecoveryContact
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecoveryContact' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /deliveries/{deliveryId}/evidence-photos/{photoRef}:
+    get:
+      tags: [execution]
+      summary: 증빙 사진 보기 (원본 이미지)
+      description: |
+        2026-11-16 사용자 "사진보기 기능 넣어". 이 배송에 올린 사진(photoRef)의 원본 이미지. 비공개 저장소에서 읽어 그대로 돌려준다(`Cache-Control: no-store, private` — 앱·브라우저가 남기지 않게).
+        볼 수 있는 사람: 이 배송에 배정된 라이더(지금 배정), **이 배송을 회수하는 라이더**(이 배송이 원래 배송인 오배송 회수에 배정 — ASSIGNED·RETURN_PICKED_UP 동안), 그 센터 운영자·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS.
+        그 밖·없는 사진·다른 배송의 사진은 404(있는지 알리지 않음). 저장소 미설정·장애 503.
+      x-added-in: '2026-11-16'
+      operationId: getEvidencePhoto
+      x-pmart-user-types: [RIDER, OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: photoRef, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 사진 원본(올린 형식 그대로)
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
 components:
   schemas:
     DropInfo:
@@ -839,6 +891,15 @@ components:
         confirmAt: { type: string, format: date-time, description: 수익 확정 시각 — 전달 완료 + 5시간(원문 §7.2, 0.3.0) }
         payoutDate: { type: string, format: date, description: 지급 예정일 — 수행일(Asia/Seoul) + 3영업일(주말·법정공휴일 제외 — 사용자 결정 2026-11-13). 실제 지급은 외부 회계 }
         note: { type: string, description: 산정 불가 사유 등(calculable false 면 지원센터 조정 필요) }
+    RecoveryContact:
+      type: object
+      x-added-in: '2026-11-16'
+      description: 오배송 회수 라이더용 원래 고객 연락처 — 전화번호만(개인정보, 앱도 화면 밖에 남기지 않는다)
+      required: [deliveryId, receiverPhone]
+      properties:
+        deliveryId: { type: string, description: 회수 배송 }
+        originDeliveryId: { type: string, description: 오배송된 원래 배송 }
+        receiverPhone: { type: string, description: 원래 고객 전화번호(안심번호 아님) }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

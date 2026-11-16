@@ -441,6 +441,44 @@ public class ExecutionService {
         });
   }
 
+  /** 사진 원본(보기). */
+  public record PhotoFile(String contentType, byte[] bytes) {}
+
+  /**
+   * 증빙 사진 보기(사용자 2026-11-16 "사진보기 기능 넣어"): 이 배송에 배정된 라이더, 이 배송을 회수 중인 라이더(오배송 회수 — ASSIGNED·
+   * RETURN_PICKED_UP), 그 센터·모든 센터 운영자. 그 밖·없는 사진·다른 배송의 사진은 404(있는지 알리지 않음). 내용은 로그하지 않는다.
+   */
+  public PhotoFile photoFile(String deliveryId, String photoRef) {
+    PmartPrincipal p = principal();
+    DeliveryRow d = store.delivery(deliveryId).orElseThrow(ExecutionService::photoNotFound);
+    boolean ok =
+        switch (p.type()) {
+          case OPERATOR -> Access.operatorCanSee(p, d.mfcId());
+          case RIDER ->
+              p.subject().equals(d.riderId())
+                  || store.recoveringRiders(deliveryId).contains(p.subject());
+          default -> false;
+        };
+    if (!ok) {
+      throw photoNotFound();
+    }
+    PhotoRow photo =
+        store
+            .photo(photoRef)
+            .filter(x -> x.deliveryId().equals(deliveryId))
+            .orElseThrow(ExecutionService::photoNotFound);
+    EvidencePhotoStorage storage = photos.getIfAvailable();
+    if (storage == null) {
+      throw new PmartException(ErrorCode.DEPENDENCY_UNAVAILABLE, "증빙 사진 저장소가 설정되지 않았습니다.");
+    }
+    byte[] bytes = storage.get(photo.objectKey()).orElseThrow(ExecutionService::photoNotFound);
+    return new PhotoFile(photo.contentType(), bytes);
+  }
+
+  private static PmartException photoNotFound() {
+    return PmartException.notFound("PHOTO_NOT_FOUND", "사진이 없습니다.");
+  }
+
   // ---- 오배송 회수(DD-2, 2026-11-16 — 사용자 "추천대로")
 
   /**

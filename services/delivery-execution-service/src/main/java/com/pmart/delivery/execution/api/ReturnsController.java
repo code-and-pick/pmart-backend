@@ -18,9 +18,26 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReturnsController implements ReturnsApi {
 
   private final ExecutionService service;
+  private final com.pmart.delivery.execution.application.DropInfoService dropInfos;
 
-  public ReturnsController(ExecutionService service) {
+  public ReturnsController(
+      ExecutionService service,
+      com.pmart.delivery.execution.application.DropInfoService dropInfos) {
     this.service = service;
+    this.dropInfos = dropInfos;
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.RecoveryContact>
+      getRecoveryContact(String deliveryId) {
+    var c = dropInfos.recoveryContact(deliveryId);
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new com.pmart.delivery.execution.api.generated.model.RecoveryContact()
+                .deliveryId(deliveryId)
+                .originDeliveryId(c.originDeliveryId())
+                .receiverPhone(c.receiverPhone()));
   }
 
   @Override

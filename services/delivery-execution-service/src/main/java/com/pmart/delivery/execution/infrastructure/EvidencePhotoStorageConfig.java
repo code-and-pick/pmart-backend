@@ -80,6 +80,18 @@ class EvidencePhotoStorageConfig {
         }
 
         @Override
+        public java.util.Optional<byte[]> get(String key) {
+          try {
+            return java.util.Optional.of(
+                client.getObjectAsBytes(r -> r.bucket(bucket).key(key)).asByteArray());
+          } catch (software.amazon.awssdk.services.s3.model.NoSuchKeyException e) {
+            return java.util.Optional.empty();
+          } catch (SdkException e) {
+            throw PmartException.dependencyUnavailable("증빙 사진 저장소에 연결할 수 없습니다.", e);
+          }
+        }
+
+        @Override
         public boolean delete(String key) {
           try {
             client.deleteObject(r -> r.bucket(bucket).key(key));

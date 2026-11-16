@@ -157,6 +157,17 @@ public class ExecutionController implements ExecutionApi {
     return ResponseEntity.ok(views.delivery(service.view(deliveryId)));
   }
 
+  /** 증빙 사진 보기(2026-11-16) — 앱·브라우저가 남기지 않게 no-store·private. */
+  @Override
+  public ResponseEntity<org.springframework.core.io.Resource> getEvidencePhoto(
+      String deliveryId, String photoRef) {
+    ExecutionService.PhotoFile f = service.photoFile(deliveryId, photoRef);
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore().cachePrivate())
+        .contentType(org.springframework.http.MediaType.parseMediaType(f.contentType()))
+        .body(new org.springframework.core.io.ByteArrayResource(f.bytes()));
+  }
+
   /** 라이더용 전달지(BR-24) — 개인정보라 응답을 저장하지 않게 no-store. */
   @Override
   public ResponseEntity<DropInfo> getDeliveryDropInfo(String deliveryId) {

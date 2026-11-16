@@ -6,6 +6,9 @@ public interface EvidencePhotoStorage {
   /** 같은 키로 다시 올리면 덮어쓴다(같은 요청의 재시도). */
   void put(String key, byte[] bytes, String contentType);
 
+  /** 원본 읽기(사진 보기 — 2026-11-16). 없으면 empty, 장애는 DEPENDENCY_UNAVAILABLE. */
+  java.util.Optional<byte[]> get(String key);
+
   /**
    * 참조가 없는 객체 지우기({@link PhotoSweeper}) — 던지지 않는다. @return 지웠으면(또는 이미 없으면) true, 실패면 false(다음 정리 때
    * 다시)
