@@ -49,6 +49,8 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 | `/reviews`·`/products/{id}/reviews`·`/internal/reviews/{id}` | **review 0.2.0(새, PC 2 LAN 8108 — ADR-0063)** | 고객 리뷰. 운영자 숨김·신고는 사용자 결정으로 **없음**(정책 승인 전) — 백오피스 리뷰 화면을 만들지 않는다 |
 | `/me/notifications` | **notification 0.2.0(ADR-0064)** | 고객 앱 알림함만. 직원·라이더 알림 없음 — 사건 알림(§4-4)을 만들 때 여기를 쓸지는 그때 |
 
+- **11-16 오후 PC 2 가 더한 것(PR 대기, LAN 미배포)**: case 0.5.0 — 사가·결제 이상(RECONCILIATION·PAYMENT_UNKNOWN, 관리자만, 1시간)·배차 실패(DISPATCH_FAILED, 지원센터, 10분, V5), PR #21. 문의 관리자 보기(0.4.2) PR #20. 클라이언트 PR #11·#13. **백오피스 웹(backoffice·hr-backoffice·mfc-backoffice·web-common)은 같은 PC 의 다른 Claude 세션이 맡는다**(사용자 확정 — 이 문서를 읽는 백엔드 세션은 handoff 로 요청).
+
 ## 3. 클라이언트 상태와 보낸 요청
 
 - 지금 LAN `web/backoffice` 빌드: 역할별 메뉴, 고객센터·라이더 운영 메뉴(클라이언트 fe8d2fb, index-Dyq2y9wh.js — https://192.168.0.40), 상품 메뉴 OPERATOR_ADMIN 도. 서빙 PC 4 nginx 443, 올리기는 PC 1 `lan.sh publish-backoffice <dist>`(인사팀 앱은 `publish-hr-backoffice`, 8444).
@@ -72,7 +74,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 1. **받은 화면 확인** — §3 표의 요청은 지금 클라이언트 쪽이 반영한다. 반영된 빌드가 LAN 에 올라오면(PC 1 `publish-backoffice`) 시험 계정으로 확인하고(§6), 빠진 것만 이어서 고친다. 이 목록 밖의 새 화면부터가 PC 2 일.
 2. **case R-3** — ✅ **2026-11-16 PC 2 구현(계약 0.5.0, PR 대기 — 기한 1시간·"이상만"·멈춘 사가 안 함, `service-requests/case-service.md` R-3)**. 원래 내용: 사가·결제 이상을 사건으로(`ReconciliationRequired`·`CompensationExecuted`·`PaymentResultUnknown`·`PaymentMismatch` 구독 → RECONCILIATION·PAYMENT_UNKNOWN 사건, 담당 OPERATOR_ADMIN). 처리 기한은 그때 사용자에게. 생기면 처리 대기(BO-12)와 겹치지 않게 — 사건은 알림·기록, 조치는 처리 대기 버튼.
 3. 배송 쪽 연결이 오면 확인: delivery-execution 이 `CaseOpened`·`CaseClosed` 로 도움요청에 사건 번호 붙이기(요청 DE-CASE), dispatch 가 `MisdeliveryConfirmed` 로 회수 배차(DD-2) — PC 5 작업. 그 뒤 execution 의 임시 "도움요청 처리함 닫기"(BOD-4) 정리.
-4. 나중: MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
+4. 나중(배차 실패 사건은 11-16 PR #21 로 됨): MFC 인계 거절·중지 실패 목록(필요하면 PC 3 에 요청 — 사용자가 정함), bff 의 다른 화면(`/views/*` 501), 사건 알림.
 5. 고객센터 문의 답변을 바꿀 때(`InquiryService.reply`) **`InquiryAnswered` 발행을 지킨다** — 고객 알림함이 이것만 보고 "답변이 등록되었어요"를 쌓는다(notification 이 구독, PC 1). 리뷰·알림 백오피스 화면은 정책이 정해질 때(리뷰 숨김·신고는 사용자 결정 "이번엔 뺌").
 - R-2(진행 중 주문 고객센터 취소)는 ADR-0060 으로 거둠 — 만들지 않는다.
 
