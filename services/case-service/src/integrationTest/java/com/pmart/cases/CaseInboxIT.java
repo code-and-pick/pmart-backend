@@ -1115,14 +1115,22 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         "ReturnDelivered",
         recovery,
         Map.of(
-            "returnPickupId", "RP-1",
-            "deliveryId", recovery,
-            "mfcId", "MFC-1",
-            "lines", lines,
-            "deliveredAt", "2026-11-16T03:30:00Z",
-            "purpose", "MISDELIVERY_RECOVERY",
-            "caseId", caseId,
-            "originDeliveryId", deliveryId),
+            "returnPickupId",
+            "RP-1",
+            "deliveryId",
+            recovery,
+            "mfcId",
+            "MFC-1",
+            "lines",
+            lines,
+            "deliveredAt",
+            "2026-11-16T03:30:00Z",
+            "purpose",
+            "MISDELIVERY_RECOVERY",
+            "caseId",
+            caseId,
+            "originDeliveryId",
+            deliveryId),
         execution);
 
     await(
@@ -1136,7 +1144,8 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     assertThat(detail.path("refs").toString()).contains("recoveryDeliveryId", recovery);
     assertThat(detail.path("refs").toString()).doesNotContain("DLV-PLAIN");
     assertThat(detail.path("history").findValuesAsString("action"))
-        .containsSubsequence("OPENED", "RECOVERY_CREATED", "RECOVERY_PICKED_UP", "RECOVERY_RETURNED");
+        .containsSubsequence(
+            "OPENED", "RECOVERY_CREATED", "RECOVERY_PICKED_UP", "RECOVERY_RETURNED");
     assertThat(
             count(
                 "SELECT count(*) FROM case_history WHERE case_id = ? AND action LIKE 'RECOVERY_%'",
