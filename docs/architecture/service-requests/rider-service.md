@@ -29,3 +29,8 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 - **계약과 어긋난 곳(구현 때 고칠 것)**: 지금 `rider-service.yaml` 가입 설명은 "전화 본인확인 후, 면허·주민번호 중복 차단", `422 PHONE_NOT_VERIFIED(auth 본인확인 미완료)` — 결정 G(본인확인 없음, 전화번호 중복 확인만)와 다르다. **사용자 결정(2026-11-10): 가입 때 면허·주민번호를 받지 않고, 중복 확인은 전화번호만 한다.** 구현 때 계약에서 `PHONE_NOT_VERIFIED` 와 면허·주민번호 중복 차단 문구를 빼고, 전화번호 중복은 `409` 로 둔다.
 - **나중**: 정지(`RiderRestricted`)를 rider-auth-service 가 받아 세션을 끊는 일(ADR-0054 ⑤ 차단 목록).
 - 근거: `docs/adr/0054-auth-split-keycloak-staff-rider-auth-service.md` 결정 G, `docs/adr/0055-google-login-id-token-only-customer-rider.md`, `contracts/openapi/rider-auth-service.yaml`.
+
+## 확인 요청 (2026-11-16, 보낸 영역 backoffice) — LAN 라이더 찾기 0명
+- **본 것**: LAN 백오피스 "라이더 찾기"(`GET /api/v1/riders?size=20&page=0&sort=JOINED_DESC`, BOD-3)가 조건 없이 200 이지만 `items` 0개 — OPERATOR_ADMIN(`claude-dev`)·RIDER_OPS(`test-cs-rider`) 둘 다.
+- **궁금한 것**: LAN rider-service 에 가입한 라이더 프로필이 정말 없는가(시험 라이더 토큰 `RD-claude-*` 만 쓰고 가입은 안 했는가), 아니면 목록 조회가 비는 다른 이유가 있는가. 없다면 백오피스 확인용 시험 라이더 한두 명이 있으면 좋겠다(라이더 상세·원문 열람·제한 화면을 실서버로 볼 수 없다).
+- 급하지 않음 — 화면은 목 모드 시험으로는 확인됨.
