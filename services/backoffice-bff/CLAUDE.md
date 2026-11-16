@@ -37,7 +37,7 @@
 - 주소 `pmart.bff.execution-base-url`(기본 `http://delivery-execution-service:8405`)·`dispatch-base-url`(8404)·`claim-base-url`(8204)·`case-base-url`(8506).
 
 ## 실시간 배송 현황 (2026-11-16, 배송 원문 §10.1 — 계약 0.3.0)
-- `GET /views/live-delivery?mfcId=&state=&size=&cursor=`(`application/LiveDeliveryView`): 역할은 통합 조회와 같다(`UnifiedLookupView.requireRole`). mfcId 비우면 모든 센터.
+- `GET /views/live-delivery?mfcId=&state=&size=&cursor=`(`application/LiveDeliveryView`): 역할은 통합 조회와 같은 셋(모든 센터) + **MFC_SUPERVISOR(0.3.1 — 자기 센터로 고정, `centerFor`: 비우면 하나뿐인 자기 센터, 다른 센터 403, 여럿이면 400)**. mfcId 비우면 모든 센터(셋만).
 - state 비우면 끝나지 않은 배송(`ACTIVE_STATES` 9개)을 delivery-execution 에서 상태마다 읽어 생긴 순으로 합쳐 size(≤50)건 — 쪽 넘김 없음, 넘으면 `truncated`. state 를 주면 원천 커서 그대로.
 - 배송마다 delivery-dispatch 배차를 한 번(배차 장애면 그 칸 state null·UNKNOWN), 열린 사건은 case `/cases?size=200` 한 번으로 읽어 배송 번호(subjectRef·refs deliveryId)로 잇는다. promisedAt = 배차 arrivalWindow 의 date+end(Asia/Seoul). latestEta 는 아직 null(tracking 미연결).
 

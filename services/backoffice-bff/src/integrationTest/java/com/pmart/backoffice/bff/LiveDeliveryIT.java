@@ -204,4 +204,27 @@ class LiveDeliveryIT {
     assertThat(live(CS, "state=NOPE").status()).isEqualTo(400);
     assertThat(live(CS, "cursor=c1").status()).as("상태 없이 커서").isEqualTo(400);
   }
+
+  /** 센터 관리자(2026-11-16 사용자 "추천대로"): 자기 센터로 고정 — 비우면 자기 센터, 다른 센터 403, 센터 없으면 403, 여럿이면 400. */
+  @Test
+  void mfcSupervisorIsPinnedToOwnCenter() {
+    String sup = TestJwt.operator("op-sup", List.of("MFC_SUPERVISOR"), List.of("MFC-1"));
+    Res own = live(sup, "state=ASSIGNED");
+    assertThat(own.status()).as(own.body().toString()).isEqualTo(200);
+    assertThat(own.body().path("items").findValuesAsString("deliveryId")).containsExactly("DLV-A");
+    execution.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/deliveries"))
+            .withQueryParam("mfcId", equalTo("MFC-1"))
+            .withHeader("Authorization", equalTo("Bearer " + sup)));
+    assertThat(live(sup, "mfcId=MFC-2").status()).as("다른 센터").isEqualTo(403);
+    assertThat(live(TestJwt.operator("op-sup0", List.of("MFC_SUPERVISOR"), List.of()), "").status())
+        .isEqualTo(403);
+    assertThat(
+            live(
+                    TestJwt.operator(
+                        "op-sup2", List.of("MFC_SUPERVISOR"), List.of("MFC-1", "MFC-3")),
+                    "")
+                .status())
+        .isEqualTo(400);
+  }
 }

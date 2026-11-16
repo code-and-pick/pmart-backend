@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.3.0
+  version: 0.3.1
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -276,6 +276,7 @@ paths:
       description: |
         0.3.0(2026-11-16 사용자 "백오피스용부터 추천대로" — 배송 업무 원문 §10.1 "실시간 배송 현황", §1 고객센터·운영 관리자의 배송 관제 화면):
         역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(그 밖 403) — 원천은 호출한 직원 토큰으로 다시 판정(이 셋은 모든 센터).
+        MFC_SUPERVISOR(센터 관리자, 0.3.1 — 2026-11-16 사용자 "추천대로", 배송 원문 §1 점포 관리자·§3.6)는 **자기 센터(토큰 centers)로 고정** — mfcId 를 비우면 하나뿐인 자기 센터(여럿이면 400), 다른 센터 403. 열린 사건은 case 가 그 직원에게 보이는 것(자기 센터 배차 실패)만.
         mfcId 를 비우면 모든 센터. state(delivery-execution ExecutionState 하나)를 비우면 **끝나지 않은 배송**(UNASSIGNED·ASSIGNED·ARRIVED_AT_STORE·
         PICKED_UP·ARRIVED_AT_CUSTOMER·FAILURE_REPORTED·SUSPENDED·RETURN_IN_PROGRESS·RETURN_PICKED_UP)을 상태마다 읽어 생긴 순(오래된 것 먼저)으로 합쳐 size 건까지
         (size 최대 50) — 이때 cursor 는 없고, 더 있으면 truncated=true(상태나 센터로 좁혀 다시 본다). state 를 주면 그 상태만, page.nextCursor 로 다음 쪽.

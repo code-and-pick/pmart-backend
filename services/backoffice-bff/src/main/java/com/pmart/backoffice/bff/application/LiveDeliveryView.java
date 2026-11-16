@@ -29,7 +29,8 @@ import tools.jackson.databind.JsonNode;
  * 실시간 배송 현황(2026-11-16 사용자 "백오피스용부터 추천대로" — 배송 업무 원문 §10.1, 계약 0.3.0).
  *
  * <ul>
- *   <li>역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(통합 조회와 같다). 원천은 호출한 직원 토큰으로 다시 판정.
+ *   <li>역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(모든 센터) 또는 MFC_SUPERVISOR(자기 센터로 고정 — 2026-11-16). 원천은
+ *       호출한 직원 토큰으로 다시 판정.
  *   <li>state 를 비우면 끝나지 않은 배송을 상태마다 읽어 생긴 순으로 합쳐 size 건까지(넘으면 truncated). state 를 주면 그 상태만 원천 쪽
  *       커서로.
  *   <li>배송마다 배차를 한 번 읽고, 열린 사건은 한 번에 읽어 배송 번호로 잇는다. 원천마다 따로 표시 — 실패는 unavailableSources, 0건으로 바꾸지
@@ -82,7 +83,7 @@ public class LiveDeliveryView {
 
   public Map<String, Object> view(
       @Nullable String mfcId, @Nullable String state, int size, @Nullable String cursor) {
-    UnifiedLookupView.requireRole();
+    PmartPrincipal p = requireViewer();
     String token =
         PmartPrincipal.currentTokenValue()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자 토큰이 필요합니다."));
@@ -94,7 +95,7 @@ public class LiveDeliveryView {
       throw new PmartException(
           ErrorCode.VALIDATION_FAILED, "cursor 는 state 를 줄 때만 씁니다(끝나지 않은 배송 전부는 쪽 넘김 없음).");
     }
-    String mfc = blankToNull(mfcId);
+    String mfc = centerFor(p, blankToNull(mfcId));
     int n = Math.min(Math.max(size, 1), MAX_SIZE);
     Instant now = clock.instant();
     Set<Source> used = EnumSet.noneOf(Source.class);
@@ -227,6 +228,43 @@ public class LiveDeliveryView {
     out.put("truncated", truncated);
     out.put("page", page);
     return out;
+  }
+
+  static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
+
+  /**
+   * 볼 수 있는 직원 — 통합 조회와 같은 셋(모든 센터) 또는 센터 관리자(자기 센터만, 2026-11-16 사용자 "추천대로" — 배송 원문 §1 점포 관리자·§3.6).
+   */
+  private static PmartPrincipal requireViewer() {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "직원만 쓸 수 있는 화면입니다."));
+    if (UnifiedLookupView.ROLES.stream().noneMatch(p::hasRole) && !p.hasRole(MFC_SUPERVISOR)) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "이 화면을 볼 권한이 없습니다.");
+    }
+    return p;
+  }
+
+  /** 센터 관리자만 가진 직원은 자기 센터로 고정 — 다른 센터 403, 비우면 하나뿐인 자기 센터(여럿이면 400). */
+  static @Nullable String centerFor(PmartPrincipal p, @Nullable String mfcId) {
+    if (UnifiedLookupView.ROLES.stream().anyMatch(p::hasRole)) {
+      return mfcId;
+    }
+    List<String> mine = p.centerScope();
+    if (mfcId != null) {
+      if (!mine.contains(mfcId)) {
+        throw new PmartException(ErrorCode.FORBIDDEN, "자기 센터만 볼 수 있습니다.");
+      }
+      return mfcId;
+    }
+    if (mine.size() == 1) {
+      return mine.get(0);
+    }
+    if (mine.isEmpty()) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "소속 센터가 없습니다.");
+    }
+    throw new PmartException(ErrorCode.VALIDATION_FAILED, "센터가 여럿이면 mfcId 를 골라 주세요.");
   }
 
   private @Nullable JsonNode call(
