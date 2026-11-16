@@ -29,5 +29,12 @@
 - `POST /commands/{targetService}/{command}`: 지금은 `order-orchestration-service/saga-requery`(REQUERY_RESULT)·`saga-resolve`(MARK_RESOLVED)만 — targetRef = sagaId, reason 은 saga-resolve 만 필수(saga-requery 는 없으면 기본 문구), operatorId = 토큰 주체. 대상 4xx 는 코드 그대로, 그 밖 대상·명령 422 UNSUPPORTED_ACTION. 승인 없음(돈·재고를 움직이지 않는 조치, 사용자 결정).
 - 주소 `pmart.bff.orchestration-base-url`(기본 `http://order-orchestration-service:8202`)·`order-base-url`(기본 `http://order-service:8201`).
 
+## 통합 조회 (2026-11-16, BO-11 — 계약 0.3.0)
+- `GET /views/unified-lookup?q=&kind=`(`application/UnifiedLookupView`, `infrastructure/LookupClients`): 역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS. 원천 다섯(order 직원용 주문·delivery-execution 배송·delivery-dispatch 배차·claim 클레임·case 열린 사건)을 **운영자 토큰 전달**로 읽어 `matches` 에 원천마다 따로 싣는다(상태를 합치지 않음).
+- 찾는 값: 주문·배송·사건·고객 ID(완전 일치), `kind` 비우면 접두어(ORD-·DLV-·CASE-·CU-). 배송·사건은 그 주문으로 잇는다. 고객 ID 는 주문 목록만. TRANSFER·TRIP·모르는 값은 422 UNSUPPORTED_LOOKUP(전화번호 검색 안 함).
+- 원천 실패·403 은 `unavailableSources`(0건으로 바꾸지 않음), 404 는 항목 없음. summary 는 원천 필드 중 **개인정보가 아닌 것만 고른 목록**(`*_FIELDS`) — 배송지·메모·연락처(가린 값 포함)는 넣지 않는다. 찾는 값은 로그에 남기지 않는다.
+- 배송은 앞 10개까지 배차·사건을 더 읽는다. 아직 없음: MFC 현장(PC 3 API), 고객 문의(주문으로 거르는 API 없음), 닫힌 사건.
+- 주소 `pmart.bff.execution-base-url`(기본 `http://delivery-execution-service:8405`)·`dispatch-base-url`(8404)·`claim-base-url`(8204)·`case-base-url`(8506).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.
+3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.

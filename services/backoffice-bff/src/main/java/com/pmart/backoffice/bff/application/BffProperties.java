@@ -9,18 +9,30 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param approvalBaseUrl approval-service(승인함)
  * @param orchestrationBaseUrl order-orchestration-service(처리 대기 — 멈춘 사가·수동 조치, 2026-11-16 BO-12)
- * @param orderBaseUrl order-service(처리 대기 — 이행 확인 필요, 2026-11-16)
+ * @param orderBaseUrl order-service(처리 대기 — 이행 확인 필요, 통합 조회 — 직원용 주문)
+ * @param executionBaseUrl delivery-execution-service(통합 조회 — 배송, 2026-11-16)
+ * @param dispatchBaseUrl delivery-dispatch-service(통합 조회 — 배차, 2026-11-16)
+ * @param claimBaseUrl claim-service(통합 조회 — 클레임, 2026-11-16)
+ * @param caseBaseUrl case-service(통합 조회 — 사건, 2026-11-16)
  */
 @ConfigurationProperties(prefix = "pmart.bff")
 public record BffProperties(
     @Nullable String approvalBaseUrl,
     @Nullable String orchestrationBaseUrl,
-    @Nullable String orderBaseUrl) {
+    @Nullable String orderBaseUrl,
+    @Nullable String executionBaseUrl,
+    @Nullable String dispatchBaseUrl,
+    @Nullable String claimBaseUrl,
+    @Nullable String caseBaseUrl) {
 
   public BffProperties {
     approvalBaseUrl = or(approvalBaseUrl, "http://approval-service:8505");
     orchestrationBaseUrl = or(orchestrationBaseUrl, "http://order-orchestration-service:8202");
     orderBaseUrl = or(orderBaseUrl, "http://order-service:8201");
+    executionBaseUrl = or(executionBaseUrl, "http://delivery-execution-service:8405");
+    dispatchBaseUrl = or(dispatchBaseUrl, "http://delivery-dispatch-service:8404");
+    claimBaseUrl = or(claimBaseUrl, "http://claim-service:8204");
+    caseBaseUrl = or(caseBaseUrl, "http://case-service:8506");
   }
 
   private static String or(@Nullable String v, String fallback) {
