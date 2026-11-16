@@ -30,7 +30,7 @@
   - 팀 공용 목록 `GET /cases`(state 비우면 열린 것, P1·기한 순, unassigned·overdue·assigneeGroup) → 집기 `POST …/assignments`(자기 자신만, 관리자는 다른 사람에게) → 닫기 `POST …/closures`(resolution·summary 필수, 남이 맡은 것은 관리자만). 보기 OPERATOR_ADMIN·RIDER_OPS·CS_AGENT(배송 쪽, CS 는 보기만).
   - 처리 기한 `pmart.cases.sla.[종류]`(맵 키는 `"[RIDER_HELP]"` 처럼 — `_` 를 지키려고) — 표시만(`overdue`), 알림 없음. 값 확정(2026-11-16 사용자 — 도움요청·위치 끊김 10분, 전달 실패·오배송 30분).
   - 사건 `CaseOpened·CaseAssigned·CaseClosed`(platform.case.v1). 고객 문의 행(CS_INQUIRY)은 `/cases` 에 나오지 않는다.
-  - 아직: 행위 요청(501). 재개 0.6.0, 이관 0.7.0, 의무 0.8.0.
+  - 아직: 행위 요청·CS 접수·도움요청 접수(501). 재개 0.6.0, 이관 0.7.0, 의무 0.8.0, 교대 0.9.0.
 - **사가·결제 이상(2026-11-16, 계약 0.5.0 — R-3, 사용자: 기한 1시간·"이상만"·멈춘 사가는 지금 안 함)**: `CaseInboxService.onOrderException`·`CaseRules.orderExceptionKind`. 마이그레이션 없음(같은 표).
   - 구독 `sagaEvents`(order.saga.v1 `ReconciliationRequired` 전부·`CompensationExecuted` 중 result ≠ SUCCESS), `paymentEvents`(order.payment.v1 `PaymentMismatch` 전부·`PaymentResultUnknown` 중 escalated=true). 앞 셋 → RECONCILIATION, 결제 불명 → PAYMENT_UNKNOWN. 정상 보상·조회 중 결제 불명은 버린다.
   - 주문(없으면 사가·결제 시도) + 종류마다 열린 사건 하나(dedupe `<종류>:<대상>`). 재발은 RECURRED 이력, 결제 불명 반복(15분마다)은 이력도 없음. refs = orderId·sagaId·paymentAttemptId·resourceId, 금액·상세 없음.
@@ -61,6 +61,11 @@
   - 목록 `GET /obligations?owner=&state=&caseId=`(볼 수 있는 사건의 것만, 기본 열린 것, 기한·오래된 순), 단건(사건을 못 보면 404). 사건 상세 obligations·openObligationCount, 목록 openObligationCount.
   - **닫기는 열린 의무(OPEN·PARTIALLY_RESOLVED)가 있으면 409 OPEN_OBLIGATIONS**. 이력 OBLIGATION_CREATED·_ATTEMPTED·_RESOLVED, 이벤트 `ObligationCreated`·`ObligationResolved`(aggregate Obligation). 메모·근거는 표·이력에만(로그 금지).
 - **오배송 회수 진행(2026-11-16, 계약 0.8.1 — 사용자 "진행해", DD-2 연결)**: `CaseInboxService.onRecoveryProgress`. 기존 `deliveryEvents`(delivery.delivery.v1)에 `DeliveryCreated`·`ReturnPickedUp`·`ReturnDelivered` 를 더함(설정 변경 없음) — **purpose MISDELIVERY_RECOVERY + caseId 만**(일반 배송·고객 반품 회수는 버림, 사건이 없으면 로그만). 오배송 사건 refs 에 `recoveryDeliveryId`(한 번만), 이력 RECOVERY_CREATED·RECOVERY_PICKED_UP·RECOVERY_RETURNED. **상태 그대로 — 자동 종결 없음, 후속 처리(의무) 자동 해소 없음**(사람이 이력을 보고 처리).
+
+- **교대 인수인계(2026-11-16, 계약 0.9.0, V8 — 사용자 "진행해 줘", 업무 원문 BO-27 최대한 그대로)**: `ShiftHandoverService`·`ShiftHandoverStore`(표 `shift_handover`·`shift_handover_item`), `IntakesController`(CS 접수·도움요청 접수는 아직 501), `CaseInboxService.handOver`.
+  - 작성 `POST /shift-handovers`: 전임 본인(또는 관리자 — 전임 부재, fromOperatorId), group DELIVERY_OPS·ORDER_OPS 필수·centerId 선택, 건마다 **다음 조치 필수**·확인 기한 선택. 건은 열려 있고 **전임이 맡았고** 그 group 이어야(422 NOT_HANDOVERABLE), 다른 진행 중 인계서에 든 건 409 CASE_IN_HANDOVER(부분 유일 색인). 담당은 아직 그대로, 이력 HANDOVER_REQUESTED, 팀 열린 건 스냅샷(teamSnapshot ≤200).
+  - 수락 `…/acceptances`: **후임 본인만**(관리자도 못 함), excludedCaseIds 는 EXCLUDED(전임 그대로 — 미인수). 그사이 바뀐 건 SKIPPED_CHANGED, 후임이 못 다루면 SKIPPED_NOT_ALLOWED, 나머지 ACCEPTED(담당 이동·이력 HANDED_OVER "전임 → 후임: 다음 조치"·CaseAssigned). COMPLETED + `ShiftHandoverCompleted`(openCases = 받은 건, notReceivedCases).
+  - 취소 `…/cancellations`(수락 전, 전임·관리자 — 항목 CANCELLED 로 풀림), 조회·목록(전임·후임·관리자, `unreceived=true` = 수락 전이거나 빠진 건 있음 — 원문 "미인수 상신"). 기한 값 없음, **근무 확인 없음**(본사 근무표 없음 — 역할만), 알림 없음.
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

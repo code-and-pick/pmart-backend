@@ -1160,4 +1160,226 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .as("회수 배송 번호는 한 번만")
         .isEqualTo(2);
   }
+
+  String misdeliveryCase(String prefix) {
+    return send(
+            "POST",
+            cs,
+            "/cases",
+            Map.of(
+                "kind", "MISDELIVERY",
+                "subjectType", "DELIVERY",
+                "subjectRef", prefix + "-" + UUID.randomUUID().toString().substring(0, 8),
+                "summary", "교대 시험"))
+        .body()
+        .path("caseId")
+        .asString();
+  }
+
+  void claim(String token, String caseId, String who) {
+    assertThat(
+            send("POST", token, "/cases/" + caseId + "/assignments", Map.of("assigneeId", who))
+                .status())
+        .isEqualTo(200);
+  }
+
+  Map<String, Object> item(String caseId, String next) {
+    return Map.of("caseId", caseId, "nextAction", next);
+  }
+
+  /**
+   * 교대 인수인계(0.9.0 — 2026-11-16 사용자 "진행해 줘", BO-27): 전임이 맡은 건을 다음 조치와 함께 작성(담당 그대로) → 후임 본인이 건별 수락 —
+   * 받은 건은 담당 이동·HANDED_OVER, 뺀 건은 EXCLUDED(미인수), 그사이 바뀐 건 SKIPPED_CHANGED, 다룰 수 없는 후임은 SKIPPED_NOT_ALLOWED.
+   * 취소하면 그 건을 다시 넣을 수 있다.
+   */
+  @Test
+  void shiftHandoverIsAcceptedPerCaseBySuccessor() {
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String a = misdeliveryCase("DLV-HA");
+    String b = misdeliveryCase("DLV-HB");
+    String d = misdeliveryCase("DLV-HD");
+    String other = misdeliveryCase("DLV-HO");
+    claim(ops, a, "op-ops-1");
+    claim(ops, b, "op-ops-1");
+    claim(ops, d, "op-ops-1");
+    claim(ops2, other, "op-ops-2");
+
+    // 작성 검사
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    "/shift-handovers",
+                    Map.of(
+                        "group", "DELIVERY_OPS",
+                        "toOperatorId", "op-ops-2",
+                        "items", List.of(Map.of("caseId", a, "nextAction", " "))))
+                .status())
+        .as("다음 조치 없음")
+        .isEqualTo(400);
+    Res notMine =
+        send(
+            "POST",
+            ops,
+            "/shift-handovers",
+            Map.of(
+                "group", "DELIVERY_OPS",
+                "toOperatorId", "op-ops-2",
+                "items", List.of(item(other, "x"))));
+    assertThat(notMine.status()).isEqualTo(422);
+    assertThat(notMine.body().path("code").asString()).isEqualTo("NOT_HANDOVERABLE");
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    "/shift-handovers",
+                    Map.of(
+                        "group", "ORDER_OPS",
+                        "toOperatorId", "op-ops-2",
+                        "items", List.of(item(a, "x"))))
+                .status())
+        .as("다른 업무")
+        .isEqualTo(422);
+    assertThat(
+            send(
+                    "POST",
+                    ops2,
+                    "/shift-handovers",
+                    Map.of(
+                        "group", "DELIVERY_OPS",
+                        "fromOperatorId", "op-ops-1",
+                        "toOperatorId", "op-ops-2",
+                        "items", List.of(item(a, "x"))))
+                .status())
+        .as("남의 인계서는 관리자만")
+        .isEqualTo(403);
+
+    // 작성 — 담당은 그대로
+    Res created =
+        send(
+            "POST",
+            ops,
+            "/shift-handovers",
+            Map.of(
+                "group", "DELIVERY_OPS",
+                "toOperatorId", "op-ops-2",
+                "items",
+                    List.of(
+                        Map.of(
+                            "caseId", a,
+                            "nextAction", "고객 재연락 후 회수 확인",
+                            "checkDueAt", "2026-11-16T09:00:00Z"),
+                        item(b, "회수 확인"),
+                        item(d, "사진 다시 확인")),
+                "note", "야간 교대"));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String h = created.body().path("shiftHandoverId").asString();
+    assertThat(created.body().path("state").asString()).isEqualTo("PENDING");
+    assertThat(created.body().path("unreceived").asBoolean()).isTrue();
+    assertThat(created.body().path("teamSnapshot").findValuesAsString("caseId")).contains(a, other);
+    assertThat(send("GET", ops, "/cases/" + a, null).body().path("assigneeId").asString())
+        .as("수락 전엔 전임")
+        .isEqualTo("op-ops-1");
+    Res dup =
+        send(
+            "POST",
+            admin,
+            "/shift-handovers",
+            Map.of(
+                "group", "DELIVERY_OPS",
+                "fromOperatorId", "op-ops-1",
+                "toOperatorId", "op-admin",
+                "items", List.of(item(a, "x"))));
+    assertThat(dup.status()).isEqualTo(409);
+    assertThat(dup.body().path("code").asString()).isEqualTo("CASE_IN_HANDOVER");
+
+    // 보기·미인수 목록
+    assertThat(send("GET", cs, "/shift-handovers/" + h, null).status()).isEqualTo(404);
+    assertThat(
+            send("GET", admin, "/shift-handovers?unreceived=true", null)
+                .body()
+                .path("items")
+                .findValuesAsString("shiftHandoverId"))
+        .contains(h);
+
+    // 그사이 b 는 전임이 끝냄
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    "/cases/" + b + "/closures",
+                    Map.of("resolution", "RESOLVED", "summary", "회수 끝"))
+                .status())
+        .isEqualTo(200);
+
+    // 수락 — 후임 본인만, 건별
+    String acc = "/shift-handovers/" + h + "/acceptances";
+    assertThat(send("POST", admin, acc, Map.of()).status()).as("관리자도 대신 못 함").isEqualTo(403);
+    assertThat(send("POST", ops, acc, Map.of()).status()).as("전임").isEqualTo(403);
+    Res done = send("POST", ops2, acc, Map.of("excludedCaseIds", List.of(d)));
+    assertThat(done.status()).as(done.body().toString()).isEqualTo(200);
+    assertThat(done.body().path("state").asString()).isEqualTo("COMPLETED");
+    Map<String, String> outcomes = new LinkedHashMap<>();
+    done.body()
+        .path("items")
+        .forEach(i -> outcomes.put(i.path("caseId").asString(), i.path("outcome").asString()));
+    assertThat(outcomes)
+        .containsEntry(a, "ACCEPTED")
+        .containsEntry(b, "SKIPPED_CHANGED")
+        .containsEntry(d, "EXCLUDED");
+    assertThat(done.body().path("unreceived").asBoolean()).as("빠진 건 있음").isTrue();
+    JsonNode caseA = send("GET", ops2, "/cases/" + a, null).body();
+    assertThat(caseA.path("assigneeId").asString()).isEqualTo("op-ops-2");
+    assertThat(caseA.path("history").toString())
+        .contains("HANDOVER_REQUESTED", "HANDED_OVER", "고객 재연락 후 회수 확인");
+    assertThat(send("GET", ops, "/cases/" + d, null).body().path("assigneeId").asString())
+        .as("뺀 건은 전임 그대로")
+        .isEqualTo("op-ops-1");
+    assertThat(outbox(a, "CaseAssigned")).isEqualTo(2);
+    assertThat(
+            count(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'ShiftHandoverCompleted'",
+                h))
+        .isEqualTo(1);
+    assertThat(send("POST", ops2, acc, Map.of()).status()).as("이미 끝남").isEqualTo(409);
+
+    // 취소하면 그 건을 다시 넣을 수 있다 / 다룰 수 없는 후임(상담원)은 건너뜀
+    String h2 =
+        send(
+                "POST",
+                ops,
+                "/shift-handovers",
+                Map.of(
+                    "group", "DELIVERY_OPS",
+                    "toOperatorId", "op-ops-2",
+                    "items", List.of(item(d, "사진 다시 확인"))))
+            .body()
+            .path("shiftHandoverId")
+            .asString();
+    assertThat(send("POST", ops2, "/shift-handovers/" + h2 + "/cancellations", null).status())
+        .as("후임은 취소 못 함")
+        .isEqualTo(403);
+    Res cancelled = send("POST", ops, "/shift-handovers/" + h2 + "/cancellations", null);
+    assertThat(cancelled.body().path("state").asString()).isEqualTo("CANCELLED");
+    String h3 =
+        send(
+                "POST",
+                ops,
+                "/shift-handovers",
+                Map.of(
+                    "group", "DELIVERY_OPS",
+                    "toOperatorId", "op-cs-1",
+                    "items", List.of(item(d, "상담원에게"))))
+            .body()
+            .path("shiftHandoverId")
+            .asString();
+    Res notAllowed = send("POST", cs, "/shift-handovers/" + h3 + "/acceptances", Map.of());
+    assertThat(notAllowed.status()).isEqualTo(200);
+    assertThat(notAllowed.body().path("items").get(0).path("outcome").asString())
+        .isEqualTo("SKIPPED_NOT_ALLOWED");
+    assertThat(send("GET", ops, "/cases/" + d, null).body().path("assigneeId").asString())
+        .isEqualTo("op-ops-1");
+  }
 }

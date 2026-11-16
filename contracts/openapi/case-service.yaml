@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.8.1
+  version: 0.9.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -687,7 +687,15 @@ paths:
   /shift-handovers:
     post:
       tags: [intakes]
-      summary: 교대 인수인계 기록 (BO-27; 열린 사건·의무 스냅샷, ShiftHandoverCompleted)
+      summary: 교대 인계서 작성 (BO-27 — 0.9.0)
+      x-added-in: '2026-11-16'
+      description: |
+        0.9.0(2026-11-16 사용자 "진행해 줘" — 업무 원문 BO-27 최대한 그대로):
+        - 전임이 **집은 열린 접수 건**을 건마다 **다음 조치(필수)**·확인 기한(선택)과 함께 후임에게 넘긴다("단순 담당자 이름 교체로 끝내지 않는다").
+          작성만으로는 담당이 바뀌지 않는다 — **후임이 수락해야** 교대 완료(…/acceptances). 수락 전까지 전임이 담당.
+        - 작성: 전임 본인, 또는 관리자(전임 부재 — fromOperatorId 지정). group(업무) 필수 — DELIVERY_OPS·ORDER_OPS, centerId 선택(본사 팀은 없음).
+        - 각 건: 볼 수 있고, 열려 있고, **전임이 맡은 건**이며 그 group 의 건이어야(아니면 422 NOT_HANDOVERABLE). 다른 진행 중 인계서에 든 건 409 CASE_IN_HANDOVER.
+        - 작성 시점 그 팀의 열린 접수 건·후속 처리 요약을 teamSnapshot 으로(CloseSnapshot). 메모는 로그 금지. 알림 없음(ADR-0064).
       operationId: createShiftHandover
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -699,26 +707,68 @@ paths:
           application/json:
             schema:
               type: object
-              required: [centerId, fromOperatorId, toOperatorId]
+              required: [group, toOperatorId, items]
               properties:
+                group: { type: string, enum: [DELIVERY_OPS, ORDER_OPS] }
                 centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-                group: { type: string, enum: [CS, MFC_OPS, DELIVERY_OPS] }
-                fromOperatorId: { type: string }
+                fromOperatorId: { type: string, description: '비우면 나. 남의 것은 관리자만(전임 부재)' }
                 toOperatorId: { type: string }
-                caseIds: { type: array, items: { type: string }, description: 생략 시 담당 열린 사건 전부 }
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [caseId, nextAction]
+                    properties:
+                      caseId: { type: string }
+                      nextAction: { type: string, minLength: 1, maxLength: 500 }
+                      checkDueAt: { type: string, format: date-time }
                 note: { type: string, maxLength: 2000 }
       responses:
         '201':
-          description: 기록 (resultId = shiftHandoverId)
+          description: 작성(PENDING)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ShiftHandover' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: NOT_HANDOVERABLE(못 넘기는 건)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+    get:
+      tags: [intakes]
+      summary: 교대 인계서 목록 (0.9.0 — 관리자는 모두, 그 밖은 내가 전임·후임인 것)
+      x-added-in: '2026-11-16'
+      description: |
+        state(PENDING·COMPLETED·CANCELLED), unreceived=true 면 **미인수**(원문 BO-27 §5 "미인수 상신") — 수락 전(PENDING)이거나 수락 때 빠진 건(EXCLUDED)이
+        있는 인계서. 최근 것부터.
+      operationId: listShiftHandovers
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [PENDING, COMPLETED, CANCELLED] } }
+        - { name: unreceived, in: query, schema: { type: boolean } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ShiftHandover' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /shift-handovers/{shiftHandoverId}:
     get:
       tags: [intakes]
-      summary: 교대 인수인계 조회
+      summary: 교대 인계서 조회 (전임·후임·관리자 — 그 밖 404)
       operationId: getShiftHandover
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -730,6 +780,61 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ShiftHandover' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /shift-handovers/{shiftHandoverId}/acceptances:
+    post:
+      tags: [intakes]
+      summary: 후임 수락 — 건별 (교대 완료, ShiftHandoverCompleted — 0.9.0)
+      x-added-in: '2026-11-16'
+      description: |
+        **후임 본인만**(관리자도 대신 못 함 — 원문 "후임 수락"). 받지 않을 건은 excludedCaseIds — 그 건은 전임 담당 그대로, 미인수(EXCLUDED).
+        나머지 건마다: 그사이 닫혔거나·넘겨졌거나·담당이 바뀌었으면 건너뜀(SKIPPED_CHANGED), 후임이 그 건을 다룰 수 없는 역할이면 건너뜀(SKIPPED_NOT_ALLOWED),
+        아니면 담당을 후임으로(ACCEPTED — 이력 HANDED_OVER "다음 조치", CaseAssigned). 인계서 COMPLETED. 진행 중이 아니면 409 INVALID_STATE.
+        후임의 **근무** 확인은 하지 않는다(본사 근무표 데이터 없음 — 역할만).
+      operationId: acceptShiftHandover
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: shiftHandoverId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                excludedCaseIds: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: 완료된 인계서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftHandover' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /shift-handovers/{shiftHandoverId}/cancellations:
+    post:
+      tags: [intakes]
+      summary: 인계서 취소 (수락 전, 전임·관리자 — 0.9.0)
+      x-added-in: '2026-11-16'
+      operationId: cancelShiftHandover
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: shiftHandoverId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 취소된 인계서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftHandover' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /rider-complaints:
     post:
@@ -1057,25 +1162,46 @@ components:
         receivedAt: { type: string, format: date-time }
     ShiftHandover:
       type: object
+      x-added-in: '2026-11-16'
+      description: 교대 인계서(0.9.0 — BO-27). items = 넘기는 건과 건별 결과, teamSnapshot = 작성 시점 그 팀의 열린 건 요약(CloseSnapshot).
       properties:
         shiftHandoverId: { type: string }
-        centerId: { type: string }
         group: { type: string }
+        centerId: { type: [string, 'null'] }
         fromOperatorId: { type: string }
         toOperatorId: { type: string }
-        snapshot:
+        createdBy: { type: string }
+        state: { type: string, enum: [PENDING, COMPLETED, CANCELLED] }
+        unreceived: { type: boolean, description: '미인수 — 수락 전이거나 빠진 건이 있음' }
+        items:
           type: array
-          description: CloseSnapshot — 인계 시점 열린 사건·의무 요약
           items:
             type: object
             properties:
               caseId: { type: string }
-              state: { $ref: '#/components/schemas/CaseState' }
-              priority: { $ref: '#/components/schemas/Priority' }
-              openObligationCount: { type: integer }
               nextAction: { type: string }
-        note: { type: string }
-        completedAt: { type: string, format: date-time }
+              checkDueAt: { type: [string, 'null'], format: date-time }
+              caseStateAt: { type: string, description: 작성 시점 상태 }
+              priorityAt: { type: [string, 'null'] }
+              openObligationsAt: { type: integer }
+              outcome: { type: string, enum: [PENDING, ACCEPTED, EXCLUDED, SKIPPED_CHANGED, SKIPPED_NOT_ALLOWED, CANCELLED] }
+              resolvedAt: { type: [string, 'null'], format: date-time }
+        teamSnapshot:
+          type: array
+          description: CloseSnapshot — 작성 시점 그 팀(group)의 열린 접수 건(최대 200)
+          items:
+            type: object
+            properties:
+              caseId: { type: string }
+              kind: { type: string }
+              state: { type: string }
+              priority: { type: [string, 'null'] }
+              assigneeId: { type: [string, 'null'] }
+              openObligationCount: { type: integer }
+        note: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

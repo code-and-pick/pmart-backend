@@ -756,6 +756,29 @@ public class CaseInboxService {
         "UNSUPPORTED_ACTION", HttpStatus.UNPROCESSABLE_CONTENT, detail, false, List.of());
   }
 
+  /**
+   * 교대 수락(0.9.0 — BO-27): 담당을 후임으로. 이력 HANDED_OVER(note = 전임 → 후임: 다음 조치), CaseAssigned. 잠금·권한·상태
+   * 검사는 호출자 (ShiftHandoverService)가 한다.
+   */
+  public void handOver(CaseRow c, String toOperatorId, String actorId, String note) {
+    Instant now = now();
+    store.assign(c.caseId(), toOperatorId, "ASSIGNED", now);
+    store.history(c.caseId(), now, actorId, "HANDED_OVER", c.state(), "ASSIGNED", note);
+    CaseRow after = store.find(c.caseId()).orElseThrow();
+    Map<String, Object> m = basePayload(after);
+    m.put("assignee", toOperatorId);
+    m.put("previousAssignee", c.assigneeId());
+    m.put("assignedAt", now.toString());
+    events.publish(
+        "CaseAssigned",
+        1,
+        AGGREGATE,
+        c.caseId(),
+        after.version(),
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, actorId),
+        m);
+  }
+
   // ---------------------------------------------------------------- 공통
 
   /** 같은 종류·같은 대상의 가장 최근 닫힌 사건을 previousCaseId 로 잇는다(0.6.0 — 근거가 뒤집혔으면 사람이 그 사건을 재개). */
