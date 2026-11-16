@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-capacity-service
-  version: 0.14.0
+  version: 0.15.0
   description: |
     MFC 작업 여력(CapacitySnapshot)·CapacityHold·작업자/장비/근무/자격·작업 배정(assignment_version)·OR-Tools 계획·수령창/수용량(ReceivingCapability)·하차면 예약·운영 제한의 정본. (docs/architecture/service-map.md §5, ADR-0008)
     비정본: 재고 R(mfc-inventory; CapacityHold와 독립), 고객 도착 슬롯(delivery-capacity), 작업 실행(mfc-fulfillment/inbound).
@@ -48,6 +48,9 @@ paths:
         window 는 Asia/Seoul 정시에 시작하는 1시간 창만(아니면 400). 점유는 (mfcId, window) 단위로 센다.
         [시험 정책 2026-10-30] 주문 1건 = 수용 단위 1. 1시간 창당 수용 단위는 정책값(미설정 → 422 CONFIG_REQUIRED). demand 는 검증만 하고 환산에 쓰지 않는다.
         orderId 당 활성(HELD/CONFIRMED) Hold 는 1개 — 이미 있으면 409 HOLD_ALREADY_ACTIVE.
+        S4 예약 시간 변경(2026-11-16): `replacesHoldId` = 같은 주문·센터의 **확정** Hold → 다른 창의 새 HELD(두 창 모두 단위를 잡는다). 확정이 아니면 409 INVALID_STATE,
+        같은 창이면 422 SAME_WINDOW, 진행 중인 교체가 있으면 409 HOLD_ALREADY_ACTIVE. 새 Hold 를 확정하면 같은 트랜잭션에서 기존 Hold 가 RELEASED(reason RESCHEDULED),
+        새 Hold 가 만료·해제되면 기존은 그대로.
         업무 거절(422)은 멱등 기록에 남지 않으므로 같은 키 재전송은 다시 판정한다.
       operationId: holdCapacity
       parameters:
@@ -67,6 +70,7 @@ paths:
                 window: { type: string, description: ISO-8601 interval }
                 ttlMinutes: { type: integer, minimum: 1, maximum: 60, default: 10 }
                 demand: { $ref: '#/components/schemas/CapacityDemand' }
+                replacesHoldId: { type: string, description: 'S4 — 교체할 기존 확정 Hold(2026-11-16)' }
       responses:
         '201':
           description: HELD (resultId = holdId)

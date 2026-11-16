@@ -73,6 +73,31 @@ public class HoldStore {
         limit);
   }
 
+  /** 주문의 HELD(진행 중인 S4 교체 확인). */
+  public boolean hasHeldForOrder(String orderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM capacity_hold WHERE order_id = ? AND state = 'HELD'",
+            Integer.class,
+            orderId);
+    return n != null && n > 0;
+  }
+
+  /** S4 교체 Hold 가 바꾸는 기존 Hold. 없으면 null. */
+  public @Nullable String replacesOf(String holdId) {
+    List<String> r =
+        jdbc.queryForList(
+            "SELECT coalesce(replaces_hold_id, '') FROM capacity_hold WHERE hold_id = ?",
+            String.class,
+            holdId);
+    return r.isEmpty() || r.get(0).isEmpty() ? null : r.get(0);
+  }
+
+  public void markReplacing(String holdId, String replacesHoldId) {
+    jdbc.update(
+        "UPDATE capacity_hold SET replaces_hold_id = ? WHERE hold_id = ?", replacesHoldId, holdId);
+  }
+
   public boolean hasActiveForOrder(String orderId) {
     Integer n =
         jdbc.queryForObject(

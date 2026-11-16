@@ -48,7 +48,15 @@ public class HoldService {
 
   /** Hold 입력. demand 는 원문 그대로 저장한다(환산은 시험 정책상 1주문 = 1단위). */
   public record HoldCommand(
-      String orderId, String mfcId, String window, int ttlMinutes, Object demand) {}
+      String orderId,
+      String mfcId,
+      String window,
+      int ttlMinutes,
+      Object demand,
+      @Nullable String replacesHoldId) {}
+
+  /** S4 교체로 해제된 기존 Hold 사유(계약 해제 사유 값). */
+  public static final String REASON_RESCHEDULED = "RESCHEDULED";
 
   private final HoldStore store;
   private final RequestIdempotency idempotency;
@@ -87,8 +95,12 @@ public class HoldService {
               for (CapacityHold stale : store.expireStaleForOrder(cmd.orderId(), now)) {
                 store.bumpWindow(stale.mfcId(), stale.window(), now);
               }
-              if (store.hasActiveForOrder(cmd.orderId())) {
-                throw alreadyActive(cmd.orderId());
+              if (cmd.replacesHoldId() == null) {
+                if (store.hasActiveForOrder(cmd.orderId())) {
+                  throw alreadyActive(cmd.orderId());
+                }
+              } else {
+                replaceable(cmd, window, now);
               }
               store.lockWindow(cmd.mfcId(), window, now);
               // 운영 제한(BO-08): 접수 중지면 거절, 축소면 그 창 수용 단위를 줄인다
@@ -129,6 +141,9 @@ public class HoldService {
                       null);
               try {
                 store.insert(hold, mapper.writeValueAsString(cmd.demand()), now);
+                if (cmd.replacesHoldId() != null) {
+                  store.markReplacing(hold.holdId(), cmd.replacesHoldId());
+                }
               } catch (DuplicateKeyException e) {
                 // 같은 주문의 다른 키 요청이 동시에 먼저 들어감(활성 유일 인덱스)
                 throw alreadyActive(cmd.orderId());
@@ -145,6 +160,30 @@ public class HoldService {
                   CommandStatus.APPLIED, requestId, hold.holdId(), units, 1, false, null, now);
             })
         .value();
+  }
+
+  /** S4 교체 조건: 같은 주문·센터의 확정 Hold, 다른 창, 진행 중인 교체(HELD) 없음. 기존 Hold 는 건드리지 않는다. */
+  private void replaceable(HoldCommand cmd, HourWindow window, Instant now) {
+    CapacityHold old =
+        store.find(cmd.replacesHoldId(), false).orElseThrow(() -> notFound(cmd.replacesHoldId()));
+    if (!old.orderId().equals(cmd.orderId()) || !old.mfcId().equals(cmd.mfcId())) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "교체 대상은 같은 주문·같은 센터의 Hold 여야 합니다.");
+    }
+    if (old.effectiveState(now) != State.CONFIRMED) {
+      throw PmartException.invalidState(
+          "교체 대상 Hold 가 " + old.effectiveState(now) + " 상태입니다(확정된 Hold 만 바꿀 수 있습니다).");
+    }
+    if (old.window().equals(window)) {
+      throw new PmartException(
+          "SAME_WINDOW",
+          org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT,
+          "지금과 같은 창입니다.",
+          false,
+          List.of());
+    }
+    if (store.hasHeldForOrder(cmd.orderId())) {
+      throw alreadyActive(cmd.orderId());
+    }
   }
 
   public CapacityHold get(String holdId) {
@@ -179,6 +218,18 @@ public class HoldService {
               // 만료 시각이 지난 HELD 도 EXPIRED 로 보고 거절한다(상태 정리는 HoldExpirySweeper)
               if (state != State.HELD) {
                 throw PmartException.invalidState("확정할 수 없는 상태입니다(" + state + "): " + holdId);
+              }
+              String replaces = store.replacesOf(holdId);
+              if (replaces != null) {
+                // S4: 기존 확정 Hold 를 먼저 해제(같은 트랜잭션 — CONFIRMED 1건 색인)
+                CapacityHold old = store.find(replaces, true).orElseThrow(() -> notFound(replaces));
+                if (old.state() != State.CONFIRMED) {
+                  throw PmartException.invalidState(
+                      "교체 대상 Hold 가 " + old.state() + " 상태라 바꿀 수 없습니다(취소 등).");
+                }
+                store.close(old.holdId(), State.RELEASED, REASON_RESCHEDULED, holdId, now);
+                store.bumpWindow(old.mfcId(), old.window(), now);
+                log.info("capacity hold {} released — rescheduled to {}", old.holdId(), holdId);
               }
               store.confirm(holdId, now);
               store.bumpWindow(h.mfcId(), h.window(), now);

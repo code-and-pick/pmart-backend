@@ -358,6 +358,39 @@ class CapacityHoldsIT extends PostgresKafkaContainerSupport {
     assertThat(get("/capacity-holds/CH-none").status()).isEqualTo(404);
   }
 
+  /** S4(2026-11-16): 확정 Hold 를 두고 다른 창 새 HELD(두 창 모두 단위) → 새 Hold 확정 때 기존 RELEASED(RESCHEDULED). */
+  @Test
+  void s4ReplacementHoldsNewWindowAndReleasesOldOnConfirm() {
+    String w14 = window(14);
+    String w15 = window(15);
+    String orderId = order();
+    String old = post("/capacity-holds", holdBody(orderId, w14)).body().path("resultId").asString();
+    java.util.Map<String, Object> early = new java.util.HashMap<>(holdBody(orderId, w15));
+    early.put("replacesHoldId", old);
+    assertThat(post("/capacity-holds", early).status()).isEqualTo(409); // 확정 전
+    assertThat(confirm(old, orderId, null).status()).isEqualTo(200);
+    java.util.Map<String, Object> same = new java.util.HashMap<>(holdBody(orderId, w14));
+    same.put("replacesHoldId", old);
+    assertThat(post("/capacity-holds", same).body().path("code").asString())
+        .isEqualTo("SAME_WINDOW");
+    java.util.Map<String, Object> change = new java.util.HashMap<>(holdBody(orderId, w15));
+    change.put("replacesHoldId", old);
+    Res held = post("/capacity-holds", change);
+    assertThat(held.status()).isEqualTo(201);
+    String fresh = held.body().path("resultId").asString();
+    assertThat(snapshot(w14).body().path("availableUnits").asInt()).isEqualTo(2);
+    assertThat(snapshot(w15).body().path("availableUnits").asInt()).isEqualTo(2);
+    assertThat(post("/capacity-holds", change).body().path("code").asString())
+        .isEqualTo("HOLD_ALREADY_ACTIVE"); // 진행 중 교체
+    assertThat(confirm(fresh, orderId, null).status()).isEqualTo(200);
+    Res was = get("/capacity-holds/" + old);
+    assertThat(was.body().path("state").asString()).isEqualTo("RELEASED");
+    assertThat(was.body().path("releaseReason").asString()).isEqualTo("RESCHEDULED");
+    assertThat(get("/capacity-holds/" + fresh).body().path("state").asString())
+        .isEqualTo("CONFIRMED");
+    assertThat(snapshot(w14).body().path("availableUnits").asInt()).isEqualTo(3);
+  }
+
   @Test
   void capacityExceededAndValidation() {
     String w = window(11);

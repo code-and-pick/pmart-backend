@@ -51,7 +51,8 @@ public class CapacityController implements CapacityApi {
                 body.getMfcId(),
                 body.getWindow(),
                 body.getTtlMinutes() == null ? 10 : body.getTtlMinutes(),
-                body.getDemand()),
+                body.getDemand(),
+                body.getReplacesHoldId()),
             body);
     return ResponseEntity.status(HttpStatus.CREATED).body(command(r));
   }
