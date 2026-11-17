@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.14.2
+  version: 0.15.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -312,6 +312,8 @@ paths:
       summary: 전달 실패 확정·반려 (운영자 — 지원센터 화면 전까지 백오피스 권한자)
       description: |
         FAILURE_REPORTED 배송만. CONFIRM → FAILED + DeliveryFailed(배송 종료 — dispatch 는 CLOSED, 라이더 진행 중 수에서 빠짐). 이어지는 회수 배차는 새 배송.
+        **2026-11-17(사용자 결정)**: custody RIDER(상품이 라이더 손)면 dispatch 가 반납 배송(type RETURN, purpose FAILED_DELIVERY_RETURN)을 만들어 **같은 라이더에게 제안 없이 바로 배정**한다(배송 조회 `failure.returnDeliveryId`, 내 배송 목록에 새 배송). 반납 배송은 받음 없이 배정(ASSIGNED)에서 바로 `returns/store-deliveries`(MFC 반납).
+        수행료: 고객 사유(CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED)면 실패한 배송 = 수락 당시 금액, 반납 배송 = 일반 표(고객 집 → MFC) 따로. 그 밖 사유는 둘 다 산정 불가 → 지원센터 조정(`/rider-earnings/{id}/adjustments`). custody STORE 면 라이더 할 일 없음(배송 FAILED 로 끝).
         REJECT → 실패 등록 전 상태로 되돌린다(라이더가 전달을 계속). 관리자만 — 그 센터의 MFC_SUPERVISOR·OPERATOR_ADMIN·CS_AGENT(0.3.1, 같은 센터 작업자는 403)·RIDER_OPS(0.4.0).
       operationId: decideFailure
       x-pmart-user-types: [OPERATOR]
@@ -599,7 +601,7 @@ paths:
       tags: [returns]
       summary: 회수품 점포 반납 (→ ReturnDelivered; 점원 수령 확인은 mfc-inbound)
       description: |
-        0.5.0(2026-11-16) — RETURN_PICKED_UP → RETURNED_TO_STORE(배송 끝, 수행료 = 수락 당시 금액 → 확정 대기). 사용자 "추천대로"(2026-11-16): mfc-inbound 점원 수령 확인이 생기기 전까지 MFC 도착을 반납으로 본다.
+        0.5.0(2026-11-16) — RETURN_PICKED_UP → RETURNED_TO_STORE(배송 끝, 수행료 = 수락 당시 금액 → 확정 대기). 0.15.0: 전달 실패 반납(FAILED_DELIVERY_RETURN)은 배정(ASSIGNED)에서 바로(받음 없음 — returns/pickups 409), 앞 실패가 고객 사유가 아니면 수행료 산정 불가(지원센터 조정). 사용자 "추천대로"(2026-11-16): mfc-inbound 점원 수령 확인이 생기기 전까지 MFC 도착을 반납으로 본다.
         evidenceRefs(있으면 이 배송에 올린 사진)·receivedByStaffRef 는 선택.
       operationId: reportReturnStoreDelivery
       x-pmart-user-types: [RIDER]
@@ -1206,6 +1208,7 @@ components:
             custody: { type: string, enum: [RIDER, STORE] }
             helpRequestId: { type: string, description: '함께 열린 지원센터 대화(도움요청) ID(0.14.0) — 이 배포 전 실패 등록은 없음', x-added-in: '2026-11-17' }
             resumeRequestedAt: { type: string, format: date-time, description: '라이더 전달 재개 요청 시각(0.14.0)', x-added-in: '2026-11-17' }
+            returnDeliveryId: { type: [string, 'null'], description: '(0.15.0) 확정 뒤 상품이 라이더 손(custody RIDER)이면 같은 라이더에게 바로 배정된 반납 배송(purpose FAILED_DELIVERY_RETURN) — 만들어지기 전·STORE 면 null', x-added-in: '2026-11-17' }
         incidents:
           type: array
           description: 이 배송의 도움요청(0.3.0)
@@ -1214,7 +1217,7 @@ components:
         earning: { $ref: '#/components/schemas/Earning' }
         assignedAt: { type: string, format: date-time }
         completedAt: { type: string, format: date-time }
-        purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다). MISDELIVERY_REDELIVERY(ADR-0065) = 고객 잘못 다시 배송 — 배정 → 잘못 둔 곳에서 사진·받음(returns/pickups → PICKED_UP) → 고객 도착 → 전달 완료(가게 도착·MFC 픽업 409, 전달지 = 실제 집 + 주문 당시 수령인·연락처)' }
+        purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY, FAILED_DELIVERY_RETURN], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다). MISDELIVERY_REDELIVERY(ADR-0065) = 고객 잘못 다시 배송 — 배정 → 잘못 둔 곳에서 사진·받음(returns/pickups → PICKED_UP) → 고객 도착 → 전달 완료(가게 도착·MFC 픽업 409, 전달지 = 실제 집 + 주문 당시 수령인·연락처)' }
         caseId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송 확인 사건' }
         claimId: { type: string, description: 'CLAIM_RETURN(0.10.1, 2026-11-17) — 고객 반품 클레임', x-added-in: '2026-11-17' }
         orderNumber: { type: [string, 'null'], description: '화면용 주문번호(0.11.0 — 배정 때 받은 값, 내 배달 내역 목록용). 이 배포 전 배정은 null', x-added-in: '2026-11-17' }

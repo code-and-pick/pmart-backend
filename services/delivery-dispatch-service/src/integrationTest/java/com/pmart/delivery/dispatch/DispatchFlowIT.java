@@ -2052,6 +2052,120 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isZero();
   }
 
+  /**
+   * 전달 실패 반납(2026-11-17 — 사용자 "같은 라이더에 회수 배송 자동 배정", "원배송 수행료 + 반납 이동료 따로"): DeliveryFailed custody
+   * RIDER → 반납 배송(RETURN·FAILED_DELIVERY_RETURN)을 원래 라이더에게 제안 없이 바로 배정(신규배차 꺼짐이어도), 배달료 = 일반 표(고객 집
+   * → MFC). custody STORE 면 만들지 않는다. 같은 사건을 다시 받아도 하나.
+   */
+  @Test
+  void confirmedFailureWithGoodsOnRiderAssignsReturnToSameRider() {
+    String mfc = "MFC-D23";
+    String r1 = "RD-fr1-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String order = "ORD-" + UUID.randomUUID();
+    String origin =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID(), order);
+    engine.tick();
+    String offer1 =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin);
+    assertThat(body(respond(r1, offer1, "a-" + origin, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    // 고객 집(37.5006) → MFC 2,400m. 반납 배정 때 라이더는 신규배차를 껐다(그래도 상품을 돌려놓아야 한다)
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.origins[0].lat", equalTo("37.5006")))
+            .willReturn(json(matrix(List.of(List.of(2400, 600))))));
+    riders(mfc, rider(r1, "AI_RECOMMENDED", false));
+    String failed =
+        executionEvent(
+            "DeliveryFailed",
+            origin,
+            Map.of(
+                "deliveryId",
+                origin,
+                "reason",
+                "CUSTOMER_ABSENT",
+                "custody",
+                "RIDER",
+                "at",
+                Instant.now().toString()));
+    kafka.send("delivery.delivery.v1", origin, failed).join(); // 다시 받아도 하나
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE origin_delivery_id = '"
+            + origin
+            + "' AND purpose = 'FAILED_DELIVERY_RETURN'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, origin))
+        .isEqualTo("CLOSED");
+    String back =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE origin_delivery_id = ? AND purpose ="
+                + " 'FAILED_DELIVERY_RETURN'",
+            String.class,
+            origin);
+    JsonNode created = outbox(back, "DeliveryCreated").path("payload");
+    assertThat(created.path("type").asString()).isEqualTo("RETURN");
+    assertThat(created.path("purpose").asString()).isEqualTo("FAILED_DELIVERY_RETURN");
+    assertThat(created.path("originDeliveryId").asString()).isEqualTo(origin);
+    assertThat(created.path("dropAddressRef").asString()).isEqualTo("mfc:" + mfc);
+
+    engine.tick();
+    Map<String, Object> d =
+        jdbc.queryForMap(
+            "SELECT state, rider_id, drop_distance_m FROM delivery WHERE delivery_id = ?", back);
+    assertThat(d.get("state")).isEqualTo("ASSIGNED");
+    assertThat(d.get("rider_id")).isEqualTo(r1);
+    assertThat(d.get("drop_distance_m")).isEqualTo(2400);
+    Map<String, Object> o =
+        jdbc.queryForMap(
+            "SELECT source, state, fee FROM dispatch_offer WHERE delivery_id = ?", back);
+    assertThat(o.get("source")).isEqualTo("FAILED_RETURN");
+    assertThat(o.get("state")).isEqualTo("ACCEPTED");
+    assertThat(o.get("fee"))
+        .isEqualTo(com.pmart.delivery.dispatch.domain.FeeTable.estimate("MOTORCYCLE", 2400));
+    JsonNode assigned = outbox(back, "DeliveryAssigned").path("payload");
+    assertThat(assigned.path("riderId").asString()).isEqualTo(r1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE type = 'DispatchOfferSent' AND"
+                    + " payload->'payload'->>'deliveryId' = ?",
+                Integer.class,
+                back))
+        .isZero(); // 제안(푸시) 없이
+
+    // 상품이 매장(custody STORE)이면 라이더 할 일 없음
+    String origin2 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID());
+    executionEvent(
+        "DeliveryFailed",
+        origin2,
+        Map.of(
+            "deliveryId",
+            origin2,
+            "reason",
+            "DAMAGED",
+            "custody",
+            "STORE",
+            "at",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM inbox_event WHERE event_type = 'DeliveryFailed' AND aggregate_id = '"
+            + origin2
+            + "'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE origin_delivery_id = ?",
+                Integer.class,
+                origin2))
+        .isZero();
+  }
+
   String claimReturnRequested(
       String claimId,
       String orderId,
@@ -2575,7 +2689,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     kafka.send("platform.case.v1", caseId, json).join();
   }
 
-  void executionEvent(String type, String deliveryId, Map<String, Object> payload) {
+  String executionEvent(String type, String deliveryId, Map<String, Object> payload) {
     String json =
         EventEnvelopeFixtures.envelope(type)
             .from("delivery-execution-service")
@@ -2583,6 +2697,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             .payload(payload)
             .buildJson();
     kafka.send("delivery.delivery.v1", deliveryId, json).join();
+    return json;
   }
 
   JsonNode dispatchView(String token, String deliveryId) {

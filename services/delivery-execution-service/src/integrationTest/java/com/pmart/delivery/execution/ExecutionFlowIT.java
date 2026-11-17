@@ -489,10 +489,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode failed = outbox(id, "DeliveryFailed").path("payload");
     assertThat(failed.path("reason").asString()).isEqualTo("UNREACHABLE");
     assertThat(failed.path("custody").asString()).isEqualTo("RIDER");
+    // 고객 사유(연락 두절) 확정 → 수락 당시 금액(2026-11-17 사용자 "고객 귀책이면 원래 측정돼 있던 수행료")
     assertThat(
             jdbc.queryForObject(
                 "SELECT calculable FROM rider_earning WHERE delivery_id = ?", Boolean.class, id))
-        .isFalse();
+        .isTrue();
     JsonNode v = view(id, rider);
     assertThat(v.path("failure").path("decision").asString()).isEqualTo("CONFIRM");
     assertThat(v.path("failure").path("contactAttempts").asInt()).isEqualTo(2);
@@ -1127,6 +1128,82 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
    * DD-2(사용자 2026-11-16 "추천대로"): 오배송 회수 배송 — 회수지에서 사진 → 회수(ReturnPickedUp, 원래 배송이 전달한 줄) → MFC 도착 =
    * 반납(ReturnDelivered, 수행료 = 수락 당시 금액). 원래 고객 전달지는 열지 않고, 일반 배송 단계는 409. 회수 라이더에게 원래 완료 증빙을 보여 준다.
    */
+  /**
+   * 전달 실패 반납(2026-11-17 — 사용자 "같은 라이더에 회수 배송 자동 배정", "고객 귀책이면 원래 측정돼 있던 수행료", "원배송 수행료 + 반납 이동료
+   * 따로", 그 밖 귀책은 "기존대로 수행료 조정"). 확정 → 고객 사유면 실패한 배송 수행료 지급, 반납 배송(dispatch 가 만듦)은 받음 없이 배정에서 바로 MFC
+   * 반납 + 반납 수행료. 고객 사유가 아니면 둘 다 산정 불가.
+   */
+  @Test
+  void confirmedFailureGoodsReturnToStoreBySameRider() {
+    for (String reason : List.of("CUSTOMER_ABSENT", "DAMAGED")) {
+      boolean customer = "CUSTOMER_ABSENT".equals(reason);
+      String origin = "DLV-" + UUID.randomUUID();
+      String order = "ORD-" + UUID.randomUUID();
+      String rider = "RDR-" + UUID.randomUUID();
+      pickedUp(origin, "SHP-" + UUID.randomUUID(), order, rider);
+      String photo = body(upload(origin, rider, JPEG)).path("photoRef").asString();
+      assertThat(
+              post(origin, "failures", rider, failure(reason, List.of(photo), 2))
+                  .getStatusCode()
+                  .value())
+          .isEqualTo(200);
+      assertThat(decide(origin, "OP-1", List.of("MFC-1"), "CONFIRM").getStatusCode().value())
+          .isEqualTo(200);
+      assertThat(outbox(origin, "DeliveryFailed").path("payload").path("custody").asString())
+          .isEqualTo("RIDER");
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT calculable FROM rider_earning WHERE delivery_id = ?",
+                  Boolean.class,
+                  origin))
+          .as(reason)
+          .isEqualTo(customer);
+
+      // dispatch 가 만든 반납 배송(같은 라이더 바로 배정)
+      String back = "DLV-" + UUID.randomUUID();
+      Map<String, Object> created = new java.util.LinkedHashMap<>();
+      created.put("deliveryId", back);
+      created.put("orderId", order);
+      created.put("shipmentId", "FLR-" + origin);
+      created.put("type", "RETURN");
+      created.put("purpose", "FAILED_DELIVERY_RETURN");
+      created.put("originDeliveryId", origin);
+      created.put("mfcId", "MFC-1");
+      created.put("dropAddressRef", "mfc:MFC-1");
+      send("delivery.delivery.v1", "DeliveryCreated", "Delivery", back, created);
+      assigned(back, order, rider, 1);
+      awaitState(back, "ASSIGNED");
+      assertThat(view(origin, rider).path("failure").path("returnDeliveryId").asString())
+          .isEqualTo(back);
+      assertThat(view(back, rider).path("purpose").asString()).isEqualTo("FAILED_DELIVERY_RETURN");
+
+      // 받음 없음(상품이 이미 손에) — 배정에서 바로 MFC 반납
+      assertThat(
+              post(
+                      back,
+                      "returns/pickups",
+                      rider,
+                      Map.of("items", List.of(), "evidenceRefs", List.of(photo)))
+                  .getStatusCode()
+                  .value())
+          .isEqualTo(409);
+      assertThat(post(back, "returns/store-deliveries", rider, Map.of()).getStatusCode().value())
+          .isEqualTo(200);
+      assertThat(state(back)).isEqualTo("RETURNED_TO_STORE");
+      JsonNode returned = outbox(back, "ReturnDelivered").path("payload");
+      assertThat(returned.path("purpose").asString()).isEqualTo("FAILED_DELIVERY_RETURN");
+      assertThat(returned.path("originDeliveryId").asString()).isEqualTo(origin);
+      assertThat(returned.path("lines").size()).isPositive();
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT calculable FROM rider_earning WHERE delivery_id = ?",
+                  Boolean.class,
+                  back))
+          .as(reason)
+          .isEqualTo(customer);
+    }
+  }
+
   @Test
   void misdeliveryRecoveryPicksUpAtSpotAndReturnsToStore() {
     String origin = "DLV-" + UUID.randomUUID();
@@ -1616,12 +1693,13 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** 픽업 → 고객 도착 → 실패 등록 → 확정(산정 불가 수행료). */
+  /** 고객 사유가 아닌 전달 실패 확정 — 수행료 산정 불가(지원센터 조정 대상). */
   String failedDelivery(String rider) {
     String id = "DLV-" + UUID.randomUUID();
     pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
     String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
     assertThat(
-            post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of(photo), 2))
+            post(id, "failures", rider, failure("OTHER", List.of(photo), 0))
                 .getStatusCode()
                 .value())
         .isEqualTo(200);

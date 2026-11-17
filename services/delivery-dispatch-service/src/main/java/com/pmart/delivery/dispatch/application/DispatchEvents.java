@@ -55,6 +55,11 @@ public class DispatchEvents {
       if (d.returnLinesJson() != null) {
         p.put("returnLines", mapper.readTree(d.returnLinesJson()));
       }
+    } else if (d.failedReturn()) {
+      // 전달 실패 반납(2026-11-17) — 상품은 이미 원래 라이더 손에, 도착지는 MFC
+      p.put("dropAddressRef", "mfc:" + d.mfcId());
+      p.put("purpose", d.purpose());
+      p.put("originDeliveryId", d.originDeliveryId());
     } else if (d.recovery()) {
       // 오배송 회수(DD-2) — 도착지는 MFC, 회수지 좌표는 싣지 않는다
       p.put("dropAddressRef", "mfc:" + d.mfcId());

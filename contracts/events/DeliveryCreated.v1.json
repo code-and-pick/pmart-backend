@@ -75,9 +75,10 @@
                 "CLAIM_RETURN",
                 "MISDELIVERY_RECOVERY",
                 "MISDELIVERY_RESHIPMENT",
-                "MISDELIVERY_REDELIVERY"
+                "MISDELIVERY_REDELIVERY",
+                "FAILED_DELIVERY_RETURN"
               ],
-              "description": "2026-11-16 — 없으면 FORWARD 는 DELIVERY. RETURN 만 CLAIM_RETURN·MISDELIVERY_RECOVERY. MISDELIVERY_RESHIPMENT(2026-11-16) — type RESHIPMENT, 오배송 재발송(caseId). MISDELIVERY_REDELIVERY(ADR-0065) — type RESHIPMENT, 잘못 둔 곳 → 실제 집, dropAddressRef order:<orderId>:redelivery:<destinationId>"
+              "description": "2026-11-16 — 없으면 FORWARD 는 DELIVERY. RETURN 만 CLAIM_RETURN·MISDELIVERY_RECOVERY·FAILED_DELIVERY_RETURN(2026-11-17 — 확정된 전달 실패 뒤 상품을 든 원래 라이더에게 바로 배정, originDeliveryId = 실패한 배송). MISDELIVERY_RESHIPMENT(2026-11-16) — type RESHIPMENT, 오배송 재발송(caseId). MISDELIVERY_REDELIVERY(ADR-0065) — type RESHIPMENT, 잘못 둔 곳 → 실제 집, dropAddressRef order:<orderId>:redelivery:<destinationId>"
             },
             "caseId": {
               "$ref": "_defs.v1.json#/$defs/Ref",

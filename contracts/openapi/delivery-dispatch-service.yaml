@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.5.2
+  version: 0.6.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -695,7 +695,7 @@ components:
       type: string
       x-added-in: '2026-11-16'
       description: DELIVERY 일반 배송, CLAIM_RETURN 고객 반품 회수(0.5.0 — 고객 집에서 받아 MFC 로), MISDELIVERY_RECOVERY 확인된 오배송 회수(DD-2), MISDELIVERY_RESHIPMENT 오배송 재발송(0.4.1), MISDELIVERY_REDELIVERY 고객 잘못 오배송 다시 배송(0.4.2 — 잘못 둔 곳 → 실제 집)
-      enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY]
+      enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY, FAILED_DELIVERY_RETURN]
     RecoveryInfo:
       type: object
       x-added-in: '2026-11-16'

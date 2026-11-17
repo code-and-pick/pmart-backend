@@ -58,6 +58,11 @@ public class ExecutionStore {
     public boolean recovery() {
       return "RETURN".equals(type) && "MISDELIVERY_RECOVERY".equals(purpose);
     }
+
+    /** 전달 실패 반납(2026-11-17) — 확정된 전달 실패 뒤 상품을 든 원래 라이더가 MFC 로. 받음 단계 없음. */
+    public boolean failedReturn() {
+      return "RETURN".equals(type) && "FAILED_DELIVERY_RETURN".equals(purpose);
+    }
   }
 
   public record HelpRow(
@@ -584,6 +589,18 @@ public class ExecutionStore {
   }
 
   /** 실패 등록·결정 기록과 상태를 함께 바꾼다. */
+  /** 이 배송의 전달 실패 반납 배송(dispatch 가 만든 뒤 DeliveryCreated 가 와야 있다). */
+  public Optional<String> failedReturnOf(String originDeliveryId) {
+    return jdbc
+        .query(
+            "SELECT delivery_id FROM execution_delivery WHERE origin_delivery_id = ? AND purpose ="
+                + " 'FAILED_DELIVERY_RETURN' LIMIT 1",
+            (rs, i) -> rs.getString(1),
+            originDeliveryId)
+        .stream()
+        .findFirst();
+  }
+
   public void failure(String deliveryId, String state, String failureJson, Instant now) {
     jdbc.update(
         "UPDATE execution_delivery SET state = ?, failure = ?::jsonb, version = version + 1,"

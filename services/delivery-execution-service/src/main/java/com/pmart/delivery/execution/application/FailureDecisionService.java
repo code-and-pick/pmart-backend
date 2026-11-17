@@ -127,9 +127,15 @@ public class FailureDecisionService {
                 failure.put("custody", custody);
                 store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
                 store.history(deliveryId, "FAILED", now, "OPERATOR", requestId, now);
-                events.failed(
-                    d, reported.path("reason").asString("OTHER"), custody, goods, p.subject(), now);
-                earnings.notCalculable(d, "FAILED", now);
+                String reason = reported.path("reason").asString("OTHER");
+                events.failed(d, reason, custody, goods, p.subject(), now);
+                // 수행료(2026-11-17 사용자 "고객 귀책이면 라이더는 잘못 없으니 원래 측정돼 있던 수행료"): 고객 사유(부재·연락 두절·주소
+                // 오류·거부)면 수락 당시 금액, 그 밖은 산정 불가 → 지원센터 조정. 상품이 라이더 손이면 dispatch 가 반납 배송을 같은 라이더에게
+                if (ExecutionRules.CUSTOMER_REASONS.contains(reason)) {
+                  earnings.completed(d, now);
+                } else {
+                  earnings.notCalculable(d, "FAILED", now);
+                }
                 log.info("배송 {} 전달 실패 확정 — 상품 {}", deliveryId, custody);
               } else {
                 String back = reported.path("previousState").asString("ARRIVED_AT_CUSTOMER");

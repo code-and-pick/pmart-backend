@@ -61,3 +61,5 @@
 - **반품은 전달 완료 뒤만(2026-11-17 — 사용자 "배달 중이나 전달 완료 전에는 반품 불가", PC 5 점검에서 claim 이 원래 배송 ID 를 싣지 않아 검사가 안 걸리던 것)**: `ClaimReturnHandler` — 원래 배송이 없으면 그 주문의 일반 배송(`lockByOrder`, 회수·다시 배송 제외)으로 보고, 배차가 아는 배송이 있는데 하나도 전달 완료(`completed_at`)가 아니면 회수 배송을 만들지 않고 **`ReturnPickupFailed`(reason ORIGIN_NOT_DELIVERED, deliveryId = 그 요청으로 정해질 ID — 실제 행 없음)** 를 내 claim 이 멈추지 않게 한다(claim 은 회수 실패로 세어 다시 요청·2번이면 상담원). 정본은 claim 접수(전달 완료 수량).
 
 - **지점 전화(2026-11-17, 0.5.2)**: 주문 요약 사본에 center-master `phone` → `mfcPhone`(제안 `order.mfcPhone`), 배정 사건 `DeliveryAssigned.mfcPhone`. 없으면 뺀다.
+
+- **전달 실패 반납(2026-11-17, 계약 0.6.0 — 사용자 "같은 라이더에 회수 배송 자동 배정")**: `ExecutionEventHandler` 가 DeliveryFailed custody RIDER(일반·재발송 배송만, 회수·다시 배송 제외)면 반납 배송(type RETURN, purpose FAILED_DELIVERY_RETURN, ID = 원래 배송으로 정함 `failed-return:<id>`, shipment `FLR-<id>`, request_trigger FAILURE) + 시도 + DeliveryCreated. 판단 주기: 좌표는 반품 회수와 같은 길(고객 집 → MFC), `assignFailedReturn` — **원래 라이더에게 제안 없이 바로**(운행·신규배차·제한 무관), offer source FAILED_RETURN(바로 ACCEPTED, DispatchOfferSent 없음), 배달료 = 일반 표(원래 수락 수단). 원래 라이더 모름 → SYSTEM_FAILURE.

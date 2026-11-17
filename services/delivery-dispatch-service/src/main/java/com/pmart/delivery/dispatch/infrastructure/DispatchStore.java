@@ -84,7 +84,12 @@ public class DispatchStore {
 
     /** 픽업지가 MFC 가 아닌 배송(회수·다시 배송) — 따로 판단한다. */
     public boolean pickupBased() {
-      return recovery() || redelivery() || claimReturn();
+      return recovery() || redelivery() || claimReturn() || failedReturn();
+    }
+
+    /** 전달 실패 반납(2026-11-17) — 확정된 전달 실패 뒤 상품을 든 원래 라이더가 MFC 로. */
+    public boolean failedReturn() {
+      return "RETURN".equals(type) && "FAILED_DELIVERY_RETURN".equals(purpose);
     }
 
     /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. 픽업지가 MFC 가 아니라 따로 배차한다. */
@@ -335,6 +340,24 @@ public class DispatchStore {
             originDeliveryId,
             linesJson,
             pickupRequestId,
+            ts(now),
+            ts(now))
+        == 1;
+  }
+
+  /** 전달 실패 반납 배송(2026-11-17). 같은 원래 배송은 하나(배송 ID 를 원래 배송으로 정한다). */
+  public boolean insertFailedReturn(
+      String deliveryId, String orderId, String mfcId, String originDeliveryId, Instant now) {
+    return jdbc.update(
+            "INSERT INTO delivery (delivery_id, version, type, purpose, order_id, shipment_id, mfc_id,"
+                + " state, origin_delivery_id, request_trigger, created_at, updated_at) VALUES (?, 1,"
+                + " 'RETURN', 'FAILED_DELIVERY_RETURN', ?, ?, ?, 'DISPATCHING', ?, 'FAILURE', ?, ?) ON"
+                + " CONFLICT DO NOTHING",
+            deliveryId,
+            orderId,
+            "FLR-" + originDeliveryId,
+            mfcId,
+            originDeliveryId,
             ts(now),
             ts(now))
         == 1;

@@ -66,9 +66,10 @@
               "type": "string",
               "enum": [
                 "CLAIM_RETURN",
-                "MISDELIVERY_RECOVERY"
+                "MISDELIVERY_RECOVERY",
+                "FAILED_DELIVERY_RETURN"
               ],
-              "description": "회수 목적(2026-11-16) — CLAIM_RETURN 고객 반품(claimId), MISDELIVERY_RECOVERY 확인된 오배송 회수(caseId·originDeliveryId, DD-2). 없으면 CLAIM_RETURN"
+              "description": "회수 목적(2026-11-16) — CLAIM_RETURN 고객 반품(claimId), MISDELIVERY_RECOVERY 확인된 오배송 회수(caseId·originDeliveryId, DD-2), FAILED_DELIVERY_RETURN(2026-11-17) 확정된 전달 실패 뒤 원래 라이더가 MFC 에 상품 반납(originDeliveryId = 실패한 배송, lines = 그 배송이 인계받은 줄). 없으면 CLAIM_RETURN"
             },
             "caseId": {
               "$ref": "_defs.v1.json#/$defs/Ref",

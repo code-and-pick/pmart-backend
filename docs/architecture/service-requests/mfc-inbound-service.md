@@ -18,3 +18,4 @@
   2. 점원 화면(mfc-app)에 대기 목록 → 고르면 `POST /return-receipts` 를 그 값으로 채워 반입(격리). 반입하면 대기에서 빠짐.
   3. 오배송 회수(MISDELIVERY_RECOVERY)는 claim 이 없으니 MI-1 검수 규칙(신선·냉장·냉동 폐기, 상온 미개봉만 재고 복구)으로.
 - delivery 는 바꿀 것 없음. 점원 수령 확인을 반납 조건으로 바꾸는 것(execution `receivedByStaffRef`)은 나중 사용자 결정.
+- **보충(2026-11-17 PC 5)**: 세 번째 purpose `FAILED_DELIVERY_RETURN` — 지원센터가 전달 실패를 확정하고 상품이 라이더 손이면 같은 라이더가 MFC 에 반납한다(originDeliveryId = 실패한 배송, lines = 그 배송이 인계받은 줄, claim·case 없음). 대기 목록에 같이 올리고, 검수는 MI-1 규칙(신선·냉장·냉동 폐기, 상온 미개봉만 재고 복구) — 이 주문의 환불·재배송은 고객센터가 정한다(자동 환불 없음).

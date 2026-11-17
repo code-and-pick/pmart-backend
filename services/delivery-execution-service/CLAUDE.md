@@ -60,3 +60,4 @@
 - **지점 전화(2026-11-17, V14)**: 배정 사건의 `mfcPhone` → `mfc_phone` → 배송 조회·내 배달 내역 `mfcPhone`(라이더 "가게 전화").
 
 - **회수지 연락처 통합(2026-11-17 — 사용자 "라이더 입장에서는 MFC 로 이동하는 배달 하나")**: `GET …/recovery-contact` 를 회수 배송 두 목적 모두로 — 오배송 회수는 전화만, 고객 반품 회수는 주소·받는 분·출입까지(`DropInfoService.recoveryContact`, purpose 함께). 열리는 상태에 FAILURE_REPORTED 더함. 라이더 앱은 회수 화면 한 벌(purpose 로 문구만).
+- **전달 실패 반납(2026-11-17, 계약 0.15.0 — 사용자 "같은 라이더에 회수 배송 자동 배정", 수행료 "원배송 수행료 + 반납 이동료 따로"·그 밖 귀책 "기존대로 조정")**: 실패 확정(일반 배송) 수행료 = 고객 사유(`ExecutionRules.CUSTOMER_REASONS`)면 `earnings.completed`(수락 금액), 그 밖 산정 불가. dispatch 가 만든 반납 배송 purpose FAILED_DELIVERY_RETURN(`DeliveryRow.failedReturn`): 받음 없음(`returns/pickups` 409), **ASSIGNED 에서 바로 `returns/store-deliveries`** → ReturnDelivered(lines = 원래 배송 인계 줄) + 수행료 = 앞 실패가 고객 사유면 수락 금액, 아니면 산정 불가. 원래 배송 조회 `failure.returnDeliveryId`(`ExecutionStore.failedReturnOf`).

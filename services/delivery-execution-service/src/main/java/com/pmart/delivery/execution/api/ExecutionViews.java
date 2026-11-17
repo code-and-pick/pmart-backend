@@ -145,6 +145,7 @@ class ExecutionViews {
               .decidedAt(instantOf(f.path("decidedAt")))
               .helpRequestId(f.path("requestId").asString(null))
               .resumeRequestedAt(instantOf(f.path("resumeRequestedAt")))
+              .returnDeliveryId(v.returnDeliveryId())
               .custody(
                   f.path("custody").isString()
                       ? DeliveryExecutionFailure.CustodyEnum.fromValue(f.path("custody").asString())

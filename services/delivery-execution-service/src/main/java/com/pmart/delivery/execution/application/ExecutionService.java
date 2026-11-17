@@ -59,7 +59,8 @@ public class ExecutionService {
       List<ExecutionStore.HistoryRow> history,
       List<ExecutionStore.HelpRow> helps,
       ExecutionStore.@Nullable EarningRow earning,
-      @Nullable DeliveryRow origin) {}
+      @Nullable DeliveryRow origin,
+      @Nullable String returnDeliveryId) {}
 
   /** 전달 실패 등록(2026-11-13) — contactAttempts 는 [{attemptedAt, method, result}]. */
   public record Failure(
@@ -109,7 +110,8 @@ public class ExecutionService {
         store.history(d.deliveryId()),
         store.helps(d.deliveryId()),
         d.riderId() == null ? null : store.earningOf(d.deliveryId(), d.riderId()).orElse(null),
-        d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null));
+        d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null),
+        "FAILED".equals(d.state()) ? store.failedReturnOf(d.deliveryId()).orElse(null) : null);
   }
 
   // ---- 조회
@@ -630,6 +632,9 @@ public class ExecutionService {
         expectedVersion,
         Map.of("evidenceRefs", evidenceRefs),
         (d, rider, now) -> {
+          if (d.failedReturn()) {
+            throw PmartException.invalidState("전달 실패 반납은 상품을 이미 가지고 있어 받음 없이 MFC 반납만 합니다.");
+          }
           if (!d.redelivery() && !d.claimReturn()) {
             recoveryOnly(d);
           }
@@ -674,10 +679,12 @@ public class ExecutionService {
         expectedVersion,
         body,
         (d, rider, now) -> {
-          if (!d.claimReturn()) {
+          if (!d.claimReturn() && !d.failedReturn()) {
             recoveryOnly(d);
           }
-          if (!"RETURN_PICKED_UP".equals(d.state())) {
+          // 전달 실패 반납(2026-11-17)은 상품이 이미 라이더 손 — 배정(ASSIGNED)에서 바로 반납
+          if (!"RETURN_PICKED_UP".equals(d.state())
+              && !(d.failedReturn() && "ASSIGNED".equals(d.state()))) {
             throw PmartException.invalidState("회수한 배송만 반납할 수 있습니다(지금 " + d.state() + ").");
           }
           requireMyPhotos(deliveryId, rider, evidenceRefs, false);
@@ -700,7 +707,12 @@ public class ExecutionService {
           store.returnedToStore(deliveryId, mapper.writeValueAsString(evidence), now);
           store.history(deliveryId, "RETURNED_TO_STORE", now, "RIDER", evidenceId, now);
           events.returnDelivered(d, lines, evidenceId, now);
-          earnings.completed(d, now); // 회수 수행료 = 수락 당시 금액(일반 표, 회수지 → MFC — 사용자 2026-11-16)
+          if (d.failedReturn() && !customerCausedFailure(d)) {
+            // 전달 실패 반납: 고객 사유가 아닌 실패면 앞 배송처럼 지원센터 조정(사용자 2026-11-17 "기존대로 수행료 조정")
+            earnings.notCalculable(d, "RETURNED_TO_STORE", now);
+          } else {
+            earnings.completed(d, now); // 회수 수행료 = 수락 당시 금액(일반 표, 회수지 → MFC — 사용자 2026-11-16)
+          }
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });
   }
@@ -808,6 +820,16 @@ public class ExecutionService {
     if ("RETURN".equals(d.type())) {
       throw PmartException.invalidState("회수 배송입니다. 회수·반납 단계를 써 주세요.");
     }
+  }
+
+  /** 전달 실패 반납의 앞 배송이 고객 사유(부재·연락 두절·주소 오류·거부)로 확정됐나. */
+  private boolean customerCausedFailure(DeliveryRow d) {
+    return Optional.ofNullable(d.originDeliveryId())
+        .flatMap(store::delivery)
+        .map(DeliveryRow::failureJson)
+        .map(j -> mapper.readTree(j).path("reason").asString(""))
+        .filter(ExecutionRules.CUSTOMER_REASONS::contains)
+        .isPresent();
   }
 
   private static void recoveryOnly(DeliveryRow d) {

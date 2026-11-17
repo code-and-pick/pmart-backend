@@ -459,6 +459,10 @@ public class DispatchEngine {
     Set<String> taken = new HashSet<>(); // 이번 주기에 회수 제안을 받은 라이더
     for (Ready r : recoveries) {
       DeliveryRow d = r.delivery();
+      if (d.failedReturn()) {
+        assignFailedReturn(r, now);
+        continue;
+      }
       Geo pickup = new Geo(d.pickupLat(), d.pickupLng());
       Set<String> skip = new HashSet<>(store.ridersWithLiveOffer(now)); // 일반 배송 제안 뒤 다시 읽는다
       skip.addAll(store.restrictedAmong(all, now));
@@ -693,6 +697,67 @@ public class DispatchEngine {
         });
   }
 
+  /**
+   * 전달 실패 반납(2026-11-17): 상품을 든 원래 라이더에게 제안 없이 바로 배정 — 운행 상태·신규배차·계정 제한과 상관없이(상품을 돌려놓아야 한다). 배달료 =
+   * 일반 표(고객 집 → MFC, 원래 배송 수락 수단 — 사용자 "원배송 수행료 + 반납 이동료 따로"). 지급 여부(고객 사유가 아니면 지원센터 조정)는 execution
+   * 이 반납 때 정한다. 원래 라이더를 모르면 SYSTEM_FAILURE(사건함).
+   */
+  private void assignFailedReturn(Ready r, Instant now) {
+    DeliveryRow origin =
+        r.delivery().originDeliveryId() == null
+            ? null
+            : store.delivery(r.delivery().originDeliveryId()).orElse(null);
+    if (origin == null || origin.riderId() == null) {
+      failSystem(r.delivery(), r.attempt(), "NO_ORIGIN_RIDER", now);
+      return;
+    }
+    String riderId = origin.riderId();
+    String vehicle =
+        origin.acceptedOfferId() == null
+            ? null
+            : store.offer(origin.acceptedOfferId()).map(OfferRow::vehicleType).orElse(null);
+    tx.executeWithoutResult(
+        s -> {
+          store.lockRider(riderId);
+          DeliveryRow x = store.lockDelivery(r.delivery().deliveryId()).orElse(null);
+          AttemptRow y = store.lockAttempt(r.attempt().attemptId()).orElse(null);
+          if (x == null
+              || y == null
+              || !"DISPATCHING".equals(x.state())
+              || !"SEARCHING".equals(y.state())) {
+            return;
+          }
+          OfferRow o =
+              new OfferRow(
+                  "OFR-" + UUID.randomUUID(),
+                  y.attemptId(),
+                  x.deliveryId(),
+                  riderId,
+                  y.round(),
+                  "FAILED_RETURN",
+                  0,
+                  "SENT",
+                  now,
+                  now,
+                  now,
+                  null,
+                  null,
+                  null,
+                  null,
+                  null,
+                  vehicle == null || x.dropDistanceM() == null
+                      ? 0
+                      : FeeTable.estimate(vehicle, x.dropDistanceM()),
+                  vehicle,
+                  null,
+                  1,
+                  1);
+          store.insertOffer(o);
+          transitions.assign(x, riderId, o.offerId(), null, 1, now);
+        });
+    log.info("반납 배송 {} → 원래 라이더 {} 바로 배정", r.delivery().deliveryId(), riderId);
+  }
+
   private void noCandidate(String attemptId, String deliveryId, Instant now) {
     tx.executeWithoutResult(
         s -> {
@@ -764,7 +829,8 @@ public class DispatchEngine {
     if (d.recovery()) {
       return prepareRecoveryGeo(d, a, now);
     }
-    if (d.claimReturn()) {
+    if (d.claimReturn() || d.failedReturn()) {
+      // 전달 실패 반납도 출발 = 고객 집(라이더가 실패를 등록한 곳), 도착 = MFC
       return prepareClaimReturnGeo(d, a, now);
     }
     if (d.redelivery()) {

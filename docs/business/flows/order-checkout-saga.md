@@ -196,7 +196,7 @@ ShipmentReady → delivery-dispatch: DeliveryCreated(배송 단위 = order 이�
 | 배차 실패(기사 없음·반복 거절·만료) | `DispatchFailed` → 점포·CS 안내, 고객 취소 시 S3. 배차 불가로 PMart 측 취소면 환불(쿠폰 보상은 3차) |
 | 픽업 전 배차 취소 | 상품 점포 보관, 재배차. 인계 fence 해제 |
 | 픽업 후 배차 취소 | `case-service` 지원센터: 상품 위치·회수·재인계 확인 후 처리 |
-| 전달 실패 | 자동 환불 없음. 고객 연락·보관·회수 판단(case). 재배송은 교환 승인 건만 |
+| 전달 실패 | 자동 환불 없음. 고객 연락·보관·회수 판단(case). 재배송은 교환 승인 건만. **상품 반납(2026-11-17)**: 지원센터 확정 + 상품이 라이더 손(custody RIDER)이면 dispatch 가 반납 배송(RETURN·FAILED_DELIVERY_RETURN)을 같은 라이더에게 제안 없이 배정 → 받음 없이 MFC 반납(ReturnDelivered). 수행료: 고객 사유면 실패 배송 = 수락 금액 + 반납 = 일반 표(고객 집 → MFC), 그 밖 사유면 둘 다 지원센터 조정. 매장 반입·검수는 mfc-inbound(MI-2 — 아직) |
 | 완료 후 파손·누락 신고 | 기존 `DeliveryCompleted` 유지, `DeliveryIncidentRaised` + claim 접수 |
 
 ## 4. 수용 검증 (문서 OMS 14장 발췌)
