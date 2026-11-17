@@ -22,12 +22,79 @@ public class DeliveriesController implements DeliveriesApi {
   private final DeliveryQueries queries;
   private final CancellationService cancellations;
   private final DispatchViews views;
+  private final com.pmart.delivery.dispatch.application.RiderAssignmentHistory history;
 
   public DeliveriesController(
-      DeliveryQueries queries, CancellationService cancellations, DispatchViews views) {
+      DeliveryQueries queries,
+      CancellationService cancellations,
+      DispatchViews views,
+      com.pmart.delivery.dispatch.application.RiderAssignmentHistory history) {
     this.queries = queries;
     this.cancellations = cancellations;
     this.views = views;
+    this.history = history;
+  }
+
+  /** 라이더 배정 이력(2026-11-18 — 라이더 백오피스 요청 #4). */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.dispatch.api.generated.model.ListRiderAssignmentsForStaff200Response>
+      listRiderAssignmentsForStaff(
+          String riderId, Integer size, @org.jspecify.annotations.Nullable String cursor) {
+    int offset = 0;
+    if (cursor != null && !cursor.isBlank()) {
+      try {
+        offset = Math.max(0, Integer.parseInt(cursor));
+      } catch (NumberFormatException e) {
+        throw new com.pmart.common.web.PmartException(
+            com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "cursor 가 올바르지 않습니다.");
+      }
+    }
+    var rows = history.of(riderId, size + 1, offset);
+    boolean more = rows.size() > size;
+    var page = more ? rows.subList(0, size) : rows;
+    var out =
+        new com.pmart.delivery.dispatch.api.generated.model
+                .ListRiderAssignmentsForStaff200Response()
+            .items(
+                page.stream()
+                    .map(
+                        r -> {
+                          var it =
+                              new com.pmart.delivery.dispatch.api.generated.model
+                                  .ListRiderAssignmentsForStaff200ResponseItemsInner();
+                          it.setDeliveryId(r.deliveryId());
+                          it.setOrderId(r.orderId());
+                          it.setMfcId(r.mfcId());
+                          it.setType(r.type());
+                          it.setPurpose(r.purpose());
+                          it.setOfferId(r.offerId());
+                          it.setSource(r.source());
+                          it.setFee(r.fee());
+                          it.setAssignedAt(r.assignedAt().atOffset(java.time.ZoneOffset.UTC));
+                          it.setDeliveryState(r.deliveryState());
+                          it.setOutcome(
+                              com.pmart.delivery.dispatch.api.generated.model
+                                  .ListRiderAssignmentsForStaff200ResponseItemsInner.OutcomeEnum
+                                  .fromValue(r.outcome()));
+                          if (r.cancellation() != null) {
+                            var c = r.cancellation();
+                            it.setCancellation(
+                                new com.pmart.delivery.dispatch.api.generated.model
+                                        .ListRiderAssignmentsForStaff200ResponseItemsInnerCancellation()
+                                    .requestedBy(c.requestedBy())
+                                    .reason(c.reason())
+                                    .reasonDetail(c.reasonDetail())
+                                    .at(c.at().atOffset(java.time.ZoneOffset.UTC)));
+                          }
+                          return it;
+                        })
+                    .toList());
+    out.setPage(
+        new com.pmart.delivery.dispatch.api.generated.model.ListMyOffers200ResponsePage()
+            .nextCursor(more ? String.valueOf(offset + size) : null)
+            .size(page.size()));
+    return ResponseEntity.ok(out);
   }
 
   @Override

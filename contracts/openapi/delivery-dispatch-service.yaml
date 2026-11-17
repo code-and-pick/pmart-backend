@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -231,6 +231,57 @@ paths:
               schema: { $ref: '#/components/schemas/OfferResponseResult' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /rider-assignments:
+    get:
+      tags: [deliveries]
+      summary: (0.8.0) 라이더 한 명의 배정 이력 — 배송별 배정·해제 (RIDER_OPS·OPERATOR_ADMIN·CS_AGENT)
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 라이더 백오피스 요청 #4(사용자 "응 전부 진행해"). 이 라이더가 수락(또는 바로 배정)한 배송마다 한 줄, 배정 최신순.
+        outcome: CURRENT(지금 이 라이더 — 진행 중) / DONE(이 라이더로 끝남 — 배차 CLOSED) / RELEASED(배정이 풀림 — 배차 취소면 cancellation 에 요청자·사유,
+        계정 제한·재배정처럼 취소 기록이 없으면 cancellation null) / CANCELLED(배송이 픽업 전 취소). 개인정보 없음. 그 밖 직원 403.
+      operationId: listRiderAssignmentsForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [deliveryId, assignedAt, outcome]
+                      properties:
+                        deliveryId: { type: string }
+                        orderId: { type: [string, 'null'] }
+                        mfcId: { type: [string, 'null'] }
+                        type: { type: [string, 'null'] }
+                        purpose: { type: [string, 'null'] }
+                        offerId: { type: string }
+                        source: { type: string, description: 'AI_RECOMMENDED 제안 수락 / DELIVERY_LIST 목록에서 수락 / FAILED_RETURN 전달 실패 반납 바로 배정' }
+                        fee: { type: [integer, 'null'] }
+                        assignedAt: { type: string, format: date-time }
+                        deliveryState: { type: string, description: 배차 쪽 지금 상태 }
+                        outcome: { type: string, enum: [CURRENT, DONE, RELEASED, CANCELLED] }
+                        cancellation:
+                          type: [object, 'null']
+                          properties:
+                            requestedBy: { type: string }
+                            reason: { type: string }
+                            reasonDetail: { type: [string, 'null'] }
+                            at: { type: string, format: date-time }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /deliveries/{deliveryId}/dispatch:
     get:

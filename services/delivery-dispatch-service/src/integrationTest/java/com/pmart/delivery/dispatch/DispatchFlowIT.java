@@ -876,6 +876,32 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 deliveryId))
         .isEqualTo(other);
 
+    // 라이더 배정 이력(2026-11-18 — 라이더 백오피스 요청 #4): 취소한 라이더는 RELEASED + 취소 사유, 상담원 보기 됨·센터 관리자 403
+    JsonNode hist =
+        body(
+            http.get()
+                .uri("/rider-assignments?riderId={r}", first)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                .retrieve()
+                .toEntity(String.class));
+    JsonNode row = hist.path("items").get(0);
+    assertThat(row.path("deliveryId").asString()).isEqualTo(deliveryId);
+    assertThat(row.path("outcome").asString()).isEqualTo("RELEASED");
+    assertThat(row.path("cancellation").path("requestedBy").asString()).isEqualTo("RIDER");
+    assertThat(
+            http.get()
+                .uri("/rider-assignments?riderId={r}", first)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-S", List.of("MFC_SUPERVISOR"), List.of(mfc)))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+
     // 취소한 라이더는 배달리스트에서도 이 배송을 못 받는다(L5)
     JsonNode again =
         body(
