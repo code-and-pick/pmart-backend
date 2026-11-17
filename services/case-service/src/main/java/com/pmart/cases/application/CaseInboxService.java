@@ -16,6 +16,9 @@ import com.pmart.common.web.PmartException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -279,13 +282,7 @@ public class CaseInboxService {
     if (claimId == null) {
       throw new IllegalArgumentException("claimId 없음"); // 계약 위반 → DLT
     }
-    String reason = text(p, "lastFailureReason");
-    String note =
-        "반품 회수 "
-            + p.path("attempts").asInt(0)
-            + "번 요청 뒤 실패 — 마지막 사유 "
-            + orDash(reason)
-            + ", 고객에게 다시 연락";
+    String note = returnRecoveryNote(p);
     String key = "RETURN_RECOVERY:" + claimId;
     var open = store.lockOpenByDedupe(key);
     if (open.isPresent()) {
@@ -310,6 +307,43 @@ public class CaseInboxService {
         refs,
         key);
   }
+
+  /**
+   * 반품 회수 실패 메모. claim 0.3.0(CL-1 추가 결정, 2026-11-17)의 countedAttempts·retryAllowed·returnDeadlineAt
+   * 이 있으면 쓴다 — 우리 잘못(RIDER_INCIDENT)은 횟수에 들지 않으므로 attempts(요청 수)보다 countedAttempts 가 맞다. 없으면(이전 발행)
+   * 예전 문구. 상담원이 "다시 회수 요청"을 할 수 있는지 메모만 보고 알게 한다(판정은 claim 이 하고 여기선 옮기기만).
+   */
+  static String returnRecoveryNote(JsonNode p) {
+    boolean counted = p.path("countedAttempts").isNumber();
+    StringBuilder b = new StringBuilder("반품 회수 ");
+    if (counted) {
+      b.append(p.path("countedAttempts").asInt()).append("번 실패");
+    } else {
+      b.append(p.path("attempts").asInt(0)).append("번 요청 뒤 실패");
+    }
+    b.append(" — 마지막 사유 ").append(orDash(text(p, "lastFailureReason")));
+    JsonNode retry = p.path("retryAllowed");
+    if (retry.isBoolean()) {
+      if (retry.asBoolean()) {
+        b.append(", 다시 회수 요청 가능");
+        String deadline = text(p, "returnDeadlineAt");
+        if (deadline != null) {
+          try {
+            b.append("(반품 기한 ").append(KST_SHORT.format(Instant.parse(deadline))).append(')');
+          } catch (DateTimeParseException ignored) {
+            // 형식이 틀리면 기한만 뺀다
+          }
+        }
+      } else {
+        b.append(", 다시 회수 불가 — 반품 취소만");
+      }
+    }
+    return b.append(", 고객에게 다시 연락").toString();
+  }
+
+  /** 메모에 쓰는 한국 시각(ADR-0010 — 표시만). */
+  private static final DateTimeFormatter KST_SHORT =
+      DateTimeFormatter.ofPattern("M월 d일 HH:mm").withZone(ZoneId.of("Asia/Seoul"));
 
   private static String orderExceptionSummary(String type, JsonNode p) {
     return switch (type) {
