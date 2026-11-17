@@ -45,7 +45,7 @@ class EtaStreamsTest {
             null,
             etaDrop,
             Instant.now());
-    return new ProgressService.View(p, true, true, false, null);
+    return new ProgressService.View(p, true, true, false, null, null);
   }
 
   private record Conn(HttpServletRequest req, HttpServletResponse res, AsyncContext ctx) {}
@@ -67,9 +67,9 @@ class EtaStreamsTest {
     var stuckFirst = view("DLV-STUCK", "TO_CUSTOMER", t0);
     var okFirst = view("DLV-OK", "TO_CUSTOMER", t0);
     // 다음 회차: 둘 다 도착 예정이 바뀜 → 둘 다 써야 함
-    when(progress.refresh(eq("DLV-STUCK"), anyBoolean()))
+    when(progress.refresh(eq("DLV-STUCK"), anyBoolean(), org.mockito.ArgumentMatchers.isNull()))
         .thenReturn(view("DLV-STUCK", "TO_CUSTOMER", t0.plusSeconds(120)));
-    when(progress.refresh(eq("DLV-OK"), anyBoolean()))
+    when(progress.refresh(eq("DLV-OK"), anyBoolean(), org.mockito.ArgumentMatchers.isNull()))
         .thenReturn(view("DLV-OK", "TO_CUSTOMER", t0.plusSeconds(120)));
 
     CountDownLatch release = new CountDownLatch(1);

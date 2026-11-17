@@ -705,7 +705,8 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(first.path("arrivalWindow").path("end").asString()).isEqualTo("19:00");
     assertThat(etaGet(TestJwt.customer("ACC-someone-else"), delivery).getStatusCode().value())
         .isEqualTo(404);
-    assertThat(etaGet(TestJwt.rider(rider), delivery).getStatusCode().value()).isEqualTo(403);
+    // 라이더(2026-11-17 §16-4): 배정 전에는 자기 배송이 아니다 — 404, 라이더 아닌 토큰 종류만 403
+    assertThat(etaGet(TestJwt.rider(rider), delivery).getStatusCode().value()).isEqualTo(404);
     assertThat(etaGet(otherCenter, delivery).getStatusCode().value()).isEqualTo(404);
     assertThat(etaGet(sameCenter, delivery).getStatusCode().value()).isEqualTo(200);
     assertThat(etaGet(customer, "DLV-none").getStatusCode().value()).isEqualTo(404);
@@ -758,6 +759,11 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(mine.toString()).doesNotContain("37.50");
     JsonNode staffView = json(etaGet(staff, delivery).getBody());
     assertThat(staffView.path("pickupEta").path("status").asString()).isEqualTo("AVAILABLE");
+    // 배정된 라이더는 직원과 같은 범위(픽업 예정 포함), 다른 라이더는 404
+    JsonNode riderView = json(etaGet(TestJwt.rider(rider), delivery).getBody());
+    assertThat(riderView.path("pickupEta").path("status").asString()).isEqualTo("AVAILABLE");
+    assertThat(riderView.path("dropEta").path("status").asString()).isEqualTo("AVAILABLE");
+    assertThat(etaGet(TestJwt.rider("RD-other"), delivery).getStatusCode().value()).isEqualTo(404);
     // 라이더 위치(2026-11-17 사용자 "픽업 뒤 정확한 위치"): 픽업 전 고객 없음, 직원은 배정 뒤
     assertThat(mine.path("riderLocation").isObject()).isFalse();
     assertThat(staffView.path("riderLocation").path("lat").asDouble()).isEqualTo(37.5);

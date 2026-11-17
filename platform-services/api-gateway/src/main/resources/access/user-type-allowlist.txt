@@ -78,13 +78,13 @@ GET /api/v1/deliveries/{deliveryId}/assignment-cancellations/{requestId} OPERATO
 GET /api/v1/deliveries/{deliveryId}/delivery-proof CUSTOMER
 GET /api/v1/deliveries/{deliveryId}/dispatch OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/drop-info RIDER
-GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR
+GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/evidence-photos/{photoRef} CUSTOMER,OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/help-requests OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/recovery-contact RIDER
-GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR
+GET /api/v1/deliveries/{deliveryId}/stream CUSTOMER,OPERATOR,RIDER
 GET /api/v1/delivery-conditions CUSTOMER,GUEST
 GET /api/v1/delivery-help-requests OPERATOR
 GET /api/v1/delivery-list RIDER

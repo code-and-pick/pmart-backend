@@ -53,7 +53,8 @@ public class ProgressService {
       boolean staff,
       boolean etaEnabled,
       boolean locating,
-      LocationStore.@Nullable Latest riderLocation) {}
+      LocationStore.@Nullable Latest riderLocation,
+      @Nullable String viewerRider) {}
 
   /** 라이더 위치를 보이는 단계(2026-11-17 사용자 "픽업 뒤 정확한 위치") — 고객은 픽업 뒤, 직원은 배정 뒤. 끝나면 없음. */
   static boolean showsRider(String stage, boolean staff) {
@@ -134,18 +135,31 @@ public class ProgressService {
         throw notFound(deliveryId);
       }
       staff = true;
+    } else if (p.type() == PmartPrincipal.PrincipalType.RIDER) {
+      // 라이더 본인 배송(2026-11-17 — 라이더 앱 요청 §16-4 "앱을 다시 켜면 예정 시각이 없다"): 지금 배정된 라이더만, 직원과 같은 범위(픽업
+      // 예정·도착 예정·자기 위치). 남의·배정이 풀린 배송은 404
+      if (!p.subject().equals(row.riderId())) {
+        throw notFound(deliveryId);
+      }
+      return snapshot(row, true, p.subject());
     } else {
-      throw new PmartException(ErrorCode.FORBIDDEN, "고객·직원만 볼 수 있습니다.");
+      throw new PmartException(ErrorCode.FORBIDDEN, "고객·직원·배정 라이더만 볼 수 있습니다.");
     }
-    return snapshot(row, staff);
+    return snapshot(row, staff, null);
   }
 
-  /** 다시 읽기(구독 중 — 권한은 연결 때 판정). 행이 지워졌으면 null. */
-  public @Nullable View refresh(String deliveryId, boolean staff) {
-    return store.find(deliveryId).map(r -> snapshot(r, staff)).orElse(null);
+  /**
+   * 다시 읽기(구독 중 — 권한은 연결 때 판정). 행이 지워졌으면 null. 라이더 구독(viewerRider)은 배정이 바뀌면 null — 남의 위치를 보지 않게 닫는다.
+   */
+  public @Nullable View refresh(String deliveryId, boolean staff, @Nullable String viewerRider) {
+    return store
+        .find(deliveryId)
+        .filter(r -> viewerRider == null || viewerRider.equals(r.riderId()))
+        .map(r -> snapshot(r, staff, viewerRider))
+        .orElse(null);
   }
 
-  private View snapshot(Progress row, boolean staff) {
+  private View snapshot(Progress row, boolean staff, @Nullable String viewerRider) {
     Instant now = clock.instant();
     LocationStore.Latest latest =
         row.riderId() == null ? null : locations.latest(row.riderId()).orElse(null);
@@ -158,7 +172,8 @@ public class ProgressService {
         staff,
         props.eta().enabled(),
         locating,
-        latest != null && showsRider(row.stage(), staff) ? latest : null);
+        latest != null && showsRider(row.stage(), staff) ? latest : null,
+        viewerRider);
   }
 
   @Scheduled(

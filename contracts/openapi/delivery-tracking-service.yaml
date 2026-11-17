@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -63,6 +63,7 @@ paths:
       summary: ETA 조회 (고객 drop만 / 점원 pickup+drop)
       description: |
         호출자 역할에 따라 범위가 다르다. 고객 토큰은 본인 주문 배송의 dropEta만, 점포 직원·운영자는 pickupEta·dropEta 모두.
+        **라이더(0.7.0, 2026-11-17 — 라이더 앱 요청 §16-4)**: 지금 그 배송에 배정된 라이더만 직원과 같은 범위(남의·배정 풀린 배송 404). 구독 중 배정이 바뀌면 구독을 닫는다.
         라이더 미배정·위치 미수신·행렬 조회 실패면 status LOCATING / ETA_PENDING 으로 응답하고 수치는 비운다.
         라이더 좌표(0.6.0, 2026-11-17 사용자 결정): 고객은 픽업 뒤(TO_CUSTOMER·AT_CUSTOMER)만 `riderLocation`, 직원은 배정 뒤. 그 전·끝난 뒤는 null.
         **구현(0.5.0, 2026-11-17 — TR-3)**: 고객 소유 = 배송 → 주문 → order 내부 조회 accountId(남의·모르는 배송 404). 직원 = execution 과 같은 범위
@@ -70,7 +71,7 @@ paths:
         진행 단계는 배송 사건 사본(이 서비스가 배포된 뒤 만들어진 배송부터 — 그 전 배송은 404). ETA 계산이 꺼져 있으면(pmart.tracking.eta 설정 없음) ETA_PENDING.
         Cache-Control no-store.
       operationId: getDeliveryEta
-      x-pmart-user-types: [CUSTOMER, OPERATOR]
+      x-pmart-user-types: [CUSTOMER, OPERATOR, RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
       responses:
@@ -95,7 +96,7 @@ paths:
         도착 예정이 바뀌면 ETA_UPDATED, 15초마다 HEARTBEAT, DONE 이면 STREAM_END 를 보내고 닫는다(최대 연결 시간 뒤에도 닫음 — 다시 접속).
         id = 상태 지문(단계·도착 예정) — Last-Event-ID 가 지금 상태와 같으면 첫 이벤트를 건너뛴다. 권한·404 판정은 접속 때 한 번.
       operationId: streamDeliveryTracking
-      x-pmart-user-types: [CUSTOMER, OPERATOR]
+      x-pmart-user-types: [CUSTOMER, OPERATOR, RIDER]
       parameters:
         - { name: deliveryId, in: path, required: true, schema: { type: string } }
         - name: Last-Event-ID

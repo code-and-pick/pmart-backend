@@ -42,6 +42,7 @@ class EtaStreams {
   private final class Sub {
     final String deliveryId;
     final boolean staff;
+    final @Nullable String viewerRider;
     final AsyncContext ctx;
     final Instant openedAt;
     final java.util.concurrent.atomic.AtomicBoolean writing =
@@ -55,6 +56,7 @@ class EtaStreams {
     Sub(String deliveryId, boolean staff, AsyncContext ctx, Instant now, ProgressService.View v) {
       this.deliveryId = deliveryId;
       this.staff = staff;
+      this.viewerRider = v.viewerRider();
       this.ctx = ctx;
       this.openedAt = now;
       this.lastId = EtaViews.fingerprint(v);
@@ -213,8 +215,11 @@ class EtaStreams {
             s,
             now,
             seen.computeIfAbsent(
-                    s.deliveryId + (s.staff ? "#S" : "#C"),
-                    k -> java.util.Optional.ofNullable(progress.refresh(s.deliveryId, s.staff)))
+                    s.deliveryId
+                        + (s.viewerRider != null ? "#R" + s.viewerRider : s.staff ? "#S" : "#C"),
+                    k ->
+                        java.util.Optional.ofNullable(
+                            progress.refresh(s.deliveryId, s.staff, s.viewerRider)))
                 .orElse(null));
       } catch (RuntimeException e) {
         log.warn("배송 {} 구독 갱신 실패 — 닫음: {}", s.deliveryId, e.toString());
