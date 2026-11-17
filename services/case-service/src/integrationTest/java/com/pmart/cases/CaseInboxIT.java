@@ -1455,6 +1455,112 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 행위 요청 기록(0.17.0 — 2026-11-17 사용자 "기록만 먼저"): 그 건을 다룰 수 있는 사람이 요청·결과를 남기고(case 는 대상 서비스를 부르지 않음),
+   * 보상 실행은 승인 번호 필수, 강제 명령 거절, 끝난 요청은 더 못 남기고, 처리 끝난 건엔 새 요청 없음.
+   */
+  @Test
+  void actionRequestsAreRecordedNotExecuted() {
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String a = misdeliveryCase("DLV-AR");
+    String path = "/cases/" + a + "/action-requests";
+    Map<String, Object> requery =
+        Map.of(
+            "actionType", "REQUERY_RESULT",
+            "targetService", "order-orchestration-service",
+            "command", "requerySagaResult",
+            "targetRef", "SAGA-1",
+            "payloadSummary", Map.of("reason", "결제 확인 대기"));
+
+    assertThat(send("POST", cs, path, requery).status()).as("상담원은 배송 건을 다루지 않음").isEqualTo(403);
+    Res comp =
+        send(
+            "POST",
+            ops,
+            path,
+            Map.of(
+                "actionType",
+                "EXECUTE_APPROVED_COMPENSATION",
+                "targetService",
+                "claim-service",
+                "command",
+                "executeRefund"));
+    assertThat(comp.status()).isEqualTo(422);
+    assertThat(comp.body().path("code").asString()).isEqualTo("APPROVAL_REQUIRED");
+    Res force =
+        send(
+            "POST",
+            ops,
+            path,
+            Map.of(
+                "actionType",
+                "RESEND_UNDELIVERED",
+                "targetService",
+                "x",
+                "command",
+                "forceSuccess"));
+    assertThat(force.body().path("code").asString()).isEqualTo("UNSUPPORTED_ACTION");
+
+    Res created = send("POST", ops, path, requery);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String ar = created.body().path("actionRequestId").asString();
+    assertThat(created.body().path("state").asString()).isEqualTo("REQUESTED");
+    assertThat(created.body().path("payloadSummary").path("reason").asString())
+        .isEqualTo("결제 확인 대기");
+
+    String results = path + "/" + ar + "/results";
+    assertThat(
+            send("POST", ops, results, Map.of("state", "SENT", "resultSystem", "only-system"))
+                .status())
+        .as("결과 ID 는 둘 다")
+        .isEqualTo(400);
+    assertThat(send("POST", ops, results, Map.of("state", "UNKNOWN_RESULT")).status())
+        .isEqualTo(200);
+    Res applied =
+        send(
+            "POST",
+            ops,
+            results,
+            Map.of(
+                "state",
+                "APPLIED",
+                "resultSystem",
+                "order-orchestration-service",
+                "resultRef",
+                "SAGA-1:resolved",
+                "resultKind",
+                "EVENT",
+                "note",
+                "다시 확인으로 확정됨"));
+    assertThat(applied.status()).as(applied.body().toString()).isEqualTo(200);
+    assertThat(applied.body().path("resultRef").path("ref").asString())
+        .isEqualTo("SAGA-1:resolved");
+    assertThat(applied.body().path("version").asInt()).isEqualTo(2);
+    Res again = send("POST", ops, results, Map.of("state", "REJECTED"));
+    assertThat(again.status()).as("끝난 요청").isEqualTo(409);
+
+    JsonNode c = send("GET", admin, "/cases/" + a, null).body();
+    assertThat(c.path("actionRequests").findValuesAsString("actionRequestId")).containsExactly(ar);
+    assertThat(c.path("history").toString())
+        .contains("ACTION_REQUESTED", "ACTION_RESULT_RECORDED", "SAGA-1:resolved");
+    assertThat(send("GET", ops, path + "/" + ar, null).status()).isEqualTo(200);
+    assertThat(send("GET", ops, path + "/ACR-none", null).status()).isEqualTo(404);
+
+    // 처리 끝난 건에는 새 요청을 남기지 않는다
+    claim(ops, a, "op-ops-1");
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    "/cases/" + a + "/closures",
+                    Map.of("resolution", "RESOLVED", "summary", "끝"))
+                .status())
+        .isEqualTo(200);
+    assertThat(send("POST", ops, path, requery).status()).isEqualTo(409);
+  }
+
+  /**
    * 접수 건 메모(0.10.0 — 2026-11-16 사용자 "고친 안"): 볼 수 있는 본사 직원(상담원 포함)이 덧붙이기만, 처리 끝난 건에도(상태 그대로), 관리자
    * 가림(사유 필수 — 글은 지우고 누가·언제·왜는 남김), 못 보는 직원 404.
    */

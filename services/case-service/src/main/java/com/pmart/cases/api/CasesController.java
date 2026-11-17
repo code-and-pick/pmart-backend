@@ -23,6 +23,7 @@ import com.pmart.cases.api.generated.model.Obligation;
 import com.pmart.cases.api.generated.model.Priority;
 import com.pmart.cases.api.generated.model.ReopenCaseRequest;
 import com.pmart.cases.api.generated.model.TransferCaseRequest;
+import com.pmart.cases.application.ActionRequestService;
 import com.pmart.cases.application.CaseInboxService;
 import com.pmart.cases.application.CaseNoteService;
 import com.pmart.cases.application.ObligationService;
@@ -51,12 +52,17 @@ public class CasesController implements CasesApi {
   private final CaseInboxService cases;
   private final ObligationService obligations;
   private final CaseNoteService notes;
+  private final ActionRequestService actions;
 
   public CasesController(
-      CaseInboxService cases, ObligationService obligations, CaseNoteService notes) {
+      CaseInboxService cases,
+      ObligationService obligations,
+      CaseNoteService notes,
+      ActionRequestService actions) {
     this.cases = cases;
     this.obligations = obligations;
     this.notes = notes;
+    this.actions = actions;
   }
 
   @Override
@@ -306,7 +312,10 @@ public class CasesController implements CasesApi {
             .subCaseIds(List.of())
             .mergedFromCaseIds(List.of())
             .obligations(obls)
-            .actionRequests(List.of())
+            .actionRequests(
+                actions.forCase(c.caseId()).stream()
+                    .map(ActionRequestsController::toModel)
+                    .toList())
             .evidence(List.of())
             .history(
                 d.history().stream()

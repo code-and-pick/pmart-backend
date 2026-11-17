@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.14.0
+  version: 0.17.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -509,6 +509,10 @@ paths:
       description: |
         사건 서비스는 도메인 명령을 대신 실행하지 않는다. 요청 사실과 대상 서비스·명령·멱등키·결과 ID 를 기록한다.
         "강제 성공"·"잔고 덮어쓰기" 종류의 행위는 UNSUPPORTED_ACTION.
+        **0.17.0(2026-11-17 사용자 "기록만 먼저")**: 직원이 처리 대기·각 메뉴에서 한 요청을 접수 건에 남긴다 — case 는 대상 서비스를 부르지 않는다.
+        그 접수 건을 다룰 수 있는 사람(집기·닫기와 같은 규칙, 그 밖 403), 처리 끝난 건 409 INVALID_STATE. 상태 REQUESTED 로 시작, 결과는 …/results 로 남긴다.
+        EXECUTE_APPROVED_COMPENSATION 은 approvalRef 필수(422 APPROVAL_REQUIRED), 명령 이름에 force·overwrite·override 가 있으면 422 UNSUPPORTED_ACTION.
+        이력 ACTION_REQUESTED. 이벤트·알림 없음. X-Expected-Version = 접수 건 version(선택).
       operationId: createActionRequest
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -527,6 +531,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ActionRequest' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
@@ -551,6 +557,47 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ActionRequest' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cases/{caseId}/action-requests/{actionRequestId}/results:
+    post:
+      tags: [action-requests]
+      summary: 행위 요청 결과 남기기 (상태·결과 ID — 0.17.0)
+      x-added-in: '2026-11-17'
+      description: |
+        2026-11-17 사용자 "기록만 먼저": 대상 서비스에서 확인한 결과를 직원이 남긴다(case 가 확인하지 않는다).
+        state SENT·ACCEPTED·APPLIED·REJECTED·UNKNOWN_RESULT. 결과 ID 는 resultSystem·resultRef 를 같이(하나만 400).
+        APPLIED·REJECTED 뒤에는 더 남기지 않는다(409 INVALID_STATE — 다시 하려면 새 요청). UNKNOWN_RESULT 는 원결과 재조회 뒤 다시 남길 수 있다.
+        그 접수 건을 다룰 수 있는 사람만(403). 이력 ACTION_RESULT_RECORDED(전 → 후 상태). 메모는 로그에 남기지 않는다.
+      operationId: recordActionRequestResult
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: actionRequestId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [SENT, ACCEPTED, APPLIED, REJECTED, UNKNOWN_RESULT] }
+                resultSystem: { type: string, maxLength: 64, description: 결과를 보유한 서비스 }
+                resultRef: { type: string, maxLength: 200, description: 'commitId·거래 ID·사가 ID 등' }
+                resultKind: { type: string, enum: [COMMIT, TRANSACTION, EVENT, DOCUMENT, PHOTO, LOG] }
+                note: { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: 결과가 남은 행위 요청
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ActionRequest' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /cs-intakes:
     post:
@@ -1345,8 +1392,8 @@ components:
       required: [actionType, targetService, command]
       properties:
         actionType: { type: string, enum: [REQUERY_RESULT, RESEND_UNDELIVERED, EXECUTE_APPROVED_COMPENSATION, REQUEST_DOMAIN_REVIEW] }
-        targetService: { type: string }
-        command: { type: string, description: 대상 서비스 operationId }
+        targetService: { type: string, maxLength: 64 }
+        command: { type: string, maxLength: 100, description: 대상 서비스 operationId }
         targetRef: { type: string }
         idempotencyKey: { type: string, description: 대상 명령에 사용한 멱등키 }
         approvalRef: { type: string, description: EXECUTE_APPROVED_COMPENSATION 시 필수 }
@@ -1363,6 +1410,9 @@ components:
             requestedBy: { type: string }
             requestedAt: { type: string, format: date-time }
             resultAt: { type: [string, 'null'], format: date-time }
+            resultNote: { type: [string, 'null'], x-added-in: '2026-11-17' }
+            resultBy: { type: [string, 'null'], x-added-in: '2026-11-17' }
+            version: { type: integer, x-added-in: '2026-11-17' }
     RiderComplaintType:
       type: string
       enum: [REPORT, MISDELIVERY, DAMAGE]
