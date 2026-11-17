@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.11.0
+  version: 0.11.1
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -401,7 +401,7 @@ paths:
         **stage(단계 — 사용자 2026-11-17 "BFF로 단계표시")**: 원천 값에서 아래 규칙으로만 정한다. 규칙에 없는 조합은 null(추정하지 않음 — 원천 값 shipment·pick·pack 을 보면 된다).
           HANDED_OVER(인계 완료) = 출고 HANDED_OVER · PARTIALLY_HANDED_OVER(일부 인계) = 출고 PARTIALLY_HANDED_OVER · READY_FOR_HANDOVER(출고대기) = 출고 READY ·
           출고 PREPARING 이면: PACKING(패킹중) = PACK IN_PROGRESS 또는 BLOCKED, 아니면 PICKING(피킹중) = PICK IN_PROGRESS 또는 BLOCKED, 아니면 PACKING(패킹중) = PICK COMPLETED 이고
-          PACK 이 없거나 WAITING·READY·ASSIGNED(피킹 끝·패킹 시작 전 — 사용자 2026-11-17 "(가)" 원문 네 단계 안에서 묶음, 실제 시작 여부는 pack.state), 아니면 REQUESTED(출고요청) = PICK 이
+          PACK 이 없거나 WAITING·READY·ASSIGNED(0.11.1 — 피킹 끝·패킹 시작 전, 사용자 2026-11-17 "(가)" 원문 네 단계 안에서 묶음, 실제 시작 여부는 pack.state), 아니면 REQUESTED(출고요청) = PICK 이
           없거나 WAITING·READY·ASSIGNED 이고 PACK 도 그렇다. 그 밖(취소·부분 종료, 작업 FAILED·CANCELLED, PACK COMPLETED 인데 출고 PREPARING 등)은 null.
         배송: 출고마다 delivery-execution `GET /deliveries?orderId=&mfcId=`(직원 토큰) — 원천 출고 종류가 RESHIPMENT 면 type RESHIPMENT, 그 밖 FORWARD 중 가장 최근 것.
         riderId 는 그 배송의 배정 라이더(인계 전), packages[].riderId 는 인계 받은 라이더(원천 값). 배송이 없으면 delivery null(DIRECT — 원천의 답).
