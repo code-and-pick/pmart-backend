@@ -118,6 +118,15 @@ public class RiderService {
                   if (store.find(riderId).isPresent()) {
                     throw duplicate("이미 가입한 라이더입니다.");
                   }
+                  if (store.withdrawn(riderId)) {
+                    // 탈퇴한 주체(2026-11-17) — 다시 로그인하면 새 라이더 주체로 가입한다
+                    throw new PmartException(
+                        "RIDER_WITHDRAWN",
+                        HttpStatus.CONFLICT,
+                        "탈퇴한 계정입니다. 다시 로그인한 뒤 가입해 주세요.",
+                        false,
+                        List.of());
+                  }
                   if (store.phoneTaken(cmd.phone())) {
                     throw duplicate("같은 전화번호로 가입한 라이더가 있습니다.");
                   }
@@ -488,7 +497,7 @@ public class RiderService {
     return p;
   }
 
-  private static String requireRider() {
+  static String requireRider() {
     PmartPrincipal p =
         PmartPrincipal.current()
             .orElseThrow(

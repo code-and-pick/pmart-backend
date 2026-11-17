@@ -21,7 +21,7 @@
 로컬 포트 8403.
 
 ## 상태
-2026-11-13 DD-1 첫 묶음(계약 0.2.0, V2): 가입·본인 프로필·운행 상태·배차 설정·내부 적격 라이더/라이더 조회 구현. 탈퇴는 501.
+2026-11-13 DD-1 첫 묶음(계약 0.2.0, V2): 가입·본인 프로필·운행 상태·배차 설정·내부 적격 라이더/라이더 조회 구현. 탈퇴는 2026-11-17 구현(아래).
 - 주체 = 라이더 토큰 sub(RD-…, rider-auth-service). 가입은 전화번호 중복만(면허·주민번호 안 받음 — 사용자 결정 2026-11-10 RS-2), 본인확인 없음(사용자 2026-11-13 '나중에'), 즉시 운행 승인(원문 §1.2). 첫 가입 배차 모드 AI_RECOMMENDED(원문 §2.2).
 - 운행 상태 `domain/OperatingRules`: OFF_DUTY 면 신규배차 꺼짐, SUSPENDED·TERMINATED 운행 시작 403, DISPATCH_RESTRICTED 는 신규배차 ON 403, 기준 MFC 는 배달지역 안(비우면 첫 MFC). 변경마다 `RiderStateChanged`(delivery.rider.v1, mfcId 포함).
 - 버전 하나(행 version)가 프로필·운행·설정의 X-Expected-Version 기준.
@@ -34,3 +34,4 @@
 
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
 - **배달 수단·운전면허(2026-11-16 — 라이더 앱 요청 §6·§7, V6)**: 수단 E_BIKE(전기자전거)·KICKBOARD(전동킥보드) 추가(수행료는 자전거와 같음 — dispatch `FeeTable` 이 도보만 따로). 가입 `licenseNumber`(12자리, 하이픈 선택) — MOTORCYCLE·CAR·KICKBOARD 필수(422 LICENSE_REQUIRED), 같은 번호 409 DUPLICATE_LICENSE, `POST /riders/license-checks`(가입 전 중복 확인). **원문 저장 안 함**: `license_hash` = HMAC-SHA256(`pmart.rider.license-hash-key` — pmart-config {cipher}, 없으면 면허를 받는 요청만 422 CONFIG_REQUIRED), `license_masked`(11-**-******-12) → 프로필 `licenseNumberMasked`. 가입 뒤 수단 변경(PATCH `/riders/me`)도 오토바이·자동차·킥보드로 바꾸면서 등록된 면허가 없으면 `licenseNumber` 필수(422 LICENSE_REQUIRED, 다른 라이더와 같으면 409 — 사용자 2026-11-16 "받는다").
+- **탈퇴(2026-11-17 — 계약 0.6.0, V7, 라이더 앱 요청 §17·원문 §8.3)**: 사용자 결정 — 막는 것 = 진행 중 배송·**확정 전** 수행료(확정분은 탈퇴 뒤 지급일에 그대로)·산정 불가 조정 대기·열린 도움요청(delivery-execution `GET /internal/riders/{id}/withdrawal-blockers` — `infrastructure/ExecutionClient`, `pmart.rider.execution-base-url` 기본 `http://delivery-execution-service:8405`, 못 부르면 503)·**제한 검토 중**(RS-3 OPEN — 이 서비스). 이미 걸린 계정 제한은 막지 않는다. `POST /riders/me/withdrawals`(`WithdrawalService`): 막으면 `rider_withdrawal` REJECTED·blockers + 409 INVALID_STATE(details field `blockers`), 같은 키로 다시 내면 다시 검사. 없으면 바로 COMPLETED(202 APPLIED, nextAction LOGOUT): **이름·전화·계좌·거주지·면허를 지움**(사용자 "즉시 가림·재가입 허용" — phone NULL 허용), 운행 끔, `withdrawn_at` → `RiderWithdrawn`(delivery.rider.v1, 개인정보 없음). 탈퇴한 행은 이력 주체로 남고 조회·직원 찾기·적격에서 빠진다(`withdrawn_at IS NULL`). 같은 주체로 다시 가입은 409 RIDER_WITHDRAWN(rider-auth 가 Google 연결을 지워 다시 로그인하면 새 주체 → 같은 전화·면허로 가입 가능). `GET /riders/me/withdrawals/{requestId}`(blockers enum `WithdrawalBlocker`).

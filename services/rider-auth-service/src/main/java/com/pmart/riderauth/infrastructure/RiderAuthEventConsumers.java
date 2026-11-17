@@ -17,7 +17,20 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 class RiderAuthEventConsumers {
 
   @Bean
-  PmartEventConsumer riderEvents(EventConsumers consumers, RiderSessionCuts cuts) {
-    return consumers.of(e -> RiderSessionCuts.TYPES.contains(e.eventType()), cuts::on);
+  PmartEventConsumer riderEvents(
+      EventConsumers consumers,
+      RiderSessionCuts cuts,
+      com.pmart.riderauth.application.RiderWithdrawals withdrawals) {
+    return consumers.of(
+        e ->
+            RiderSessionCuts.TYPES.contains(e.eventType())
+                || com.pmart.riderauth.application.RiderWithdrawals.TYPES.contains(e.eventType()),
+        e -> {
+          if (com.pmart.riderauth.application.RiderWithdrawals.TYPES.contains(e.eventType())) {
+            withdrawals.on(e); // 탈퇴(2026-11-17)
+          } else {
+            cuts.on(e);
+          }
+        });
   }
 }

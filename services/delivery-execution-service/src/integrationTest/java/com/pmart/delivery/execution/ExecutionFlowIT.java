@@ -1521,6 +1521,40 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(400);
   }
 
+  /** 라이더 탈퇴를 막는 것(2026-11-17 — rider-service 가 부름): 진행 중 배송 → 완료 뒤 확정 전 수행료, 모르는 라이더는 빈 목록. */
+  @Test
+  void withdrawalBlockersFollowDeliveryAndEarning() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    assertThat(blockers(rider)).containsExactly("ACTIVE_DELIVERY");
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "completions", rider, completion(List.of(photo), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(blockers(rider)).containsExactly("UNCONFIRMED_EARNING"); // 완료 5시간 안
+    jdbc.update(
+        "UPDATE rider_earning SET settlement_state = 'CONFIRMED' WHERE delivery_id = ?", id);
+    assertThat(blockers(rider)).isEmpty(); // 확정된 금액은 막지 않는다(탈퇴 뒤 지급)
+    assertThat(blockers("RDR-none-" + UUID.randomUUID())).isEmpty();
+  }
+
+  List<String> blockers(String rider) {
+    JsonNode b =
+        body(
+            http.get()
+                .uri("/internal/riders/{id}/withdrawal-blockers", rider)
+                .retrieve()
+                .toEntity(String.class));
+    List<String> out = new java.util.ArrayList<>();
+    b.path("blockers").forEach(n -> out.add(n.asString()));
+    return out;
+  }
+
   ResponseEntity<String> meGet(String uri, String rider) {
     return http.get()
         .uri(uri)

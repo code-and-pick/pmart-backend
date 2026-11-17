@@ -128,17 +128,22 @@ public class RiderStore {
   }
 
   public Optional<Rider> find(String riderId) {
-    return one("SELECT " + COLUMNS + " FROM rider WHERE rider_id = ?", riderId);
+    return one(
+        "SELECT " + COLUMNS + " FROM rider WHERE rider_id = ? AND withdrawn_at IS NULL", riderId);
   }
 
   /** 트랜잭션 끝까지 그 라이더 행을 잡는다. */
   public Optional<Rider> lock(String riderId) {
-    return one("SELECT " + COLUMNS + " FROM rider WHERE rider_id = ? FOR UPDATE", riderId);
+    return one(
+        "SELECT " + COLUMNS + " FROM rider WHERE rider_id = ? AND withdrawn_at IS NULL FOR UPDATE",
+        riderId);
   }
 
   public Optional<Rider> findBySignupRequest(String riderId, String requestId) {
     return one(
-        "SELECT " + COLUMNS + " FROM rider WHERE rider_id = ? AND signup_request_id = ?",
+        "SELECT "
+            + COLUMNS
+            + " FROM rider WHERE rider_id = ? AND signup_request_id = ? AND withdrawn_at IS NULL",
         riderId,
         requestId);
   }
@@ -156,7 +161,8 @@ public class RiderStore {
   /** 직원 라이더 찾기 — restriction 은 지금 유효한 제한(기한 지난 제한은 NORMAL)으로 거른다. */
   public List<Rider> search(Search s, Instant now, int limit, int offset) {
     List<Object> args = new ArrayList<>();
-    StringBuilder sql = new StringBuilder("SELECT " + COLUMNS + " FROM rider WHERE TRUE");
+    StringBuilder sql =
+        new StringBuilder("SELECT " + COLUMNS + " FROM rider WHERE withdrawn_at IS NULL");
     if (s.riderId() != null) {
       sql.append(" AND rider_id = ?");
       args.add(s.riderId());
@@ -204,7 +210,8 @@ public class RiderStore {
         new StringBuilder(
             "SELECT "
                 + COLUMNS
-                + " FROM rider r WHERE r.operating_status = 'ON_DUTY' AND r.new_dispatch_enabled"
+                + " FROM rider r WHERE r.withdrawn_at IS NULL AND r.operating_status = 'ON_DUTY' AND"
+                + " r.new_dispatch_enabled"
                 + " AND (r.restriction = 'NORMAL' OR r.restriction_until <= ?) AND EXISTS (SELECT 1"
                 + " FROM rider_delivery_area a WHERE a.rider_id = r.rider_id AND a.mfc_id = ?)");
     args.add(Timestamp.from(now));
@@ -443,5 +450,92 @@ public class RiderStore {
   private static @Nullable Instant instantOrNull(ResultSet rs, String col) throws SQLException {
     Timestamp t = rs.getTimestamp(col);
     return t == null ? null : t.toInstant();
+  }
+
+  // ---------- 탈퇴(2026-11-17) ----------
+
+  /** 이 라이더가 탈퇴한 행이 있는가(가입 거절 — 같은 주체로 다시 가입하지 않는다, 다시 로그인하면 새 주체). */
+  public boolean withdrawn(String riderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider WHERE rider_id = ? AND withdrawn_at IS NOT NULL",
+            Integer.class,
+            riderId);
+    return n != null && n > 0;
+  }
+
+  /** 열린 제한 검토(RS-3) 수. */
+  public int openRestrictionReviews(String riderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider_restriction_review WHERE rider_id = ? AND state = 'OPEN'",
+            Integer.class,
+            riderId);
+    return n == null ? 0 : n;
+  }
+
+  /** 탈퇴: 개인정보를 지우고(사용자 "즉시 가림·재가입 허용") 운행·신규배차를 끈다. 행은 이력의 주체로 남는다. */
+  public void withdraw(String riderId, Instant at) {
+    jdbc.update(
+        "UPDATE rider SET name = NULL, phone = NULL, bank_code = NULL, bank_account_number = NULL,"
+            + " bank_holder_name = NULL, residence_road = NULL, residence_detail = NULL, license_hash ="
+            + " NULL, license_masked = NULL, operating_status = 'OFF_DUTY', new_dispatch_enabled ="
+            + " false, operating_mfc_id = NULL, withdrawn_at = ?, state_changed_at = ?, version ="
+            + " version + 1 WHERE rider_id = ?",
+        java.sql.Timestamp.from(at),
+        java.sql.Timestamp.from(at),
+        riderId);
+  }
+
+  public void upsertWithdrawal(
+      String riderId,
+      String requestId,
+      String state,
+      List<String> blockers,
+      @Nullable String reason,
+      Instant at,
+      @Nullable Instant completedAt) {
+    jdbc.update(
+        "INSERT INTO rider_withdrawal (rider_id, request_id, state, blockers, reason, requested_at,"
+            + " completed_at) VALUES (?, ?, ?, ?::jsonb, ?, ?, ?) ON CONFLICT (rider_id, request_id)"
+            + " DO UPDATE SET state = EXCLUDED.state, blockers = EXCLUDED.blockers, completed_at ="
+            + " EXCLUDED.completed_at",
+        riderId,
+        requestId,
+        state,
+        blockers.stream()
+            .map(b -> "\"" + b + "\"")
+            .collect(java.util.stream.Collectors.joining(",", "[", "]")),
+        reason,
+        java.sql.Timestamp.from(at),
+        completedAt == null ? null : java.sql.Timestamp.from(completedAt));
+  }
+
+  public Optional<com.pmart.rider.application.WithdrawalService.Withdrawal> withdrawal(
+      String riderId, String requestId) {
+    return jdbc
+        .query(
+            "SELECT request_id, state, blockers::text, requested_at, completed_at FROM"
+                + " rider_withdrawal WHERE rider_id = ? AND request_id = ?",
+            (rs, i) -> {
+              String raw = rs.getString(3);
+              List<String> b = new java.util.ArrayList<>();
+              java.util.regex.Matcher m =
+                  java.util.regex.Pattern.compile("\"([A-Z_]+)\"").matcher(raw);
+              while (m.find()) {
+                b.add(m.group(1));
+              }
+              java.sql.Timestamp done = rs.getTimestamp(5);
+              return new com.pmart.rider.application.WithdrawalService.Withdrawal(
+                  rs.getString(1),
+                  rs.getString(2),
+                  b,
+                  rs.getTimestamp(4).toInstant(),
+                  done == null ? null : done.toInstant());
+            },
+            riderId,
+            requestId)
+        .stream()
+        .findFirst();
   }
 }

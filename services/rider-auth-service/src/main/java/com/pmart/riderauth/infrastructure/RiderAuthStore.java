@@ -286,4 +286,10 @@ public class RiderAuthStore {
     Timestamp t = rs.getTimestamp(column);
     return t == null ? null : t.toInstant();
   }
+
+  /** 탈퇴(2026-11-17): 계정 DISABLED, Google 연결 지움(다음 로그인은 새 라이더 주체). */
+  public void disableAndUnlink(String riderId) {
+    jdbc.update("UPDATE rider_account SET state = 'DISABLED' WHERE rider_id = ?", riderId);
+    jdbc.update("DELETE FROM rider_identity WHERE rider_id = ?", riderId);
+  }
 }

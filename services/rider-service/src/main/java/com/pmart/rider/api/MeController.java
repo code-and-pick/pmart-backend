@@ -18,7 +18,11 @@ public class MeController implements MeApi {
 
   private final RiderService riders;
 
-  public MeController(RiderService riders) {
+  private final com.pmart.rider.application.WithdrawalService withdrawals;
+
+  public MeController(
+      RiderService riders, com.pmart.rider.application.WithdrawalService withdrawals) {
+    this.withdrawals = withdrawals;
     this.riders = riders;
   }
 
@@ -104,5 +108,46 @@ public class MeController implements MeApi {
                 body.getOneAtATime(),
                 body.getDispatchMode() == null ? null : body.getDispatchMode().getValue()));
     return ResponseEntity.ok(RiderViews.settings(r));
+  }
+
+  /** 탈퇴 신청(2026-11-17 — 라이더 앱 요청 §17). 막는 것이 있으면 409 INVALID_STATE(details 의 blockers). */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.CreateMyWithdrawal202Response>
+      createMyWithdrawal(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.rider.api.generated.model.@org.jspecify.annotations.Nullable
+              CreateMyWithdrawalRequest
+              createMyWithdrawalRequest) {
+    var w =
+        withdrawals.request(
+            idempotencyKey,
+            createMyWithdrawalRequest == null ? null : createMyWithdrawalRequest.getReason());
+    return ResponseEntity.status(202)
+        .body(
+            new com.pmart.rider.api.generated.model.CreateMyWithdrawal202Response()
+                .status(
+                    com.pmart.rider.api.generated.model.CreateMyWithdrawal202Response.StatusEnum
+                        .APPLIED)
+                .requestId(w.requestId())
+                .nextAction("LOGOUT")
+                .occurredAt(
+                    java.time.OffsetDateTime.ofInstant(w.requestedAt(), java.time.ZoneOffset.UTC)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.GetMyWithdrawal200Response>
+      getMyWithdrawal(String requestId) {
+    var w = withdrawals.result(requestId);
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.GetMyWithdrawal200Response()
+            .requestId(w.requestId())
+            .state(
+                com.pmart.rider.api.generated.model.GetMyWithdrawal200Response.StateEnum.fromValue(
+                    w.state()))
+            .blockers(
+                w.blockers().stream()
+                    .map(com.pmart.rider.api.generated.model.WithdrawalBlocker::fromValue)
+                    .toList()));
   }
 }

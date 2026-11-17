@@ -8,4 +8,31 @@ import org.springframework.web.bind.annotation.RestController;
  * 두고 여기서는 요청·응답 변환만 한다.
  */
 @RestController
-public class InternalController implements InternalApi {}
+public class InternalController implements InternalApi {
+
+  private final com.pmart.delivery.execution.application.RiderOpenItems openItems;
+
+  public InternalController(com.pmart.delivery.execution.application.RiderOpenItems openItems) {
+    this.openItems = openItems;
+  }
+
+  /** 라이더 탈퇴를 막는 것(rider-service, 2026-11-17). */
+  @Override
+  public org.springframework.http.ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.GetRiderWithdrawalBlockers200Response>
+      getRiderWithdrawalBlockers(String riderId) {
+    return org.springframework.http.ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new com.pmart.delivery.execution.api.generated.model
+                    .GetRiderWithdrawalBlockers200Response()
+                .riderId(riderId)
+                .blockers(
+                    openItems.withdrawalBlockers(riderId).stream()
+                        .map(
+                            com.pmart.delivery.execution.api.generated.model
+                                    .GetRiderWithdrawalBlockers200Response.BlockersEnum
+                                ::fromValue)
+                        .toList()));
+  }
+}

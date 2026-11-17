@@ -1202,4 +1202,25 @@ public class ExecutionStore {
   private static Timestamp ts(Instant i) {
     return Timestamp.from(i);
   }
+
+  /** 라이더 탈퇴를 막는 것의 수(2026-11-17). */
+  public record OpenItems(
+      int activeDeliveries, int unconfirmedEarnings, int adjustmentPending, int openHelpRequests) {}
+
+  public OpenItems riderOpenItems(String riderId) {
+    return jdbc.queryForObject(
+        "SELECT (SELECT count(*) FROM execution_delivery WHERE rider_id = ? AND state NOT IN"
+            + " ('COMPLETED', 'FAILED', 'CANCELLED', 'RETURNED_TO_STORE', 'UNASSIGNED')),"
+            + " (SELECT count(*) FROM rider_earning WHERE rider_id = ? AND calculable AND"
+            + " settlement_state IN ('ESTIMATED', 'PENDING_CONFIRMATION')),"
+            + " (SELECT count(*) FROM rider_earning WHERE rider_id = ? AND NOT calculable AND"
+            + " settlement_state = 'ESTIMATED'),"
+            + " (SELECT count(*) FROM help_request WHERE rider_id = ? AND state IN ('OPEN',"
+            + " 'IN_PROGRESS'))",
+        (rs, i) -> new OpenItems(rs.getInt(1), rs.getInt(2), rs.getInt(3), rs.getInt(4)),
+        riderId,
+        riderId,
+        riderId,
+        riderId);
+  }
 }

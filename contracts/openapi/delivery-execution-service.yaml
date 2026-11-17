@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -732,6 +732,29 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /internal/riders/{riderId}/withdrawal-blockers:
+    get:
+      tags: [internal]
+      summary: '[rider→execution] 라이더 탈퇴를 막는 것 (0.12.0)'
+      x-added-in: '2026-11-17'
+      description: |
+        rider-service 탈퇴 신청(라이더 앱 요청 §17, 사용자 결정 2026-11-17)이 부른다. ACTIVE_DELIVERY(끝나지 않은 배정 — 배정~실패 등록·회수 중),
+        UNCONFIRMED_EARNING(산정 가능·확정 전 ESTIMATED·PENDING_CONFIRMATION — 확정 뒤는 막지 않는다), EARNING_ADJUSTMENT_PENDING(산정 불가·조정 전),
+        OPEN_HELP_REQUEST(도움요청 OPEN·IN_PROGRESS). 없는 라이더·막는 것 없음은 빈 목록(200). 토큰 없음(/internal).
+      operationId: getRiderWithdrawalBlockers
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [riderId, blockers]
+                properties:
+                  riderId: { type: string }
+                  blockers: { type: array, items: { type: string, enum: [ACTIVE_DELIVERY, UNCONFIRMED_EARNING, EARNING_ADJUSTMENT_PENDING, OPEN_HELP_REQUEST] } }
   /internal/deliveries/{deliveryId}/status-corrections:
     post:
       tags: [internal]

@@ -234,6 +234,51 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
     assertThat(activeSessions(riderId)).isPositive();
   }
 
+  /**
+   * 탈퇴(2026-11-17 — rider RiderWithdrawn, 사용자 "즉시 가림·재가입 허용"): 바로 모든 세션을 끊고
+   * SubjectBlocked(ACCOUNT_DISABLED), 계정 DISABLED·Google 연결 지움 → 같은 Google 계정의 다음 로그인은 새 라이더 주체.
+   */
+  @Test
+  void withdrawnRiderIsLoggedOutAndNextLoginIsNewRider() {
+    String sub = "g-" + UUID.randomUUID();
+    String device = "dev-" + UUID.randomUUID();
+    Res first = login("w1-" + sub, device, google(sub));
+    assertThat(first.status()).isEqualTo(200);
+    String riderId = first.body().get("riderId").asString();
+    String refresh = first.body().get("tokens").get("refreshToken").asString();
+
+    String json =
+        EventEnvelopeFixtures.envelope("RiderWithdrawn")
+            .from("rider-service")
+            .aggregate("Rider", riderId, 7)
+            .payload(
+                Map.of(
+                    "riderId",
+                    riderId,
+                    "requestId",
+                    "w-1",
+                    "withdrawnAt",
+                    Instant.now().toString()))
+            .buildJson();
+    kafka.send("delivery.rider.v1", riderId, json).join();
+    await(
+        "SELECT count(*) FROM rider_account WHERE rider_id = '"
+            + riderId
+            + "' AND state = 'DISABLED'");
+    assertThat(activeSessions(riderId)).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'SubjectBlocked'"
+                    + " AND payload::text LIKE '%ACCOUNT_DISABLED%'",
+                Integer.class, riderId))
+        .isEqualTo(1);
+    assertThat(refresh(refresh, device).status()).isEqualTo(401);
+    Res again = login("w2-" + sub, device, google(sub));
+    assertThat(again.status()).isEqualTo(200);
+    assertThat(again.body().get("riderId").asString()).isNotEqualTo(riderId); // 새 주체 — 다시 가입
+    assertThat(again.body().get("newAccount").asBoolean()).isTrue();
+  }
+
   void activeDeliveries(String riderId, String ids) {
     dispatch.resetAll();
     dispatch.stubFor(
