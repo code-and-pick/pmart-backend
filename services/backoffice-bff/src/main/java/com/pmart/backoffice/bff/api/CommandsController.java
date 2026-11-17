@@ -1,6 +1,7 @@
 package com.pmart.backoffice.bff.api;
 
 import com.pmart.backoffice.bff.api.generated.CommandsApi;
+import com.pmart.backoffice.bff.api.generated.model.GetProxiedCommandResult200Response;
 import com.pmart.backoffice.bff.api.generated.model.ProxyCommand202Response;
 import com.pmart.backoffice.bff.api.generated.model.ProxyCommandRequest;
 import com.pmart.backoffice.bff.application.PendingWorkView;
@@ -11,7 +12,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * 계약 CommandsApi — 명령 전달(0.2.0, 2026-11-16 BO-12): 지금은 order-orchestration-service 수동 조치 둘만({@link
- * PendingWorkView}). 결과 조회(getProxiedCommandResult)는 아직 501.
+ * PendingWorkView}). 결과 조회(getProxiedCommandResult, 0.12.0)는 사가 수동 조치·MFC 중지 재시도만.
  */
 @RestController
 public class CommandsController implements CommandsApi {
@@ -38,5 +39,14 @@ public class CommandsController implements CommandsApi {
                 pendingWork.command(
                     targetService, command, idempotencyKey, body.getTargetRef(), body.getReason()),
                 ProxyCommand202Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetProxiedCommandResult200Response> getProxiedCommandResult(
+      String targetService, String command, String requestId, String targetRef) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            pendingWork.commandResult(targetService, command, requestId, targetRef),
+            GetProxiedCommandResult200Response.class));
   }
 }

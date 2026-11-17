@@ -199,6 +199,35 @@ public class PendingWorkClients {
     return parse(raw);
   }
 
+  /** 수동 조치 결과 조회(0.12.0 명령 결과) — 원천 ManualAction 그대로. */
+  public JsonNode getManualAction(String sagaId, String requestId) {
+    String raw =
+        Downstream.call(
+            "order-orchestration manual-action result",
+            () ->
+                orchestration
+                    .get()
+                    .uri("/api/v1/internal/sagas/{id}/manual-actions/{rid}", sagaId, requestId)
+                    .header("X-Source-System", "backoffice-bff")
+                    .retrieve()
+                    .body(String.class));
+    return parse(raw);
+  }
+
+  /** 중지 요청 판정 다시 읽기(0.12.0 명령 결과) — MFC 내부 경로, StopRequestResult 그대로. */
+  public JsonNode getStopRequest(String stopRequestId) {
+    String raw =
+        Downstream.call(
+            "mfc stop-request result",
+            () ->
+                mfc.get()
+                    .uri("/api/v1/internal/stop-requests/{id}", stopRequestId)
+                    .header("X-Source-System", "backoffice-bff")
+                    .retrieve()
+                    .body(String.class));
+    return parse(raw);
+  }
+
   /** 원천 본문 읽기 — JSON 이 아니면(프록시 HTML 등) 원천 장애로(0.9.2, 화면 전체 500 이 아니라 그 원천만 불명). */
   private JsonNode parse(@org.jspecify.annotations.Nullable String raw) {
     try {

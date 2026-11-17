@@ -62,4 +62,5 @@
 - 원천 실패: MFC 실패면 빈 items + unavailableSources(400 은 조건 오류 400), 배송은 한 번 실패하면 남은 출고는 부르지 않고 UNKNOWN. `LookupClients.get` 은 0.11.0 부터 Collection 값을 반복 파라미터로 보낸다(state=A&state=B).
 
 ## 상태
-3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황·사건함(2026-11-16), 포장 인계 현황(2026-11-17). 그 밖의 `/views/*`·명령 결과 조회는 501.
+3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황·사건함(2026-11-16), 포장 인계 현황(2026-11-17), 명령 결과 조회(2026-11-17, 0.12.0 — 사가 수동 조치·MFC 중지 재시도). 그 밖의 `/views/*`(보충 현황·운행 관제 — 원천 서비스 없음, 지표 — 정의 승인 전)는 501.
+- **명령 결과 조회(0.12.0, 2026-11-17 사용자 "할 수 있는건 다 진행하자")**: `GET /commands/{targetService}/{command}/{requestId}?targetRef=` — `PendingWorkView.commandResult`. OPERATOR_ADMIN 만. saga-requery·saga-resolve = orchestration `GET /internal/sagas/{targetRef}/manual-actions/{requestId}`(SUCCEEDED → APPLIED, FAILED → REJECTED, ACCEPTED·EXECUTING → ACCEPTED, 그 밖 UNKNOWN_RESULT), stop-retry = MFC `GET /internal/stop-requests/{targetRef}`(명령과 같은 `stopStatus`). handover-retry 는 원천 단건 조회가 없어 422(같은 키 재전송 안내). 원천 404 → 404, 시간 초과·5xx → 200 UNKNOWN_RESULT(source UNKNOWN), 미전달·503 → 503.

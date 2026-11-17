@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.11.1
+  version: 0.12.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -562,12 +562,20 @@ paths:
     get:
       tags: [commands]
       summary: 전달한 명령의 원결과 조회 (대상 서비스 짝 조회로 위임)
+      description: |
+        0.12.0(2026-11-17 — 사용자 "할 수 있는건 다 진행하자"): 명령 전달(POST)이 UNKNOWN_RESULT·ACCEPTED 를 돌려줬을 때 원천을 다시 읽어 결과를 확인한다. OPERATOR_ADMIN 만(명령과 같음).
+        requestId = 명령 응답의 requestId(보낸 Idempotency-Key), **targetRef 필수**(명령 때 보낸 것 — 원천 조회 경로에 쓴다). 원천 값은 바꾸지 않고 status 로만 옮긴다.
+        - `order-orchestration-service/saga-requery`·`saga-resolve`: 원천 `GET /internal/sagas/{targetRef}/manual-actions/{requestId}` — state SUCCEEDED → APPLIED, FAILED → REJECTED, ACCEPTED·EXECUTING → ACCEPTED(nextAction QUERY_RESULT), UNKNOWN → UNKNOWN_RESULT. 원천 404 = 명령이 닿지 않음 → 404(같은 Idempotency-Key 로 다시 보내면 된다). detail = action·state·resultSummary·requestedAt·finishedAt.
+        - `mfc-fulfillment-service/stop-retry`: 원천 `GET /internal/stop-requests/{targetRef}`(중지 요청의 지금 판정 — 재시도 한 번 단위가 아니라 중지 요청 단위) — 명령 응답과 같은 규칙(RESOLVED → APPLIED, PENDING + lastError → REJECTED·FIX_AND_RETRY, PENDING → ACCEPTED·QUERY_RESULT, 그 밖 UNKNOWN_RESULT). detail = state·lastError.
+        - `mfc-fulfillment-service/handover-retry`: 원천에 인계 단건 조회가 없어 **422 UNSUPPORTED_ACTION** — 같은 Idempotency-Key 로 다시 보내면 원천이 저장된 결과를 돌려준다(또는 처리 대기 목록).
+        그 밖 대상·명령 422 UNSUPPORTED_ACTION. 원천 미전달·503 → 503, 원천 시간 초과·5xx → 200 status UNKNOWN_RESULT·nextAction QUERY_RESULT(source confidence UNKNOWN).
       operationId: getProxiedCommandResult
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: targetService, in: path, required: true, schema: { type: string } }
-        - { name: command, in: path, required: true, schema: { type: string } }
-        - { name: requestId, in: path, required: true, schema: { type: string } }
+        - { name: targetService, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9-]+$' } }
+        - { name: command, in: path, required: true, schema: { type: string, pattern: '^[a-z0-9-]+$' } }
+        - { name: requestId, in: path, required: true, schema: { type: string, maxLength: 128 } }
+        - { name: targetRef, in: query, required: true, schema: { type: string, maxLength: 64 }, description: '명령 때 보낸 targetRef(사가 ID·중지 요청 ID) — 0.12.0', x-added-in: '2026-11-17' }
       responses:
         '200':
           description: OK
@@ -579,9 +587,18 @@ paths:
                   requestId: { type: string }
                   status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
                   resultId: { type: [string, 'null'] }
+                  nextAction: { type: [string, 'null'], description: 'QUERY_RESULT(아직 진행 중 — 다시 조회)·FIX_AND_RETRY(원인을 고치고 다시 명령) — 0.12.0', x-added-in: '2026-11-17' }
                   source: { $ref: '#/components/schemas/SourceStamp' }
                   detail: { type: object, additionalProperties: true }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: UNSUPPORTED_ACTION(조회할 수 없는 대상·명령 — handover-retry 포함)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
 components:
   schemas:

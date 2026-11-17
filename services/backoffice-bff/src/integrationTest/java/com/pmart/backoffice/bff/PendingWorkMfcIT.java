@@ -188,6 +188,97 @@ class PendingWorkMfcIT {
     assertThat(r.body().path("nextAction").asString()).isEqualTo("QUERY_RESULT");
   }
 
+  /**
+   * 0.12.0 명령 결과 조회: 사가 수동 조치는 orchestration 결과로, 중지 재시도는 중지 요청 판정으로 status 를 옮긴다. 인계 재시도는 422, 원천
+   * 404 는 404, 원천 5xx 는 UNKNOWN_RESULT, 관리자 아니면 403, targetRef 없으면 400.
+   */
+  @Test
+  void commandResultReadsSourceAgain() {
+    orch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/sagas/SAGA-1/manual-actions/k-9"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"requestId":"k-9","sagaId":"SAGA-1","action":"REQUERY_RESULT","operatorId":"op-admin",
+                     "state":"SUCCEEDED","resultSummary":"결제 승인 확인","requestedAt":"2026-11-17T01:00:00Z",
+                     "finishedAt":"2026-11-17T01:00:02Z"}""")));
+    Res saga =
+        call(
+            "GET",
+            "/commands/order-orchestration-service/saga-requery/k-9?targetRef=SAGA-1",
+            ADMIN,
+            null);
+    assertThat(saga.status()).as(saga.body().toString()).isEqualTo(200);
+    assertThat(saga.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(saga.body().path("requestId").asString()).isEqualTo("k-9");
+    assertThat(saga.body().path("resultId").asString()).isEqualTo("SAGA-1");
+    assertThat(saga.body().path("detail").path("resultSummary").asString()).isEqualTo("결제 승인 확인");
+    assertThat(saga.body().path("source").path("system").asString())
+        .isEqualTo("order-orchestration-service");
+    assertThat(saga.body().path("source").path("confidence").asString()).isEqualTo("DIRECT");
+
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/stop-requests/STP-1"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"stopRequestId\":\"STP-1\",\"state\":\"PENDING\",\"lastError\":\"RETURN_MISMATCH\"}")));
+    Res stop =
+        call(
+            "GET", "/commands/mfc-fulfillment-service/stop-retry/k-1?targetRef=STP-1", ADMIN, null);
+    assertThat(stop.status()).as(stop.body().toString()).isEqualTo(200);
+    assertThat(stop.body().path("status").asString()).isEqualTo("REJECTED");
+    assertThat(stop.body().path("nextAction").asString()).isEqualTo("FIX_AND_RETRY");
+    assertThat(stop.body().path("detail").path("lastError").asString())
+        .isEqualTo("RETURN_MISMATCH");
+
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/stop-requests/STP-5"))
+            .willReturn(json(500, "{}")));
+    Res unknown =
+        call(
+            "GET", "/commands/mfc-fulfillment-service/stop-retry/k-5?targetRef=STP-5", ADMIN, null);
+    assertThat(unknown.status()).as(unknown.body().toString()).isEqualTo(200);
+    assertThat(unknown.body().path("status").asString()).isEqualTo("UNKNOWN_RESULT");
+    assertThat(unknown.body().path("source").path("confidence").asString()).isEqualTo("UNKNOWN");
+
+    orch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/sagas/SAGA-2/manual-actions/k-404"))
+            .willReturn(json(404, "{\"code\":\"NOT_FOUND\"}")));
+    assertThat(
+            call(
+                    "GET",
+                    "/commands/order-orchestration-service/saga-resolve/k-404?targetRef=SAGA-2",
+                    ADMIN,
+                    null)
+                .status())
+        .isEqualTo(404);
+    assertThat(
+            call(
+                    "GET",
+                    "/commands/mfc-fulfillment-service/handover-retry/k-1?targetRef=HO-1",
+                    ADMIN,
+                    null)
+                .status())
+        .isEqualTo(422);
+    assertThat(
+            call("GET", "/commands/approval-service/anything/k-1?targetRef=X", ADMIN, null)
+                .status())
+        .isEqualTo(422);
+    assertThat(
+            call(
+                    "GET",
+                    "/commands/mfc-fulfillment-service/stop-retry/k-1?targetRef=STP-1",
+                    CS,
+                    null)
+                .status())
+        .isEqualTo(403);
+    assertThat(
+            call("GET", "/commands/mfc-fulfillment-service/stop-retry/k-1", ADMIN, null).status())
+        .isEqualTo(400);
+  }
+
   /** 0.9.1: MFC 목록을 커서로 다음 쪽까지 읽고, 5쪽을 넘으면 truncated. */
   @Test
   void mfcListsFollowCursorAndFlagTruncation() {

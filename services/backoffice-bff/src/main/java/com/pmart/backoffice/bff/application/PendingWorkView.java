@@ -210,23 +210,8 @@ public class PendingWorkView {
     try {
       if ("stop-retry".equals(command)) {
         JsonNode r = clients.retryStopRequest(id, idempotencyKey, operatorId, memo);
-        String state = text(r, "state");
-        String status;
-        String next;
-        if ("RESOLVED".equals(state)) {
-          status = "APPLIED";
-          next = null;
-        } else if ("PENDING".equals(state) && text(r, "lastError") != null) {
-          status = "REJECTED";
-          next = "FIX_AND_RETRY";
-        } else if ("PENDING".equals(state)) {
-          status = "ACCEPTED";
-          next = "QUERY_RESULT";
-        } else {
-          status = "UNKNOWN_RESULT";
-          next = "QUERY_RESULT";
-        }
-        return commandResponse(status, idempotencyKey, id, next);
+        String[] sn = stopStatus(r);
+        return commandResponse(sn[0], idempotencyKey, id, sn[1]);
       }
       JsonNode r = clients.retryHandover(id, idempotencyKey, operatorId, memo);
       return commandResponse(
@@ -247,6 +232,116 @@ public class PendingWorkView {
           false,
           List.of());
     }
+  }
+
+  /** 중지 요청 판정 → {status, nextAction}(계약 0.4.0 — 명령·결과 조회 같은 규칙). */
+  static String[] stopStatus(JsonNode r) {
+    String state = text(r, "state");
+    if ("RESOLVED".equals(state)) {
+      return new String[] {"APPLIED", null};
+    }
+    if ("PENDING".equals(state) && text(r, "lastError") != null) {
+      return new String[] {"REJECTED", "FIX_AND_RETRY"};
+    }
+    if ("PENDING".equals(state)) {
+      return new String[] {"ACCEPTED", "QUERY_RESULT"};
+    }
+    return new String[] {"UNKNOWN_RESULT", "QUERY_RESULT"};
+  }
+
+  /** 사가 수동 조치 원천 state → {status, nextAction}(0.12.0). */
+  static String[] manualActionStatus(@Nullable String state) {
+    if (state == null) {
+      return new String[] {"UNKNOWN_RESULT", "QUERY_RESULT"};
+    }
+    return switch (state) {
+      case "SUCCEEDED" -> new String[] {"APPLIED", null};
+      case "FAILED" -> new String[] {"REJECTED", null};
+      case "ACCEPTED", "EXECUTING" -> new String[] {"ACCEPTED", "QUERY_RESULT"};
+      default -> new String[] {"UNKNOWN_RESULT", "QUERY_RESULT"};
+    };
+  }
+
+  /**
+   * 명령 결과 조회(0.12.0, 2026-11-17): 원천을 다시 읽어 status 로 옮긴다. requestId = 명령 때 Idempotency-Key,
+   * targetRef = 명령 때 대상. 원천 404 → 404(명령이 닿지 않음), 원천 시간 초과·5xx → UNKNOWN_RESULT(source UNKNOWN),
+   * 미전달·503 → 503.
+   */
+  public Map<String, Object> commandResult(
+      String targetService, String command, String requestId, String targetRef) {
+    requireAdmin();
+    if (targetRef == null || targetRef.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "targetRef(명령 때 보낸 대상 ID)가 필요합니다.");
+    }
+    String ref = targetRef.strip();
+    boolean saga = ORCHESTRATION.equals(targetService) && COMMANDS.containsKey(command);
+    boolean stop = MFC.equals(targetService) && "stop-retry".equals(command);
+    if (!saga && !stop) {
+      throw new PmartException(
+          "UNSUPPORTED_ACTION",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "handover-retry".equals(command) && MFC.equals(targetService)
+              ? "인계 다시 보내기는 결과 조회가 없습니다 — 같은 Idempotency-Key 로 다시 보내면 저장된 결과를 받습니다."
+              : "결과를 조회할 수 없는 명령입니다(order-orchestration-service 의 saga-requery·saga-resolve,"
+                  + " mfc-fulfillment-service 의 stop-retry).",
+          false,
+          List.of());
+    }
+    String system = saga ? ORCHESTRATION : MFC;
+    Instant now = clock.instant();
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("requestId", requestId);
+    out.put("resultId", ref);
+    Map<String, Object> detail = new LinkedHashMap<>();
+    String[] sn;
+    try {
+      if (saga) {
+        JsonNode a = clients.getManualAction(ref, requestId);
+        sn = manualActionStatus(text(a, "state"));
+        for (String k : List.of("action", "state", "resultSummary", "requestedAt", "finishedAt")) {
+          detail.put(k, text(a, k));
+        }
+      } else {
+        JsonNode r = clients.getStopRequest(ref);
+        sn = stopStatus(r);
+        detail.put("state", text(r, "state"));
+        detail.put("lastError", text(r, "lastError"));
+      }
+    } catch (PmartException e) {
+      if (!ErrorCode.UNKNOWN_RESULT.name().equals(e.code())) {
+        throw e; // 미전달·503 → 503
+      }
+      out.put("status", "UNKNOWN_RESULT");
+      out.put("nextAction", "QUERY_RESULT");
+      out.put("source", resultStamp(system, now, false));
+      out.put("detail", detail);
+      return out;
+    } catch (HttpClientErrorException e) {
+      if (e.getStatusCode().value() == 404) {
+        throw new PmartException(
+            ErrorCode.NOT_FOUND, "원천에 그 명령 기록이 없습니다 — 같은 Idempotency-Key 로 다시 보내세요.");
+      }
+      JsonNode problem = readProblem(e);
+      throw new PmartException(
+          problem.path("code").asString("TARGET_REJECTED"),
+          HttpStatus.valueOf(e.getStatusCode().value()),
+          problem.path("detail").asString("대상 서비스가 거절했습니다."),
+          false,
+          List.of());
+    }
+    out.put("status", sn[0]);
+    out.put("nextAction", sn[1]);
+    out.put("source", resultStamp(system, now, true));
+    out.put("detail", detail);
+    return out;
+  }
+
+  private static Map<String, Object> resultStamp(String system, Instant at, boolean ok) {
+    Map<String, Object> s = new LinkedHashMap<>();
+    s.put("system", system);
+    s.put("asOf", Map.of("asOf", at.toString(), "freshness", ok ? "CURRENT" : "UNAVAILABLE"));
+    s.put("confidence", ok ? "DIRECT" : "UNKNOWN");
+    return s;
   }
 
   private static JsonNode commandResponse(
