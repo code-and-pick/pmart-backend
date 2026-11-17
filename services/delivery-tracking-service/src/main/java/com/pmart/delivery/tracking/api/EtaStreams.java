@@ -144,13 +144,22 @@ class EtaStreams {
       fixedDelayString = "${pmart.tracking.stream-poll-interval:PT3S}")
   void poll() {
     Instant now = clock.instant();
+    // 한 번 돌 때 같은 배송·같은 보기 범위는 한 번만 읽는다(같은 배송을 여럿이 볼 때 DB 조회가 겹치지 않게)
+    java.util.Map<String, java.util.Optional<ProgressService.View>> seen =
+        new java.util.HashMap<>();
     for (Sub s : subs) {
       if (s.closed) {
         subs.remove(s);
         continue;
       }
       try {
-        tick(s, now);
+        tick(
+            s,
+            now,
+            seen.computeIfAbsent(
+                    s.deliveryId + (s.staff ? "#S" : "#C"),
+                    k -> java.util.Optional.ofNullable(progress.refresh(s.deliveryId, s.staff)))
+                .orElse(null));
       } catch (RuntimeException e) {
         log.warn("배송 {} 구독 갱신 실패 — 닫음: {}", s.deliveryId, e.toString());
         close(s);
@@ -158,8 +167,7 @@ class EtaStreams {
     }
   }
 
-  private void tick(Sub s, Instant now) {
-    ProgressService.View v = progress.refresh(s.deliveryId, s.staff);
+  private void tick(Sub s, Instant now, ProgressService.@Nullable View v) {
     if (v == null) {
       close(s); // 사본이 지워짐
       return;
