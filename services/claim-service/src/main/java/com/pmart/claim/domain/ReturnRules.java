@@ -75,7 +75,7 @@ public final class ReturnRules {
       String sku,
       long unitPrice,
       int originalQty,
-      int handedOverQty,
+      int deliveredQty,
       long discountShare) {}
 
   /** 요청 행. */
@@ -85,14 +85,15 @@ public final class ReturnRules {
   public static void checkReturnable(
       List<OrderLine> lines, List<Requested> requested, Map<String, Integer> occupied) {
     Map<String, OrderLine> byId = new HashMap<>();
-    int handedOver = 0;
+    int delivered = 0;
     for (OrderLine l : lines) {
       byId.put(l.orderLineId(), l);
-      handedOver += l.handedOverQty();
+      delivered += l.deliveredQty();
     }
-    if (handedOver == 0) {
+    // 사용자 2026-11-17 "배달 중이나 전달 완료 전에는 반품 불가" — 인계(라이더 픽업)가 아니라 고객 전달 완료 수량으로 본다
+    if (delivered == 0) {
       throw new ClaimRules.Rejection(
-          "NOT_HANDED_OVER", "라이더에게 인계된 상품이 없습니다 — 회수(반품)는 인계 뒤에만 접수합니다.");
+          "NOT_DELIVERED_YET", "고객에게 전달 완료된 상품이 없습니다 — 반품(회수)은 전달 완료 뒤에만 접수합니다.");
     }
     Map<String, Integer> seen = new HashMap<>();
     for (Requested r : requested) {
@@ -108,17 +109,18 @@ public final class ReturnRules {
       if (r.qty() < 1) {
         throw new ClaimRules.Rejection("QUANTITY_EXCEEDS_AVAILABLE", "수량은 1 이상입니다.");
       }
-      int available = l.handedOverQty() - occupied.getOrDefault(r.orderLineId(), 0);
-      if (l.handedOverQty() == 0) {
-        throw new ClaimRules.Rejection("NOT_HANDED_OVER", "아직 인계되지 않은 상품입니다: " + r.orderLineId());
+      int available = l.deliveredQty() - occupied.getOrDefault(r.orderLineId(), 0);
+      if (l.deliveredQty() == 0) {
+        throw new ClaimRules.Rejection(
+            "NOT_DELIVERED_YET", "아직 전달 완료되지 않은 상품입니다: " + r.orderLineId());
       }
       if (r.qty() > available) {
         throw new ClaimRules.Rejection(
             "QUANTITY_EXCEEDS_AVAILABLE",
             "반품 가능한 수량("
                 + Math.max(0, available)
-                + " = 인계 "
-                + l.handedOverQty()
+                + " = 전달 완료 "
+                + l.deliveredQty()
                 + " − 진행·완료 반품 "
                 + occupied.getOrDefault(r.orderLineId(), 0)
                 + ")보다 많습니다: "

@@ -2018,6 +2018,34 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT count(*) FROM delivery WHERE claim_id = ?", Integer.class, earlyClaim))
         .isZero();
+    // 반품 쪽이 멈추지 않게 회수 실패로 알린다(ORIGIN_NOT_DELIVERED)
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'ReturnPickupFailed' AND"
+                    + " payload->'payload'->>'claimId' = ?",
+                String.class,
+                earlyClaim))
+        .contains("ORIGIN_NOT_DELIVERED");
+
+    // 회수 요청에 원래 배송이 없어도(claim 은 deliveryId 를 싣지 않는다) 주문의 배송으로 본다
+    String order2 = "ORD-" + UUID.randomUUID();
+    readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-cr-" + UUID.randomUUID(), order2);
+    String noOrigin = "CLM-" + UUID.randomUUID();
+    kafka
+        .send(
+            "order.claim.v1",
+            noOrigin,
+            claimReturnRequested(noOrigin, order2, null, mfc, noOrigin + "-P1", 1))
+        .join();
+    awaitSql(
+        "SELECT count(*) FROM outbox_event WHERE type = 'ReturnPickupFailed' AND"
+            + " payload->'payload'->>'claimId' = '"
+            + noOrigin
+            + "'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE claim_id = ?", Integer.class, noOrigin))
+        .isZero();
   }
 
   String claimReturnRequested(
@@ -2027,31 +2055,23 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
       String mfcId,
       String pickupRequestId,
       int attempt) {
+    Map<String, Object> payload = new java.util.LinkedHashMap<>();
+    payload.put("claimId", claimId);
+    payload.put("orderId", orderId);
+    if (deliveryId != null) {
+      payload.put("deliveryId", deliveryId);
+    }
+    payload.put("mfcId", mfcId);
+    payload.put("pickupRequestId", pickupRequestId);
+    payload.put("attempt", attempt);
+    payload.put("purpose", "CLAIM_RETURN");
+    payload.put("lines", List.of(Map.of("orderLineId", "L-1", "qty", 2, "claimLineId", "CL-1")));
+    payload.put("pickupAddressRef", "order:" + orderId);
+    payload.put("requestedAt", Instant.now().toString());
     return EventEnvelopeFixtures.envelope("ReturnPickupRequested")
         .from("claim-service")
         .aggregate("Claim", claimId, 1 + attempt)
-        .payload(
-            Map.of(
-                "claimId",
-                claimId,
-                "orderId",
-                orderId,
-                "deliveryId",
-                deliveryId,
-                "mfcId",
-                mfcId,
-                "pickupRequestId",
-                pickupRequestId,
-                "attempt",
-                attempt,
-                "purpose",
-                "CLAIM_RETURN",
-                "lines",
-                List.of(Map.of("orderLineId", "L-1", "qty", 2, "claimLineId", "CL-1")),
-                "pickupAddressRef",
-                "order:" + orderId,
-                "requestedAt",
-                Instant.now().toString()))
+        .payload(payload)
         .buildJson();
   }
 

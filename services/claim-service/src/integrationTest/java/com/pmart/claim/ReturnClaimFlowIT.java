@@ -112,6 +112,11 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
 
   /** order 원장: 1,900원 × 10개, 인계 handedOver 개(라이더 픽업·전달). */
   void order(String orderId, String accountId, int handedOver) {
+    order(orderId, accountId, handedOver, -1);
+  }
+
+  /** delivered = 전달 완료 수량(-1 이면 인계 수량과 같게 — 전달 끝). */
+  void order(String orderId, String accountId, int handedOver, int delivered) {
     Map<String, Object> o = new LinkedHashMap<>();
     o.put("orderId", orderId);
     o.put("accountId", accountId);
@@ -135,6 +140,7 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
     line.put("originalQty", 10);
     line.put("unfulfilledQty", 10 - handedOver);
     line.put("handedOverQty", handedOver);
+    line.put("deliveredQty", delivered < 0 ? handedOver : delivered); // 전달 완료(2026-11-17)
     line.put("cancelledBeforeShipQty", 0);
     o.put("lines", List.of(line));
     deps.stubFor(
@@ -541,7 +547,16 @@ class ReturnClaimFlowIT extends PostgresKafkaContainerSupport {
                 .body()
                 .path("code")
                 .asString())
-        .isEqualTo("NOT_HANDED_OVER");
+        .isEqualTo("NOT_DELIVERED_YET");
+    // 라이더가 들고 있는(배달 중 — 인계 10, 전달 0) 주문도 반품 접수 안 됨(사용자 2026-11-17 "전달 완료 전에는 반품 불가")
+    String inDelivery = "ORD-" + UUID.randomUUID();
+    order(inDelivery, account, 10, 0);
+    assertThat(
+            post(admin, "/claims", returnBody(inDelivery, 1, "DEFECTIVE"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NOT_DELIVERED_YET");
 
     Res opened = post(admin, "/claims", returnBody(orderId, 2, "DAMAGED_IN_DELIVERY"));
     assertThat(opened.status()).as(opened.body().toString()).isEqualTo(201);

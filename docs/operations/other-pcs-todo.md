@@ -42,6 +42,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] F-4 멈춘 중지 요청·거절된 인계 목록 + 재시도에 운영자 ID·사유(처리 대기 BO-12, PC 2 요청 — bff 쪽은 준비됨)
   - [ ] IV-1 가용 조회에 출하 가능 수량(소비기한 적격 LOT 만), 지난 LOT 이 sellable 로 남는 것 확인 — **고객 주문 막힘 관련, 높음**(`mfc-inventory-service.md`)
   - [ ] MI-1 회수품 점원 수령 확인·검수(`mfc-inbound-service.md`, DD-2 뒤)
+  - [ ] **MI-2 반납 도착 대기 목록**(2026-11-17 PC 5 — `mfc-inbound-service.md` MI-2): `ReturnDelivered`(CLAIM_RETURN·MISDELIVERY_RECOVERY) 구독 → 점원 화면 "반납 도착" → `POST /return-receipts` 로 반입. **없으면 고객 반품 회수품이 MFC 에서 멈춰 환불까지 안 간다**(claim CL-1 배포됨)
   - 참고(2026-11-16 PC 1): LAN `mfc_inventory_service.sku_projection.barcodes` 486행을 PC 1 이 직접 채움(시험 바코드 — `deploy/lan/seed/barcodes-2026-11-16.csv`, 상품 DB 와 같음). 다음 ProductVersionPublished 가 오면 상품 쪽 값으로 덮인다.
   - [ ] MFC 시뮬레이터 요청 R-13(상온 대기 칸 — 사용자 결정 대기)·R-15/16(칸·여러 SKU 재고 조회)·R-17(작업 실적 목록)·R-19(인계 끝난 출고 `deliveryId` 비어 있음) — 시뮬레이터 저장소 `docs/backend-requests.md`(GitHub 판이 11-10 이라 아직 안 보이면 PC 1 에 요청)
 

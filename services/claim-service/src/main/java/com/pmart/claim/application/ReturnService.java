@@ -141,7 +141,7 @@ public class ReturnService {
               l.path("sku").asString(),
               l.path("unitPrice").asLong(),
               l.path("originalQty").asInt(),
-              l.path("handedOverQty").asInt(0),
+              l.path("deliveredQty").asInt(0), // 전달 완료 수량(2026-11-17 — 배달 중 반품 불가)
               l.path("discountShare").asLong(0)));
     }
     String claimId =

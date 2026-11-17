@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/ReturnPickupFailed.v1.json",
   "title": "ReturnPickupFailed",
-  "description": "고객 반품 회수 실패(2026-11-17, CL-1 배송 쪽 — 사용자 결정 \"실패마다 알림, 다시 시도는 반품 쪽\"). 라이더가 고객 집에서 회수하지 못해(부재·연락 두절·거부 등 — 사진 + 고객 사유면 연락 2회) 실패를 등록하고 지원센터·관리자가 확정했을 때. 회수 배송은 여기서 끝(상품은 고객에게 그대로 — DeliveryFailed 의 custody 와 다르다). 몇 번째 실패인지·다시 보낼지·상담원 재연락은 claim 이 정한다(2번 실패 → 상담원 재연락, 회수비 한 번). 발행 delivery-execution. 구독 claim, delivery-dispatch(배차 끝), delivery-tracking(진행 끝), notification(선택). 토픽 delivery.delivery.v1. 단계 ②",
+  "description": "고객 반품 회수 실패(2026-11-17, CL-1 배송 쪽 — 사용자 결정 \"실패마다 알림, 다시 시도는 반품 쪽\"). 라이더가 고객 집에서 회수하지 못해(부재·연락 두절·거부 등 — 사진 + 고객 사유면 연락 2회) 실패를 등록하고 지원센터·관리자가 확정했을 때. 회수 배송은 여기서 끝(상품은 고객에게 그대로 — DeliveryFailed 의 custody 와 다르다). 몇 번째 실패인지·다시 보낼지·상담원 재연락은 claim 이 정한다(2번 실패 → 상담원 재연락, 회수비 한 번). 발행 delivery-execution. 구독 claim, delivery-dispatch(배차 끝), delivery-tracking(진행 끝), notification(선택). 토픽 delivery.delivery.v1. 단계 ② 2026-11-17 덧붙임: delivery-dispatch 도 낸다 — 원래 배송이 전달 완료 전이라 회수 배송을 만들지 않고 거절할 때(reason ORIGIN_NOT_DELIVERED, deliveryId 는 그 요청으로 정해질 배송 ID — 실제 회수 배송 없음, 사용자 \"전달 완료 전에는 반품 불가\").",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -43,7 +43,7 @@
             },
             "reason": {
               "type": "string",
-              "description": "라이더가 고른 실패 사유 — 전달 실패와 같은 코드(CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED·DAMAGED·RIDER_INCIDENT·OTHER)"
+              "description": "라이더가 고른 실패 사유 — 전달 실패와 같은 코드(CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED·DAMAGED·RIDER_INCIDENT·OTHER) / ORIGIN_NOT_DELIVERED(dispatch — 원래 배송 전달 완료 전)"
             },
             "customerReason": {
               "type": "boolean",

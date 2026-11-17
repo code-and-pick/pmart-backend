@@ -9,3 +9,12 @@
   2. 점원 수령 확인 → 검수: **신선·냉장·냉동은 폐기, 상온 미개봉품만 검수 후 재고 복구**(ADR-0052 결정 4). 회수품을 원래 고객에게 다시 보내지 않는다.
   3. (나중) 점원 수령 확인 참조를 라이더 반납과 잇기 — execution 은 `receivedByStaffRef` 를 이미 받는다. 확인을 반납 조건으로 바꾸려면 사용자 결정.
 - **사용자 결정**: 검수 규칙은 ADR-0052 에 있음. 수령 확인을 반납 조건으로 할지는 나중.
+
+## MI-2. 반납 도착 대기 목록 — 점원이 회수품이 온 줄 알게 (2026-11-17, 보낸 영역 delivery — 고객 반품 회수 DD-3·오배송 회수 DD-2)
+- **지금 빈 곳**: 회수 라이더가 MFC 에 도착해 `returns/store-deliveries` 를 누르면 delivery 는 `ReturnDelivered`(delivery.delivery.v1)를 내고 배송을 끝낸다. 점원이 회수품을 격리 반입하는 `POST /return-receipts`(claimId·returnPickupId·줄)는 있지만, **mfc-inbound 가 `ReturnDelivered` 를 구독하지 않아 점원 화면에 "반납 도착"이 보이지 않는다** — 점원이 claimId·returnPickupId 를 알 길이 없어 반입·검수·환불(claim `ReturnItemReceived`→`ReturnInspected` 뒤)이 이어지지 않는다(2026-11-17 PC 5 점검).
+- **사건 모양**(이미 나감): `ReturnDelivered` — purpose `CLAIM_RETURN`(claimId, lines = claim 이 요청한 줄 — orderLineId·qty·claimLineId·sku) 또는 `MISDELIVERY_RECOVERY`(caseId·originDeliveryId, lines = 원래 배송 전달 줄), deliveryId(회수 배송 = returnPickupId), orderId, mfcId, riderId 는 ReturnPickedUp 에, deliveredAt.
+- **mfc-inbound 가 할 것(PC 3)**:
+  1. `ReturnDelivered` 구독(두 purpose) → 그 MFC 의 "반납 도착" 대기 행(회수 배송 ID·claimId 또는 caseId·줄·도착 시각).
+  2. 점원 화면(mfc-app)에 대기 목록 → 고르면 `POST /return-receipts` 를 그 값으로 채워 반입(격리). 반입하면 대기에서 빠짐.
+  3. 오배송 회수(MISDELIVERY_RECOVERY)는 claim 이 없으니 MI-1 검수 규칙(신선·냉장·냉동 폐기, 상온 미개봉만 재고 복구)으로.
+- delivery 는 바꿀 것 없음. 점원 수령 확인을 반납 조건으로 바꾸는 것(execution `receivedByStaffRef`)은 나중 사용자 결정.

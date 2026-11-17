@@ -221,6 +221,31 @@ public class DispatchEvents {
     publish("DispatchFailed", before, before.version() + 1L, system(), p);
   }
 
+  /**
+   * 반품 회수 요청 거절(2026-11-17 — 원래 배송이 전달 완료 전, 사용자 "전달 완료 전에는 반품 불가"). 회수 배송을 만들지 않았으므로 deliveryId 는
+   * 그 요청으로 정해질 배송 ID(실제 행 없음). claim 이 회수 실패로 세어 멈추지 않게 한다.
+   */
+  public void returnPickupRejected(
+      String deliveryId,
+      String claimId,
+      String orderId,
+      @Nullable String mfcId,
+      String reason,
+      java.time.Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", deliveryId);
+    p.put("claimId", claimId);
+    p.put("orderId", orderId);
+    if (mfcId != null) {
+      p.put("mfcId", mfcId);
+    }
+    p.put("reason", reason);
+    p.put("customerReason", false);
+    p.put("contactAttempts", 0);
+    p.put("failedAt", at.toString());
+    events.publish("ReturnPickupFailed", 1, "Delivery", deliveryId, 1L, system(), p);
+  }
+
   private void publish(
       String type,
       DeliveryRow d,

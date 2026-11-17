@@ -67,14 +67,26 @@ public class ClaimReturnHandler {
       return;
     }
     DeliveryRow origin = originId.isBlank() ? null : store.delivery(originId).orElse(null);
-    if (origin != null && origin.completedAt() == null) {
-      // 사용자 2026-11-17 "배달 중이나 전달 완료 전에는 반품 불가"
+    // 사용자 2026-11-17 "배달 중이나 전달 완료 전에는 반품 불가". 회수 요청에 원래 배송이 없으면 주문의 배송으로 본다 — 배차가 아는 일반 배송이
+    // 있는데 하나도 전달 완료가 아니면 거절. 거절은 claim 이 멈추지 않게 ReturnPickupFailed(ORIGIN_NOT_DELIVERED)로 알린다(claim
+    // 접수가 정본)
+    List<DeliveryRow> forward =
+        origin != null
+            ? List.of(origin)
+            : store.lockByOrder(orderId).stream()
+                .filter(d -> !"RETURN".equals(d.type()) && !d.redelivery())
+                .toList();
+    if (!forward.isEmpty() && forward.stream().allMatch(d -> d.completedAt() == null)) {
       log.warn(
-          "반품 회수 요청 {} — 클레임 {} 의 원래 배송 {} 이 전달 완료 전({}), 반품 불가 — 회수 배차 안 함",
-          e.eventId(),
+          "반품 회수 요청 {} — 클레임 {} 주문 {} 이 전달 완료 전, 반품 불가 — 회수 실패로 알림", e.eventId(), claimId, orderId);
+      String pickupRequestId = p.path("pickupRequestId").asString("");
+      events.returnPickupRejected(
+          deliveryId(pickupRequestId.isBlank() ? String.valueOf(e.eventId()) : pickupRequestId),
           claimId,
-          originId,
-          origin.state());
+          orderId,
+          p.path("mfcId").asString(null),
+          "ORIGIN_NOT_DELIVERED",
+          clock.instant());
       return;
     }
     String mfcId = p.path("mfcId").asString("");

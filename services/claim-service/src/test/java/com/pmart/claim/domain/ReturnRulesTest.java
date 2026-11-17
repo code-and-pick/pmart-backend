@@ -52,7 +52,7 @@ class ReturnRulesTest {
             code(
                 () ->
                     ReturnRules.checkReturnable(lines, List.of(new Requested("L2", 1)), Map.of())))
-        .isEqualTo("NOT_HANDED_OVER");
+        .isEqualTo("NOT_DELIVERED_YET");
     assertThat(
             code(
                 () ->
@@ -73,7 +73,7 @@ class ReturnRulesTest {
             code(
                 () ->
                     ReturnRules.checkReturnable(notYet, List.of(new Requested("L1", 1)), Map.of())))
-        .isEqualTo("NOT_HANDED_OVER");
+        .isEqualTo("NOT_DELIVERED_YET");
   }
 
   @Test
