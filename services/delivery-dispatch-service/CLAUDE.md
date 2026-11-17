@@ -63,3 +63,4 @@
 - **지점 전화(2026-11-17, 0.5.2)**: 주문 요약 사본에 center-master `phone` → `mfcPhone`(제안 `order.mfcPhone`), 배정 사건 `DeliveryAssigned.mfcPhone`. 없으면 뺀다.
 
 - **전달 실패 반납(2026-11-17, 계약 0.6.0 — 사용자 "같은 라이더에 회수 배송 자동 배정")**: `ExecutionEventHandler` 가 DeliveryFailed custody RIDER(일반·재발송 배송만, 회수·다시 배송 제외)면 반납 배송(type RETURN, purpose FAILED_DELIVERY_RETURN, ID = 원래 배송으로 정함 `failed-return:<id>`, shipment `FLR-<id>`, request_trigger FAILURE) + 시도 + DeliveryCreated. 판단 주기: 좌표는 반품 회수와 같은 길(고객 집 → MFC), `assignFailedReturn` — **원래 라이더에게 제안 없이 바로**(운행·신규배차·제한 무관), offer source FAILED_RETURN(바로 ACCEPTED, DispatchOfferSent 없음), 배달료 = 일반 표(원래 수락 수단). 원래 라이더 모름 → SYSTEM_FAILURE.
+- **다른 라이더 반납(2026-11-17, 0.7.0)**: DeliveryFailed.returnBy OTHER_RIDER → 반납 배송 request_trigger FAILURE_OTHER(`failedReturnByOther`) + 시도에 원래 라이더 제외 → 회수지 = 원래 라이더 마지막 위치(없으면 원래 배송지, `prepareFailedReturnOtherGeo`, source RIDER_LOCATION) → 근처 라이더 제안(원래 라이더는 재시도에서도 뺌).

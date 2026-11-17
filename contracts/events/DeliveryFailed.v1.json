@@ -47,6 +47,18 @@
             },
             "failedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "goodsLocation": {
+              "type": "string",
+              "description": "라이더가 적은 상품 위치(WITH_RIDER·RETURNED_TO_STORE·LEFT_AT_DOOR·UNKNOWN)"
+            },
+            "returnBy": {
+              "type": "string",
+              "enum": [
+                "SAME_RIDER",
+                "OTHER_RIDER"
+              ],
+              "description": "2026-11-17 — custody RIDER 일 때 MFC 반납할 사람. 없으면 SAME_RIDER. OTHER_RIDER 면 dispatch 가 근처 다른 라이더에게 회수 제안(원래 라이더 제외)"
             }
           },
           "additionalProperties": true

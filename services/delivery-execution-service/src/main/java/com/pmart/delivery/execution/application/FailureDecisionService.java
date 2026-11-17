@@ -30,9 +30,27 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class FailureDecisionService {
 
+  /** 지원센터 직접 실패 처리를 받는 상태(픽업 뒤·전달 전). */
+  private static final java.util.Set<String> STAFF_FAIL_FROM =
+      java.util.Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
+
   private static final Logger log = LoggerFactory.getLogger(FailureDecisionService.class);
 
-  public record Decision(String decision, @Nullable String note, @Nullable String custody) {}
+  /**
+   * @param returnBy SAME_RIDER(기본)·OTHER_RIDER — custody RIDER 일 때 MFC 반납할 사람(2026-11-17)
+   * @param staffReason 지원센터가 직접 실패 처리할 때의 사유(라이더가 등록을 못 한 경우 — 2026-11-17)
+   */
+  public record Decision(
+      String decision,
+      @Nullable String note,
+      @Nullable String custody,
+      @Nullable String returnBy,
+      @Nullable String staffReason) {
+
+    public Decision(String decision, @Nullable String note, @Nullable String custody) {
+      this(decision, note, custody, null, null);
+    }
+  }
 
   private final ExecutionStore store;
   private final ExecutionEvents events;
@@ -88,10 +106,34 @@ public class FailureDecisionService {
               if (expectedVersion != null && expectedVersion != d.version()) {
                 throw PmartException.versionConflict("배송이 바뀌었습니다(현재 버전 " + d.version() + ").");
               }
-              if (!"FAILURE_REPORTED".equals(d.state()) || d.failureJson() == null) {
-                throw PmartException.invalidState("실패 등록된 배송만 결정할 수 있습니다(지금 " + d.state() + ").");
+              JsonNode reported;
+              if (c.staffReason() != null) {
+                // 지원센터 직접 실패 처리(2026-11-17 — 라이더가 사고 등으로 등록을 못 할 때): 픽업 뒤·전달 전, 확정만
+                if (!(p.hasRole("RIDER_OPS") || p.hasRole("OPERATOR_ADMIN"))) {
+                  throw ExecutionService.forbidden("직접 실패 처리는 라이더 운영·관리자만 할 수 있습니다.");
+                }
+                if (!"CONFIRM".equals(c.decision())
+                    || !STAFF_FAIL_FROM.contains(d.state())
+                    || d.claimReturn()
+                    || "RETURN".equals(d.type())) {
+                  throw PmartException.invalidState(
+                      "직접 실패 처리는 픽업 뒤·전달 전 일반 배송의 확정만 됩니다(지금 " + d.state() + ").");
+                }
+                Map<String, Object> staff = new LinkedHashMap<>();
+                staff.put("reason", c.staffReason());
+                staff.put("goodsLocation", "WITH_RIDER");
+                staff.put("contactAttempts", java.util.List.of());
+                staff.put("photoRefs", java.util.List.of());
+                staff.put("reportedBy", "STAFF");
+                staff.put("reportedAt", now.toString());
+                staff.put("previousState", d.state());
+                reported = mapper.valueToTree(staff);
+              } else {
+                if (!"FAILURE_REPORTED".equals(d.state()) || d.failureJson() == null) {
+                  throw PmartException.invalidState("실패 등록된 배송만 결정할 수 있습니다(지금 " + d.state() + ").");
+                }
+                reported = mapper.readTree(d.failureJson());
               }
-              JsonNode reported = mapper.readTree(d.failureJson());
               Map<String, Object> failure = new LinkedHashMap<>();
               reported.properties().forEach(en -> failure.put(en.getKey(), en.getValue()));
               failure.put("decision", c.decision());
@@ -125,10 +167,15 @@ public class FailureDecisionService {
                 String goods = reported.path("goodsLocation").asString(null);
                 String custody = ExecutionRules.custody(c.custody(), goods);
                 failure.put("custody", custody);
+                String returnBy =
+                    "RIDER".equals(custody) && "OTHER_RIDER".equals(c.returnBy())
+                        ? "OTHER_RIDER"
+                        : "SAME_RIDER";
+                failure.put("returnBy", returnBy);
                 store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
                 store.history(deliveryId, "FAILED", now, "OPERATOR", requestId, now);
                 String reason = reported.path("reason").asString("OTHER");
-                events.failed(d, reason, custody, goods, p.subject(), now);
+                events.failed(d, reason, custody, goods, returnBy, p.subject(), now);
                 // 수행료(2026-11-17 사용자 "고객 귀책이면 라이더는 잘못 없으니 원래 측정돼 있던 수행료"): 고객 사유(부재·연락 두절·주소
                 // 오류·거부)면 수락 당시 금액, 그 밖은 산정 불가 → 지원센터 조정. 상품이 라이더 손이면 dispatch 가 반납 배송을 같은 라이더에게
                 if (ExecutionRules.CUSTOMER_REASONS.contains(reason)) {

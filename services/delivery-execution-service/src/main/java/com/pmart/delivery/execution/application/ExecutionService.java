@@ -632,10 +632,10 @@ public class ExecutionService {
         expectedVersion,
         Map.of("evidenceRefs", evidenceRefs),
         (d, rider, now) -> {
-          if (d.failedReturn()) {
+          if (d.failedReturn() && !byOtherRider(d)) {
             throw PmartException.invalidState("전달 실패 반납은 상품을 이미 가지고 있어 받음 없이 MFC 반납만 합니다.");
           }
-          if (!d.redelivery() && !d.claimReturn()) {
+          if (!d.redelivery() && !d.claimReturn() && !d.failedReturn()) {
             recoveryOnly(d);
           }
           if (!"ASSIGNED".equals(d.state())) {
@@ -684,7 +684,7 @@ public class ExecutionService {
           }
           // 전달 실패 반납(2026-11-17)은 상품이 이미 라이더 손 — 배정(ASSIGNED)에서 바로 반납
           if (!"RETURN_PICKED_UP".equals(d.state())
-              && !(d.failedReturn() && "ASSIGNED".equals(d.state()))) {
+              && !(d.failedReturn() && !byOtherRider(d) && "ASSIGNED".equals(d.state()))) {
             throw PmartException.invalidState("회수한 배송만 반납할 수 있습니다(지금 " + d.state() + ").");
           }
           requireMyPhotos(deliveryId, rider, evidenceRefs, false);
@@ -707,7 +707,7 @@ public class ExecutionService {
           store.returnedToStore(deliveryId, mapper.writeValueAsString(evidence), now);
           store.history(deliveryId, "RETURNED_TO_STORE", now, "RIDER", evidenceId, now);
           events.returnDelivered(d, lines, evidenceId, now);
-          if (d.failedReturn() && !customerCausedFailure(d)) {
+          if (d.failedReturn() && !byOtherRider(d) && !customerCausedFailure(d)) {
             // 전달 실패 반납: 고객 사유가 아닌 실패면 앞 배송처럼 지원센터 조정(사용자 2026-11-17 "기존대로 수행료 조정")
             earnings.notCalculable(d, "RETURNED_TO_STORE", now);
           } else {
@@ -820,6 +820,17 @@ public class ExecutionService {
     if ("RETURN".equals(d.type())) {
       throw PmartException.invalidState("회수 배송입니다. 회수·반납 단계를 써 주세요.");
     }
+  }
+
+  /** 전달 실패 반납을 원래 라이더가 아닌 다른 라이더가 맡았나(2026-11-17 — 그 라이더는 받음 사진 → 반납, 수행료는 그대로). */
+  private boolean byOtherRider(DeliveryRow d) {
+    return d.failedReturn()
+        && d.riderId() != null
+        && Optional.ofNullable(d.originDeliveryId())
+            .flatMap(store::delivery)
+            .map(DeliveryRow::riderId)
+            .filter(r -> !r.equals(d.riderId()))
+            .isPresent();
   }
 
   /** 전달 실패 반납의 앞 배송이 고객 사유(부재·연락 두절·주소 오류·거부)로 확정됐나. */

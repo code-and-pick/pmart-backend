@@ -1176,6 +1176,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
       assertThat(view(origin, rider).path("failure").path("returnDeliveryId").asString())
           .isEqualTo(back);
       assertThat(view(back, rider).path("purpose").asString()).isEqualTo("FAILED_DELIVERY_RETURN");
+      assertThat(view(back, rider).path("returnPickupRequired").asBoolean()).isFalse();
 
       // 받음 없음(상품이 이미 손에) — 배정에서 바로 MFC 반납
       assertThat(
@@ -1202,6 +1203,94 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
           .as(reason)
           .isEqualTo(customer);
     }
+  }
+
+  /**
+   * 라이더가 더 갈 수 없을 때(2026-11-17 — 사용자 "다른 라이더에게 보낼 수 있게"): 지원센터가 등록 없이 직접 확정(RIDER_OPS) +
+   * OTHER_RIDER → 반납 배송을 다른 라이더가 받음 사진 → MFC 반납, 수행료는 그 라이더에게 그대로.
+   */
+  @Test
+  void supportFailsForIncapacitatedRiderAndAnotherRiderReturnsGoods() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String r1 = "RDR-" + UUID.randomUUID();
+    String r2 = "RDR-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, r1);
+    Map<String, Object> direct =
+        Map.of(
+            "decision", "CONFIRM",
+            "custody", "RIDER",
+            "returnBy", "OTHER_RIDER",
+            "reason", "RIDER_INCIDENT",
+            "note", "라이더 사고 — 통화 확인");
+    // 상담원은 직접 처리 못 함, 라이더 운영은 됨
+    assertThat(decideWith(origin, List.of("CS_AGENT"), direct).getStatusCode().value())
+        .isEqualTo(403);
+    ResponseEntity<String> ok = decideWith(origin, List.of("RIDER_OPS"), direct);
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(state(origin)).isEqualTo("FAILED");
+    JsonNode failed = outbox(origin, "DeliveryFailed").path("payload");
+    assertThat(failed.path("reason").asString()).isEqualTo("RIDER_INCIDENT");
+    assertThat(failed.path("returnBy").asString()).isEqualTo("OTHER_RIDER");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT calculable FROM rider_earning WHERE delivery_id = ?",
+                Boolean.class,
+                origin))
+        .isFalse(); // 고객 사유가 아님 — 지원센터 조정
+
+    String back = "DLV-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", back);
+    created.put("orderId", order);
+    created.put("shipmentId", "FLR-" + origin);
+    created.put("type", "RETURN");
+    created.put("purpose", "FAILED_DELIVERY_RETURN");
+    created.put("originDeliveryId", origin);
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "mfc:MFC-1");
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", back, created);
+    assigned(back, order, r2, 1);
+    awaitState(back, "ASSIGNED");
+    assertThat(view(back, r2).path("returnPickupRequired").asBoolean()).isTrue();
+    // 다른 라이더는 받음부터 — 바로 반납 409
+    assertThat(post(back, "returns/store-deliveries", r2, Map.of()).getStatusCode().value())
+        .isEqualTo(409);
+    String spot = body(upload(back, r2, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(
+                    back,
+                    "returns/pickups",
+                    r2,
+                    Map.of("items", List.of(), "evidenceRefs", List.of(spot)))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(back)).isEqualTo("RETURN_PICKED_UP");
+    assertThat(post(back, "returns/store-deliveries", r2, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT calculable FROM rider_earning WHERE delivery_id = ? AND rider_id = ?",
+                Boolean.class,
+                back,
+                r2))
+        .isTrue();
+  }
+
+  ResponseEntity<String> decideWith(String id, List<String> roles, Map<String, Object> body) {
+    return http.post()
+        .uri("/deliveries/{id}/failure-decisions", id)
+        .headers(
+            h -> {
+              h.setBearerAuth(TestJwt.operator("OP-X", roles, List.of()));
+              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("X-Source-System", "rider-backoffice-web");
+            })
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
   }
 
   /** 운영자 상태 정정(2026-11-17 — 사용자 "라이더 운영 관리자가 승인"): 픽업 뒤 고객 도착 ↔ 픽업만, 이력·사건·기록. */

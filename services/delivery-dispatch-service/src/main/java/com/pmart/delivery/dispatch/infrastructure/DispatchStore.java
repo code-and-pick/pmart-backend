@@ -92,6 +92,11 @@ public class DispatchStore {
       return "RETURN".equals(type) && "FAILED_DELIVERY_RETURN".equals(purpose);
     }
 
+    /** 전달 실패 반납을 다른 라이더가(2026-11-17 — 원래 라이더가 더 갈 수 없을 때). request_trigger FAILURE_OTHER. */
+    public boolean failedReturnByOther() {
+      return failedReturn() && "FAILURE_OTHER".equals(requestTrigger);
+    }
+
     /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. 픽업지가 MFC 가 아니라 따로 배차한다. */
     public boolean claimReturn() {
       return "RETURN".equals(type) && "CLAIM_RETURN".equals(purpose);
@@ -347,17 +352,23 @@ public class DispatchStore {
 
   /** 전달 실패 반납 배송(2026-11-17). 같은 원래 배송은 하나(배송 ID 를 원래 배송으로 정한다). */
   public boolean insertFailedReturn(
-      String deliveryId, String orderId, String mfcId, String originDeliveryId, Instant now) {
+      String deliveryId,
+      String orderId,
+      String mfcId,
+      String originDeliveryId,
+      boolean otherRider,
+      Instant now) {
     return jdbc.update(
             "INSERT INTO delivery (delivery_id, version, type, purpose, order_id, shipment_id, mfc_id,"
                 + " state, origin_delivery_id, request_trigger, created_at, updated_at) VALUES (?, 1,"
-                + " 'RETURN', 'FAILED_DELIVERY_RETURN', ?, ?, ?, 'DISPATCHING', ?, 'FAILURE', ?, ?) ON"
+                + " 'RETURN', 'FAILED_DELIVERY_RETURN', ?, ?, ?, 'DISPATCHING', ?, ?, ?, ?) ON"
                 + " CONFLICT DO NOTHING",
             deliveryId,
             orderId,
             "FLR-" + originDeliveryId,
             mfcId,
             originDeliveryId,
+            otherRider ? "FAILURE_OTHER" : "FAILURE",
             ts(now),
             ts(now))
         == 1;

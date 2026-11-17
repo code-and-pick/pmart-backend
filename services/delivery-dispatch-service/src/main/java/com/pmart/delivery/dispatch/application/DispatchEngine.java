@@ -459,7 +459,7 @@ public class DispatchEngine {
     Set<String> taken = new HashSet<>(); // 이번 주기에 회수 제안을 받은 라이더
     for (Ready r : recoveries) {
       DeliveryRow d = r.delivery();
-      if (d.failedReturn()) {
+      if (d.failedReturn() && !d.failedReturnByOther()) {
         assignFailedReturn(r, now);
         continue;
       }
@@ -475,7 +475,7 @@ public class DispatchEngine {
           d.originDeliveryId() == null
               ? null
               : store.delivery(d.originDeliveryId()).map(DeliveryRow::riderId).orElse(null);
-      if (d.recovery() && originRider != null) {
+      if ((d.recovery() || d.failedReturnByOther()) && originRider != null) {
         skip.add(originRider); // 회수: 원래 라이더(ADR-0052 "인근 다른 라이더") — 재배차 시도에도
       }
       // 다시 배송 200m 안(ADR-0065): 원래 기사에게 먼저 — 배달료 0(추가 운행료 없음), 반경 상관없이. 거절·만료면 다음부터 근처 다른 라이더
@@ -553,7 +553,9 @@ public class DispatchEngine {
           legs[best][0],
           d.redelivery()
               ? "REDELIVERY nearest"
-              : d.claimReturn() ? "CLAIM_RETURN nearest" : "RECOVERY nearest",
+              : d.claimReturn()
+                  ? "CLAIM_RETURN nearest"
+                  : d.failedReturn() ? "FAILED_RETURN other rider" : "RECOVERY nearest",
           now);
       taken.add(riderId);
     }
@@ -829,6 +831,9 @@ public class DispatchEngine {
     if (d.recovery()) {
       return prepareRecoveryGeo(d, a, now);
     }
+    if (d.failedReturnByOther()) {
+      return prepareFailedReturnOtherGeo(d, a, now);
+    }
     if (d.claimReturn() || d.failedReturn()) {
       // 전달 실패 반납도 출발 = 고객 집(라이더가 실패를 등록한 곳), 도착 = MFC
       return prepareClaimReturnGeo(d, a, now);
@@ -1005,6 +1010,67 @@ public class DispatchEngine {
       return store.delivery(d.deliveryId());
     } catch (PmartException e) {
       log.warn("반품 회수 배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
+      return later(d, a, e.code(), now);
+    }
+  }
+
+  /**
+   * 전달 실패 반납을 다른 라이더가(2026-11-17): 회수지 = 원래 라이더의 마지막 위치(상품이 그 라이더에게 있다 — 오래됐어도), 없으면 원래 배송지. 회수지 →
+   * MFC 도로 거리로 일반 표.
+   */
+  private Optional<DeliveryRow> prepareFailedReturnOtherGeo(
+      DeliveryRow d, AttemptRow a, Instant now) {
+    try {
+      Optional<Geo> mfc = upstreams.centerCoordinates(d.mfcId());
+      if (mfc.isEmpty()) {
+        return later(d, a, "NO_MFC_COORDINATES", now);
+      }
+      DeliveryRow origin =
+          d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null);
+      Geo pickup = null;
+      String source = "RIDER_LOCATION";
+      if (origin != null && origin.riderId() != null) {
+        pickup =
+            upstreams.locations(List.of(origin.riderId())).stream()
+                .findFirst()
+                .map(Upstreams.Location::at)
+                .orElse(null);
+      }
+      if (pickup == null
+          && origin != null
+          && origin.dropLat() != null
+          && origin.dropLng() != null) {
+        pickup = new Geo(origin.dropLat(), origin.dropLng());
+        source = "DROP_ADDRESS";
+      }
+      if (pickup == null) {
+        return failSystem(d, a, "NO_PICKUP_LOCATION", now);
+      }
+      Upstreams.Leg leg = upstreams.matrix(List.of(pickup), List.of(mfc.get()))[0][0];
+      if (!leg.ok()) {
+        return failSystem(d, a, "NO_ROUTE_TO_MFC", now);
+      }
+      Geo p = pickup;
+      String src = source;
+      String area = origin == null ? null : origin.dropAreaLabel();
+      tx.executeWithoutResult(
+          s ->
+              store.saveRecoveryGeo(
+                  d.deliveryId(),
+                  mfc.get().lat(),
+                  mfc.get().lng(),
+                  p.lat(),
+                  p.lng(),
+                  src,
+                  null,
+                  area,
+                  leg.distanceM(),
+                  leg.durationS(),
+                  now));
+      log.info("전달 실패 반납(다른 라이더) {} 회수지 준비({}) — MFC 까지 {}m", d.deliveryId(), src, leg.distanceM());
+      return store.delivery(d.deliveryId());
+    } catch (PmartException e) {
+      log.warn("전달 실패 반납 {} 좌표 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
       return later(d, a, e.code(), now);
     }
   }

@@ -63,6 +63,7 @@ class ExecutionViews {
             .completedAt(time(d.completedAt()))
             .purpose(
                 d.purpose() == null ? null : DeliveryExecution.PurposeEnum.fromValue(d.purpose()))
+            .returnPickupRequired(returnPickupRequired(v))
             .caseId(d.caseId())
             .claimId(d.claimId())
             .orderNumber(d.orderNumber())
@@ -216,5 +217,19 @@ class ExecutionViews {
 
   static @Nullable OffsetDateTime time(@Nullable Instant i) {
     return i == null ? null : i.atOffset(ZoneOffset.UTC);
+  }
+
+  /** 회수 배송의 "받음" 단계 유무(2026-11-17) — 같은 라이더의 전달 실패 반납만 없다. RETURN 이 아니면 null. */
+  static @Nullable Boolean returnPickupRequired(ExecutionService.View v) {
+    var d = v.delivery();
+    if (!"RETURN".equals(d.type())) {
+      return null;
+    }
+    if (!d.failedReturn()) {
+      return true;
+    }
+    return v.origin() != null
+        && v.origin().riderId() != null
+        && !v.origin().riderId().equals(d.riderId());
   }
 }

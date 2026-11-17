@@ -74,7 +74,7 @@ public class ExecutionEventHandler {
               log.info("배송 {} 배차 종료 — {}(라이더 {})", deliveryId, e.eventType(), d.riderId());
               if ("DeliveryFailed".equals(e.eventType())
                   && "RIDER".equals(p.path("custody").asString(""))) {
-                failedReturn(d, now);
+                failedReturn(d, "OTHER_RIDER".equals(p.path("returnBy").asString("")), now);
               }
             });
   }
@@ -85,7 +85,7 @@ public class ExecutionEventHandler {
    * 불가"). 배정은 판단 주기({@link DispatchEngine})가 고객 집 → MFC 거리를 채운 뒤 제안 없이. 회수 배송·다시 배송의 실패는 만들지
    * 않는다(상품이 고객 쪽·이미 반납 흐름).
    */
-  private void failedReturn(DeliveryRow d, Instant now) {
+  private void failedReturn(DeliveryRow d, boolean otherRider, Instant now) {
     if ("RETURN".equals(d.type()) || d.redelivery() || d.riderId() == null) {
       return;
     }
@@ -94,10 +94,12 @@ public class ExecutionEventHandler {
             + java.util.UUID.nameUUIDFromBytes(
                 ("failed-return:" + d.deliveryId())
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    if (!store.insertFailedReturn(id, d.orderId(), d.mfcId(), d.deliveryId(), now)) {
+    if (!store.insertFailedReturn(id, d.orderId(), d.mfcId(), d.deliveryId(), otherRider, now)) {
       return;
     }
-    store.insertAttempt("ATT-" + java.util.UUID.randomUUID(), id, "AUTO", now);
+    // 다른 라이더(2026-11-17): 원래 라이더는 제안에서 뺀다 — 근처 라이더에게 일반 회수처럼
+    store.insertAttempt(
+        "ATT-" + java.util.UUID.randomUUID(), id, "AUTO", otherRider ? d.riderId() : null, now);
     events.created(store.delivery(id).orElseThrow(), List.of());
     log.info("전달 실패 {} → 반납 배송 {}(라이더 {} 에게 바로 배정 예정)", d.deliveryId(), id, d.riderId());
   }

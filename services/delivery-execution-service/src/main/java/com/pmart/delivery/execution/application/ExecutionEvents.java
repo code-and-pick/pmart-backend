@@ -177,6 +177,7 @@ public class ExecutionEvents {
       String reason,
       String custody,
       @org.jspecify.annotations.Nullable String goodsLocation,
+      String returnBy,
       String operatorId,
       Instant at) {
     Map<String, Object> p = new LinkedHashMap<>();
@@ -191,6 +192,9 @@ public class ExecutionEvents {
     p.put("custody", custody);
     if (goodsLocation != null) {
       p.put("goodsLocation", goodsLocation);
+    }
+    if ("RIDER".equals(custody)) {
+      p.put("returnBy", returnBy); // 2026-11-17 — 다른 라이더 회수면 OTHER_RIDER
     }
     p.put("failedAt", at.toString());
     publish(

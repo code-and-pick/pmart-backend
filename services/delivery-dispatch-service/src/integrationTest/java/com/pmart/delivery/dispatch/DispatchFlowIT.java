@@ -2140,6 +2140,57 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 back))
         .isZero(); // 제안(푸시) 없이
 
+    // 다른 라이더(2026-11-17 — returnBy OTHER_RIDER): 원래 라이더는 빼고 근처 라이더에게 회수 제안, 회수지 = 원래 라이더 위치
+    String r2 = "RD-fr2-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true), rider(r2, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.5006, 127.0362}, r2, new double[] {37.5008, 127.0365}));
+    String origin3 =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID(), order);
+    engine.tick();
+    String offer3 =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin3);
+    String r3rider =
+        jdbc.queryForObject(
+            "SELECT rider_id FROM dispatch_offer WHERE offer_id = ?", String.class, offer3);
+    assertThat(body(respond(r3rider, offer3, "a-" + origin3, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    executionEvent(
+        "DeliveryFailed",
+        origin3,
+        Map.of(
+            "deliveryId",
+            origin3,
+            "reason",
+            "RIDER_INCIDENT",
+            "custody",
+            "RIDER",
+            "returnBy",
+            "OTHER_RIDER",
+            "failedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE origin_delivery_id = '"
+            + origin3
+            + "' AND request_trigger = 'FAILURE_OTHER'");
+    String back3 =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE origin_delivery_id = ?", String.class, origin3);
+    engine.tick();
+    Map<String, Object> o3 =
+        jdbc.queryForMap(
+            "SELECT rider_id, state FROM dispatch_offer WHERE delivery_id = ? ORDER BY sent_at DESC"
+                + " LIMIT 1",
+            back3);
+    assertThat(o3.get("state")).isEqualTo("SENT"); // 제안(바로 배정 아님)
+    assertThat(o3.get("rider_id")).isNotEqualTo(r3rider); // 원래 라이더 제외
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT pickup_source FROM delivery WHERE delivery_id = ?", String.class, back3))
+        .isEqualTo("RIDER_LOCATION");
+
     // 상품이 매장(custody STORE)이면 라이더 할 일 없음
     String origin2 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID());
     executionEvent(

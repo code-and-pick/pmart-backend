@@ -67,6 +67,7 @@
               "enum": [
                 "CLAIM_RETURN",
                 "MISDELIVERY_RECOVERY",
+                "FAILED_DELIVERY_RETURN",
                 "MISDELIVERY_REDELIVERY"
               ],
               "description": "회수 목적(2026-11-16) — CLAIM_RETURN 고객 반품(claimId), MISDELIVERY_RECOVERY 확인된 오배송 회수(caseId·originDeliveryId, DD-2). 없으면 CLAIM_RETURN MISDELIVERY_REDELIVERY(ADR-0065) — 고객 잘못 다시 배송: 잘못 둔 곳에서 받음(그 뒤 실제 집으로 전달 — 반납 없음)."

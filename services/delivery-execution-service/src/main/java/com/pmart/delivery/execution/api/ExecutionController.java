@@ -144,7 +144,9 @@ public class ExecutionController implements ExecutionApi {
                 new FailureDecisionService.Decision(
                     body.getDecision().getValue(),
                     body.getNote(),
-                    body.getCustody() == null ? null : body.getCustody().getValue()))));
+                    body.getCustody() == null ? null : body.getCustody().getValue(),
+                    body.getReturnBy() == null ? null : body.getReturnBy().getValue(),
+                    body.getReason() == null ? null : body.getReason().getValue()))));
   }
 
   @Override
