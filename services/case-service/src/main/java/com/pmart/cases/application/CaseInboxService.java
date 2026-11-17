@@ -267,6 +267,50 @@ public class CaseInboxService {
         e, kind, "P2", subjectType, subjectRef, null, orderExceptionSummary(type, p), refs, key);
   }
 
+  /**
+   * R-8(2026-11-17 사용자 — 상담원 팀·1시간·사람이 닫기): 반품 회수 실패(claim ReturnRecoveryFailed — 두 번 실패 또는 상담원 재요청
+   * 뒤 실패) → RETURN_RECOVERY_FAILED. 클레임마다 열린 사건 하나, 열려 있으면 이력(재발)만. 닫은 뒤 또 실패하면 새 사건(이전 사건 연결).
+   * 조치(다시 회수·반품 취소)는 상담원이 claim {@code POST /claims/{id}/recovery-actions} 로 하고, 클레임이 바뀌어도 자동으로 닫지
+   * 않는다. 주소·연락처는 이벤트에도 사건에도 없다.
+   */
+  public void onReturnRecoveryFailed(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String claimId = text(p, "claimId");
+    if (claimId == null) {
+      throw new IllegalArgumentException("claimId 없음"); // 계약 위반 → DLT
+    }
+    String reason = text(p, "lastFailureReason");
+    String note =
+        "반품 회수 "
+            + p.path("attempts").asInt(0)
+            + "번 요청 뒤 실패 — 마지막 사유 "
+            + orDash(reason)
+            + ", 고객에게 다시 연락";
+    String key = "RETURN_RECOVERY:" + claimId;
+    var open = store.lockOpenByDedupe(key);
+    if (open.isPresent()) {
+      store.touch(open.get().caseId(), now());
+      store.history(open.get().caseId(), now(), SYSTEM, "RECURRED", null, null, note);
+      log.info("반품 회수 실패 재발 — 사건 {} 에 이력만", open.get().caseId());
+      return;
+    }
+    List<Ref> refs = new ArrayList<>();
+    refs.add(new Ref("claimId", claimId));
+    addRef(refs, "orderId", text(p, "orderId"));
+    addRef(refs, "customerId", text(p, "accountId"));
+    addRef(refs, "lastDeliveryId", text(p, "lastDeliveryId"));
+    openFromEvent(
+        e,
+        CaseRules.RETURN_RECOVERY_FAILED,
+        "P2",
+        "CLAIM",
+        claimId,
+        text(p, "mfcId"),
+        note,
+        refs,
+        key);
+  }
+
   private static String orderExceptionSummary(String type, JsonNode p) {
     return switch (type) {
       case "ReconciliationRequired" -> "대사 필요 — " + orDash(text(p, "mismatchType"));

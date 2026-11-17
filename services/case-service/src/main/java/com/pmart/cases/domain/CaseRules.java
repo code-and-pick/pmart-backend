@@ -22,6 +22,9 @@ import org.jspecify.annotations.Nullable;
  *   <li>사가·결제 이상(R-3, 2026-11-16 사용자 — 기한 1시간·"이상만"·멈춘 사가는 지금 안 함): RECONCILIATION(대사 필요·결제 불일치·보상
  *       실패)·PAYMENT_UNKNOWN(결제 결과 불명 상신). 팀 ORDER_OPS = OPERATOR_ADMIN 만 보고 집고 닫는다. 사건은 알림·기록이고 조치는
  *       처리 대기(BO-12) 버튼·각 메뉴에서 한다.
+ *   <li>반품 회수 실패(R-8, 2026-11-17 사용자 — 상담원 팀·1시간·사람이 닫기): RETURN_RECOVERY_FAILED — 팀 CS =
+ *       상담원(CS_AGENT)이 보고 집고 닫는다(관리자는 모두, 지원센터에는 안 보임). 클레임마다 열린 사건 하나, 또 실패하면 이력. 클레임이 바뀌어도 자동으로
+ *       닫지 않는다.
  * </ul>
  */
 public final class CaseRules {
@@ -36,15 +39,25 @@ public final class CaseRules {
   public static final String RECONCILIATION = "RECONCILIATION";
   public static final String PAYMENT_UNKNOWN = "PAYMENT_UNKNOWN";
   public static final String DISPATCH_FAILED = "DISPATCH_FAILED";
+  public static final String RETURN_RECOVERY_FAILED = "RETURN_RECOVERY_FAILED";
 
   public static final String GROUP_DELIVERY_OPS = "DELIVERY_OPS";
   public static final String GROUP_ORDER_OPS = "ORDER_OPS";
+
+  /** 상담원 팀(R-8, 2026-11-17) — 역할 CS_AGENT. */
+  public static final String GROUP_CS = "CS";
 
   public static final Set<String> DELIVERY_KINDS =
       Set.of(RIDER_HELP, DELIVERY_INCIDENT, RIDER_LOCATION_STALE, MISDELIVERY, DISPATCH_FAILED);
 
   /** 사가·결제 이상(R-3) — OPERATOR_ADMIN 만. */
   public static final Set<String> ORDER_KINDS = Set.of(RECONCILIATION, PAYMENT_UNKNOWN);
+
+  /** 상담원 팀 사건(R-8) — CS_AGENT 가 집고 닫는다, 관리자는 모두, 지원센터에는 안 보임. */
+  public static final Set<String> CS_KINDS = Set.of(RETURN_RECOVERY_FAILED);
+
+  /** 상담원이 보는 종류 = 배송 쪽(보기만) + 상담원 팀. */
+  public static final Set<String> CS_AGENT_KINDS = union(DELIVERY_KINDS, CS_KINDS);
 
   public static final String ADMIN = "OPERATOR_ADMIN";
   public static final String RIDER_OPS = "RIDER_OPS";
@@ -69,13 +82,14 @@ public final class CaseRules {
           MISDELIVERY, Duration.ofMinutes(30),
           RECONCILIATION, Duration.ofHours(1),
           PAYMENT_UNKNOWN, Duration.ofHours(1),
-          DISPATCH_FAILED, Duration.ofMinutes(10));
+          DISPATCH_FAILED, Duration.ofMinutes(10),
+          RETURN_RECOVERY_FAILED, Duration.ofHours(1));
 
   public static String group(String kind) {
     if (DELIVERY_KINDS.contains(kind)) {
       return GROUP_DELIVERY_OPS;
     }
-    return ORDER_KINDS.contains(kind) ? GROUP_ORDER_OPS : "CS";
+    return ORDER_KINDS.contains(kind) ? GROUP_ORDER_OPS : GROUP_CS;
   }
 
   /** 볼 수 있는 종류. 빈 집합 = 하나도 없음. */
@@ -83,7 +97,10 @@ public final class CaseRules {
     if (roles.contains(ADMIN)) {
       return ALL_INBOX_KINDS;
     }
-    if (roles.contains(RIDER_OPS) || roles.contains(CS_AGENT)) {
+    if (roles.contains(CS_AGENT)) {
+      return CS_AGENT_KINDS; // 지원센터 역할을 함께 가져도 배송 쪽은 이미 들어 있다
+    }
+    if (roles.contains(RIDER_OPS)) {
       return DELIVERY_KINDS;
     }
     if (roles.contains(MFC_SUPERVISOR)) {
@@ -102,11 +119,14 @@ public final class CaseRules {
 
   /**
    * 집기·닫기·재개·이관 할 수 있는가(지금 담당 팀). 관리자는 모두, 지원센터(RIDER_OPS)는 배송 쪽 사건이 지원센터 팀(DELIVERY_OPS)에 있을 때만 —
-   * 관리자 팀(ORDER_OPS)으로 넘긴 배송 쪽 사건은 관리자만(0.7.0).
+   * 관리자 팀(ORDER_OPS)으로 넘긴 배송 쪽 사건은 관리자만(0.7.0). 상담원(CS_AGENT)은 상담원 팀 사건만(R-8, 0.22.0).
    */
   public static boolean canWork(Set<String> roles, String kind, @Nullable String group) {
     if (roles.contains(ADMIN)) {
       return true;
+    }
+    if (CS_KINDS.contains(kind)) {
+      return roles.contains(CS_AGENT) && GROUP_CS.equals(group);
     }
     return DELIVERY_KINDS.contains(kind)
         && roles.contains(RIDER_OPS)
@@ -141,7 +161,14 @@ public final class CaseRules {
           MISDELIVERY,
           DISPATCH_FAILED,
           RECONCILIATION,
-          PAYMENT_UNKNOWN);
+          PAYMENT_UNKNOWN,
+          RETURN_RECOVERY_FAILED);
+
+  private static Set<String> union(Set<String> a, Set<String> b) {
+    var s = new java.util.HashSet<>(a);
+    s.addAll(b);
+    return Set.copyOf(s);
+  }
 
   /**
    * 사가·결제 사건 중 사건함에 여는 것("이상만", 2026-11-16 사용자). 대사 필요·결제 불일치는 전부, 보상 실행은 성공이 아닌 것만(정상 보상은 주문 취소마다

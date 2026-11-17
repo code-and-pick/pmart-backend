@@ -40,10 +40,13 @@ public final class ObligationRules {
   /** 시도 기록 — 상태는 그대로(담당 팀이 "고객 연락 3번 안 됨" 같은 것을 남기고 관리자가 본다). */
   public static final String ATTEMPTED = "ATTEMPTED";
 
-  /** 담당 팀이 그 사건을 볼 수 있는가 — 지원센터·상담원은 배송 쪽 사건만 본다. */
+  /** 담당 팀이 그 사건을 볼 수 있는가 — 지원센터는 배송 쪽, 상담원은 배송 쪽·상담원 팀 사건(R-8)만 본다. */
   public static boolean ownerCanSee(String owner, String caseKind) {
     if (CaseRules.GROUP_ORDER_OPS.equals(owner)) {
       return true;
+    }
+    if (CS.equals(owner)) {
+      return CaseRules.CS_AGENT_KINDS.contains(caseKind);
     }
     return CaseRules.DELIVERY_KINDS.contains(caseKind);
   }

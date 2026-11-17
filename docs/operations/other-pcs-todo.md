@@ -109,7 +109,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 11-16 오전 마지막 갱신: case 0.4.1(`InquiryAnswered` 발행·사건 refs requestId), 백오피스 라이더·배송 화면 빌드 LAN, 리뷰·알림(PC 1 영역 — 백오피스 화면 없음). `HANDOVER.md` 첫머리 참고.
 - [ ] **MFC 센터 관리자 웹 — 본사 승인 번호·업무 내역·주문번호**(2026-11-17 PC 3 공지 `docs/handoff/clients/mfc-backoffice/2026-11-17-notice-mfc-approval-ref-and-new-fields.md`): 실사 승인·정정·폐기·격리 해제·운영 제한 해제가 기준 이상이면 422 APPROVAL_REQUIRED → details `approvalRequest`(JSON)로 승인 요청 → 승인 번호로 다시(정정은 같은 Idempotency-Key). 업무 내역(선택), orderNumber·handoverCode 표시. PR #116·#120·#123 병합·배포 뒤
 - [ ] **HR-2 인사팀 앱 권한 요청 화면**(2026-11-17 PC 1 — 백엔드 hr-service 0.6.0·employee-auth-service 0.11.0 끝, LAN 배포 전): 역할 목록 `centerScoped` 대로 센터 칸 필수/숨김, 한 요청에 역할 한 번, 이미 가진 권한·기간 표시, 새 거절 400(`…[i].centers`·`…[i].role`)·409 `GRANT_ALREADY_ACTIVE`·503 처리, 기간 연장 없음(결정 대기) — handoff `docs/handoff/clients/hr-backoffice/2026-11-17-request-grant-request-validation.md`
-- [ ] **R-8 반품 회수 실패 → 상담원 재연락 사건 + 백오피스 반품 접수 화면**(2026-11-17 PC 1 — CL-1): case 가 `ReturnRecoveryFailed`(order.claim.v1) 구독 → 고객센터 사건(요청서 `case-service.md` R-8). 백오피스 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN)·회수 조치(`POST /claims/{id}/recovery-actions`) — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`
+- [ ] **R-8 반품 회수 실패 → 상담원 재연락 사건 + 백오피스 반품 접수 화면**(2026-11-17 PC 1 — CL-1): case 가 `ReturnRecoveryFailed`(order.claim.v1) 구독 → 고객센터 사건(요청서 `case-service.md` R-8). 백오피스 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN)·회수 조치(`POST /claims/{id}/recovery-actions`) — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`. **백엔드 사건 구현 2026-11-17(case 0.22.0, PR — pmart-config 바인딩 `claimEvents` PC 1)**, 남은 것: 웹 화면(반품 접수·회수 조치·사건함 상담원 팀 종류)
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 

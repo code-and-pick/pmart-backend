@@ -666,6 +666,114 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .containsSubsequence(brokenCase, caseId);
   }
 
+  void publishClaim(String claimId, int attempts, String reason) {
+    Map<String, Object> p = new java.util.HashMap<>();
+    p.put("claimId", claimId);
+    p.put("orderId", "ORD-" + claimId);
+    p.put("accountId", "ACC-" + claimId);
+    p.put("mfcId", "MFC-1");
+    p.put("attempts", attempts);
+    p.put("lastDeliveryId", "DLV-" + claimId + "-" + attempts);
+    p.put("lastFailureReason", reason);
+    p.put("failedAt", Instant.now().toString());
+    kafka
+        .send(
+            "order.claim.v1",
+            claimId,
+            EventEnvelopeFixtures.envelope("ReturnRecoveryFailed")
+                .from("claim-service")
+                .aggregate("Claim", claimId, attempts)
+                .payload(p)
+                .buildJson())
+        .join();
+  }
+
+  /**
+   * R-8(2026-11-17 사용자 — 상담원 팀·1시간·사람이 닫기): 반품 회수 실패 → RETURN_RECOVERY_FAILED. 상담원(CS_AGENT)이 보고 집고
+   * 닫는다, 지원센터에는 안 보인다. 열린 동안 또 실패하면 이력, 닫은 뒤 실패하면 새 사건(이전 사건 연결). 같은 토픽의 다른 클레임 사건은 버린다.
+   */
+  @Test
+  void returnRecoveryFailureOpensCsCase() throws Exception {
+    String claimId = "CLM-RR-" + UUID.randomUUID().toString().substring(0, 8);
+    kafka
+        .send(
+            "order.claim.v1",
+            claimId,
+            EventEnvelopeFixtures.envelope("ClaimClosed")
+                .from("claim-service")
+                .aggregate("Claim", claimId, 1)
+                .payload(Map.of("claimId", claimId))
+                .buildJson())
+        .join();
+    publishClaim(claimId, 2, "CUSTOMER_ABSENT");
+    assertThat(
+            await(
+                () ->
+                    jdbc.queryForList(
+                        "SELECT case_type FROM case_record WHERE subject_ref = ?",
+                        String.class,
+                        claimId),
+                l -> !l.isEmpty()))
+        .as("다른 클레임 사건은 버리고 회수 실패만 사건")
+        .containsExactly("RETURN_RECOVERY_FAILED");
+
+    publishClaim(claimId, 3, "CUSTOMER_ABSENT");
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history h JOIN case_record c ON c.case_id = h.case_id"
+                    + " WHERE c.subject_ref = ? AND h.action = 'RECURRED'",
+                claimId),
+        c -> c > 0);
+    assertThat(count("SELECT count(*) FROM case_record WHERE subject_ref = ?", claimId))
+        .as("클레임마다 열린 사건 하나")
+        .isEqualTo(1);
+
+    Res list = send("GET", cs, "/cases?kind=RETURN_RECOVERY_FAILED&subjectRef=" + claimId, null);
+    assertThat(list.status()).as(list.body().toString()).isEqualTo(200);
+    JsonNode item = list.body().path("items").get(0);
+    String caseId = item.path("caseId").asString();
+    assertThat(item.path("assigneeGroup").asString()).isEqualTo("CS");
+    assertThat(item.path("subjectType").asString()).isEqualTo("CLAIM");
+    assertThat(item.path("centerId").asString()).isEqualTo("MFC-1");
+    assertThat(item.path("summary").asString()).contains("2번", "CUSTOMER_ABSENT");
+    assertThat(item.path("refs").toString())
+        .contains(claimId, "ORD-" + claimId, "ACC-" + claimId, "DLV-" + claimId + "-2");
+    Instant due = Instant.parse(item.path("slaDueAt").asString());
+    assertThat(due)
+        .isBetween(Instant.now().plusSeconds(55 * 60), Instant.now().plusSeconds(61 * 60));
+    assertThat(outbox(caseId, "CaseOpened")).isEqualTo(1);
+
+    assertThat(send("GET", ops, "/cases/" + caseId, null).status())
+        .as("지원센터에는 안 보임")
+        .isEqualTo(404);
+    assertThat(send("GET", ops, "/cases?subjectRef=" + claimId, null).body().path("items"))
+        .isEmpty();
+    assertThat(send("GET", admin, "/cases/" + caseId, null).status()).isEqualTo(200);
+
+    Res claimed =
+        send("POST", cs, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-cs-1"));
+    assertThat(claimed.status()).as(claimed.body().toString()).isEqualTo(200);
+    assertThat(claimed.body().path("history").toString()).contains("RECURRED", "3번");
+    Map<String, Object> close = Map.of("resolution", "RESOLVED", "summary", "고객 통화 — 다시 회수 요청");
+    Res closed = send("POST", cs, "/cases/" + caseId + "/closures", close);
+    assertThat(closed.status()).as(closed.body().toString()).isEqualTo(200);
+
+    publishClaim(claimId, 4, "CUSTOMER_ABSENT");
+    assertThat(
+            await(
+                () ->
+                    count(
+                        "SELECT count(*) FROM case_record WHERE subject_ref = ? AND state = 'OPEN'",
+                        claimId),
+                c -> c > 0))
+        .as("닫은 뒤 또 실패하면 새 사건")
+        .isEqualTo(1);
+    Res again = send("GET", cs, "/cases?kind=RETURN_RECOVERY_FAILED&subjectRef=" + claimId, null);
+    assertThat(again.body().path("items").get(0).path("refs").toString())
+        .contains("previousCaseId", caseId);
+  }
+
   /**
    * 센터 관리자(2026-11-16 사용자 "추천대로", 배송 원문 §3.6): 자기 센터(토큰 centers)의 배차 실패 사건만 보기 — 다른 센터·센터 없는 사건·다른
    * 종류는 안 보이고(목록에 없음·단건 404), 집기는 없다(403).

@@ -98,6 +98,10 @@
 - **검토 후속(2026-11-17, 0.19.1 — 검토자 결과 중 확인한 것)**: 경로 ID 모두 maxLength 64(멱등 기록 operation varchar(96) 에 "작업:ID" 를 붙여 긴 ID 면 500 → 400). 직원 닫기 사유는 `inquiry_closure.reason` 에만(이력 메모 varchar(500) 에 붙이면 494자 넘는 사유가 500). 사진 올리기 같은 키 재전송인데 그사이 정리됐으면 404 PHOTO_NOT_FOUND(전에는 500). 사진 본문 삭제 실패 로그에 key(고객·라이더 ID 포함)를 남기지 않음 — 행은 이미 지워져 다시 시도되지 않으니 버킷 수명 규칙으로 정리(남은 할 일).
 - **0.19.2(2026-11-17)**: order 조회(`OrderClient` 의 `exchange` — 상태 처리기를 거치지 않음) 5xx 가 IllegalStateException 으로 500 이던 것을 503(dependencyUnavailable)으로 — 고객 문의·CS 접수 주문 확인 둘 다. CS 접수는 order 장애면 멱등 처리로 넘겨 같은 키 재전송은 저장된 결과 재생, 새 요청만 503.
 - **직원별 마지막으로 본 시각(2026-11-17, 계약 0.20.0, V17 case_view — 사용자 ① (가))**: `CaseViewService`·`CaseViewStore`. `POST /cases/{id}/views`(그 건을 볼 수 있는 직원 — `visibleCase`, 본문·멱등 키 없음, 더 늦은 시각만 남김) → 목록·상세 `myLastSeenAt`(부른 직원 자신 것만). 사건 상태·version·이력·이벤트 무관. 도움요청 새 메시지 점 = bff HELP_REQUEST `lastRiderMessageAt` > `myLastSeenAt`.
+- **반품 회수 실패(2026-11-17, 계약 0.22.0 — R-8, 사용자 "상담원 팀"·"1시간"·"사람이 닫기")**: `CaseInboxService.onReturnRecoveryFailed`, 구독 `claimEvents`(order.claim.v1 `ReturnRecoveryFailed` 만 — **pmart-config `case-service.yml` 에 바인딩 `claimEvents-in-0`·function definition 추가 필요(PC 1)**, 시험 사본은 고침). 마이그레이션 없음.
+  - 사건 `RETURN_RECOVERY_FAILED`(subjectType CLAIM, subjectRef claimId, centerId = mfcId, P2, 기한 `[RETURN_RECOVERY_FAILED]` PT1H 표시만), refs claimId·orderId·customerId(accountId)·lastDeliveryId. dedupe `RETURN_RECOVERY:<claimId>` — 열려 있으면 RECURRED 이력, 닫은 뒤 실패면 새 사건(previousCaseId).
+  - **새 팀 CS**(`CaseRules.GROUP_CS`·`CS_KINDS`): CS_AGENT 가 보고 집고 닫는다(`canWork` — 상담원의 첫 사건함 쓰기), 관리자 모두, RIDER_OPS·센터 관리자에게 안 보임(404). 상담원은 배송 쪽 사건을 여전히 보기만. 이관(`transferable`)·교대 인계(`canHandOver`) 대상 아님. 후속 처리 owner CS 가 이 사건을 볼 수 있다(`ObligationRules.ownerCanSee`).
+  - 조치(다시 회수·반품 취소)는 claim `POST /claims/{id}/recovery-actions` — case 는 부르지 않고, **자동 종결 없음**.
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
