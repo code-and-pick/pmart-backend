@@ -39,7 +39,9 @@ public class ExecutionStore {
       @Nullable String originDeliveryId,
       @Nullable String redeliveryDestinationId,
       @Nullable String claimId,
-      @Nullable String returnLinesJson) {
+      @Nullable String returnLinesJson,
+      @Nullable String orderNumber,
+      @Nullable String mfcName) {
 
     /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. */
     public boolean claimReturn() {
@@ -127,7 +129,8 @@ public class ExecutionStore {
       "delivery_id, version, type, order_id, shipment_id, mfc_id, state, rider_id,"
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
-          + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text";
+          + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text,"
+          + " order_number, mfc_name";
 
   private final JdbcTemplate jdbc;
 
@@ -544,14 +547,37 @@ public class ExecutionStore {
       String deliveryId,
       @Nullable Integer fee,
       @Nullable String vehicleType,
-      @Nullable Integer distanceM) {
+      @Nullable Integer distanceM,
+      @Nullable String orderNumber,
+      @Nullable String mfcName) {
     jdbc.update(
-        "UPDATE execution_delivery SET accepted_fee = ?, vehicle_type = ?, distance_m = ?"
-            + " WHERE delivery_id = ?",
+        "UPDATE execution_delivery SET accepted_fee = ?, vehicle_type = ?, distance_m = ?,"
+            + " order_number = COALESCE(?, order_number), mfc_name = COALESCE(?, mfc_name) WHERE"
+            + " delivery_id = ?",
         fee,
         vehicleType,
         distanceM,
+        orderNumber,
+        mfcName,
         deliveryId);
+  }
+
+  /**
+   * 운행시간 구간(2026-11-17 사용자 "배차 수락하고 전달완료까지"): 이 라이더가 끝낸 배송(전달 완료·회수 반납)의 [수락, 완료] 중 [from, to) 에
+   * 걸치는 것.
+   */
+  public List<com.pmart.delivery.execution.domain.OperatingTime.Span> riderOperatingSpans(
+      String riderId, Instant from, Instant to) {
+    return jdbc.query(
+        "SELECT assigned_at, completed_at FROM execution_delivery WHERE rider_id = ? AND state IN"
+            + " ('COMPLETED', 'RETURNED_TO_STORE') AND assigned_at IS NOT NULL AND completed_at IS NOT"
+            + " NULL AND completed_at > ? AND assigned_at < ?",
+        (rs, i) ->
+            new com.pmart.delivery.execution.domain.OperatingTime.Span(
+                rs.getTimestamp(1).toInstant(), rs.getTimestamp(2).toInstant()),
+        riderId,
+        ts(from),
+        ts(to));
   }
 
   /** 실패 등록·결정 기록과 상태를 함께 바꾼다. */
@@ -1163,7 +1189,9 @@ public class ExecutionStore {
         rs.getString(22),
         rs.getString(23),
         rs.getString(24),
-        rs.getString(25));
+        rs.getString(25),
+        rs.getString(26),
+        rs.getString(27));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

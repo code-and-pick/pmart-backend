@@ -51,6 +51,14 @@
               "type": "string",
               "description": "수락 당시 라이더 배달 수단"
             },
+            "orderNumber": {
+              "type": "string",
+              "description": "화면용 주문번호(2026-11-17 — 라이더 내 배달 내역용, dispatch 의 주문 요약 사본에서. 없으면 뺀다)"
+            },
+            "mfcName": {
+              "type": "string",
+              "description": "픽업지 지점 이름(2026-11-17 — 원문 §8.1 배달현황, center-master 이름 사본. 없으면 뺀다)"
+            },
             "distanceM": {
               "type": "integer",
               "minimum": 0,

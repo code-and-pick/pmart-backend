@@ -120,11 +120,22 @@ public class DispatchEvents {
       String offerId,
       int assignmentVersion,
       Instant at,
-      @Nullable OfferRow offer) {
+      @Nullable OfferRow offer,
+      @Nullable String orderSummaryJson) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", before.deliveryId());
     p.put("orderId", before.orderId());
     p.put("riderId", riderId);
+    if (orderSummaryJson != null) {
+      // 라이더 내 배달 내역(원문 §8.1 배달현황 — 주문번호·픽업지 마트 이름, 2026-11-17)
+      var s = mapper.readTree(orderSummaryJson);
+      if (s.path("orderNumber").isString()) {
+        p.put("orderNumber", s.path("orderNumber").asString());
+      }
+      if (s.path("mfcName").isString()) {
+        p.put("mfcName", s.path("mfcName").asString());
+      }
+    }
     p.put("offerId", offerId);
     p.put("assignmentVersion", assignmentVersion);
     p.put("acceptedAt", at.toString());

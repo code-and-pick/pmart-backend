@@ -65,6 +65,8 @@ class ExecutionViews {
                 d.purpose() == null ? null : DeliveryExecution.PurposeEnum.fromValue(d.purpose()))
             .caseId(d.caseId())
             .claimId(d.claimId())
+            .orderNumber(d.orderNumber())
+            .mfcName(d.mfcName())
             .originDeliveryId(d.originDeliveryId());
     if (d.claimReturn() && d.returnLinesJson() != null) {
       // 고객 반품 회수(DD-3) — 받을 상품·수량(라이더가 고객에게 받을 것). 이름은 orderSummary.items 의 같은 orderLineId

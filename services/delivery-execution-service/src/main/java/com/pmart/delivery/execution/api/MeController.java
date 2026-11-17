@@ -25,7 +25,14 @@ public class MeController implements MeApi {
   private final EarningService earnings;
   private final ExecutionViews views;
 
-  public MeController(ExecutionService service, EarningService earnings, ExecutionViews views) {
+  private final com.pmart.delivery.execution.application.OperatingTimeService operating;
+
+  public MeController(
+      ExecutionService service,
+      EarningService earnings,
+      ExecutionViews views,
+      com.pmart.delivery.execution.application.OperatingTimeService operating) {
+    this.operating = operating;
     this.service = service;
     this.earnings = earnings;
     this.views = views;
@@ -92,5 +99,25 @@ public class MeController implements MeApi {
                 new ListMyDeliveries200ResponsePage()
                     .nextCursor(more ? String.valueOf(offset + size) : null)
                     .size(page.size())));
+  }
+
+  /** 내 운행시간(2026-11-17 — 배차 수락 ~ 전달 완료, 겹치면 한 번, 날짜별). */
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.OperatingTime>
+      getMyOperatingTime(@Nullable LocalDate from, @Nullable LocalDate to) {
+    var r = operating.mine(from, to);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.OperatingTime()
+            .from(r.from())
+            .to(r.to())
+            .totalSeconds(r.totalSeconds())
+            .days(
+                r.days().entrySet().stream()
+                    .map(
+                        e ->
+                            new com.pmart.delivery.execution.api.generated.model.OperatingTimeDay()
+                                .date(e.getKey())
+                                .seconds(e.getValue()))
+                    .toList()));
   }
 }

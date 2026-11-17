@@ -225,7 +225,9 @@ public class ExecutionEventHandler {
             deliveryId,
             p.path("fee").isNumber() ? p.path("fee").asInt() : null,
             p.path("vehicleType").asString(null),
-            p.path("distanceM").isNumber() ? p.path("distanceM").asInt() : null);
+            p.path("distanceM").isNumber() ? p.path("distanceM").asInt() : null,
+            p.path("orderNumber").asString(null), // 내 배달 내역(2026-11-17)
+            p.path("mfcName").asString(null));
         store.history(
             deliveryId, "ASSIGNED", at, "SYSTEM_EVENT", p.path("offerId").asString(null), now);
       }

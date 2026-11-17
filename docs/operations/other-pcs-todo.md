@@ -14,6 +14,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 > **2026-11-15 모든 PC — 로그인 코드는 PC 1 만**(`pc-split.md` §1-3): auth-service·employee-auth-service·common-security·게이트웨이 인증·Keycloak, 클라이언트 `web/core` 로그인·세션, 앱의 `features/auth`·`features/session`, `pmart_core` 토큰은 고치지 않는다 — 필요하면 요청. 이 경로를 바꾼 PR 은 PC 1 이 돌려보낸다. **예외: 라이더 로그인(rider-auth-service·rider_app 로그인)은 PC 5 그대로**.
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
+- [ ] **F-8 포장 라벨 숫자로 인계**(2026-11-17 PC 5 — 라이더 앱 요청 §5, 요청서 `mfc-fulfillment-service.md` F-8): 라벨에 짧은 숫자, 라이더 인계 승인을 숫자로도. main 에서 새 브랜치로
 
 - [ ] **IV-4 LOT 바코드(GS1-128)**(2026-11-17 사용자 결정 — 요청서 `docs/architecture/service-requests/mfc-inventory-service.md` IV-4): 짧은 LOT 번호(`lotNo`, 20자 이하), GS1-128 → LOT 찾기 조회, 피킹 때 찍은 LOT 이 지시 LOT 과 같은지 확인(mfc-fulfillment·mfc_app), 입고 검수·실사에도. LOT 번호가 생기면 PC 1 이 LOT 라벨 인쇄 파일을 만든다
 - [ ] **AP-1 MFC 승인 번호 실제 검증**(2026-11-17 PC 1 — 요청서 `docs/architecture/service-requests/approval-service.md` AP-1 "PC 3 이 할 것" 1~6): approval-service 쪽(종류 `MFC_STOCK_ADJUSTMENT`·`MFC_OPERATION_RESTRICTION`, `/internal/approval-ref-checks`·`/internal/approval-ref-uses`, 계약 0.3.0)은 PC 1 이 만듦. mfc-inventory·mfc-quality·mfc-capacity 에서 Q-11 기준 판정(한 건 손실 10만 원↑ 또는 한 SKU 20개↑ — 단가 pricing `/internal/prices`), 기준 이상이면 본사 승인 요청 본문 안내, 집행 전 승인 번호 사용 호출, `ApprovalRefs` RECORD_ONLY → 실제 확인 전환. main 에서 새 브랜치로

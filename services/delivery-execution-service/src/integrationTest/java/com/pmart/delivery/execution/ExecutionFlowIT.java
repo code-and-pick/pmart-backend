@@ -1462,6 +1462,73 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     return id;
   }
 
+  /**
+   * 라이더 앱 기록 화면(2026-11-17): 내 배달 내역에 주문번호·픽업지 지점 이름(배정 사건 값), 운행시간 = 배차 수락 ~ 전달 완료(사용자 결정), 남의 배송·
+   * 끝나지 않은 배송은 넣지 않음, 기간 검사.
+   */
+  @Test
+  void myDeliveriesShowOrderNumberAndOperatingTimeCountsAcceptToCompletion() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), order, rider);
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "completions", rider, completion(List.of(photo), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    // 끝나지 않은 배송(배정만)은 운행시간에 넣지 않는다
+    String open = "DLV-" + UUID.randomUUID();
+    pickedUp(open, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    // 수락 25분 뒤 완료로 맞춘다
+    jdbc.update(
+        "UPDATE execution_delivery SET assigned_at = completed_at - interval '25 minutes' WHERE"
+            + " delivery_id = ?",
+        id);
+
+    JsonNode mine = body(meGet("/riders/me/deliveries", rider));
+    JsonNode done = null;
+    for (JsonNode n : mine.path("items")) {
+      if (id.equals(n.path("deliveryId").asString())) {
+        done = n;
+      }
+    }
+    assertThat(done).isNotNull();
+    assertThat(done.path("orderNumber").asString()).isEqualTo("12345678");
+    assertThat(done.path("mfcName").asString()).isEqualTo("부산진구지점");
+
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    JsonNode t =
+        body(meGet("/riders/me/operating-time?from=" + today.minusDays(1) + "&to=" + today, rider));
+    assertThat(t.path("totalSeconds").asLong()).isEqualTo(25 * 60);
+    assertThat(t.path("days")).hasSize(2);
+    assertThat(t.path("days").get(1).path("date").asString()).isEqualTo(today.toString());
+    JsonNode other = body(meGet("/riders/me/operating-time", "RDR-" + UUID.randomUUID()));
+    assertThat(other.path("totalSeconds").asLong()).isZero(); // 남의 배송은 없다
+    assertThat(other.path("from").asString()).isEqualTo(today.toString()); // 기본 오늘
+    assertThat(
+            meGet("/riders/me/operating-time?from=" + today + "&to=" + today.minusDays(1), rider)
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    assertThat(
+            meGet("/riders/me/operating-time?from=" + today.minusDays(40) + "&to=" + today, rider)
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+  }
+
+  ResponseEntity<String> meGet(String uri, String rider) {
+    return http.get()
+        .uri(uri)
+        .header("Authorization", "Bearer " + TestJwt.rider(rider))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   ResponseEntity<String> riderGet(String uri, String id, String rider) {
     return http.get()
         .uri(uri, id)
@@ -1762,7 +1829,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             "vehicleType",
             "MOTORCYCLE",
             "distanceM",
-            1800));
+            1800,
+            "orderNumber",
+            "12345678",
+            "mfcName",
+            "부산진구지점"));
   }
 
   /** 배정 → 목록(포장 1개) → 인계 → PICKED_UP 까지. */
@@ -1798,7 +1869,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
               "attemptedAt",
               Instant.now().minusSeconds(60L * (i + 1)).toString(),
               "method",
-              "SAFE_NUMBER_CALL",
+              i % 2 == 0 ? "PHONE_CALL" : "SMS", // 고객 전화번호 그대로(0.11.0)
               "result",
               "NO_ANSWER"));
     }

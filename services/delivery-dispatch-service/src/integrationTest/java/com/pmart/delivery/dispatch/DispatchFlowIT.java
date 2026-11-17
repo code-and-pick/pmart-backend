@@ -292,6 +292,9 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(assigned.path("payload").path("fee").isNumber()).isTrue();
     assertThat(assigned.path("payload").path("vehicleType").asString()).isEqualTo("MOTORCYCLE");
     assertThat(assigned.path("payload").path("distanceM").asInt()).isEqualTo(1800);
+    // 라이더 내 배달 내역(2026-11-17 — 원문 §8.1 배달현황): 주문번호·픽업지 지점 이름
+    assertThat(assigned.path("payload").path("orderNumber").asString()).isEqualTo("48213907");
+    assertThat(assigned.path("payload").path("mfcName").asString()).isEqualTo("부산진구지점");
 
     // 다른 라이더가 배달리스트에서 수락 → 이미 배정
     JsonNode late =

@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.10.1
+  version: 0.11.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
     0.3.0(2026-11-13, 사용자 결정): 전달 실패 = 라이더 등록(FAILURE_REPORTED — 아직 진행 중) → 운영자 확정(FAILED, DeliveryFailed — 배송 종료, 이어지는 회수 배차는 새 배송) 또는 반려(원래 상태로). 도움요청 = 이 서비스에 기록 + DeliveryIncidentRaised(case-service 가 받아 지원센터 사건으로 — 구현 전, caseId 는 그때부터). 수행료 = 수락 당시 금액(dispatch DeliveryAssigned.fee) → 완료 5시간 뒤 확정·지급 예정일 3영업일, 실패·취소는 산정 불가(calculable false). 회수·정정은 아직 501.
     0.4.0(2026-11-15, 백오피스 고객센터·라이더 운영 — 요청서 service-requests/delivery-backoffice-staff-apis.md BOD-1·4·5): 직원 배송 찾기(GET /deliveries — 주문 ID·라이더·상태, 전달 실패 대기는 state=FAILURE_REPORTED), 도움요청 대기 목록(GET /delivery-help-requests), 도움요청 처리함 닫기(…/resolutions — 지원센터 사건함(case R-4)이 생기면 그 사건이 정본). 역할 RIDER_OPS 를 운영자 조회·결정에 더함.
+    0.11.0(2026-11-17, 라이더 앱 기록 화면 — 원문 §8.1): **내 운행시간** `GET /riders/me/operating-time`(사용자 결정 "배차 수락하고 전달완료까지", 겹치면 한 번, 날짜별). 배송 조회·내 배달 내역에 `orderNumber`·`mfcName`(배정 때 dispatch 가 실어 줌). 고객 연락 방법에 PHONE_CALL·SMS(고객 전화번호 그대로 — 안심번호 없음).
     0.10.1(2026-11-17, DD-3 맞춤): 배송 조회에 `claimId`·`returnLines`(받을 줄·수량 — 라이더에게 회수 품목). ReturnPickedUp·ReturnDelivered lines 에 claim 이 실은 claimLineId·sku 를 그대로.
     0.10.0(2026-11-17, CL-1 배송 쪽 — 사용자 결정 "바로 배차·일반 표(고객 집 → MFC)·실패마다 알림, 다시 시도는 반품 쪽·고객 사정 실패도 수락 당시 금액"): **고객 반품 회수 수행**. 회수 배송(type RETURN, purpose CLAIM_RETURN — DeliveryCreated claimId·returnLines): 배정 → 전달지(= 회수지, 고객 집 — 받기 전에도) → 사진·받음(`returns/pickups`, lines = claim 요청 줄) → MFC 반납(`returns/store-deliveries`, ReturnDelivered claimId, 수행료 수락 당시 금액). 받기 전 실패 등록 → 확정이면 FAILED + `ReturnPickupFailed`(customerReason·contactAttempts 횟수 — 다시 보낼지는 claim). 일반 배송 단계는 409.
     0.5.0(2026-11-16, DD-2 오배송 회수 — 사용자 "추천대로"): 회수 배송(type RETURN, purpose MISDELIVERY_RECOVERY — dispatch 가 case MisdeliveryConfirmed 로 만든다)의 수행.
@@ -258,7 +259,7 @@ paths:
                         required: [attemptedAt, result]
                         properties:
                           attemptedAt: { type: string, format: date-time }
-                          method: { type: string, enum: [SAFE_NUMBER_CALL, APP_MESSAGE] }
+                          method: { type: string, enum: [SAFE_NUMBER_CALL, APP_MESSAGE, PHONE_CALL, SMS], description: 'PHONE_CALL·SMS(0.11.0, 2026-11-17) — 고객 전화번호 그대로 걸기·문자(안심번호 없음 — 사용자 2026-11-14)' }
                           result: { type: string, enum: [ANSWERED, NO_ANSWER, FAILED] }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
@@ -638,6 +639,29 @@ paths:
                       paid: { $ref: '_common.yaml#/components/schemas/Money' }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+
+  /riders/me/operating-time:
+    get:
+      tags: [me]
+      summary: 내 운행시간 — 날짜별 (배차 수락 ~ 전달 완료, 0.11.0)
+      x-added-in: '2026-11-17'
+      description: |
+        원문 §8.1 "오늘배달내역 … 운행시간". 사용자 결정(2026-11-17) **"운행시간은 배차 수락하고 전달완료까지의 시간"** — 내가 끝낸 배송(전달 완료, 회수는 MFC 반납)마다 [수락 시각, 완료 시각].
+        여러 건을 함께 들고 있던 시간(알뜰배달 묶음 등)은 **한 번만** 센다. 실패·취소·배정 해제된 배송은 넣지 않는다. 날짜는 Asia/Seoul 자정으로 나눈다.
+        from 기본 오늘, to 기본 from, 최대 31일(넘으면 400). 이번 주 합계는 앱이 주 시작~끝으로 부른다.
+      operationId: getMyOperatingTime
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperatingTime' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /deliveries:
     get:
@@ -1067,6 +1091,8 @@ components:
         purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다). MISDELIVERY_REDELIVERY(ADR-0065) = 고객 잘못 다시 배송 — 배정 → 잘못 둔 곳에서 사진·받음(returns/pickups → PICKED_UP) → 고객 도착 → 전달 완료(가게 도착·MFC 픽업 409, 전달지 = 실제 집 + 주문 당시 수령인·연락처)' }
         caseId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송 확인 사건' }
         claimId: { type: string, description: 'CLAIM_RETURN(0.10.1, 2026-11-17) — 고객 반품 클레임', x-added-in: '2026-11-17' }
+        orderNumber: { type: [string, 'null'], description: '화면용 주문번호(0.11.0 — 배정 때 받은 값, 내 배달 내역 목록용). 이 배포 전 배정은 null', x-added-in: '2026-11-17' }
+        mfcName: { type: [string, 'null'], description: '픽업지 지점 이름(0.11.0 — 배정 때 받은 값, 원문 §8.1 배달현황 "픽업지 마트 이름")', x-added-in: '2026-11-17' }
         returnLines:
           type: array
           x-added-in: '2026-11-17'
@@ -1092,6 +1118,25 @@ components:
         qty: { type: integer, minimum: 1 }
         claimLineId: { type: [string, 'null'] }
         sku: { type: [string, 'null'] }
+    OperatingTime:
+      type: object
+      x-added-in: '2026-11-17'
+      description: 내 운행시간(0.11.0) — 배차 수락 ~ 전달 완료, 겹치면 한 번
+      required: [from, to, totalSeconds, days]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        totalSeconds: { type: integer, format: int64 }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/OperatingTimeDay' }
+    OperatingTimeDay:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [date, seconds]
+      properties:
+        date: { type: string, format: date, description: Asia/Seoul 날짜 }
+        seconds: { type: integer, format: int64 }
     Earning:
       type: object
       properties:
