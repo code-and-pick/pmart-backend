@@ -1293,6 +1293,85 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(String.class);
   }
 
+  /**
+   * 엘리베이터 고장 추가 배달료(2026-11-17 — 원문 §9.2, 15층부터 5층 단위 500원, 다른 사유 없음): 라이더 신청 → 라이더 운영 승인 → 합계에 더함.
+   */
+  @Test
+  void elevatorSurchargeRequestedAndApproved() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String elevator = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    // 완료 전에는 신청 못 함
+    assertThat(
+            post(
+                    id,
+                    "surcharge-requests",
+                    rider,
+                    Map.of("floor", 22, "evidenceRefs", List.of(elevator)))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String door = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "completions", rider, completion(List.of(door), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    ResponseEntity<String> low =
+        post(
+            id,
+            "surcharge-requests",
+            rider,
+            Map.of("floor", 14, "evidenceRefs", List.of(elevator)));
+    assertThat(body(low).path("code").asString()).isEqualTo("FLOOR_BELOW_SURCHARGE");
+    ResponseEntity<String> req =
+        post(
+            id,
+            "surcharge-requests",
+            rider,
+            Map.of("floor", 22, "evidenceRefs", List.of(elevator)));
+    assertThat(req.getStatusCode().value()).as(req.getBody()).isEqualTo(201);
+    assertThat(body(req).path("amount").asInt()).isEqualTo(1000); // 20~24층
+    assertThat(body(req).path("state").asString()).isEqualTo("REQUESTED");
+    String reqId = body(req).path("requestId").asString();
+    assertThat(
+            post(
+                    id,
+                    "surcharge-requests",
+                    rider,
+                    Map.of("floor", 22, "evidenceRefs", List.of(elevator)))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409); // 배송마다 하나
+    int before =
+        jdbc.queryForObject(
+            "SELECT total FROM rider_earning WHERE delivery_id = ?", Integer.class, id);
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode queue = body(staffGet("/surcharge-requests?riderId=" + rider, ops));
+    assertThat(queue.path("items").get(0).path("requestId").asString()).isEqualTo(reqId);
+    ResponseEntity<String> ok =
+        http.post()
+            .uri("/surcharge-requests/{id}/decisions", reqId)
+            .header("Authorization", "Bearer " + ops)
+            .header("Idempotency-Key", UUID.randomUUID().toString())
+            .header("X-Source-System", "rider-backoffice-web")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of("decision", "APPROVE"))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(body(ok).path("decidedBy").asString()).isEqualTo("OP-RO");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT total FROM rider_earning WHERE delivery_id = ?", Integer.class, id))
+        .isEqualTo(before + 1000);
+    JsonNode v = view(id, rider);
+    assertThat(v.path("earning").path("compensation").asInt()).isEqualTo(1000);
+  }
+
   /** 운영자 상태 정정(2026-11-17 — 사용자 "라이더 운영 관리자가 승인"): 픽업 뒤 고객 도착 ↔ 픽업만, 이력·사건·기록. */
   @Test
   void riderOpsCorrectsMistakenArrival() {

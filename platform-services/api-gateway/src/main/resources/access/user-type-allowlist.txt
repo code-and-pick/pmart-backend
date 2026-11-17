@@ -258,6 +258,7 @@ GET /api/v1/storefront/tabs/{tabKey} PUBLIC
 GET /api/v1/suppliers OPERATOR
 GET /api/v1/suppliers/{supplierId} OPERATOR
 GET /api/v1/supply-requests/{supplyRequestId} OPERATOR
+GET /api/v1/surcharge-requests OPERATOR
 GET /api/v1/tasks OPERATOR
 GET /api/v1/tasks/{taskId} OPERATOR
 GET /api/v1/tasks/{taskId}/executions/{executionId} OPERATOR
@@ -350,6 +351,7 @@ POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/store-deliveries RIDER
 POST /api/v1/deliveries/{deliveryId}/status-corrections OPERATOR
 POST /api/v1/deliveries/{deliveryId}/store-arrivals RIDER
+POST /api/v1/deliveries/{deliveryId}/surcharge-requests RIDER
 POST /api/v1/delivery-list/{deliveryId}/acceptances RIDER
 POST /api/v1/dispatch-requests OPERATOR
 POST /api/v1/disposal-approvals OPERATOR
@@ -496,6 +498,7 @@ POST /api/v1/suppliers OPERATOR
 POST /api/v1/suppliers/{supplierId}/contracts OPERATOR
 POST /api/v1/supply-requests OPERATOR
 POST /api/v1/supply-requests/{supplyRequestId}/withdrawals OPERATOR
+POST /api/v1/surcharge-requests/{requestId}/decisions OPERATOR
 POST /api/v1/tasks/{taskId}/executions OPERATOR
 POST /api/v1/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/tasks/{taskId}/releases OPERATOR

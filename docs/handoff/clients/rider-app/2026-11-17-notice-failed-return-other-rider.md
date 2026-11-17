@@ -15,3 +15,8 @@
 ## 라이더 백오피스(전달 실패 확정)
 - `POST /deliveries/{id}/failure-decisions` 에 `returnBy`(SAME_RIDER 기본·OTHER_RIDER) — custody RIDER 일 때만 의미.
 - 라이더가 실패 등록을 못 한 경우: RIDER_OPS·OPERATOR_ADMIN 이 `reason`(RIDER_INCIDENT 등)을 넣어 **PICKED_UP·ARRIVED_AT_CUSTOMER 배송을 바로 확정**(등록 없이). 상담원은 403.
+
+## 추가 — 엘리베이터 고장 추가 배달료(execution 0.19.0, 같은 날)
+- 원문 §9.2, 사용자 "다른 사유로 추가금을 주진 않음" — **엘리베이터 고장만**. 15~19층 500원, 20~24층 1,000원 …(서버가 층으로 계산, 15층 아래 422 FLOOR_BELOW_SURCHARGE).
+- 라이더 앱: 전달 완료 뒤 `POST /deliveries/{id}/surcharge-requests` `{floor, evidenceRefs}`(이 배송에 올린 사진 — 배송 중에 엘리베이터 고장 사진을 `evidence-photos` 로 올려 둔다) → 201 `{requestId, amount, state REQUESTED}`. 배송마다 하나(409). 승인되면 배달내역 수행료 `compensation`·`total` 에 반영.
+- 라이더 백오피스: `GET /surcharge-requests?state=REQUESTED`(오래된 것 먼저), `POST /surcharge-requests/{id}/decisions` `{decision APPROVE|REJECT, note}`(반려는 메모 필수, RIDER_OPS·OPERATOR_ADMIN).

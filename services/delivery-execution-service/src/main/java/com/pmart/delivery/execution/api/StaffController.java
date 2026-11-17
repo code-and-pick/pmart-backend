@@ -43,6 +43,7 @@ public class StaffController implements StaffApi {
   private final com.pmart.delivery.execution.application.EarningService earnings;
   private final com.pmart.delivery.execution.application.OperatingTimeService operating;
   private final com.pmart.delivery.execution.application.StatusCorrectionService corrections;
+  private final com.pmart.delivery.execution.application.SurchargeService surcharges;
 
   public StaffController(
       StaffQueries queries,
@@ -51,14 +52,49 @@ public class StaffController implements StaffApi {
       com.pmart.delivery.execution.application.EarningAdjustments adjustments,
       com.pmart.delivery.execution.application.EarningService earnings,
       com.pmart.delivery.execution.application.OperatingTimeService operating,
-      com.pmart.delivery.execution.application.StatusCorrectionService corrections) {
+      com.pmart.delivery.execution.application.StatusCorrectionService corrections,
+      com.pmart.delivery.execution.application.SurchargeService surcharges) {
     this.corrections = corrections;
+    this.surcharges = surcharges;
     this.adjustments = adjustments;
     this.earnings = earnings;
     this.operating = operating;
     this.queries = queries;
     this.helps = helps;
     this.mapper = mapper;
+  }
+
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.ListSurchargeRequests200Response>
+      listSurchargeRequests(
+          String state, @Nullable String riderId, Integer size, @Nullable String cursor) {
+    int offset = offset(cursor);
+    var rows = surcharges.list(state, blankToNull(riderId), size + 1, offset);
+    boolean more = rows.size() > size;
+    var page = more ? rows.subList(0, size) : rows;
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.ListSurchargeRequests200Response()
+            .items(page.stream().map(r -> ExecutionViews.surcharge(r, true)).toList())
+            .page(page(more, offset, size, page.size())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.SurchargeRequest>
+      decideSurchargeRequest(
+          String requestId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.execution.api.generated.model.DecideSurchargeRequestRequest body) {
+    return ResponseEntity.ok(
+        ExecutionViews.surcharge(
+            surcharges.decide(
+                requestId,
+                idempotencyKey,
+                xSourceSystem,
+                body.getDecision().getValue(),
+                body.getNote()),
+            true));
   }
 
   /** 운영자 상태 정정(2026-11-17, 0.17.0). */

@@ -45,6 +45,28 @@ import tools.jackson.databind.ObjectMapper;
 @RestController
 public class ExecutionController implements ExecutionApi {
 
+  private final com.pmart.delivery.execution.application.SurchargeService surcharges;
+
+  /** 엘리베이터 고장 추가 배달료 신청(2026-11-17, 0.19.0). */
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.SurchargeRequest>
+      requestSurcharge(
+          String deliveryId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.execution.api.generated.model.RequestSurchargeRequest body) {
+    return ResponseEntity.status(201)
+        .body(
+            ExecutionViews.surcharge(
+                surcharges.request(
+                    deliveryId,
+                    idempotencyKey,
+                    xSourceSystem,
+                    body.getFloor(),
+                    body.getEvidenceRefs()),
+                false));
+  }
+
   private final ExecutionService service;
   private final FailureDecisionService failures;
   private final HelpRequestService helps;
@@ -58,7 +80,9 @@ public class ExecutionController implements ExecutionApi {
       HelpRequestService helps,
       ExecutionViews views,
       DropInfoService dropInfos,
-      ObjectMapper mapper) {
+      ObjectMapper mapper,
+      com.pmart.delivery.execution.application.SurchargeService surcharges) {
+    this.surcharges = surcharges;
     this.service = service;
     this.failures = failures;
     this.helps = helps;

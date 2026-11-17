@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.18.0
+  version: 0.19.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -688,6 +688,105 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
 
+  /deliveries/{deliveryId}/surcharge-requests:
+    post:
+      tags: [execution]
+      summary: (0.19.0) 엘리베이터 고장 추가 배달료 신청 (배정 라이더 — 전달 완료 뒤)
+      x-added-in: '2026-11-17'
+      description: |
+        원문 §9.2 "보상배차(추가보상) — 지원센터에 사유·사진 등록, 승인자·실제 수행·추가 금액·지급일 기록, 엘리베이터 고장 15층부터 5층 단위로 500원". 사용자 2026-11-17
+        **"다른 사유로 추가금을 주진 않음"** — 엘리베이터 고장만. 금액은 서버가 층으로 정한다: 15~19층 500원, 20~24층 1,000원 … (15층 아래 422 FLOOR_BELOW_SURCHARGE).
+        이 배송을 전달 완료한 라이더 본인, 이 배송에 올린 사진 1장 이상(엘리베이터 고장 — 아니면 422 EVIDENCE_REQUIRED). 수행료가 지급 중·지급됨·산정 불가면 409 EARNING_NOT_OPEN.
+        배송마다 하나(이미 신청·승인됐으면 409 SURCHARGE_ALREADY_REQUESTED). 지원센터가 승인하면 그 수행료 합계에 더해진다(보상 칸).
+      operationId: requestSurcharge
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [floor, evidenceRefs]
+              properties:
+                floor: { type: integer, minimum: 1, maximum: 200, description: 걸어 올라간 층 }
+                evidenceRefs: { type: array, minItems: 1, maxItems: 5, items: { type: string } }
+      responses:
+        '201':
+          description: 신청됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurchargeRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: FLOOR_BELOW_SURCHARGE / EVIDENCE_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /surcharge-requests:
+    get:
+      tags: [staff]
+      summary: (0.19.0) 추가 배달료 신청 목록 — 오래된 것 먼저 (RIDER_OPS·OPERATOR_ADMIN·CS_AGENT 보기)
+      x-added-in: '2026-11-17'
+      operationId: listSurchargeRequests
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [REQUESTED, APPROVED, REJECTED], default: REQUESTED } }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/SurchargeRequest' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /surcharge-requests/{requestId}/decisions:
+    post:
+      tags: [staff]
+      summary: (0.19.0) 추가 배달료 승인·반려 (RIDER_OPS·OPERATOR_ADMIN)
+      x-added-in: '2026-11-17'
+      description: |
+        APPROVE → 그 수행료 합계에 금액을 더하고(보상 칸) RiderEarningRecorded(바뀐 합계) — 지급일은 그 수행료 그대로. REJECT 는 메모 필수. 한 번만(아니면 409 NOT_DECIDABLE).
+        그사이 수행료가 지급 중·지급됨이면 409 EARNING_NOT_OPEN. 승인한 사람·시각이 남는다(원문 "승인자·추가 금액·지급일 기록").
+      operationId: decideSurchargeRequest
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 반영
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurchargeRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /rider-earnings:
     get:
       tags: [staff]
@@ -1361,6 +1460,23 @@ components:
         sku: { type: [string, 'null'] }
         name: { type: [string, 'null'], description: '상품명(2026-11-17 — 라이더 앱 "이름이 짝지어지지 않음"): 배송 조회 때 order 주문 요약의 같은 orderLineId 에서. 못 읽으면 null', x-added-in: '2026-11-17' }
         optionLabel: { type: [string, 'null'], x-added-in: '2026-11-17' }
+    SurchargeRequest:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [requestId, deliveryId, riderId, reason, floor, amount, state, requestedAt]
+      properties:
+        requestId: { type: string }
+        deliveryId: { type: string }
+        riderId: { type: string }
+        reason: { type: string, enum: [ELEVATOR_OUT_OF_ORDER] }
+        floor: { type: integer }
+        amount: { type: integer, description: 서버가 층으로 정한 금액(원) }
+        evidenceRefs: { type: array, items: { type: string } }
+        state: { type: string, enum: [REQUESTED, APPROVED, REJECTED] }
+        requestedAt: { type: string, format: date-time }
+        decidedBy: { type: [string, 'null'], description: 직원에게만 }
+        decidedAt: { type: [string, 'null'], format: date-time }
+        decisionNote: { type: [string, 'null'] }
     OperatingTime:
       type: object
       x-added-in: '2026-11-17'

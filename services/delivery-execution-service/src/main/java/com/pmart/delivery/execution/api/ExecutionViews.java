@@ -193,6 +193,10 @@ class ExecutionViews {
                             .setScale(2, java.math.RoundingMode.HALF_UP)
                             .toPlainString()))
         .baseFee(e.baseFee())
+        .compensation(
+            e.baseFee() != null && e.total() != null && e.total() > e.baseFee()
+                ? e.total() - e.baseFee()
+                : null) // 승인된 추가 배달료(2026-11-17 — 합계 − 기본)
         .total(e.total())
         .settlementState(SettlementState.fromValue(e.settlementState()))
         .recordedAt(time(e.recordedAt()))
@@ -231,5 +235,26 @@ class ExecutionViews {
     return v.origin() != null
         && v.origin().riderId() != null
         && !v.origin().riderId().equals(d.riderId());
+  }
+
+  static com.pmart.delivery.execution.api.generated.model.SurchargeRequest surcharge(
+      com.pmart.delivery.execution.application.SurchargeService.Request r, boolean staff) {
+    return new com.pmart.delivery.execution.api.generated.model.SurchargeRequest()
+        .requestId(r.requestId())
+        .deliveryId(r.deliveryId())
+        .riderId(r.riderId())
+        .reason(
+            com.pmart.delivery.execution.api.generated.model.SurchargeRequest.ReasonEnum.fromValue(
+                r.reason()))
+        .floor(r.floor())
+        .amount(r.amount())
+        .evidenceRefs(r.evidenceRefs())
+        .state(
+            com.pmart.delivery.execution.api.generated.model.SurchargeRequest.StateEnum.fromValue(
+                r.state()))
+        .requestedAt(time(r.requestedAt()))
+        .decidedBy(staff ? r.decidedBy() : null)
+        .decidedAt(time(r.decidedAt()))
+        .decisionNote(r.decisionNote());
   }
 }

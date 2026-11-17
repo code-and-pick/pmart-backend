@@ -137,4 +137,9 @@ public final class ExecutionRules {
             && Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER").contains(to)
             && !from.equals(to));
   }
+
+  /** 엘리베이터 고장 추가 배달료(원문 §9.2) — 15층부터 5층 단위 500원(15~19층 500, 20~24층 1,000 …). 15층 아래 0. */
+  public static int elevatorSurcharge(int floor) {
+    return floor < 15 ? 0 : ((floor - 15) / 5 + 1) * 500;
+  }
 }
