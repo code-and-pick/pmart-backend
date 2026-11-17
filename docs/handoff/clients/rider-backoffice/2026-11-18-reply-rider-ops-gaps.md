@@ -14,6 +14,7 @@
 | 4 | 라이더 배정·배차 취소 이력 | **`GET /rider-assignments?riderId=&size&cursor`**(dispatch) — 배정 최신순, 줄마다 `deliveryId`·`orderId`·`mfcId`·`type`·`purpose`·`source`(AI_RECOMMENDED·DELIVERY_LIST·FAILED_RETURN)·`fee`·`assignedAt`·`deliveryState`·**`outcome`**(CURRENT 진행 중 / DONE 이 라이더로 끝남 / RELEASED 배정 풀림 / CANCELLED 픽업 전 취소)·`cancellation`(배차 취소면 `requestedBy`·`reason`·`reasonDetail`·`at`, 계정 제한·재배정처럼 취소 기록이 없으면 null). RIDER_OPS·OPERATOR_ADMIN·CS_AGENT | dispatch **0.8.0** |
 | 5 | 배송 목록 `orderNumber` | `StaffDeliverySummary.orderNumber`(배정 전 null) | execution **0.21.1** |
 | 6 | 상태 정정 근거 사진 | **`POST /deliveries/{id}/staff-evidence-photos`**(multipart `file`, RIDER_OPS·OPERATOR_ADMIN, JPEG·PNG·WEBP 10MB) → `photoRef` 를 상태 정정 `evidenceRefs` 에. 이 배송의 사진이 아니면 정정이 422 `PHOTO_NOT_FOUND`. 보기는 기존 `GET …/evidence-photos/{photoRef}` | execution **0.22.0** |
+| 7 | 완료 방법 값 목록 | `Evidence.method` 를 계약 **enum** 으로: `FACE`·`CONTACTLESS`(라이더 사진 완료), `CUSTOMER_CONFIRMED`(고객 "받았어요" — 사진 없음, 이력 actor `CUSTOMER`), `AUTO_COMPLETED`(픽업 5시간 뒤 자동 — 사진 없음, 이력 actor `SYSTEM_EVENT`, 수행료 산정 불가). **자동 완료는 `evidence.method` 로 온다**(증빙 객체가 있고 `photoRefs` 는 빈 배열) — 화면 이름표 그대로 맞다 | execution **0.22.1** |
 
 - 게이트웨이 경로(PC 1): `/api/v1/rider-assignments` → delivery-dispatch, `/staff-evidence-photos` 는 기존 `/deliveries/**` 길.
 - 함께 고친 것: 운행시간 날짜 나누기가 자정을 걸친 구간에서 1초 모자라던 것(라이더 상세 운행시간 값이 1초 다를 수 있었다).

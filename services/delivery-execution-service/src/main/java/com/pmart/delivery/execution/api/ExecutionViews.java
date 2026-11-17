@@ -114,7 +114,11 @@ class ExecutionViews {
       out.evidence(
           new Evidence()
               .evidenceRef(e.path("evidenceRef").asString(null))
-              .method(e.path("method").asString(null))
+              .method(
+                  e.path("method").isString()
+                      ? com.pmart.delivery.execution.api.generated.model.Evidence.MethodEnum
+                          .fromValue(e.path("method").asString())
+                      : null)
               .photoRefs(photoRefs)
               .takenAt(
                   e.path("takenAt").isString()

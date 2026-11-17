@@ -1402,6 +1402,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(done.path("method").asString()).isEqualTo("CUSTOMER_CONFIRMED");
     assertThat(done.path("evidenceRef").path("kind").asString()).isEqualTo("DOCUMENT");
     assertThat(view(id, rider).path("state").asString()).isEqualTo("COMPLETED"); // 라이더 앱에도
+    assertThat(view(id, rider).path("evidence").path("method").asString())
+        .isEqualTo("CUSTOMER_CONFIRMED"); // 요청 #7 — 계약 enum
     assertThat(
             jdbc.queryForObject(
                 "SELECT calculable FROM rider_earning WHERE delivery_id = ?", Boolean.class, id))
@@ -1428,6 +1430,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(state(old)).isEqualTo("COMPLETED");
     assertThat(outbox(old, "DeliveryCompleted").path("payload").path("method").asString())
         .isEqualTo("AUTO_COMPLETED");
+    JsonNode auto = view(old, rider);
+    assertThat(auto.path("evidence").path("method").asString()).isEqualTo("AUTO_COMPLETED");
+    assertThat(auto.path("evidence").path("photoRefs")).isEmpty();
+    assertThat(auto.path("history").valueStream().map(h -> h.path("actor").asString()))
+        .contains("SYSTEM_EVENT");
     assertThat(
             jdbc.queryForObject(
                 "SELECT calculable FROM rider_earning WHERE delivery_id = ?", Boolean.class, old))
