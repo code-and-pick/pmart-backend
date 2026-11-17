@@ -374,6 +374,7 @@
 
 ### backoffice-bff `[1단계]` — **상태 없음**
 - 관리자 화면별 조회 조합(원천별 `asOf`·`postedAt`·신선도·직접확인/사본/불명 표시, 기준시각 다른 수량 합산 금지), 명령 전달(멱등키·expected version 부착, 응답 ACK≠성공 그대로 표시), 화면: 통합 조회, 승인함, 사건함, 보충 현황, 운행 관제, 실시간 배송 현황, 포장 인계 현황, 지표(분모 보존). 금지: 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+- **구현 현황(2026-11-17, 0.9.1 — PC 2)**: 승인함, 처리 대기(멈춘 사가·이행 확인 필요·MFC 중지 실패·인계 거절 — 명령 사가 다시 확인·처리 완료·MFC 재시도, 운영자·사유는 원천에 기록), 통합 조회(주문·배송·배차·클레임·사건·문의·MFC 현장), 실시간 배송 현황(배차·열린 사건·tracking 도착 예정), 사건함(연결 배송·주문 상태·도움요청 대화 시각). 모두 **직원 토큰 전달**, 원천 실패는 그 칸만 불명 + unavailableSources. 아직 501: 보충 현황·운행 관제·포장 인계 현황·지표(여러 서비스 비율 — 정의 승인 뒤)·명령 결과 조회. 접수 건 현황 건수는 case `GET /cases/metrics`.
 
 ### notification-service `[1단계]`
 - **소유**: 알림 요청·채널(앱 푸시·카카오 알림톡 `[결정 필요]`)·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록(제안 자체는 dispatch), 지연 안내.
@@ -415,6 +416,7 @@
 - **소유**: Case/SubCase(총괄·하위, 병합 시 원ID 보존), Obligation(종류별 수량/금액 분리), ActionRequest(상대 commit/거래 ID 연결), EvidenceReference, ShiftHandover/CloseSnapshot(BO-27), 사건 상태(OPEN/ASSIGNED/ACTION_PENDING/MONITORING/RESOLUTION_REVIEW/CLOSED/REOPENED; 시간 경과 자동 종결 없음), 우선순위·SLA(승인 입력), CS 접수(접수≠명령, 동의 별도 기록), MFC 문제함(WK-12), 라이더 도움요청·고객 연락 기록(안심번호 `[외부 참고]`), 귀책·비용 결정 기록(지급은 회계).
 - **소유하지 않음**: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification).
 - **API**: 사건 생성/배정/이관/종결, 의무 등록/해소, CS 접수, 도움요청.
+- **구현 현황(2026-11-17, 0.19.0 — PC 2)**: 사건함 `/cases`(도움요청·전달 실패·위치 끊김·오배송·배차 실패·사가/결제 이상 — 집기·처리 끝내기·다시 처리하기·넘기기·메모·후속 처리·교대 인계(팀 역할 0.13.1)·행위 요청 **기록만** 0.17.0·현황 건수 0.18.0), 고객센터 문의 `/inquiries`(고객·라이더 0.13.0, 사진 0.14.0 — 버킷 pmart-case, 만족도 0.15.0 — 상담원 평가에 안 씀, 배송 신고 0.16.0, 닫기 0.19.0 — 다시 열기 없음), CS 접수 `/cs-intakes`(전화·채팅·메일 기록, 본인 확인 방법·대리 표시 0.12.0), 라이더 컴플레인. 상담 종료·행위 요청 기록은 거래 의무를 끝내지 않는다.
 - **발행**: `CaseOpened/Assigned/Transferred/Closed/Reopened`, `ObligationCreated/Resolved`, `ShiftHandoverCompleted`, `RiderComplaintRecorded`(라이더 컴플레인 — 신고·오배송·파손, rider 제한 검토 집계, R-5 2026-11-14 요청·구현 전).
 - **구독**: `ReconciliationRequired`, `CompensationExecuted`(성공 아닌 것만), `PaymentMismatch`, `PaymentResultUnknown`(상신된 것만) — 사가·결제 이상 사건(R-3 구현 2026-11-16, OPERATOR_ADMIN), `DispatchFailed`, `DeliveryIncidentRaised`, `TransportIncidentRaised`, `LineShortageReported`(동의 없음), `ReceiptDiscrepancyReported`, `OutboundDiscrepancyRaised`, `QualityDecisionMade`(리콜), `IncidentResolution`(도메인 회신).
 
