@@ -113,6 +113,17 @@ public final class CaseRules {
         && !GROUP_ORDER_OPS.equals(group);
   }
 
+  /**
+   * 교대 인계서를 쓰고 받을 수 있는 역할(0.13.1 — 2026-11-17 사용자 (나), 건을 맡을 수 있는 사람과 같게): 지원센터 팀(DELIVERY_OPS) =
+   * 지원센터·관리자, 관리자 팀(ORDER_OPS) = 관리자만.
+   */
+  public static boolean canHandOver(Set<String> roles, String group) {
+    if (roles.contains(ADMIN)) {
+      return true;
+    }
+    return GROUP_DELIVERY_OPS.equals(group) && roles.contains(RIDER_OPS);
+  }
+
   /** 이관할 수 있는 팀(0.7.0 — 사용자 "A안"): 사람이 있는 두 팀. */
   public static final Set<String> TRANSFER_GROUPS = Set.of(GROUP_DELIVERY_OPS, GROUP_ORDER_OPS);
 

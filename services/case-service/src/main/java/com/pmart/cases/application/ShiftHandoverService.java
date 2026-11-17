@@ -98,6 +98,10 @@ public class ShiftHandoverService {
     if (!GROUPS.contains(cmd.group())) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "group 은 DELIVERY_OPS·ORDER_OPS 입니다.");
     }
+    if (!CaseRules.canHandOver(new HashSet<>(p.roles()), cmd.group())) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, "이 팀 인계서는 지원센터 팀 = 지원센터·관리자, 관리자 팀 = 관리자만 씁니다.");
+    }
     if (to.isEmpty() || to.equals(from)) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "후임(toOperatorId)은 전임과 달라야 합니다.");
     }
@@ -204,6 +208,11 @@ public class ShiftHandoverService {
           }
           if (!"PENDING".equals(h.state())) {
             throw PmartException.invalidState("진행 중인 인계서가 아닙니다(" + h.state() + ").");
+          }
+          if (!CaseRules.canHandOver(roles, h.group())) {
+            // 작성 때는 후임 역할을 모른다 — 수락 때 막고 인계서는 그대로(전임·관리자가 취소하고 다시 쓴다)
+            throw new PmartException(
+                ErrorCode.FORBIDDEN, "이 팀 인계를 받을 역할이 없습니다. 전임·관리자가 취소하고 다시 쓰세요.");
           }
           List<ItemRow> items = store.items(id);
           Set<String> ids = new HashSet<>(items.stream().map(ItemRow::caseId).toList());

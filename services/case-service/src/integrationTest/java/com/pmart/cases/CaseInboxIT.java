@@ -1289,8 +1289,22 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
                         "toOperatorId", "op-ops-2",
                         "items", List.of(item(a, "x"))))
                 .status())
-        .as("다른 업무")
-        .isEqualTo(422);
+        .as("관리자 팀 인계서는 관리자만(0.13.1)")
+        .isEqualTo(403);
+    for (String notTeam : List.of(cs, md)) {
+      assertThat(
+              send(
+                      "POST",
+                      notTeam,
+                      "/shift-handovers",
+                      Map.of(
+                          "group", "DELIVERY_OPS",
+                          "toOperatorId", "op-ops-2",
+                          "items", List.of(item(a, "x"))))
+                  .status())
+          .as("지원센터 팀 인계서는 지원센터·관리자만(0.13.1)")
+          .isEqualTo(403);
+    }
     assertThat(
             send(
                     "POST",
@@ -1425,11 +1439,19 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
             .path("shiftHandoverId")
             .asString();
     Res notAllowed = send("POST", cs, "/shift-handovers/" + h3 + "/acceptances", Map.of());
-    assertThat(notAllowed.status()).isEqualTo(200);
-    assertThat(notAllowed.body().path("items").get(0).path("outcome").asString())
-        .isEqualTo("SKIPPED_NOT_ALLOWED");
+    assertThat(notAllowed.status()).as("팀 역할 없는 후임은 수락 못 함(0.13.1)").isEqualTo(403);
+    assertThat(send("GET", ops, "/shift-handovers/" + h3, null).body().path("state").asString())
+        .as("인계서는 그대로")
+        .isEqualTo("PENDING");
     assertThat(send("GET", ops, "/cases/" + d, null).body().path("assigneeId").asString())
         .isEqualTo("op-ops-1");
+    assertThat(
+            send("POST", ops, "/shift-handovers/" + h3 + "/cancellations", null)
+                .body()
+                .path("state")
+                .asString())
+        .as("전임이 취소하고 다시 쓴다")
+        .isEqualTo("CANCELLED");
   }
 
   /**
