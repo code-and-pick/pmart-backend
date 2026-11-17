@@ -1501,6 +1501,19 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
                 "command",
                 "forceSuccess"));
     assertThat(force.body().path("code").asString()).isEqualTo("UNSUPPORTED_ACTION");
+    assertThat(
+            send(
+                    "POST",
+                    ops,
+                    path,
+                    Map.of(
+                        "actionType", "REQUERY_RESULT",
+                        "targetService", "x",
+                        "command", "y",
+                        "targetRef", "R".repeat(101)))
+                .status())
+        .as("DB 길이보다 긴 값은 400(0.17.1 — 500 아님)")
+        .isEqualTo(400);
 
     Res created = send("POST", ops, path, requery);
     assertThat(created.status()).as(created.body().toString()).isEqualTo(201);

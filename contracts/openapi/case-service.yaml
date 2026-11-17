@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.18.0
+  version: 0.18.1
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -1442,7 +1442,7 @@ components:
       properties:
         kind: { type: string, enum: [REFUND, RETURN_PICKUP, REDELIVERY, INVENTORY_RECOVERY, RECONCILIATION, CUSTOMER_CONTACT, EVIDENCE_COLLECTION, COMPENSATION, DISPOSAL, SUPPLIER_CLAIM, OTHER] }
         owner: { type: string, enum: [DELIVERY_OPS, ORDER_OPS, CS], description: '담당 팀(0.8.0) — 비우면 사건 팀. DELIVERY_OPS·CS 는 배송 쪽 사건에만' }
-        targetRef: { type: string }
+        targetRef: { type: string, maxLength: 100 }
         qty: { type: integer, minimum: 0, description: 수량 의무. 금액과 분리 }
         amount: { $ref: '_common.yaml#/components/schemas/Money' }
         dueAt: { type: string, format: date-time }
@@ -1478,9 +1478,9 @@ components:
         actionType: { type: string, enum: [REQUERY_RESULT, RESEND_UNDELIVERED, EXECUTE_APPROVED_COMPENSATION, REQUEST_DOMAIN_REVIEW] }
         targetService: { type: string, maxLength: 64 }
         command: { type: string, maxLength: 100, description: 대상 서비스 operationId }
-        targetRef: { type: string }
-        idempotencyKey: { type: string, description: 대상 명령에 사용한 멱등키 }
-        approvalRef: { type: string, description: EXECUTE_APPROVED_COMPENSATION 시 필수 }
+        targetRef: { type: string, maxLength: 100 }
+        idempotencyKey: { type: string, maxLength: 128, description: 대상 명령에 사용한 멱등키 }
+        approvalRef: { type: string, maxLength: 100, description: EXECUTE_APPROVED_COMPENSATION 시 필수 }
         payloadSummary: { type: object, additionalProperties: true }
     ActionRequest:
       allOf:
