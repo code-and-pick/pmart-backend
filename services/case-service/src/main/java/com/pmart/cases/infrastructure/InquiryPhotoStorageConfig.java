@@ -106,7 +106,8 @@ class InquiryPhotoStorageConfig {
             client.deleteObject(r -> r.bucket(bucket).key(key));
             return true;
           } catch (SdkException e) {
-            log.warn("문의 사진 객체 {} 지우기 실패 — 다음 정리 때 다시: {}", key, e.toString());
+            // 행은 이미 지워져 다시 시도되지 않는다 — 참조 없는 객체만 남음(버킷 수명 규칙으로 정리). key 에 고객·라이더 ID 가 있어 남기지 않는다
+            log.warn("문의 사진 객체 지우기 실패 — 버킷에 참조 없이 남음: {}", e.getClass().getSimpleName());
             return false;
           }
         }

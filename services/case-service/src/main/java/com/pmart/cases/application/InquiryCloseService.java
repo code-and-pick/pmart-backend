@@ -160,7 +160,7 @@ public class InquiryCloseService {
               "INQUIRY_CLOSED",
               row.status(),
               InquiryRules.CLOSED,
-              note == null ? byType : byType + ": " + note);
+              byType); // 사유는 inquiry_closure.reason 에(500자) — 이력 메모(500자)에 붙이면 넘칠 수 있다(0.19.1)
           log.info("inquiry {} closed by {}", inquiryId, byType);
           return inquiryId;
         });

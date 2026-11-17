@@ -119,6 +119,10 @@ class InquiryPhotosIT extends PostgresKafkaContainerSupport {
   }
 
   Res upload(String token, byte[] bytes) {
+    return upload(token, bytes, UUID.randomUUID().toString());
+  }
+
+  Res upload(String token, byte[] bytes, String key) {
     var form = new LinkedMultiValueMap<String, Object>();
     form.add(
         "file",
@@ -134,7 +138,7 @@ class InquiryPhotosIT extends PostgresKafkaContainerSupport {
         .headers(
             h -> {
               h.setBearerAuth(token);
-              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("Idempotency-Key", key);
               h.set("X-Source-System", "customer-app");
             })
         .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -307,6 +311,16 @@ class InquiryPhotosIT extends PostgresKafkaContainerSupport {
     assertThat(STORED).as("붙은 사진 본문은 그대로").containsKey(rpKey);
     assertThat(count("SELECT count(*) FROM inquiry_photo WHERE photo_id IN (?, ?)", rp, fresh))
         .isEqualTo(2);
+
+    // 같은 키 재전송인데 그사이 정리됐으면 404(0.19.1 — 전에는 500)
+    String key = UUID.randomUUID().toString();
+    Res first = upload(riderTok, JPEG, key);
+    assertThat(first.status()).isEqualTo(201);
+    jdbc.update(
+        "DELETE FROM inquiry_photo WHERE photo_id = ?", first.body().path("photoId").asString());
+    Res replay = upload(riderTok, JPEG, key);
+    assertThat(replay.status()).isEqualTo(404);
+    assertThat(replay.body().path("code").asString()).isEqualTo("PHOTO_NOT_FOUND");
   }
 
   int count(String sql, Object... args) {

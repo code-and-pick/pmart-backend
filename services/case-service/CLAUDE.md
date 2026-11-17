@@ -95,6 +95,8 @@
   - 답변 전에도 닫힘. 이미 닫힘 409 INQUIRY_CLOSED. 닫을 때 만족도(score·comment, 고객만 — 답변 없으면 400, 이미 남겼으면 409), 닫은 뒤 따로 남기기도 됨. **자동 닫기·다시 열기 없음**.
   - 문의 status CLOSED(version + 1) + 그 접수 건 행 CLOSED(closed_at·closed_by·resolution INQUIRY_CLOSED) + 이력 INQUIRY_CLOSED — 주문·클레임·다른 접수 건은 그대로. 이벤트·알림 없음, 사유·의견 로그 금지.
 
+- **검토 후속(2026-11-17, 0.19.1 — 검토자 결과 중 확인한 것)**: 경로 ID 모두 maxLength 64(멱등 기록 operation varchar(96) 에 "작업:ID" 를 붙여 긴 ID 면 500 → 400). 직원 닫기 사유는 `inquiry_closure.reason` 에만(이력 메모 varchar(500) 에 붙이면 494자 넘는 사유가 500). 사진 올리기 같은 키 재전송인데 그사이 정리됐으면 404 PHOTO_NOT_FOUND(전에는 500). 사진 본문 삭제 실패 로그에 key(고객·라이더 ID 포함)를 남기지 않음 — 행은 이미 지워져 다시 시도되지 않으니 버킷 수명 규칙으로 정리(남은 할 일).
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
 - **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).

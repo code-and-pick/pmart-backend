@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.19.0
+  version: 0.19.1
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -116,7 +116,7 @@ paths:
       operationId: getCase
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -136,7 +136,7 @@ paths:
       operationId: assignCase
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -177,7 +177,7 @@ paths:
       operationId: transferCase
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -224,7 +224,7 @@ paths:
       operationId: closeCase
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -275,7 +275,7 @@ paths:
       operationId: reopenCase
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -318,7 +318,7 @@ paths:
       operationId: createCaseNote
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -346,7 +346,7 @@ paths:
       operationId: listCaseNotes
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -368,8 +368,8 @@ paths:
       operationId: maskCaseNote
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
-        - { name: noteId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: noteId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -406,7 +406,7 @@ paths:
       operationId: createObligation
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -466,7 +466,7 @@ paths:
       operationId: getObligation
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: obligationId, in: path, required: true, schema: { type: string } }
+        - { name: obligationId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -491,7 +491,7 @@ paths:
       operationId: resolveObligation
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: obligationId, in: path, required: true, schema: { type: string } }
+        - { name: obligationId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -537,7 +537,7 @@ paths:
       operationId: createActionRequest
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -569,8 +569,8 @@ paths:
       operationId: getActionRequest
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
-        - { name: actionRequestId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: actionRequestId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -592,8 +592,8 @@ paths:
       operationId: recordActionRequestResult
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: caseId, in: path, required: true, schema: { type: string } }
-        - { name: actionRequestId, in: path, required: true, schema: { type: string } }
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: actionRequestId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -717,7 +717,7 @@ paths:
       operationId: getCsIntake
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: intakeId, in: path, required: true, schema: { type: string } }
+        - { name: intakeId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -805,7 +805,7 @@ paths:
       operationId: getInquiry
       x-pmart-user-types: [CUSTOMER, RIDER, OPERATOR]
       parameters:
-        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -828,7 +828,7 @@ paths:
       operationId: addInquiryPhotos
       x-pmart-user-types: [CUSTOMER, RIDER]
       parameters:
-        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -905,7 +905,7 @@ paths:
       operationId: getInquiryPhoto
       x-pmart-user-types: [CUSTOMER, RIDER, OPERATOR]
       parameters:
-        - { name: photoId, in: path, required: true, schema: { type: string } }
+        - { name: photoId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: 이미지 바이트
@@ -955,7 +955,7 @@ paths:
       operationId: rateInquiry
       x-pmart-user-types: [CUSTOMER]
       parameters:
-        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -995,7 +995,7 @@ paths:
       operationId: closeInquiry
       x-pmart-user-types: [CUSTOMER, RIDER, OPERATOR]
       parameters:
-        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -1031,7 +1031,7 @@ paths:
       operationId: replyInquiry
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: inquiryId, in: path, required: true, schema: { type: string } }
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -1108,7 +1108,7 @@ paths:
       x-pmart-user-types: [RIDER, OPERATOR]
       x-pmart-user-types-note: "추정 — 구현 없음. 요청한 라이더 본인과 처리하는 운영자가 볼 것으로 봄"
       parameters:
-        - { name: intakeId, in: path, required: true, schema: { type: string } }
+        - { name: intakeId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -1206,7 +1206,7 @@ paths:
       operationId: getShiftHandover
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: shiftHandoverId, in: path, required: true, schema: { type: string } }
+        - { name: shiftHandoverId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK
@@ -1229,7 +1229,7 @@ paths:
       operationId: acceptShiftHandover
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: shiftHandoverId, in: path, required: true, schema: { type: string } }
+        - { name: shiftHandoverId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -1258,7 +1258,7 @@ paths:
       operationId: cancelShiftHandover
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: shiftHandoverId, in: path, required: true, schema: { type: string } }
+        - { name: shiftHandoverId, in: path, required: true, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       responses:
@@ -1349,7 +1349,7 @@ paths:
       operationId: getRiderComplaint
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: complaintId, in: path, required: true, schema: { type: string } }
+        - { name: complaintId, in: path, required: true, schema: { type: string, maxLength: 64 } }
       responses:
         '200':
           description: OK

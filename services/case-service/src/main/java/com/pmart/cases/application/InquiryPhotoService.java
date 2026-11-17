@@ -83,7 +83,8 @@ public class InquiryPhotoService {
                   return id;
                 })
             .value();
-    return store.find(photoId).orElseThrow();
+    // 같은 키 재전송인데 그사이 붙지 않은 사진이 정리됐으면 404(0.19.1 — 전에는 500). 새 키로 다시 올린다
+    return store.find(photoId).orElseThrow(() -> notFound(photoId));
   }
 
   /**

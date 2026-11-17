@@ -163,6 +163,14 @@ class InquiryCloseIT extends PostgresKafkaContainerSupport {
         .as("고객 문의는 상담원이")
         .isEqualTo(403);
 
+    assertThat(close(agent, "INQ-" + "x".repeat(70), Map.of("reason", "정리")).status())
+        .as("경로 ID 64자 넘음 — 500 이 아니라 400(0.19.1)")
+        .isEqualTo(400);
+    String longReasonInq = ask(meTok, "OTHER");
+    assertThat(close(agent, longReasonInq, Map.of("reason", "가".repeat(500))).status())
+        .as("사유 500자도 닫힘(이력 메모에 사유를 붙이지 않음 — 0.19.1)")
+        .isEqualTo(200);
+
     Res closed = close(agent, inq, Map.of("reason", "중복 문의 — 다른 문의로 안내"));
     assertThat(closed.status()).as(closed.body().toString()).isEqualTo(200);
     assertThat(closed.body().path("closedByType").asString()).isEqualTo("STAFF");
