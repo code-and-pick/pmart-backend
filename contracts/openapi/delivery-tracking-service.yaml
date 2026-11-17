@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -63,7 +63,8 @@ paths:
       summary: ETA 조회 (고객 drop만 / 점원 pickup+drop)
       description: |
         호출자 역할에 따라 범위가 다르다. 고객 토큰은 본인 주문 배송의 dropEta만, 점포 직원·운영자는 pickupEta·dropEta 모두.
-        라이더 미배정·위치 미수신·행렬 조회 실패면 status LOCATING / ETA_PENDING 으로 응답하고 수치는 비운다. 라이더 좌표는 고객에게 주지 않는다.
+        라이더 미배정·위치 미수신·행렬 조회 실패면 status LOCATING / ETA_PENDING 으로 응답하고 수치는 비운다.
+        라이더 좌표(0.6.0, 2026-11-17 사용자 결정): 고객은 픽업 뒤(TO_CUSTOMER·AT_CUSTOMER)만 `riderLocation`, 직원은 배정 뒤. 그 전·끝난 뒤는 null.
         **구현(0.5.0, 2026-11-17 — TR-3)**: 고객 소유 = 배송 → 주문 → order 내부 조회 accountId(남의·모르는 배송 404). 직원 = execution 과 같은 범위
         (OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 모든 센터, 그 밖 운영자는 그 센터 권한 — 아니면 404). 라이더·서비스 403.
         진행 단계는 배송 사건 사본(이 서비스가 배포된 뒤 만들어진 배송부터 — 그 전 배송은 404). ETA 계산이 꺼져 있으면(pmart.tracking.eta 설정 없음) ETA_PENDING.
@@ -264,7 +265,18 @@ components:
             start: { type: string }
             end: { type: string }
         delayAlertTriggered: { type: boolean }
-        riderLocationQuality: { $ref: '#/components/schemas/GpsQuality', description: 좌표 자체는 고객에게 비노출 }
+        riderLocationQuality: { $ref: '#/components/schemas/GpsQuality', description: 라이더 마지막 위치의 품질(riderLocation 이 있을 때) }
+        riderLocation:
+          type: [object, 'null']
+          x-added-in: '2026-11-17'
+          description: |
+            라이더 마지막 위치(0.6.0 — 사용자 결정 2026-11-17 "픽업 뒤 정확한 위치"). 고객은 **내 상품을 픽업한 뒤 ~ 끝나기 전**(TO_CUSTOMER·AT_CUSTOMER)만,
+            직원은 배정 뒤 ~ 끝나기 전. 지금 한 점만(지나온 동선 없음). 위치가 아직 없으면 null.
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+            recordedAt: { type: string, format: date-time, description: 단말이 기록한 시각 }
+            staleSeconds: { type: integer, description: 서버가 받은 뒤 지난 초 }
         asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
     StreamEvent:
       type: object

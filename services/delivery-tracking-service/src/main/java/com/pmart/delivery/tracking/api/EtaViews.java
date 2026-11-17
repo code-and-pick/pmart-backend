@@ -42,6 +42,18 @@ final class EtaViews {
     if (v.staff() && BEFORE_PICKUP.contains(r.stage())) {
       out.pickupEta(leg(v, r.etaPickup(), now, null));
     }
+    if (v.riderLocation() != null) {
+      var l = v.riderLocation();
+      out.riderLocation(
+              new com.pmart.delivery.tracking.api.generated.model.DeliveryEtaRiderLocation()
+                  .lat(java.math.BigDecimal.valueOf(l.lat()))
+                  .lng(java.math.BigDecimal.valueOf(l.lng()))
+                  .recordedAt(time(l.recordedAt()))
+                  .staleSeconds(
+                      (int) Math.max(0, now.getEpochSecond() - l.receivedAt().getEpochSecond())))
+          .riderLocationQuality(
+              com.pmart.delivery.tracking.api.generated.model.GpsQuality.fromValue(l.quality()));
+    }
     if (r.arrivalDate() != null) {
       out.arrivalWindow(
           new DeliveryEtaArrivalWindow()
@@ -59,7 +71,10 @@ final class EtaViews {
         + ":"
         + epoch(r.etaDrop())
         + (v.staff() ? ":" + epoch(r.etaPickup()) : "")
-        + (v.locating() ? ":L" : "");
+        + (v.locating() ? ":L" : "")
+        + (v.riderLocation() == null
+            ? ""
+            : ":" + v.riderLocation().recordedAt().getEpochSecond()); // 위치가 바뀌면 ETA_UPDATED
   }
 
   private static String epoch(@Nullable Instant i) {

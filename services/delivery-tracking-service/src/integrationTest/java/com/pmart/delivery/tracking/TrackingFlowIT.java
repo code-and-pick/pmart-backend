@@ -758,6 +758,9 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(mine.toString()).doesNotContain("37.50");
     JsonNode staffView = json(etaGet(staff, delivery).getBody());
     assertThat(staffView.path("pickupEta").path("status").asString()).isEqualTo("AVAILABLE");
+    // 라이더 위치(2026-11-17 사용자 "픽업 뒤 정확한 위치"): 픽업 전 고객 없음, 직원은 배정 뒤
+    assertThat(mine.path("riderLocation").isObject()).isFalse();
+    assertThat(staffView.path("riderLocation").path("lat").asDouble()).isEqualTo(37.5);
 
     // SSE: 지금 상태 -> 픽업(STAGE_CHANGED) -> 늦게 온 가게 도착은 무시 -> 완료(STREAM_END) 뒤 닫힘
     java.util.concurrent.BlockingQueue<String> lines = sse(customer, delivery);
@@ -768,6 +771,10 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         Map.of("deliveryId", delivery, "riderId", rider, "pickedUpAt", Instant.now().toString()));
     assertThat(nextEvent(lines)).isEqualTo("event: STAGE_CHANGED");
     assertThat(awaitLine(lines, "data: ")).contains("\"stage\":\"TO_CUSTOMER\"");
+    JsonNode picked = json(etaGet(customer, delivery).getBody());
+    assertThat(picked.path("riderLocation").path("lat").asDouble()).isEqualTo(37.5);
+    assertThat(picked.path("riderLocation").path("lng").asDouble()).isEqualTo(127.03);
+    assertThat(picked.path("riderLocation").path("staleSeconds").asInt()).isGreaterThanOrEqualTo(0);
     deliveryEvent(
         "RiderArrivedAtStore",
         delivery,
@@ -783,6 +790,7 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(done.path("stage").asString()).isEqualTo("DONE");
     assertThat(done.path("outcome").asString()).isEqualTo("COMPLETED");
     assertThat(done.path("dropEta").path("status").asString()).isEqualTo("FINAL");
+    assertThat(done.path("riderLocation").isObject()).isFalse(); // 끝나면 위치 없음
     // 남의 구독은 스트림을 열기 전에 보통 응답(404)
     assertThat(sseStatus(TestJwt.customer("ACC-someone-else"), delivery)).isEqualTo(404);
   }

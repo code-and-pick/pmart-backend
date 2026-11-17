@@ -47,7 +47,21 @@ public class ProgressService {
           "DeliveryCancelledBeforePickup");
 
   /** 조회 결과 — staff 면 픽업 예정도 보인다. */
-  public record View(Progress progress, boolean staff, boolean etaEnabled, boolean locating) {}
+  public record View(
+      Progress progress,
+      boolean staff,
+      boolean etaEnabled,
+      boolean locating,
+      LocationStore.@Nullable Latest riderLocation) {}
+
+  /** 라이더 위치를 보이는 단계(2026-11-17 사용자 "픽업 뒤 정확한 위치") — 고객은 픽업 뒤, 직원은 배정 뒤. 끝나면 없음. */
+  static boolean showsRider(String stage, boolean staff) {
+    return switch (stage) {
+      case ProgressRules.TO_CUSTOMER, ProgressRules.AT_CUSTOMER -> true;
+      case ProgressRules.TO_STORE, ProgressRules.AT_STORE -> staff;
+      default -> false;
+    };
+  }
 
   private final ProgressStore store;
   private final LocationStore locations;
@@ -131,16 +145,19 @@ public class ProgressService {
   }
 
   private View snapshot(Progress row, boolean staff) {
-    boolean locating = false;
-    if (row.riderId() != null && row.etaDrop() == null) {
-      Instant now = clock.instant();
-      locating =
-          locations
-              .latest(row.riderId())
-              .map(l -> l.receivedAt().isBefore(now.minus(props.staleAfter())))
-              .orElse(true);
-    }
-    return new View(row, staff, props.eta().enabled(), locating);
+    Instant now = clock.instant();
+    LocationStore.Latest latest =
+        row.riderId() == null ? null : locations.latest(row.riderId()).orElse(null);
+    boolean locating =
+        row.riderId() != null
+            && row.etaDrop() == null
+            && (latest == null || latest.receivedAt().isBefore(now.minus(props.staleAfter())));
+    return new View(
+        row,
+        staff,
+        props.eta().enabled(),
+        locating,
+        latest != null && showsRider(row.stage(), staff) ? latest : null);
   }
 
   @Scheduled(
