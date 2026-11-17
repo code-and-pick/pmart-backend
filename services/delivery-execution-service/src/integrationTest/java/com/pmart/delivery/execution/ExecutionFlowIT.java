@@ -318,6 +318,40 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(done.getStatusCode().value()).isEqualTo(200);
     assertThat(state(id)).isEqualTo("COMPLETED");
 
+    // 고객 전달 증빙(2026-11-17 사용자 "본인 배송 완료 사진 공개"): 본인 주문만, 완료 사진만
+    String me = "ACC-" + UUID.randomUUID();
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"orderId\":\"" + order + "\",\"accountId\":\"" + me + "\"}")));
+    ResponseEntity<String> proof = customerGet("/deliveries/" + id + "/delivery-proof", me);
+    assertThat(proof.getStatusCode().value()).isEqualTo(200);
+    assertThat(body(proof).path("photoRefs").get(0).asString()).isEqualTo(photoRef);
+    assertThat(body(proof).path("placement").isString() || body(proof).path("placement").isNull())
+        .isTrue();
+    assertThat(proof.getBody()).doesNotContain(rider);
+    assertThat(
+            customerGet("/deliveries/" + id + "/delivery-proof", "ACC-OTHER")
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/delivery-proof", id)
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(photo(id, photoRef, TestJwt.customer(me)).getStatusCode().value()).isEqualTo(200);
+    assertThat(photo(id, photoRef, TestJwt.customer("ACC-OTHER")).getStatusCode().value())
+        .isEqualTo(404);
+
     JsonNode completed = outbox(id, "DeliveryCompleted").path("payload");
     assertThat(completed.path("orderId").asString()).isEqualTo(order);
     assertThat(completed.path("method").asString()).isEqualTo("CONTACTLESS");
@@ -1270,6 +1304,14 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     return http.get()
         .uri(uri, id)
         .header("Authorization", "Bearer " + TestJwt.rider(rider))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  ResponseEntity<String> customerGet(String uri, String account) {
+    return http.get()
+        .uri(uri)
+        .header("Authorization", "Bearer " + TestJwt.customer(account))
         .retrieve()
         .toEntity(String.class);
   }

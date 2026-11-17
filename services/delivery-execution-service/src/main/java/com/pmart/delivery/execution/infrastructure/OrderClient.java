@@ -133,6 +133,26 @@ public class OrderClient {
     }
   }
 
+  /** 주문의 고객(accountId) — 고객 소유 확인(전달 증빙, 2026-11-17). 없는 주문 empty, 장애는 Downstream 규칙(예외). */
+  public Optional<String> accountId(String orderId) {
+    String body;
+    try {
+      body =
+          Downstream.call(
+              "order-service order",
+              () ->
+                  order
+                      .get()
+                      .uri("/api/v1/internal/orders/{id}", orderId)
+                      .retrieve()
+                      .body(String.class));
+    } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    }
+    String a = body == null ? null : text(mapper.readTree(body), "accountId");
+    return Optional.ofNullable(a);
+  }
+
   private static @Nullable String text(JsonNode n, String field) {
     return n.path(field).isString() ? n.path(field).asString() : null;
   }

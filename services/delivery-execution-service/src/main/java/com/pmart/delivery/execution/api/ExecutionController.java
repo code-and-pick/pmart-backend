@@ -243,6 +243,24 @@ public class ExecutionController implements ExecutionApi {
   }
 
   /** 증빙 사진 보기(2026-11-16) — 앱·브라우저가 남기지 않게 no-store·private. */
+  /** 고객용 전달 완료 증빙(2026-11-17). */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.GetDeliveryProof200Response>
+      getDeliveryProof(String deliveryId) {
+    ExecutionService.DeliveryProof d = service.deliveryProof(deliveryId);
+    return ResponseEntity.ok()
+        .cacheControl(org.springframework.http.CacheControl.noStore())
+        .body(
+            new com.pmart.delivery.execution.api.generated.model.GetDeliveryProof200Response()
+                .deliveryId(d.deliveryId())
+                .orderId(d.orderId())
+                .completedAt(ExecutionViews.time(d.completedAt()))
+                .placement(d.placement())
+                .placementDetail(d.placementDetail())
+                .photoRefs(d.photoRefs()));
+  }
+
   @Override
   public ResponseEntity<org.springframework.core.io.Resource> getEvidencePhoto(
       String deliveryId, String photoRef) {

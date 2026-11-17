@@ -79,6 +79,7 @@ public class ExecutionService {
   private final ObjectProvider<EvidencePhotoStorage> photos;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final com.pmart.delivery.execution.infrastructure.OrderClient orders;
 
   public ExecutionService(
       ExecutionStore store,
@@ -88,7 +89,9 @@ public class ExecutionService {
       RequestIdempotency idempotency,
       ObjectProvider<EvidencePhotoStorage> photos,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      com.pmart.delivery.execution.infrastructure.OrderClient orders) {
+    this.orders = orders;
     this.store = store;
     this.events = events;
     this.pickup = pickup;
@@ -457,6 +460,11 @@ public class ExecutionService {
           case RIDER ->
               p.subject().equals(d.riderId())
                   || store.recoveringRiders(deliveryId).contains(p.subject());
+          // 고객(2026-11-17): 본인 배송의 전달 완료 증빙 사진만
+          case CUSTOMER ->
+              customerOwns(p, d)
+                  && "COMPLETED".equals(d.state())
+                  && completionPhotos(d).contains(photoRef);
           default -> false;
         };
     if (!ok) {
@@ -473,6 +481,61 @@ public class ExecutionService {
     }
     byte[] bytes = storage.get(photo.objectKey()).orElseThrow(ExecutionService::photoNotFound);
     return new PhotoFile(photo.contentType(), bytes);
+  }
+
+  /** 고객용 전달 완료 증빙(2026-11-17 사용자 "본인 배송 완료 사진 공개"). */
+  public record DeliveryProof(
+      String deliveryId,
+      String orderId,
+      @Nullable Instant completedAt,
+      @Nullable String placement,
+      @Nullable String placementDetail,
+      List<String> photoRefs) {}
+
+  public DeliveryProof deliveryProof(String deliveryId) {
+    PmartPrincipal p = principal();
+    if (p.type() != PmartPrincipal.PrincipalType.CUSTOMER) {
+      throw forbidden("고객만 볼 수 있습니다.");
+    }
+    DeliveryRow d =
+        store
+            .delivery(deliveryId)
+            .filter(x -> customerOwns(p, x))
+            .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송을 찾을 수 없습니다."));
+    if (!"COMPLETED".equals(d.state()) || d.evidenceJson() == null) {
+      throw new PmartException(
+          "DELIVERY_NOT_COMPLETED",
+          org.springframework.http.HttpStatus.CONFLICT,
+          "아직 전달 완료 전입니다.",
+          false,
+          List.of());
+    }
+    tools.jackson.databind.JsonNode e = mapper.readTree(d.evidenceJson());
+    return new DeliveryProof(
+        d.deliveryId(),
+        java.util.Objects.requireNonNull(d.orderId()),
+        d.completedAt(),
+        e.path("placement").isString() ? e.path("placement").asString() : null,
+        e.path("placementDetail").isString() ? e.path("placementDetail").asString() : null,
+        completionPhotos(d));
+  }
+
+  /** 본인 주문의 배송인가(order 내부 accountId). 주문 없는 배송은 아니다. */
+  private boolean customerOwns(PmartPrincipal p, DeliveryRow d) {
+    return d.orderId() != null
+        && orders.accountId(d.orderId()).map(p.subject()::equals).orElse(false);
+  }
+
+  /** 전달 완료 증빙의 사진 참조(회수·실패 사진은 아님). */
+  private List<String> completionPhotos(DeliveryRow d) {
+    if (d.evidenceJson() == null || "RETURN".equals(d.type())) {
+      return List.of();
+    }
+    List<String> out = new ArrayList<>();
+    for (tools.jackson.databind.JsonNode n : mapper.readTree(d.evidenceJson()).path("photoRefs")) {
+      out.add(n.asString());
+    }
+    return out;
   }
 
   private static PmartException photoNotFound() {
