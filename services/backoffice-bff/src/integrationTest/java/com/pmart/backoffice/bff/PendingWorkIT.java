@@ -41,7 +41,8 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration"
+      "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration",
+      "pmart.bff.mfc-pending-lists=false" // 0.8.0 부터 기본 켬 — 이 시험은 사가·이행 확인만(꺼짐 스위치 확인)
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({

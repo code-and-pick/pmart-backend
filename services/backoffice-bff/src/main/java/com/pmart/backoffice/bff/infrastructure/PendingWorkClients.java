@@ -73,7 +73,7 @@ public class PendingWorkClients {
     return mfcList("mfc stop-requests", "/api/v1/stop-requests", "failed", "true", bearerToken);
   }
 
-  /** MFC 재고가 거절한 인계 목록(F-4 — 아직 없다). {@link #failedStopRequests} 와 같다. */
+  /** MFC 재고가 거절한 인계 목록(F-4 — mfc-fulfillment 0.9.0). {@link #failedStopRequests} 와 같다. */
   public JsonNode rejectedHandovers(String bearerToken) {
     return mfcList(
         "mfc package-handovers", "/api/v1/package-handovers", "status", "REJECTED", bearerToken);
@@ -94,24 +94,37 @@ public class PendingWorkClients {
   }
 
   /** 실패로 멈춘 집품 뒤 중지 다시 시도 — MFC 내부 경로(0.3.1), StopRequestResult 그대로. */
-  public JsonNode retryStopRequest(String stopRequestId, String idempotencyKey) {
+  public JsonNode retryStopRequest(
+      String stopRequestId, String idempotencyKey, String operatorId, String reason) {
     return mfcPost(
         "mfc stop-request retry",
         "/api/v1/internal/stop-requests/{id}/retries",
         stopRequestId,
-        idempotencyKey);
+        idempotencyKey,
+        operatorId,
+        reason);
   }
 
   /** 재고가 거절한 인계 다시 보내기 — MFC 내부 경로(0.4.1, D-8), HandoverCommitResult 그대로. */
-  public JsonNode retryHandover(String handoverId, String idempotencyKey) {
+  public JsonNode retryHandover(
+      String handoverId, String idempotencyKey, String operatorId, String reason) {
     return mfcPost(
         "mfc handover retry",
         "/api/v1/internal/package-handovers/{id}/retries",
         handoverId,
-        idempotencyKey);
+        idempotencyKey,
+        operatorId,
+        reason);
   }
 
-  private JsonNode mfcPost(String what, String path, String id, String idempotencyKey) {
+  /** 재시도 — 본문 {operatorId, reason}(F-4, mfc-fulfillment 0.9.0: 실제로 다시 시도했을 때 재시도 기록으로 남김). */
+  private JsonNode mfcPost(
+      String what,
+      String path,
+      String id,
+      String idempotencyKey,
+      String operatorId,
+      String reason) {
     String raw =
         Downstream.call(
             what,
@@ -120,6 +133,8 @@ public class PendingWorkClients {
                     .uri(path, id)
                     .header("Idempotency-Key", idempotencyKey)
                     .header("X-Source-System", "backoffice-bff")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("operatorId", operatorId, "reason", reason))
                     .retrieve()
                     .body(String.class));
     return mapper.readTree(raw == null ? "{}" : raw);

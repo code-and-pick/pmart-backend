@@ -144,7 +144,7 @@ public class PendingWorkView {
       @Nullable String reason) {
     PmartPrincipal p = requireAdmin();
     if (MFC.equals(targetService) && MFC_COMMANDS.contains(command)) {
-      return mfcRetry(command, idempotencyKey, targetRef, reason);
+      return mfcRetry(command, idempotencyKey, targetRef, reason, p.subject());
     }
     String action = COMMANDS.get(command);
     if (!ORCHESTRATION.equals(targetService) || action == null) {
@@ -185,21 +185,29 @@ public class PendingWorkView {
   }
 
   /**
-   * MFC 재시도(BO-12 대상 2·3번). 사유 필수(BO-12 결정) — 단, MFC 재시도는 아직 사유·운영자를 받지 않아 저장되지 않는다(F-4 에 요청). 응답은
-   * CommandResponse 로 옮긴다(계약 0.4.0).
+   * MFC 재시도(BO-12 대상 2·3번). 사유 필수(BO-12 결정, 500자) — 운영자 ID(토큰 주체)·사유를 MFC 에 넘겨 재시도 기록으로 남긴다(F-4,
+   * mfc-fulfillment 0.9.0). 응답은 CommandResponse 로 옮긴다(계약 0.4.0).
    */
   private JsonNode mfcRetry(
-      String command, String idempotencyKey, String targetRef, @Nullable String reason) {
+      String command,
+      String idempotencyKey,
+      String targetRef,
+      @Nullable String reason,
+      String operatorId) {
     if (reason == null || reason.isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(조치 사유)이 필요합니다.");
     }
+    if (reason.strip().length() > 500) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "reason(조치 사유)은 500자까지입니다.");
+    }
+    String memo = reason.strip();
     if (targetRef == null || targetRef.isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "targetRef(중지 요청 ID 또는 인계 ID)가 필요합니다.");
     }
     String id = targetRef.strip();
     try {
       if ("stop-retry".equals(command)) {
-        JsonNode r = clients.retryStopRequest(id, idempotencyKey);
+        JsonNode r = clients.retryStopRequest(id, idempotencyKey, operatorId, memo);
         String state = text(r, "state");
         String status;
         String next;
@@ -218,7 +226,7 @@ public class PendingWorkView {
         }
         return commandResponse(status, idempotencyKey, id, next);
       }
-      JsonNode r = clients.retryHandover(id, idempotencyKey);
+      JsonNode r = clients.retryHandover(id, idempotencyKey, operatorId, memo);
       return commandResponse(
           r.path("status").asString("UNKNOWN_RESULT"), idempotencyKey, id, text(r, "nextAction"));
     } catch (HttpClientErrorException e) {
@@ -265,6 +273,7 @@ public class PendingWorkView {
         i.put("reasonCode", code(text(s, "lastError")));
         i.put("reasonMessage", text(s, "lastError"));
         i.put("since", text(s, "failedAt") != null ? text(s, "failedAt") : text(s, "requestedAt"));
+        i.put("lastRetry", lastRetry(s));
         i.put("allowedActions", List.of("RETRY"));
         i.put("source", stamp(MFC, now, "CURRENT", "DIRECT"));
         items.add(i);
@@ -282,6 +291,7 @@ public class PendingWorkView {
         i.put("reasonCode", code(text(h, "rejectReason")));
         i.put("reasonMessage", text(h, "rejectReason"));
         i.put("since", text(h, "rejectedAt"));
+        i.put("lastRetry", lastRetry(h));
         i.put("allowedActions", List.of("RETRY"));
         i.put("source", stamp(MFC, now, "CURRENT", "DIRECT"));
         items.add(i);
@@ -294,6 +304,19 @@ public class PendingWorkView {
       unavailable.add(MFC);
       sources.add(stamp(MFC, now, "UNAVAILABLE", "UNKNOWN"));
     }
+  }
+
+  /** MFC 최근 운영자 재시도(F-4 0.9.0 lastRetry) — 없으면 null. */
+  private static @Nullable Map<String, Object> lastRetry(JsonNode item) {
+    JsonNode r = item.path("lastRetry");
+    if (!r.isObject()) {
+      return null;
+    }
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("operatorId", text(r, "operatorId"));
+    m.put("reason", text(r, "reason"));
+    m.put("retriedAt", text(r, "retriedAt"));
+    return m;
   }
 
   @SuppressWarnings("unchecked")

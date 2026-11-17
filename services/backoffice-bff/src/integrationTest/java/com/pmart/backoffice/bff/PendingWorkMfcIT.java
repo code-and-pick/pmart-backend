@@ -3,6 +3,7 @@ package com.pmart.backoffice.bff;
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -93,7 +94,8 @@ class PendingWorkMfcIT {
                     """
                     {"items":[{"stopRequestId":"STP-1","fulfillmentId":"FUL-1","orderId":"ORD-1","mfcId":"MFC-1",
                                "state":"PENDING","lastError":"RETURN_MISMATCH: 위치 잔량 부족",
-                               "failedAt":"2026-11-16T02:00:00Z","requestedAt":"2026-11-16T01:50:00Z"}]}""")));
+                               "failedAt":"2026-11-16T02:00:00Z","requestedAt":"2026-11-16T01:50:00Z",
+                               "lastRetry":{"operatorId":"op-admin","reason":"재고 보정 뒤 다시 시도","retriedAt":"2026-11-16T02:10:00Z"}}]}""")));
     mfc.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/package-handovers"))
             .willReturn(
@@ -148,6 +150,11 @@ class PendingWorkMfcIT {
     assertThat(s.path("state").asString()).isEqualTo("PENDING");
     assertThat(s.path("since").asString()).isEqualTo("2026-11-16T02:00:00Z");
     assertThat(s.path("source").path("system").asString()).isEqualTo("mfc-fulfillment-service");
+    assertThat(s.path("lastRetry").path("operatorId").asString())
+        .as("최근 운영자 재시도(0.8.0)")
+        .isEqualTo("op-admin");
+    assertThat(s.path("lastRetry").path("retriedAt").asString()).isEqualTo("2026-11-16T02:10:00Z");
+    assertThat(h.path("lastRetry").isNull()).isTrue();
     assertThat(r.body().path("unavailableSources")).isEmpty();
     mfc.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/stop-requests"))
@@ -184,7 +191,9 @@ class PendingWorkMfcIT {
     mfc.verify(
         postRequestedFor(urlPathEqualTo("/api/v1/internal/stop-requests/STP-1/retries"))
             .withHeader("Idempotency-Key", equalTo("k-1"))
-            .withHeader("X-Source-System", equalTo("backoffice-bff")));
+            .withHeader("X-Source-System", equalTo("backoffice-bff"))
+            .withRequestBody(matchingJsonPath("$.operatorId", equalTo("op-admin")))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("재고 보정 뒤 다시 시도"))));
 
     mfc.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/stop-requests/STP-2/retries"))

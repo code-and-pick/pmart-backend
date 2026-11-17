@@ -16,7 +16,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param caseBaseUrl case-service(통합 조회 — 사건, 2026-11-16)
  * @param mfcFulfillmentBaseUrl mfc-fulfillment-service(처리 대기 — 중지 실패·인계 거절, 재시도 — 2026-11-16 F-4)
  * @param trackingBaseUrl delivery-tracking-service(실시간 배송 현황 — 도착 예정, 2026-11-17 TR-3)
- * @param mfcPendingLists 처리 대기에 MFC 목록을 읽을지(기본 false — PC 3 목록 API F-4 가 생긴 뒤 켠다. 재시도 명령은 상관없이 열림)
+ * @param mfcPendingLists 처리 대기에 MFC 목록을 읽을지(0.8.0 부터 기본 true — PC 3 F-4 목록 API 가 생김,
+ *     mfc-fulfillment 0.9.0. 끄려면 false)
  */
 @ConfigurationProperties(prefix = "pmart.bff")
 public record BffProperties(
@@ -41,7 +42,7 @@ public record BffProperties(
     caseBaseUrl = or(caseBaseUrl, "http://case-service:8506");
     mfcFulfillmentBaseUrl = or(mfcFulfillmentBaseUrl, "http://mfc-fulfillment-service:8302");
     trackingBaseUrl = or(trackingBaseUrl, "http://delivery-tracking-service:8406");
-    mfcPendingLists = mfcPendingLists != null && mfcPendingLists;
+    mfcPendingLists = mfcPendingLists == null || mfcPendingLists; // 0.8.0: F-4 생김 — 기본 켬(끄려면 false)
   }
 
   private static String or(@Nullable String v, String fallback) {
