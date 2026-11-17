@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.8.0
+  version: 0.9.1
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -136,6 +136,7 @@ paths:
           재고가 거절한 인계(D-8) — kind MFC_HANDOVER_REJECTED(refId = handoverId). 둘 다 allowedActions [RETRY] → 명령 `stop-retry`·`handover-retry`.
           **0.8.0(2026-11-17 — PC 3 F-4, mfc-fulfillment 0.9.0)**: 목록 `GET /stop-requests?failed=true`·`/package-handovers?status=REJECTED` 를 운영자 토큰으로 읽는다(설정 `pmart.bff.mfc-pending-lists` 기본 켬 — false 면 부르지도 sources 에 넣지도 않음). 항목에 `lastRetry`(최근 운영자 재시도 — operatorId·reason·retriedAt).
           재시도 명령은 MFC 에 본문 `{operatorId: 토큰 주체, reason}` 을 넘겨 MFC 재시도 기록으로 남긴다(사유 필수·500자 — BO-12).
+          **0.9.1**: MFC 목록을 커서로 끝까지(최대 5쪽 × 200건) 읽는다 — 넘으면 `truncated: true`. 한 쪽이라도 실패하면 MFC 항목 전체를 빼고 unavailableSources(반만 보이지 않게).
         원천 하나가 응답하지 않으면 그 항목 없이 200 + unavailableSources(추정하지 않음).
       operationId: getPendingWorkView
       x-pmart-user-types: [OPERATOR]
@@ -152,6 +153,7 @@ paths:
                       items:
                         type: array
                         items: { $ref: '#/components/schemas/PendingWorkItem' }
+                      truncated: { type: boolean, x-added-in: '2026-11-17', description: '(0.9.1) MFC 목록이 1,000건(200 × 5쪽)을 넘어 뒤를 읽지 않았으면 true — 센터로 나눠 보거나 오래된 것부터 처리' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /views/case-inbox:

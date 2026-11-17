@@ -121,8 +121,9 @@ public class PendingWorkView {
       sources.add(stamp(ORDER, now, "UNAVAILABLE", "UNKNOWN"));
     }
 
+    boolean truncated = false;
     if (mfcLists) {
-      mfcItems(token, now, items, sources, unavailable);
+      truncated = mfcItems(token, now, items, sources, unavailable);
     }
 
     items.sort(Comparator.comparing(i -> String.valueOf(i.get("since"))));
@@ -131,6 +132,7 @@ public class PendingWorkView {
     out.put("sources", sources);
     out.put("unavailableSources", unavailable);
     out.put("items", items);
+    out.put("truncated", truncated);
     log.debug("처리 대기 {}건 by {}", items.size(), p.subject());
     return out;
   }
@@ -253,7 +255,7 @@ public class PendingWorkView {
   }
 
   /** MFC 두 목록(F-4, 설정으로 켰을 때만). 원천 장애면 그 항목 없이 unavailableSources. */
-  private void mfcItems(
+  private boolean mfcItems(
       String token,
       Instant now,
       List<Map<String, Object>> items,
@@ -297,12 +299,15 @@ public class PendingWorkView {
         items.add(i);
       }
       sources.add(stamp(MFC, now, "CURRENT", "DIRECT"));
+      return stops.path("truncated").asBoolean(false)
+          || handovers.path("truncated").asBoolean(false);
     } catch (PmartException | HttpClientErrorException e) {
       log.warn("처리 대기: MFC 목록 조회 실패 — {}", e.getClass().getSimpleName());
       // 두 목록 중 하나만 읽힌 채로 내보내지 않는다 — MFC 항목은 모두 빼고 원천 실패로
       items.removeIf(i -> MFC.equals(sourceSystem(i)));
       unavailable.add(MFC);
       sources.add(stamp(MFC, now, "UNAVAILABLE", "UNKNOWN"));
+      return false;
     }
   }
 

@@ -9,6 +9,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * 처리 대기(BO-12, 2026-11-16) 원천 호출. order-orchestration-service 는 서비스 간 내부 경로(토큰 없음, ADR-0026),
@@ -79,18 +81,57 @@ public class PendingWorkClients {
         "mfc package-handovers", "/api/v1/package-handovers", "status", "REJECTED", bearerToken);
   }
 
+  /** MFC 목록 한 쪽 크기(MFC 상한 200)·최대 쪽 수 — 넘으면 truncated. */
+  static final int MFC_PAGE_SIZE = 200;
+
+  static final int MFC_MAX_PAGES = 5;
+
+  /**
+   * MFC 목록을 커서로 끝까지(최대 {@link #MFC_MAX_PAGES} 쪽) 읽어 {@code {items, truncated}} 로 합친다(0.9.1 — 전에는
+   * 200건 한 쪽만). 한 쪽이라도 실패하면 예외 — 반만 읽힌 목록을 내보내지 않는다(호출 쪽이 MFC 항목 전체를 뺀다).
+   */
   private JsonNode mfcList(String what, String path, String key, String value, String bearerToken) {
-    String raw =
-        Downstream.call(
-            what,
-            () ->
-                mfc.get()
-                    .uri(u -> u.path(path).queryParam(key, value).queryParam("size", 200).build())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
-                    .header("X-Source-System", "backoffice-bff")
-                    .retrieve()
-                    .body(String.class));
-    return mapper.readTree(raw == null ? "{}" : raw);
+    ArrayNode all = mapper.createArrayNode();
+    String cursor = null;
+    boolean truncated = false;
+    for (int page = 0; ; page++) {
+      String c = cursor;
+      String raw =
+          Downstream.call(
+              what,
+              () ->
+                  mfc.get()
+                      .uri(
+                          u -> {
+                            var b =
+                                u.path(path)
+                                    .queryParam(key, value)
+                                    .queryParam("size", MFC_PAGE_SIZE);
+                            if (c != null) {
+                              b.queryParam("cursor", c);
+                            }
+                            return b.build();
+                          })
+                      .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
+                      .header("X-Source-System", "backoffice-bff")
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = mapper.readTree(raw == null ? "{}" : raw);
+      n.path("items").forEach(all::add);
+      JsonNode next = n.path("page").path("nextCursor");
+      cursor = next.isString() && !next.asString().isBlank() ? next.asString() : null;
+      if (cursor == null) {
+        break;
+      }
+      if (page + 1 >= MFC_MAX_PAGES) {
+        truncated = true;
+        break;
+      }
+    }
+    ObjectNode out = mapper.createObjectNode();
+    out.set("items", all);
+    out.put("truncated", truncated);
+    return out;
   }
 
   /** 실패로 멈춘 집품 뒤 중지 다시 시도 — MFC 내부 경로(0.3.1), StopRequestResult 그대로. */

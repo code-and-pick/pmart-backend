@@ -171,6 +171,52 @@ class PendingWorkMfcIT {
     assertThat(r.body().path("unavailableSources").toString()).contains("mfc-fulfillment-service");
   }
 
+  /** 0.9.1: MFC 목록을 커서로 다음 쪽까지 읽고, 5쪽을 넘으면 truncated. */
+  @Test
+  void mfcListsFollowCursorAndFlagTruncation() {
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/stop-requests"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"stopRequestId":"STP-1","orderId":"ORD-1","mfcId":"MFC-1","state":"PENDING",
+                               "lastError":"E: x","requestedAt":"2026-11-16T01:00:00Z"}],
+                     "page":{"nextCursor":"STP-1"}}""")));
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/stop-requests"))
+            .withQueryParam("cursor", equalTo("STP-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"stopRequestId":"STP-2","orderId":"ORD-2","mfcId":"MFC-1","state":"PENDING",
+                               "lastError":"E: y","requestedAt":"2026-11-16T01:30:00Z"}],
+                     "page":{"nextCursor":null}}""")));
+    Res r = call("GET", "/views/pending-work", ADMIN, null);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("items").findValuesAsString("refId"))
+        .as("두 쪽 모두")
+        .contains("STP-1", "STP-2", "HO-1");
+    assertThat(r.body().path("truncated").asBoolean()).isFalse();
+
+    // 끝없이 다음 쪽이 있으면 5쪽에서 멈추고 truncated
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/stop-requests"))
+            .withQueryParam("cursor", equalTo("STP-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[],"page":{"nextCursor":"STP-1"}}""")));
+    Res t = call("GET", "/views/pending-work", ADMIN, null);
+    assertThat(t.body().path("truncated").asBoolean()).isTrue();
+    mfc.verify(
+        5 + 2,
+        getRequestedFor(urlPathEqualTo("/api/v1/stop-requests"))
+            .withQueryParam("size", equalTo("200")));
+  }
+
   @Test
   void stopRetryIsForwardedAndMappedToCommandResponse() {
     mfc.stubFor(
