@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.8.0
+  version: 0.9.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -35,7 +35,7 @@ paths:
         **원천 이름(sources[].system·unavailableSources·matches[].source.system)**: order-service(ORDER), delivery-execution-service(DELIVERY),
         delivery-dispatch-service(DISPATCH), claim-service(CLAIM), case-service(CASE), case-service/inquiries(INQUIRY). 이번 조회에서 부른 원천만 sources 에 나온다.
         닫힌 사건은 닫힌 시각 최근 순(case 0.5.0).
-        summary 에는 개인정보 원문을 싣지 않는다(이름·연락처·주소 없음 — 원문은 주문 화면의 열람 요청으로). MFC 현장은 아직 없다(PC 3 API).
+        summary 에는 개인정보 원문을 싣지 않는다(이름·연락처·주소 없음 — 원문은 주문 화면의 열람 요청으로). **MFC 현장(0.9.0, 2026-11-17 — PC 3 F-3 mfc-fulfillment 0.10.0)**: 주문으로 `GET /work-orders?orderId=`(직원 토큰) — 작업 지시마다 kind FULFILLMENT(결정·출고별 작업·결품 보고·포장·인계, 원천 모양 그대로), 중지 요청마다 MFC_STOP. 원천 이름 mfc-fulfillment-service(실패·403 은 unavailableSources, 404 는 현장 기록 없음).
       parameters:
         - { name: q, in: query, required: true, schema: { type: string, maxLength: 128 }, description: '주문 ID·배송 ID·사건 ID·고객 ID(완전 일치)' }
         - { name: kind, in: query, schema: { type: string, enum: [ORDER, DELIVERY, TRANSFER, TRIP, CUSTOMER, CASE, ANY] }, description: '비우면 ANY(접두어로 가림)' }
@@ -54,7 +54,7 @@ paths:
                         items:
                           type: object
                           properties:
-                            kind: { type: string, description: 'ORDER·DELIVERY·DISPATCH·CLAIM·CASE·INQUIRY' }
+                            kind: { type: string, description: 'ORDER·DELIVERY·DISPATCH·CLAIM·CASE·INQUIRY·FULFILLMENT·MFC_STOP(0.9.0)' }
                             id: { type: string }
                             summary: { type: object, additionalProperties: true, description: '원천 응답 중 개인정보가 아닌 필드만(원천 이름 그대로)' }
                             source: { $ref: '#/components/schemas/SourceStamp' }

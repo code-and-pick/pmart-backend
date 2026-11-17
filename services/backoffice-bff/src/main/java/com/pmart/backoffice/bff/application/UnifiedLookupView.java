@@ -111,6 +111,24 @@ public class UnifiedLookupView {
           "version");
   private static final List<String> CLAIM_FIELDS =
       List.of("claimId", "orderId", "type", "state", "openedAt");
+
+  /** F-3 작업 지시 — 원천 필드 그대로(shipments 안에 작업·결품 보고·포장·인계, 직원 ID 만 — 메모·QR 없음). */
+  private static final List<String> FULFILLMENT_FIELDS =
+      List.of(
+          "kind",
+          "mfcId",
+          "workVersion",
+          "acceptance",
+          "rejectReason",
+          "rejectMessage",
+          "decidedAt",
+          "preparationStartedAt",
+          "createdAt",
+          "shipments");
+
+  private static final List<String> MFC_STOP_FIELDS =
+      List.of("scope", "state", "lastError", "requestedAt", "failedAt", "resolvedAt");
+
   private static final List<String> CASE_FIELDS =
       List.of(
           "caseId",
@@ -250,6 +268,26 @@ public class UnifiedLookupView {
     subjects.addAll(deliveryIds);
     composeCases(run, subjects);
     composeInquiries(run, orderId);
+    composeFulfillment(run, orderId);
+  }
+
+  /**
+   * 그 주문의 MFC 현장 상태(F-3, mfc-fulfillment 0.10.0 {@code GET /work-orders?orderId=} — 직원 토큰). 작업 지시마다
+   * FULFILLMENT (결정·출고별 작업·결품 보고·포장·인계 — 원천 모양 그대로), 중지 요청마다 MFC_STOP. 원천에 메모·QR·개인정보 없음. 404 = 그
+   * 주문의 현장 기록 없음.
+   */
+  private void composeFulfillment(Run run, String orderId) {
+    JsonNode v = run.get(Source.FULFILLMENT, "/work-orders", Map.of(), Map.of("orderId", orderId));
+    if (v == null) {
+      return;
+    }
+    for (JsonNode w : v.path("workOrders")) {
+      Map<String, Object> s = pick(w, FULFILLMENT_FIELDS);
+      run.add("FULFILLMENT", text(w, "fulfillmentId"), s, Source.FULFILLMENT);
+    }
+    for (JsonNode st : v.path("stopRequests")) {
+      run.add("MFC_STOP", text(st, "stopRequestId"), pick(st, MFC_STOP_FIELDS), Source.FULFILLMENT);
+    }
   }
 
   /**

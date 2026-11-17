@@ -45,7 +45,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
   @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.bff.dispatch-base-url"),
   @ConfigureWireMock(name = "claim", baseUrlProperties = "pmart.bff.claim-base-url"),
-  @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url")
+  @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
+  @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url")
 })
 class UnifiedLookupIT {
 
@@ -71,11 +72,14 @@ class UnifiedLookupIT {
   @InjectWireMock("case")
   WireMockServer cases;
 
+  @InjectWireMock("mfc")
+  WireMockServer mfc;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(order, execution, dispatch, claim, cases)) {
+    for (WireMockServer w : List.of(order, execution, dispatch, claim, cases, mfc)) {
       w.resetAll();
     }
     http =
@@ -201,6 +205,25 @@ class UnifiedLookupIT {
         WireMock.get(urlPathEqualTo("/api/v1/inquiries"))
             .withHeader("Authorization", equalTo("Bearer " + OPS))
             .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
+    // MFC 현장(0.9.0, F-3): 기본은 현장 기록 없음, ORD-1 은 작업 지시 하나·중지 요청 하나
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/work-orders"))
+            .willReturn(json(404, "{\"code\":\"WORK_ORDER_NOT_FOUND\"}")));
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/work-orders"))
+            .withQueryParam("orderId", equalTo("ORD-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"orderId":"ORD-1","asOf":{"asOf":"2026-11-17T01:00:00Z","freshness":"CURRENT"},
+                     "workOrders":[{"fulfillmentId":"FUL-1","kind":"ORIGINAL","mfcId":"MFC-1","workVersion":2,"acceptance":"ACCEPTED",
+                                    "createdAt":"2026-11-17T00:00:00Z","preparationStartedAt":"2026-11-17T00:05:00Z",
+                                    "shipments":[{"shipmentId":"SHP-1","state":"PICKING",
+                                                  "tasks":[{"taskId":"T-1","taskType":"PICK","state":"BLOCKED","blockReason":"SHORTAGE","plannedQty":3,"completedQty":1,"cancelledQty":0,"remainingQty":2}],
+                                                  "shortages":[{"taskId":"T-1","orderLineId":"L-1","sku":"SKU-1","qty":2,"reportedAt":"2026-11-17T00:10:00Z","executionState":"APPLIED"}],
+                                                  "packages":[]}]}],
+                     "stopRequests":[{"stopRequestId":"STP-1","scope":"PARTIAL","state":"PENDING","lastError":"RETURN_MISMATCH: x","requestedAt":"2026-11-17T00:20:00Z"}]}""")));
   }
 
   static List<String> kinds(JsonNode body) {
@@ -221,7 +244,9 @@ class UnifiedLookupIT {
             "DISPATCH:DLV-1",
             "CASE:CASE-0",
             "CASE:CASE-1",
-            "INQUIRY:INQ-1");
+            "INQUIRY:INQ-1",
+            "FULFILLMENT:FUL-1",
+            "MFC_STOP:STP-1");
     assertThat(r.body().toString()).as("다른 주문 문의·고객이 쓴 제목은 없다").doesNotContain("INQ-X", "홍길동");
     assertThat(r.body().path("resolved").path("orderId").asString()).isEqualTo("ORD-1");
     // 클레임 원천 장애 — 0건으로 바꾸지 않고 unavailableSources
@@ -238,6 +263,27 @@ class UnifiedLookupIT {
         .doesNotContain("shippingAddress", "deliveryNote", "010-", "홍*동");
     assertThat(r.body().path("matches").get(2).path("summary").path("state").asString())
         .isEqualTo("DISPATCH_FAILED");
+
+    JsonNode ful = r.body().path("matches").get(6);
+    assertThat(ful.path("source").path("system").asString())
+        .as("MFC 현장(0.9.0)")
+        .isEqualTo("mfc-fulfillment-service");
+    assertThat(ful.path("summary").path("acceptance").asString()).isEqualTo("ACCEPTED");
+    assertThat(
+            ful.path("summary")
+                .path("shipments")
+                .get(0)
+                .path("tasks")
+                .get(0)
+                .path("blockReason")
+                .asString())
+        .isEqualTo("SHORTAGE");
+    assertThat(r.body().path("matches").get(7).path("summary").path("lastError").asString())
+        .startsWith("RETURN_MISMATCH");
+    mfc.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/work-orders"))
+            .withQueryParam("orderId", equalTo("ORD-1"))
+            .withHeader("Authorization", equalTo("Bearer " + CS)));
 
     // 원천에는 호출한 직원의 토큰이 간다
     order.verify(

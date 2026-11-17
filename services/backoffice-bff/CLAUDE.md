@@ -35,7 +35,7 @@
 - `GET /views/unified-lookup?q=&kind=`(`application/UnifiedLookupView`, `infrastructure/LookupClients`): 역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS. 원천 다섯(order 직원용 주문·delivery-execution 배송·delivery-dispatch 배차·claim 클레임·case 사건(열린 것 + 닫힌 것 최근 20건)·case 고객 문의)을 **운영자 토큰 전달**로 읽어 `matches` 에 원천마다 따로 싣는다(상태를 합치지 않음).
 - 찾는 값: 주문·배송·사건·고객 ID(완전 일치), `kind` 비우면 접두어(ORD-·DLV-·CASE-·CU-). 배송·사건은 그 주문으로 잇는다. 고객 ID 는 주문 목록만. TRANSFER·TRIP·모르는 값은 422 UNSUPPORTED_LOOKUP(전화번호 검색 안 함).
 - 원천 실패·403 은 `unavailableSources`(0건으로 바꾸지 않음), 404 는 항목 없음. summary 는 원천 필드 중 **개인정보가 아닌 것만 고른 목록**(`*_FIELDS`) — 배송지·메모·연락처(가린 값 포함)는 넣지 않는다. 찾는 값은 로그에 남기지 않는다.
-- 배송은 앞 10개까지 배차·사건을 더 읽는다. 문의(`GET /inquiries?orderId=`, case 0.5.0)는 CS_AGENT·OPERATOR_ADMIN 만 볼 수 있어 원천 이름을 `case-service/inquiries` 로 따로 둔다(RIDER_OPS 403 이 사건 원천 실패로 보이지 않게), 다른 주문 문의는 bff 에서도 거르고 제목·내용은 싣지 않는다. 아직 없음: MFC 현장(PC 3 API).
+- 배송은 앞 10개까지 배차·사건을 더 읽는다. 문의(`GET /inquiries?orderId=`, case 0.5.0)는 CS_AGENT·OPERATOR_ADMIN 만 볼 수 있어 원천 이름을 `case-service/inquiries` 로 따로 둔다(RIDER_OPS 403 이 사건 원천 실패로 보이지 않게), 다른 주문 문의는 bff 에서도 거르고 제목·내용은 싣지 않는다. **MFC 현장(0.9.0, 2026-11-17 — PC 3 F-3 mfc-fulfillment 0.10.0)**: 주문으로 `GET /work-orders?orderId=`(직원 토큰, `Source.FULFILLMENT` — 주소는 `mfc-fulfillment-base-url`) → 작업 지시마다 `FULFILLMENT`(`FULFILLMENT_FIELDS` — shipments 안 작업·결품 보고·포장·인계, 원천 모양 그대로), 중지 요청마다 `MFC_STOP`. 404 는 현장 기록 없음.
 - 주소 `pmart.bff.execution-base-url`(기본 `http://delivery-execution-service:8405`)·`dispatch-base-url`(8404)·`claim-base-url`(8204)·`case-base-url`(8506).
 
 ## 실시간 배송 현황 (2026-11-16, 배송 원문 §10.1 — 계약 0.3.0)

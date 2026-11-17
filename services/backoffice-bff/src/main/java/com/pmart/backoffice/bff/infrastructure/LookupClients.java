@@ -27,7 +27,9 @@ public class LookupClients {
     /** 같은 case-service 지만 권한이 달라(CS_AGENT·OPERATOR_ADMIN 만) 따로 표시한다. */
     INQUIRY("case-service/inquiries"),
     /** 도착 예정(TR-3, 2026-11-17 — 실시간 배송 현황). */
-    TRACKING("delivery-tracking-service");
+    TRACKING("delivery-tracking-service"),
+    /** MFC 현장 상태(F-3, mfc-fulfillment 0.10.0 — 통합 조회). */
+    FULFILLMENT("mfc-fulfillment-service");
 
     public final String system;
 
@@ -48,7 +50,8 @@ public class LookupClients {
             Source.CLAIM, builder.clone().baseUrl(props.claimBaseUrl()).build(),
             Source.CASE, builder.clone().baseUrl(props.caseBaseUrl()).build(),
             Source.INQUIRY, builder.clone().baseUrl(props.caseBaseUrl()).build(),
-            Source.TRACKING, builder.clone().baseUrl(props.trackingBaseUrl()).build());
+            Source.TRACKING, builder.clone().baseUrl(props.trackingBaseUrl()).build(),
+            Source.FULFILLMENT, builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build());
     this.mapper = mapper;
   }
 
