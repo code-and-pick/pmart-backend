@@ -77,6 +77,7 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired RiderWatch watch;
+  @Autowired com.pmart.delivery.tracking.application.ReceiptCheck receiptCheck;
 
   @InjectWireMock("kakao")
   WireMockServer kakao;
@@ -102,6 +103,60 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     kakao.resetAll();
+  }
+
+  /**
+   * 고객에게 받았는지 묻기(2026-11-17 — 사용자 "도착예정 시간보다 20분이 지나면"): ETA 가 없으면 약속 시간대 끝 + 20분, 픽업 뒤·전달 전만, 한
+   * 번만.
+   */
+  @Test
+  void receiptCheckAskedOnceTwentyMinutesAfterExpected() {
+    String late = "DLV-rc-" + UUID.randomUUID();
+    String early = "DLV-rc-" + UUID.randomUUID();
+    String store = "DLV-rc-" + UUID.randomUUID();
+    java.time.ZonedDateTime seoul = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul"));
+    String pastEnd = seoul.minusMinutes(30).toLocalTime().withSecond(0).withNano(0).toString();
+    String soonEnd = seoul.plusMinutes(30).toLocalTime().withSecond(0).withNano(0).toString();
+    java.sql.Date pastDay = java.sql.Date.valueOf(seoul.minusMinutes(30).toLocalDate());
+    java.sql.Date soonDay = java.sql.Date.valueOf(seoul.plusMinutes(30).toLocalDate());
+    jdbc.update(
+        "INSERT INTO delivery_progress (delivery_id, order_id, mfc_id, stage, arrival_date, arrival_end,"
+            + " created_at, updated_at) VALUES (?, 'ORD-rc-1', 'MFC-1', 'TO_CUSTOMER', ?, ?, now(), now()),"
+            + " (?, 'ORD-rc-2', 'MFC-1', 'AT_CUSTOMER', ?, ?, now(), now()),"
+            + " (?, 'ORD-rc-3', 'MFC-1', 'AT_STORE', ?, ?, now(), now())",
+        late,
+        pastDay,
+        pastEnd,
+        early,
+        soonDay,
+        soonEnd,
+        store,
+        pastDay,
+        pastEnd);
+    receiptCheck.run();
+    receiptCheck.run(); // 한 번만
+    Integer asked =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE type = 'DeliveryReceiptCheckRequested' AND"
+                + " aggregateid = ?",
+            Integer.class,
+            late);
+    assertThat(asked).isEqualTo(1);
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'DeliveryReceiptCheckRequested' AND"
+                + " aggregateid = ?",
+            String.class,
+            late);
+    assertThat(payload).contains("ARRIVAL_WINDOW").contains("ORD-rc-1");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE type = 'DeliveryReceiptCheckRequested' AND"
+                    + " aggregateid IN (?, ?)",
+                Integer.class,
+                early,
+                store))
+        .isZero(); // 아직 20분 안 지남 / 픽업 전
   }
 
   /**

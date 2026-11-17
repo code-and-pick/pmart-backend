@@ -60,8 +60,11 @@
               "type": "string",
               "enum": [
                 "FACE",
-                "CONTACTLESS"
-              ]
+                "CONTACTLESS",
+                "CUSTOMER_CONFIRMED",
+                "AUTO_COMPLETED"
+              ],
+              "description": "2026-11-17 — CUSTOMER_CONFIRMED 고객이 받았다고 누름, AUTO_COMPLETED 픽업 5시간 뒤 자동 완료(라이더 수행료는 지원센터 조정). 둘 다 사진 없음(evidenceRef kind DOCUMENT)"
             },
             "evidenceRef": {
               "$ref": "_defs.v1.json#/$defs/EvidenceRef"

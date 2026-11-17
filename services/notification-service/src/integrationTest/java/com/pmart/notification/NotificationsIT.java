@@ -328,6 +328,40 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
 
   /** N-3(ADR-0065): 오배송 다시 배송비 결제 필요 → 주문 소유자 알림함(결제 분류, 주문 상세로). */
   /** 고객 반품 회수(2026-11-17): 배정 중·회수함·고객 사정 회수 실패만 알린다 — 시스템 거절·오배송 회수·일반 배송 생성은 알리지 않는다. */
+  /**
+   * 받았는지 묻기(2026-11-17 — tracking DeliveryReceiptCheckRequested, delivery.tracking.v1) → 주문한 고객
+   * 알림함.
+   */
+  @Test
+  void receiptCheckAsksOrderOwner() throws Exception {
+    String me = "ACC-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    String order = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(order, me);
+    publish(
+        "delivery.tracking.v1",
+        "DeliveryReceiptCheckRequested",
+        "Delivery",
+        "DLV-rc-" + order,
+        m(
+            "deliveryId",
+            "DLV-rc-" + order,
+            "orderId",
+            order,
+            "expectedAt",
+            "2026-11-17T09:00:00Z",
+            "basis",
+            "ARRIVAL_WINDOW",
+            "askedAt",
+            "2026-11-17T09:20:00Z"));
+    Res mine =
+        await(
+            () -> send("GET", TestJwt.customer(me), "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    JsonNode n = mine.body().path("items").get(0);
+    assertThat(n.path("title").asString()).isEqualTo("상품을 받으셨나요?");
+    assertThat(n.path("destination").path("ref").asString()).isEqualTo(order);
+  }
+
   @Test
   void claimReturnPickupNotifiesCustomer() throws Exception {
     String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);

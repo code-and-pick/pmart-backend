@@ -106,6 +106,17 @@ public final class Notices {
         orderId);
   }
 
+  /** 받았는지 묻기(2026-11-17) — 도착 예정 20분 지남. 고객이 "받았어요"를 누르면 전달 완료. */
+  public static Notice receiptCheck(String orderId) {
+    return new Notice(
+        "DELIVERY_RECEIPT_CHECK",
+        DELIVERY,
+        "상품을 받으셨나요?",
+        "도착 예정 시간이 지났어요. 받으셨다면 주문 상세에서 '받았어요'를 눌러 주세요. 아직 못 받으셨다면 고객센터로 알려 주세요.",
+        "ORDER",
+        orderId);
+  }
+
   public static Notice delivered(String orderId) {
     return new Notice(
         "DELIVERY_COMPLETED",

@@ -27,7 +27,8 @@ public record ExecutionProperties(
     @Nullable List<LocalDate> publicHolidays,
     @Nullable Duration confirmInterval,
     @Nullable Duration orphanPhotoAfter,
-    @Nullable Duration photoSweepInterval) {
+    @Nullable Duration photoSweepInterval,
+    @Nullable Duration autoCompleteAfter) {
 
   public ExecutionProperties {
     confirmAfter = confirmAfter == null ? Duration.ofHours(5) : confirmAfter;
@@ -39,6 +40,8 @@ public record ExecutionProperties(
     confirmInterval = confirmInterval == null ? Duration.ofMinutes(1) : confirmInterval;
     orphanPhotoAfter = orphanPhotoAfter == null ? Duration.ofHours(5) : orphanPhotoAfter;
     photoSweepInterval = photoSweepInterval == null ? Duration.ofMinutes(10) : photoSweepInterval;
+    // 자동 전달 완료(2026-11-17 사용자 "5시간 지나면 자동완료") — 픽업 뒤
+    autoCompleteAfter = autoCompleteAfter == null ? Duration.ofHours(5) : autoCompleteAfter;
   }
 
   public Set<LocalDate> holidays() {

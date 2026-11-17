@@ -195,6 +195,20 @@ public class NotificationService {
    * delivery.slot.v1 — SlotCapacityReduced(CP-1, 2026-11-16): 영향 주문마다 "배송이 늦어질 수 있어요"(도착 시간대가 있으면 그
    * 시간). 한 사건에 주문이 여럿이라 주문 ID 로 구분해 한 번씩.
    */
+  /**
+   * 고객에게 받았는지 묻기(2026-11-17 — 사용자 "도착예정 시간보다 20분이 지나면 고객에게 음식을 받았는지 물어보고 고객이 전달완료를 눌러주면"): tracking
+   * DeliveryReceiptCheckRequested → 고객 알림함. 고객 앱은 주문 상세에서 "받았어요"(execution receipt-confirmations).
+   */
+  public void onTrackingEvent(EventEnvelope e) {
+    if (!"DeliveryReceiptCheckRequested".equals(e.eventType())) {
+      return;
+    }
+    String orderId = e.payload().path("orderId").asString("");
+    if (!orderId.isBlank()) {
+      notify(e, null, orderId, Notices.receiptCheck(orderId), "");
+    }
+  }
+
   public void onSlotEvent(EventEnvelope e) {
     if (!"SlotCapacityReduced".equals(e.eventType())) {
       return;

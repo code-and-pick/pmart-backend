@@ -406,6 +406,17 @@ public class ExecutionStore {
 
   // ---- 이력
 
+  /** 자동 전달 완료 후보(2026-11-17) — 픽업 뒤 그 시각 전, 아직 전달 전(실패 등록 중 아님). */
+  public List<String> autoCompleteCandidates(Instant pickedBefore, int limit) {
+    return jdbc.query(
+        "SELECT delivery_id FROM execution_delivery WHERE state IN ('PICKED_UP',"
+            + " 'ARRIVED_AT_CUSTOMER') AND type <> 'RETURN' AND picked_up_at < ? ORDER BY"
+            + " picked_up_at LIMIT ?",
+        (rs, i) -> rs.getString(1),
+        ts(pickedBefore),
+        limit);
+  }
+
   /** 운영자 상태 정정 기록(V16, 2026-11-17). */
   public void insertCorrection(
       String correctionId,

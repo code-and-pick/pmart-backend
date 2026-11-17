@@ -73,4 +73,13 @@ class NotificationEventConsumers {
   PmartEventConsumer riderEvents(EventConsumers consumers, NotificationService n) {
     return consumers.of(e -> "RiderRestricted".equals(e.eventType()), n::onRiderEvent);
   }
+
+  /**
+   * delivery.tracking.v1 — 고객에게 받았는지 묻기(2026-11-17, DeliveryReceiptCheckRequested). 시작 위치 latest.
+   */
+  @Bean
+  PmartEventConsumer trackingEvents(EventConsumers consumers, NotificationService n) {
+    return consumers.of(
+        e -> "DeliveryReceiptCheckRequested".equals(e.eventType()), n::onTrackingEvent);
+  }
 }

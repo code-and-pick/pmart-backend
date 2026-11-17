@@ -111,6 +111,41 @@ public class ProgressStore {
         .findFirst();
   }
 
+  /** 받았는지 아직 묻지 않은, 픽업 뒤·전달 전 배송(2026-11-17). */
+  public List<Progress> receiptCandidates(int limit) {
+    return jdbc.query(
+        "SELECT p.delivery_id, p.order_id, p.mfc_id, p.stage, p.outcome, p.arrival_date,"
+            + " p.arrival_start, p.arrival_end, p.updated_at, a.rider_id, a.eta_pickup,"
+            + " a.eta_drop, a.eta_checked_at FROM delivery_progress p LEFT JOIN"
+            + " rider_active_delivery a ON a.delivery_id = p.delivery_id AND a.state = 'ACTIVE'"
+            + " WHERE p.stage IN ('TO_CUSTOMER', 'AT_CUSTOMER') AND p.receipt_asked_at IS NULL"
+            + " AND p.order_id IS NOT NULL ORDER BY p.updated_at LIMIT ?",
+        this::row,
+        limit);
+  }
+
+  /** 한 번만(이미 물었으면 0). */
+  public int markReceiptAsked(String deliveryId, Instant at) {
+    return jdbc.update(
+        "UPDATE delivery_progress SET receipt_asked_at = ? WHERE delivery_id = ? AND"
+            + " receipt_asked_at IS NULL",
+        Timestamp.from(at),
+        deliveryId);
+  }
+
+  /** 이 서비스의 Delivery 사건 버전(ETA 사건과 같은 줄) — 감시 줄이 없으면 null. */
+  public @Nullable Integer bumpEventVersion(String deliveryId) {
+    return jdbc
+        .query(
+            "UPDATE rider_active_delivery SET eta_version = eta_version + 1 WHERE delivery_id = ?"
+                + " RETURNING eta_version",
+            (rs, i) -> rs.getInt(1),
+            deliveryId)
+        .stream()
+        .findFirst()
+        .orElse(null);
+  }
+
   /** 끝난 지 보존 기간이 지난 진행 사본을 지운다. */
   public int purgeDone(Instant before) {
     return jdbc.update(

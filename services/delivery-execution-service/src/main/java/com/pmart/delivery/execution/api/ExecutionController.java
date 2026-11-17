@@ -47,6 +47,14 @@ public class ExecutionController implements ExecutionApi {
 
   private final com.pmart.delivery.execution.application.SurchargeService surcharges;
 
+  /** 고객 수령 확인(2026-11-17, 0.20.0). */
+  @Override
+  public ResponseEntity<ReportStoreArrival200Response> confirmDeliveryReceipt(
+      String deliveryId, String idempotencyKey, String xSourceSystem) {
+    return ResponseEntity.ok(
+        ExecutionViews.applied(service.confirmReceipt(deliveryId, idempotencyKey, xSourceSystem)));
+  }
+
   /** 엘리베이터 고장 추가 배달료 신청(2026-11-17, 0.19.0). */
   @Override
   public ResponseEntity<com.pmart.delivery.execution.api.generated.model.SurchargeRequest>

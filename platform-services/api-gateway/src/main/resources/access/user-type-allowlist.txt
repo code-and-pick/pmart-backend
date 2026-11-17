@@ -347,6 +347,7 @@ POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages OPERATOR
 POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages/{messageId}/maskings OPERATOR
 POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/resolutions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/pickups RIDER
+POST /api/v1/deliveries/{deliveryId}/receipt-confirmations CUSTOMER
 POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/store-deliveries RIDER
 POST /api/v1/deliveries/{deliveryId}/status-corrections OPERATOR

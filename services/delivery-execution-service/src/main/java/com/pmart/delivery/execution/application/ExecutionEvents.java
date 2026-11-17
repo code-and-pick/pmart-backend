@@ -70,6 +70,19 @@ public class ExecutionEvents {
       String evidenceId,
       Instant takenAt,
       Instant at) {
+    completed(before, lines, method, evidenceId, "PHOTO", takenAt, at, rider(before));
+  }
+
+  /** 사진 없는 완료(2026-11-17 — 고객 수령 확인·자동 완료): evidenceRef kind DOCUMENT(완료 기록 ID). */
+  public void completed(
+      DeliveryRow before,
+      List<Map<String, Object>> lines,
+      String method,
+      String evidenceId,
+      String kind,
+      Instant takenAt,
+      Instant at,
+      EventEnvelope.Actor actor) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", before.deliveryId());
     p.put("orderId", before.orderId());
@@ -78,12 +91,12 @@ public class ExecutionEvents {
     p.put("method", method);
     p.put(
         "evidenceRef",
-        Map.of("evidenceId", evidenceId, "kind", "PHOTO", "capturedAt", takenAt.toString()));
+        Map.of("evidenceId", evidenceId, "kind", kind, "capturedAt", takenAt.toString()));
     p.put("deliveredAt", at.toString());
     if (before.purpose() != null) {
       p.put("purpose", before.purpose()); // 오배송 다시 배송이면 order 가 수량을 다시 세지 않는다(ADR-0065)
     }
-    publish("DeliveryCompleted", before, rider(before), p);
+    publish("DeliveryCompleted", before, actor, p);
   }
 
   /**

@@ -90,6 +90,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired EarningService earnings;
   @Autowired com.pmart.delivery.execution.application.PhotoSweeper sweeper;
+  @Autowired com.pmart.delivery.execution.application.AutoCompletion autoCompletion;
 
   @InjectWireMock("order")
   WireMockServer orderApi;
@@ -1370,6 +1371,78 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(before + 1000);
     JsonNode v = view(id, rider);
     assertThat(v.path("earning").path("compensation").asInt()).isEqualTo(1000);
+  }
+
+  /**
+   * 고객 수령 확인·자동 완료(2026-11-17 — 사용자 "5시간 지나면 자동완료", "고객에게 받았는지 물어보고 고객이 전달완료를 눌러주면 라이더앱에도 반영"): 고객
+   * 확인 → COMPLETED(CUSTOMER_CONFIRMED)·수행료 정상, 픽업 5시간 지남 → 자동 완료(AUTO_COMPLETED)·수행료 산정 불가(지원센터
+   * 조정).
+   */
+  @Test
+  void customerConfirmsReceiptAndStaleDeliveryAutoCompletes() {
+    String order = "ORD-" + UUID.randomUUID();
+    String me = "ACC-" + UUID.randomUUID();
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), order, rider);
+    var stub =
+        orderApi.stubFor(
+            com.github.tomakehurst.wiremock.client.WireMock.get(
+                    com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                        "/api/v1/internal/orders/" + order))
+                .willReturn(
+                    com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"orderId\":\"" + order + "\",\"accountId\":\"" + me + "\"}")));
+    assertThat(receipt(id, TestJwt.customer("ACC-OTHER")).getStatusCode().value()).isEqualTo(404);
+    ResponseEntity<String> ok = receipt(id, TestJwt.customer(me));
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(state(id)).isEqualTo("COMPLETED");
+    JsonNode done = outbox(id, "DeliveryCompleted").path("payload");
+    assertThat(done.path("method").asString()).isEqualTo("CUSTOMER_CONFIRMED");
+    assertThat(done.path("evidenceRef").path("kind").asString()).isEqualTo("DOCUMENT");
+    assertThat(view(id, rider).path("state").asString()).isEqualTo("COMPLETED"); // 라이더 앱에도
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT calculable FROM rider_earning WHERE delivery_id = ?", Boolean.class, id))
+        .isTrue();
+    assertThat(receipt(id, TestJwt.customer(me)).getStatusCode().value()).isEqualTo(409);
+    orderApi.removeStub(stub);
+
+    // 픽업 5시간 지남 → 자동 완료, 열린 도움요청이 있으면 그대로
+    String old = "DLV-" + UUID.randomUUID();
+    pickedUp(old, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String helped = "DLV-" + UUID.randomUUID();
+    pickedUp(helped, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    assertThat(
+            post(helped, "help-requests", rider, Map.of("category", "ADDRESS_ISSUE"))
+                .getStatusCode()
+                .value())
+        .isIn(200, 201, 202);
+    jdbc.update(
+        "UPDATE execution_delivery SET picked_up_at = now() - interval '6 hours' WHERE delivery_id"
+            + " IN (?, ?)",
+        old,
+        helped);
+    autoCompletion.run();
+    assertThat(state(old)).isEqualTo("COMPLETED");
+    assertThat(outbox(old, "DeliveryCompleted").path("payload").path("method").asString())
+        .isEqualTo("AUTO_COMPLETED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT calculable FROM rider_earning WHERE delivery_id = ?", Boolean.class, old))
+        .isFalse(); // 수익은 자동 확정하지 않음(원문 §6.4) — 지원센터 조정
+    assertThat(state(helped)).isEqualTo("PICKED_UP");
+  }
+
+  ResponseEntity<String> receipt(String id, String token) {
+    return http.post()
+        .uri("/deliveries/{id}/receipt-confirmations", id)
+        .header("Authorization", "Bearer " + token)
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .header("X-Source-System", "customer-app")
+        .retrieve()
+        .toEntity(String.class);
   }
 
   /** 운영자 상태 정정(2026-11-17 — 사용자 "라이더 운영 관리자가 승인"): 픽업 뒤 고객 도착 ↔ 픽업만, 이력·사건·기록. */

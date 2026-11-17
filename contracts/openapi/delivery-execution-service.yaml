@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.19.0
+  version: 0.20.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -688,6 +688,27 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
 
+  /deliveries/{deliveryId}/receipt-confirmations:
+    post:
+      tags: [execution]
+      summary: (0.20.0) 고객이 "받았어요" — 고객 수령 확인으로 전달 완료 (주문한 고객 본인)
+      x-added-in: '2026-11-17'
+      description: |
+        사용자 2026-11-17 **"도착예정 시간보다 20분이 지나면 고객에게 음식을 받았는지 물어보고 고객이 전달완료를 눌러주면 라이더앱에도 반영"** — 묻는 것은
+        delivery-tracking `DeliveryReceiptCheckRequested` → notification 고객 알림. 고객이 누르면 PICKED_UP·ARRIVED_AT_CUSTOMER 배송을 COMPLETED
+        (method CUSTOMER_CONFIRMED, 이력 actor CUSTOMER, 사진 없음) + DeliveryCompleted(인계 줄) + 라이더 수행료(수락 당시 금액 — 고객이 받았으니 정상). 라이더 앱은 배송 조회에서
+        COMPLETED 를 본다. 남의 주문 404, 실패 등록 중·이미 끝남 409. 같은 키 재전송은 같은 결과.
+      operationId: confirmDeliveryReceipt
+      x-pmart-user-types: [CUSTOMER]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /deliveries/{deliveryId}/surcharge-requests:
     post:
       tags: [execution]
@@ -1368,7 +1389,7 @@ components:
         state: { $ref: '#/components/schemas/ExecutionState' }
         occurredAt: { type: string, format: date-time }
         recordedAt: { type: string, format: date-time }
-        actor: { type: string, enum: [RIDER, SYSTEM_EVENT, OPERATOR] }
+        actor: { type: string, enum: [RIDER, SYSTEM_EVENT, OPERATOR, CUSTOMER], description: 'CUSTOMER(0.20.0) = 고객 수령 확인, SYSTEM_EVENT 에 자동 완료(5시간)' }
         sourceRef: { type: string, description: handoverId / correction requestId / case }
     DeliveryExecution:
       type: object

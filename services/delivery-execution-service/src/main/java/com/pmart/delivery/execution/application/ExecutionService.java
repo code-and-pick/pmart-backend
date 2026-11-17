@@ -70,6 +70,9 @@ public class ExecutionService {
       @Nullable String goodsLocation,
       List<Map<String, Object>> contactAttempts) {}
 
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(ExecutionService.class);
+
   private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
   private final ExecutionStore store;
@@ -590,6 +593,110 @@ public class ExecutionService {
   }
 
   /** 본인 주문의 배송인가(order 내부 accountId). 주문 없는 배송은 아니다. */
+  /** 고객 수령 확인·자동 완료가 받는 상태(픽업 뒤·전달 전 — 실패 등록 중은 아님). */
+  private static final Set<String> RECEIPT_FROM = Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
+
+  /**
+   * 고객이 "받았어요"(2026-11-17 — 사용자 "도착예정 20분 지나면 고객에게 묻고 고객이 전달완료를 눌러주면 라이더앱에도 반영"): COMPLETED(method
+   * CUSTOMER_CONFIRMED, 사진 없음) + DeliveryCompleted + 수행료(수락 당시 금액).
+   */
+  public Applied confirmReceipt(String deliveryId, String requestId, String source) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.CUSTOMER)
+            .orElseThrow(() -> forbidden("주문한 고객만 수령을 확인할 수 있습니다."));
+    // 소유 확인은 잠금 밖(order 호출)
+    DeliveryRow peek =
+        store
+            .delivery(deliveryId)
+            .filter(x -> customerOwns(p, x))
+            .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송을 찾을 수 없습니다."));
+    return idempotency
+        .execute(
+            new RequestKey(source, requestId, "confirmDeliveryReceipt", p.subject()),
+            Map.of("deliveryId", peek.deliveryId()),
+            Applied.class,
+            () -> {
+              Instant now = clock.instant();
+              DeliveryRow d = store.lockDelivery(deliveryId).orElseThrow();
+              if (!RECEIPT_FROM.contains(d.state()) || "RETURN".equals(d.type())) {
+                throw PmartException.invalidState("받음 확인을 할 수 없는 배송입니다(지금 " + d.state() + ").");
+              }
+              int v =
+                  finishWithoutPhoto(
+                      d,
+                      "CUSTOMER_CONFIRMED",
+                      "CUSTOMER",
+                      new com.pmart.common.messaging.EventEnvelope.Actor(
+                          com.pmart.common.messaging.EventEnvelope.ActorType.CUSTOMER, p.subject()),
+                      now);
+              earnings.completed(d, now);
+              log.info("배송 {} 고객 수령 확인 → 완료", deliveryId);
+              return new Applied(requestId, deliveryId, v, now);
+            })
+        .value();
+  }
+
+  /**
+   * 자동 전달 완료(2026-11-17 — 사용자 "5시간 지나면 자동완료"): 픽업 뒤 5시간 지나도록 완료·실패 등록이 없고 열린 도움요청이 없는 배송. 원문 §6.4
+   * "시간 경과만으로 수익까지 자동 확정하지 않음" — 수행료는 산정 불가(지원센터 조정). 다른 처리와 겹치면 아무것도 하지 않는다.
+   */
+  @org.springframework.transaction.annotation.Transactional
+  public boolean autoComplete(String deliveryId, Instant pickedBefore, Instant now) {
+    DeliveryRow d = store.lockDelivery(deliveryId).orElse(null);
+    if (d == null
+        || !RECEIPT_FROM.contains(d.state())
+        || "RETURN".equals(d.type())
+        || d.pickedUpAt() == null
+        || !d.pickedUpAt().isBefore(pickedBefore)) {
+      return false;
+    }
+    boolean openHelp =
+        store.helps(deliveryId).stream()
+            .anyMatch(h -> "OPEN".equals(h.state()) || "IN_PROGRESS".equals(h.state()));
+    if (openHelp) {
+      return false;
+    }
+    try {
+      finishWithoutPhoto(
+          d,
+          "AUTO_COMPLETED",
+          "SYSTEM_EVENT",
+          new com.pmart.common.messaging.EventEnvelope.Actor(
+              com.pmart.common.messaging.EventEnvelope.ActorType.SYSTEM,
+              "delivery-execution-service"),
+          now);
+    } catch (PmartException e) {
+      log.warn("배송 {} 자동 완료 못 함({})", deliveryId, e.code());
+      return false;
+    }
+    earnings.notCalculable(d, "AUTO_COMPLETED", now);
+    log.info("배송 {} 픽업 뒤 오래 완료되지 않아 자동 완료", deliveryId);
+    return true;
+  }
+
+  private int finishWithoutPhoto(
+      DeliveryRow d,
+      String method,
+      String historyActor,
+      com.pmart.common.messaging.EventEnvelope.Actor actor,
+      Instant now) {
+    List<Map<String, Object>> delivered = d.redelivery() ? originLines(d) : deliveredLines(d);
+    if (delivered.isEmpty()) {
+      throw PmartException.invalidState("인계된 상품 수량을 확인할 수 없습니다. 지원센터에 문의해 주세요.");
+    }
+    String evidenceId = "EVD-" + UUID.randomUUID();
+    Map<String, Object> evidence = new LinkedHashMap<>();
+    evidence.put("evidenceRef", evidenceId);
+    evidence.put("method", method);
+    evidence.put("photoRefs", List.of());
+    evidence.put("takenAt", now.toString());
+    store.completed(d.deliveryId(), method, mapper.writeValueAsString(evidence), now);
+    store.history(d.deliveryId(), "COMPLETED", now, historyActor, evidenceId, now);
+    events.completed(d, delivered, method, evidenceId, "DOCUMENT", now, now, actor);
+    return store.delivery(d.deliveryId()).map(DeliveryRow::version).orElse(d.version() + 1);
+  }
+
   private boolean customerOwns(PmartPrincipal p, DeliveryRow d) {
     return d.orderId() != null
         && orders.accountId(d.orderId()).map(p.subject()::equals).orElse(false);
