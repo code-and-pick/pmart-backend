@@ -322,6 +322,62 @@ public class ExecutionService {
         .value();
   }
 
+  /**
+   * 직원 근거 사진(2026-11-18 — 라이더 백오피스 요청 #6): 상태 정정 근거. RIDER_OPS·OPERATOR_ADMIN, 상태 무관. 저장 규칙은 라이더
+   * 사진과 같다(트랜잭션 밖에서 올리고, 참조는 출처·키·직원·배송·내용으로 정해 재전송은 같은 사진). 올린 사람 = 직원 ID.
+   */
+  public Photo uploadStaffPhoto(String deliveryId, String requestId, String source, byte[] bytes) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> forbidden("직원만 올릴 수 있습니다."));
+    if (!(p.hasRole("RIDER_OPS") || p.hasRole("OPERATOR_ADMIN"))) {
+      throw forbidden("근거 사진은 라이더 운영·관리자만 올릴 수 있습니다.");
+    }
+    if (bytes.length == 0 || bytes.length > ExecutionRules.MAX_PHOTO_BYTES) {
+      throw unprocessable("PHOTO_INVALID", "사진은 10MB 이하여야 합니다.");
+    }
+    String contentType =
+        ExecutionRules.photoType(bytes)
+            .orElseThrow(() -> unprocessable("PHOTO_INVALID", "JPEG·PNG·WEBP 사진만 올릴 수 있습니다."));
+    EvidencePhotoStorage storage = photos.getIfAvailable();
+    if (storage == null) {
+      throw new PmartException(ErrorCode.DEPENDENCY_UNAVAILABLE, "증빙 사진 저장소가 설정되지 않았습니다.");
+    }
+    store.delivery(deliveryId).orElseThrow(ExecutionService::notFound);
+    String hash = sha256(bytes);
+    String photoRef =
+        "EVP-"
+            + UUID.nameUUIDFromBytes(
+                String.join("\n", source, requestId, "staff", p.subject(), deliveryId, hash)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    String key = "deliveries/" + deliveryId + "/" + photoRef;
+    boolean stored = store.photo(photoRef).isPresent();
+    if (!stored) {
+      store.notePhotoUpload(key, deliveryId, clock.instant());
+      storage.put(key, bytes, contentType);
+    }
+    return idempotency
+        .execute(
+            new RequestKey(source, requestId, "uploadStaffEvidencePhoto", p.subject()),
+            Map.of("deliveryId", deliveryId, "sha256", hash),
+            Photo.class,
+            () -> {
+              Optional<PhotoRow> existing = store.photo(photoRef);
+              if (existing.isPresent()) {
+                PhotoRow x = existing.get();
+                return new Photo(x.photoRef(), x.contentType(), x.sizeBytes(), x.uploadedAt());
+              }
+              Instant now = clock.instant();
+              store.insertPhoto(
+                  new PhotoRow(
+                      photoRef, deliveryId, p.subject(), key, contentType, bytes.length, now));
+              store.forgetPhotoUpload(key);
+              return new Photo(photoRef, contentType, bytes.length, now);
+            })
+        .value();
+  }
+
   /** 전달 완료: 이 배송에 같은 라이더가 올린 사진 참조가 있어야 한다(자동 완료 없음) → DeliveryCompleted. */
   public Applied complete(
       String deliveryId,

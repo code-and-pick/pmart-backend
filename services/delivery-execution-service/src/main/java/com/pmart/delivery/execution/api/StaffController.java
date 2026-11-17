@@ -45,6 +45,7 @@ public class StaffController implements StaffApi {
   private final com.pmart.delivery.execution.application.StatusCorrectionService corrections;
   private final com.pmart.delivery.execution.application.SurchargeService surcharges;
   private final com.pmart.delivery.execution.application.DeliveryStats stats;
+  private final com.pmart.delivery.execution.application.ExecutionService execution;
 
   public StaffController(
       StaffQueries queries,
@@ -55,8 +56,10 @@ public class StaffController implements StaffApi {
       com.pmart.delivery.execution.application.OperatingTimeService operating,
       com.pmart.delivery.execution.application.StatusCorrectionService corrections,
       com.pmart.delivery.execution.application.SurchargeService surcharges,
-      com.pmart.delivery.execution.application.DeliveryStats stats) {
+      com.pmart.delivery.execution.application.DeliveryStats stats,
+      com.pmart.delivery.execution.application.ExecutionService execution) {
     this.stats = stats;
+    this.execution = execution;
     this.corrections = corrections;
     this.surcharges = surcharges;
     this.adjustments = adjustments;
@@ -115,6 +118,32 @@ public class StaffController implements StaffApi {
             .adjustmentPending(s.adjustmentPending())
             .surchargeRequested(s.surchargeRequested())
             .asOf(ExecutionViews.time(s.asOf())));
+  }
+
+  /** 직원 근거 사진(2026-11-18, 0.22.0). */
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.EvidencePhoto>
+      uploadStaffEvidencePhoto(
+          String deliveryId,
+          String idempotencyKey,
+          String xSourceSystem,
+          org.springframework.web.multipart.MultipartFile file) {
+    byte[] bytes;
+    try {
+      bytes = file.getBytes();
+    } catch (java.io.IOException e) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "사진을 읽을 수 없습니다.");
+    }
+    var p = execution.uploadStaffPhoto(deliveryId, idempotencyKey, xSourceSystem, bytes);
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(
+            new com.pmart.delivery.execution.api.generated.model.EvidencePhoto()
+                .photoRef(p.photoRef())
+                .contentType(
+                    com.pmart.delivery.execution.api.generated.model.EvidencePhoto.ContentTypeEnum
+                        .fromValue(p.contentType()))
+                .sizeBytes(p.sizeBytes())
+                .uploadedAt(ExecutionViews.time(p.uploadedAt())));
   }
 
   /** 운영자 상태 정정(2026-11-17, 0.17.0). */

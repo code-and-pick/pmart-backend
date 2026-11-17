@@ -1484,9 +1484,65 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(bad.getStatusCode().value()).isEqualTo(422);
     assertThat(body(bad).path("code").asString()).isEqualTo("CORRECTION_NOT_ALLOWED");
     assertThat(correct(id, ops, back).getStatusCode().value()).isEqualTo(422);
+    // 직원 근거 사진(2026-11-18 요청 #6): 올리고 정정에 붙인다, 다른 배송의 사진은 422
+    ResponseEntity<String> staffPhoto = staffUpload(id, ops);
+    assertThat(staffPhoto.getStatusCode().value()).as(staffPhoto.getBody()).isEqualTo(201);
+    String evidence = body(staffPhoto).path("photoRef").asString();
+    assertThat(
+            staffUpload(id, TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    ResponseEntity<String> wrong =
+        correct(
+            id,
+            ops,
+            Map.of(
+                "targetState",
+                "PICKED_UP",
+                "reason",
+                "다시 확인",
+                "evidenceRefs",
+                List.of("EVP-none")));
+    assertThat(body(wrong).path("code").asString()).isEqualTo("PHOTO_NOT_FOUND");
+    ResponseEntity<String> withPhoto =
+        correct(
+            id,
+            ops,
+            Map.of(
+                "targetState",
+                "PICKED_UP",
+                "reason",
+                "통화·사진 확인",
+                "evidenceRefs",
+                List.of(evidence)));
+    assertThat(withPhoto.getStatusCode().value()).as(withPhoto.getBody()).isEqualTo(200);
     // 라이더는 다시 고객 도착을 누를 수 있다
     assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
         .isEqualTo(200);
+  }
+
+  ResponseEntity<String> staffUpload(String id, String token) {
+    LinkedMultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
+    form.add(
+        "file",
+        new ByteArrayResource(JPEG) {
+          @Override
+          public String getFilename() {
+            return "evidence.jpg";
+          }
+        });
+    return http.post()
+        .uri("/deliveries/{id}/staff-evidence-photos", id)
+        .header("Authorization", "Bearer " + token)
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .header("X-Source-System", "rider-backoffice-web")
+        .contentType(MediaType.MULTIPART_FORM_DATA)
+        .body(form)
+        .retrieve()
+        .toEntity(String.class);
   }
 
   ResponseEntity<String> correct(String id, String token, Map<String, Object> body) {

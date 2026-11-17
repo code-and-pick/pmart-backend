@@ -95,6 +95,17 @@ public class StatusCorrectionService {
                     false,
                     List.of());
               }
+              // 근거 사진은 이 배송의 것만(2026-11-18 — 직원은 staff-evidence-photos 로 올린다)
+              for (String ref : c.evidenceRefs()) {
+                if (store.photo(ref).filter(ph -> ph.deliveryId().equals(deliveryId)).isEmpty()) {
+                  throw new PmartException(
+                      "PHOTO_NOT_FOUND",
+                      HttpStatus.UNPROCESSABLE_CONTENT,
+                      "이 배송에 올린 사진이 아닙니다.",
+                      false,
+                      List.of());
+                }
+              }
               String id = "COR-" + UUID.randomUUID();
               store.insertCorrection(
                   id,
