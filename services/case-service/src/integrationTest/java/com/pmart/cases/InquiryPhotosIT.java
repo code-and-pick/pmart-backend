@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,7 @@ import tools.jackson.databind.ObjectMapper;
 class InquiryPhotosIT extends PostgresKafkaContainerSupport {
 
   static final Map<String, byte[]> STORED = new ConcurrentHashMap<>();
+  static final AtomicBoolean FAIL_PUT = new AtomicBoolean(false);
   static final byte[] JPEG = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01, 0x02};
   static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 0x00};
 
@@ -59,6 +61,10 @@ class InquiryPhotosIT extends PostgresKafkaContainerSupport {
       return new InquiryPhotoStorage() {
         @Override
         public void put(String key, byte[] bytes, String contentType) {
+          if (FAIL_PUT.get()) {
+            throw com.pmart.common.web.PmartException.dependencyUnavailable(
+                "시험: 저장소 실패", new IllegalStateException("down"));
+          }
           STORED.put(key, bytes);
         }
 
@@ -262,6 +268,15 @@ class InquiryPhotosIT extends PostgresKafkaContainerSupport {
     String riderOps = TestJwt.operator("ro-p2", List.of("RIDER_OPS"), List.of());
     String agent = TestJwt.operator("cs-p2", List.of("CS_AGENT"), List.of());
 
+    // 본문 올리기가 실패하면 행도 남지 않는다(행 먼저 넣고 같은 트랜잭션에서 되돌림)
+    FAIL_PUT.set(true);
+    try {
+      assertThat(upload(riderTok, PNG).status()).isEqualTo(503);
+    } finally {
+      FAIL_PUT.set(false);
+    }
+    assertThat(count("SELECT count(*) FROM inquiry_photo WHERE owner_id = ?", rider)).isZero();
+
     String rp = uploaded(riderTok, PNG);
     Res created =
         send(
@@ -286,6 +301,10 @@ class InquiryPhotosIT extends PostgresKafkaContainerSupport {
     assertThat(photoService.sweepOrphans()).isGreaterThanOrEqualTo(1);
     assertThat(count("SELECT count(*) FROM inquiry_photo WHERE photo_id = ?", old)).isZero();
     assertThat(STORED).doesNotContainKey(oldKey);
+    String rpKey =
+        jdbc.queryForObject(
+            "SELECT object_key FROM inquiry_photo WHERE photo_id = ?", String.class, rp);
+    assertThat(STORED).as("붙은 사진 본문은 그대로").containsKey(rpKey);
     assertThat(count("SELECT count(*) FROM inquiry_photo WHERE photo_id IN (?, ?)", rp, fresh))
         .isEqualTo(2);
   }

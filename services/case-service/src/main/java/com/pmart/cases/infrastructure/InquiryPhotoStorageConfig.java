@@ -4,6 +4,7 @@ import com.pmart.cases.application.InquiryPhotoStorage;
 import com.pmart.common.web.PmartException;
 import java.io.InputStream;
 import java.net.URI;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -56,19 +57,26 @@ class InquiryPhotoStorageConfig {
     @Bean
     InquiryPhotoStorage inquiryPhotoStorage(S3Client client, S3Properties p) {
       String bucket = p.bucket();
+      // 저장소가 아예 안 닿으면(꺼짐·네트워크) 기동은 계속한다 — 사진만 503, 첫 올리기 때 다시 확인한다.
+      // 닿았는데 버킷을 못 쓰면(권한·버킷 없음 + 만들기 꺼짐) 설정 오류라 기동 실패(예전과 같음).
+      AtomicBoolean ready = new AtomicBoolean(false);
       try {
-        client.headBucket(b -> b.bucket(bucket));
+        ensureBucket(client, p);
+        ready.set(true);
       } catch (S3Exception e) {
-        if (e.statusCode() != 404 || !p.createBucket()) {
-          throw new IllegalStateException(
-              "문의 사진 버킷 '" + bucket + "' 을 쓸 수 없습니다(HTTP " + e.statusCode() + ")", e);
-        }
-        client.createBucket(b -> b.bucket(bucket));
+        throw new IllegalStateException(
+            "문의 사진 버킷 '" + bucket + "' 을 쓸 수 없습니다(HTTP " + e.statusCode() + ")", e);
+      } catch (SdkException e) {
+        log.warn("문의 사진 저장소에 닿지 않습니다 — 사진만 503, 첫 올리기 때 다시 확인: {}", e.toString());
       }
       return new InquiryPhotoStorage() {
         @Override
         public void put(String key, byte[] bytes, String contentType) {
           try {
+            if (!ready.get()) {
+              ensureBucket(client, p);
+              ready.set(true);
+            }
             client.putObject(
                 r ->
                     r.bucket(bucket)
@@ -133,6 +141,18 @@ class InquiryPhotoStorageConfig {
               "사진 저장소가 설정되지 않았습니다.", new IllegalStateException("pmart.storage.s3.bucket 없음"));
         }
       };
+    }
+  }
+
+  /** 버킷이 있는지 보고, 없으면(404) 만들기가 켜졌을 때만 만든다. 그 밖의 S3 응답은 S3Exception, 안 닿으면 SdkException. */
+  static void ensureBucket(S3Client client, S3Properties p) {
+    try {
+      client.headBucket(b -> b.bucket(p.bucket()));
+    } catch (S3Exception e) {
+      if (e.statusCode() != 404 || !p.createBucket()) {
+        throw e;
+      }
+      client.createBucket(b -> b.bucket(p.bucket()));
     }
   }
 

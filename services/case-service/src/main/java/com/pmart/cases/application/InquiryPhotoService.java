@@ -76,9 +76,10 @@ public class InquiryPhotoService {
                 () -> {
                   String id = "IPH-" + UUID.randomUUID();
                   String key = "inquiry-photos/" + p.subject() + "/" + id;
-                  storage.put(key, bytes, type); // 실패하면 행도 남지 않는다
+                  // 행 먼저 — 본문 올리기가 실패하면 예외로 행도 되돌아간다(본문만 남는 일을 줄임. 커밋 실패 때 남는 본문은 정리 대상 밖 — 드묾)
                   store.insert(
                       new PhotoRow(id, p.subject(), key, type, bytes.length, sha, now(), null));
+                  storage.put(key, bytes, type);
                   return id;
                 })
             .value();
@@ -144,12 +145,15 @@ public class InquiryPhotoService {
     return new Photo(row, storage.get(row.objectKey()));
   }
 
-  /** 붙지 않은 지 하루 지난 사진 정리. */
+  /**
+   * 붙지 않은 지 하루 지난 사진 정리. **행을 먼저**(아직 안 붙었을 때만) 지우고 본문을 지운다 — 그사이 문의에 붙었으면 행이 남아 본문도 그대로(본문 없는 사진이
+   * 생기지 않게). 본문 지우기가 실패하면 버킷에 참조 없는 본문만 남는다(보이지 않음).
+   */
   public int sweepOrphans() {
     int n = 0;
     for (PhotoRow r : store.orphans(now().minus(InquiryRules.ORPHAN_PHOTO_TTL), 100)) {
-      if (storage.delete(r.objectKey())) {
-        store.delete(r.photoId());
+      if (store.delete(r.photoId())) {
+        storage.delete(r.objectKey());
         n++;
       }
     }

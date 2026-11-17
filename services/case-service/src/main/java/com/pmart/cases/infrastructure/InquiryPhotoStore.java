@@ -93,8 +93,11 @@ public class InquiryPhotoStore {
         limit);
   }
 
-  public void delete(String photoId) {
-    jdbc.update("DELETE FROM inquiry_photo WHERE photo_id = ? AND inquiry_id IS NULL", photoId);
+  /** 아직 안 붙은 사진 행만 지운다 — 지웠으면 true(그사이 붙었으면 false). */
+  public boolean delete(String photoId) {
+    return jdbc.update(
+            "DELETE FROM inquiry_photo WHERE photo_id = ? AND inquiry_id IS NULL", photoId)
+        == 1;
   }
 
   private PhotoRow row(ResultSet rs, int n) throws SQLException {
