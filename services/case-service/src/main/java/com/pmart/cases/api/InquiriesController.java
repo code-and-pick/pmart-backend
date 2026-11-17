@@ -2,6 +2,7 @@ package com.pmart.cases.api;
 
 import com.pmart.cases.api.generated.InquiriesApi;
 import com.pmart.cases.api.generated.model.AddInquiryPhotosRequest;
+import com.pmart.cases.api.generated.model.CloseInquiryRequest;
 import com.pmart.cases.api.generated.model.CreateInquiryRequest;
 import com.pmart.cases.api.generated.model.Inquiry;
 import com.pmart.cases.api.generated.model.InquiryAllOfReplies;
@@ -16,6 +17,7 @@ import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ListInquiries200Response;
 import com.pmart.cases.api.generated.model.RateInquiryRequest;
 import com.pmart.cases.api.generated.model.ReplyInquiryRequest;
+import com.pmart.cases.application.InquiryCloseService;
 import com.pmart.cases.application.InquiryPhotoService;
 import com.pmart.cases.application.InquirySatisfactionService;
 import com.pmart.cases.application.InquiryService;
@@ -39,12 +41,31 @@ public class InquiriesController implements InquiriesApi {
   private final InquiryService service;
   private final InquiryPhotoService photos;
   private final InquirySatisfactionService satisfaction;
+  private final InquiryCloseService closes;
 
   public InquiriesController(
-      InquiryService service, InquiryPhotoService photos, InquirySatisfactionService satisfaction) {
+      InquiryService service,
+      InquiryPhotoService photos,
+      InquirySatisfactionService satisfaction,
+      InquiryCloseService closes) {
     this.service = service;
     this.photos = photos;
     this.satisfaction = satisfaction;
+    this.closes = closes;
+  }
+
+  @Override
+  public ResponseEntity<Inquiry> closeInquiry(
+      String inquiryId, String idempotencyKey, String xSourceSystem, CloseInquiryRequest req) {
+    return ResponseEntity.ok(
+        out(
+            closes.close(
+                idempotencyKey,
+                xSourceSystem,
+                inquiryId,
+                req.getReason(),
+                req.getScore(),
+                req.getComment())));
   }
 
   @Override
@@ -157,6 +178,14 @@ public class InquiriesController implements InquiriesApi {
               x.setComment(r.comment());
               x.setRatedAt(r.ratedAt().atOffset(ZoneOffset.UTC));
               d.setSatisfaction(x);
+            });
+    closes
+        .forViewer(v.inquiry().inquiryId())
+        .ifPresent(
+            c -> {
+              d.setClosedAt(c.closedAt().atOffset(ZoneOffset.UTC));
+              d.setClosedByType(Inquiry.ClosedByTypeEnum.fromValue(c.closedByType()));
+              d.setCloseReason(c.reason());
             });
     return d;
   }
