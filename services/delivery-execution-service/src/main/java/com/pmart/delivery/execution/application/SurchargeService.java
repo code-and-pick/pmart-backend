@@ -146,15 +146,20 @@ public class SurchargeService {
     return id;
   }
 
-  public List<Request> list(String state, @Nullable String riderId, int limit, int offset) {
+  /** state 가 null 이면 모든 상태(최근 신청부터, 2026-11-18 — 백오피스 "전체" 탭), 주면 그 상태만(오래된 것부터). */
+  public List<Request> list(
+      @Nullable String state, @Nullable String riderId, int limit, int offset) {
     PmartPrincipal p = staff();
     if (!(p.hasRole("OPERATOR_ADMIN") || p.hasRole("RIDER_OPS") || p.hasRole("CS_AGENT"))) {
       throw ExecutionService.forbidden("추가 배달료 신청은 라이더 운영·관리자·상담원만 볼 수 있습니다.");
     }
     return jdbc.query(
-        "SELECT * FROM surcharge_request WHERE state = ? AND (CAST(? AS varchar) IS NULL OR"
-            + " rider_id = ?) ORDER BY requested_at, request_id LIMIT ? OFFSET ?",
+        "SELECT * FROM surcharge_request WHERE (CAST(? AS varchar) IS NULL OR state = ?) AND (CAST(?"
+            + " AS varchar) IS NULL OR rider_id = ?) ORDER BY "
+            + (state == null ? "requested_at DESC, request_id DESC" : "requested_at, request_id")
+            + " LIMIT ? OFFSET ?",
         (rs, i) -> row(rs),
+        state,
         state,
         riderId,
         riderId,

@@ -1365,6 +1365,18 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             .toEntity(String.class);
     assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
     assertThat(body(ok).path("decidedBy").asString()).isEqualTo("OP-RO");
+    // 상태를 비우면 모든 상태(2026-11-18 — 백오피스 "전체" 탭), REQUESTED 로 거르면 승인된 건은 빠진다
+    assertThat(
+            body(staffGet("/surcharge-requests?riderId=" + rider, ops))
+                .path("items")
+                .get(0)
+                .path("state")
+                .asString())
+        .isEqualTo("APPROVED");
+    assertThat(
+            body(staffGet("/surcharge-requests?state=REQUESTED&riderId=" + rider, ops))
+                .path("items"))
+        .isEmpty();
     assertThat(
             jdbc.queryForObject(
                 "SELECT total FROM rider_earning WHERE delivery_id = ?", Integer.class, id))

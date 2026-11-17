@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.22.1
+  version: 0.22.2
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -796,7 +796,7 @@ paths:
       operationId: listSurchargeRequests
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: state, in: query, schema: { type: string, enum: [REQUESTED, APPROVED, REJECTED], default: REQUESTED } }
+        - { name: state, in: query, schema: { type: string, enum: [REQUESTED, APPROVED, REJECTED] }, description: '(0.22.2, 2026-11-18) 비우면 **모든 상태**(최근 신청부터) — 라이더 백오피스 "전체" 탭. 상태를 주면 그 상태만(오래된 것부터). 예전에는 비우면 REQUESTED 였다' }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'

@@ -70,3 +70,4 @@
 - **2026-11-18**: 직원 배송 목록 `orderNumber`(요청 #5). 운행시간 날짜 나누기를 나노초 누적으로(자정을 걸친 구간이 1초 모자라던 것 — `OperatingTimeTest.dayPartsAddUpWhenSplitMidSecond`).
 - **직원 근거 사진(2026-11-18, 0.22.0 — 요청 #6)**: `POST /deliveries/{id}/staff-evidence-photos`(`ExecutionService.uploadStaffPhoto` — RIDER_OPS·OPERATOR_ADMIN, 상태 무관, 올린 사람 = 직원 ID, 참조에 "staff" 를 섞어 라이더 사진과 겹치지 않음). 상태 정정 `evidenceRefs` 는 이 배송의 사진만(아니면 422 PHOTO_NOT_FOUND).
 - **완료 방법 enum(2026-11-18, 0.22.1 — 요청 #7)**: 배송 조회 `evidence.method` 를 계약 enum(FACE·CONTACTLESS·CUSTOMER_CONFIRMED·AUTO_COMPLETED)으로 — 사진 없는 두 방법은 photoRefs 빈 배열.
+- **추가 배달료 목록 전체(2026-11-18, 0.22.2)**: `GET /surcharge-requests` 의 state 를 비우면 모든 상태(최근 신청부터) — 예전 기본값 REQUESTED 를 없앰(백오피스 "전체" 탭).

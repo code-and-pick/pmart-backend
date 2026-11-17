@@ -74,7 +74,7 @@ public class StaffController implements StaffApi {
   public ResponseEntity<
           com.pmart.delivery.execution.api.generated.model.ListSurchargeRequests200Response>
       listSurchargeRequests(
-          String state, @Nullable String riderId, Integer size, @Nullable String cursor) {
+          @Nullable String state, @Nullable String riderId, Integer size, @Nullable String cursor) {
     int offset = offset(cursor);
     var rows = surcharges.list(state, blankToNull(riderId), size + 1, offset);
     boolean more = rows.size() > size;
