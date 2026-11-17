@@ -100,7 +100,28 @@ public class FailureDecisionService {
               if (c.note() != null) {
                 failure.put("decisionNote", c.note());
               }
-              if ("CONFIRM".equals(c.decision())) {
+              if ("CONFIRM".equals(c.decision()) && d.claimReturn()) {
+                // 고객 반품 회수 실패(CL-1, 2026-11-17): 상품은 고객에게 그대로 — custody 없음. 다시 시도는 반품 쪽이 정한다.
+                // 수행료: 고객 사정(부재·연락 두절·주소 오류·거부)이면 수락 당시 금액(사용자 "수락 당시 금액 지급"), 그 밖은 지원센터 조정
+                String reason = reported.path("reason").asString("OTHER");
+                boolean customerReason = ExecutionRules.CUSTOMER_REASONS.contains(reason);
+                store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
+                store.history(deliveryId, "FAILED", now, "OPERATOR", requestId, now);
+                events.returnPickupFailed(
+                    d,
+                    reason,
+                    customerReason,
+                    reported.path("contactAttempts").size(),
+                    reported.path("reportedAt").asString(null),
+                    p.subject(),
+                    now);
+                if (customerReason) {
+                  earnings.completed(d, now);
+                } else {
+                  earnings.notCalculable(d, "FAILED", now);
+                }
+                log.info("반품 회수 배송 {} 회수 실패 확정 — 사유 {}", deliveryId, reason);
+              } else if ("CONFIRM".equals(c.decision())) {
                 String goods = reported.path("goodsLocation").asString(null);
                 String custody = ExecutionRules.custody(c.custody(), goods);
                 failure.put("custody", custody);

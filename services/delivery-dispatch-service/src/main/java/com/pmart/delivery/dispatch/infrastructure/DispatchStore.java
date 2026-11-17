@@ -72,7 +72,9 @@ public class DispatchStore {
       @Nullable String redeliveryDestinationId,
       @Nullable Integer straightDistanceM,
       boolean paymentRequired,
-      @Nullable Instant releasedAt) {
+      @Nullable Instant releasedAt,
+      @Nullable String claimId,
+      @Nullable String returnLinesJson) {
 
     /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 실제 집으로. */
     public boolean redelivery() {
@@ -81,7 +83,12 @@ public class DispatchStore {
 
     /** 픽업지가 MFC 가 아닌 배송(회수·다시 배송) — 따로 판단한다. */
     public boolean pickupBased() {
-      return recovery() || redelivery();
+      return recovery() || redelivery() || claimReturn();
+    }
+
+    /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. 픽업지가 MFC 가 아니라 따로 배차한다. */
+    public boolean claimReturn() {
+      return "RETURN".equals(type) && "CLAIM_RETURN".equals(purpose);
     }
 
     /** 9,000원 결제를 기다리는 다시 배송(200m 이상, 결제 확인 전). */
@@ -298,6 +305,53 @@ public class DispatchStore {
             ts(now),
             ts(now))
         == 1;
+  }
+
+  /**
+   * 고객 반품 회수 배송(CL-1, 2026-11-17) — 바로 배차 대기. 같은 회수 요청 사건(shipment 'CLR-<eventId>')이면 넣지 않고 false.
+   * 호출자가 클레임 잠금({@link #lockClaim})을 먼저 잡는다.
+   */
+  public boolean insertClaimReturn(
+      String deliveryId,
+      String orderId,
+      String mfcId,
+      String claimId,
+      @Nullable String originDeliveryId,
+      String linesJson,
+      String requestEventId,
+      Instant now) {
+    return jdbc.update(
+            "INSERT INTO delivery (delivery_id, version, type, purpose, order_id, shipment_id, mfc_id,"
+                + " state, claim_id, origin_delivery_id, return_lines, request_trigger, created_at,"
+                + " updated_at) VALUES (?, 1, 'RETURN', 'CLAIM_RETURN', ?, ?, ?, 'DISPATCHING', ?, ?,"
+                + " ?::jsonb, 'CLAIM', ?, ?) ON CONFLICT DO NOTHING",
+            deliveryId,
+            orderId,
+            "CLR-" + requestEventId,
+            mfcId,
+            claimId,
+            originDeliveryId,
+            linesJson,
+            ts(now),
+            ts(now))
+        == 1;
+  }
+
+  /** 같은 클레임의 회수 요청을 줄 세운다(트랜잭션 끝까지). */
+  public void lockClaim(String claimId) {
+    jdbc.query("SELECT pg_advisory_xact_lock(hashtext('dispatch-claim:' || ?))", rs -> {}, claimId);
+  }
+
+  /** 같은 클레임의 아직 끝나지 않은 반품 회수 배송(배차 대기·배정·회수함). */
+  public Optional<String> openClaimReturn(String claimId) {
+    return jdbc
+        .query(
+            "SELECT delivery_id FROM delivery WHERE claim_id = ? AND purpose = 'CLAIM_RETURN' AND state"
+                + " IN ('CREATED', 'DISPATCHING', 'ASSIGNED', 'PICKED_UP') ORDER BY created_at DESC LIMIT 1",
+            (rs, i) -> rs.getString(1),
+            claimId)
+        .stream()
+        .findFirst();
   }
 
   /** 오배송 다시 배송(ADR-0065) — 바로 배차 대기. 같은 사건(shipment 'RDL-<caseId>')이면 false. */
@@ -1214,7 +1268,9 @@ public class DispatchStore {
         rs.getString("redelivery_destination_id"),
         rs.getObject("straight_distance_m", Integer.class),
         rs.getBoolean("payment_required"),
-        instant(rs, "released_at"));
+        instant(rs, "released_at"),
+        rs.getString("claim_id"),
+        rs.getString("return_lines"));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {

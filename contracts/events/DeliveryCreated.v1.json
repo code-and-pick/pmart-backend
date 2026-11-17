@@ -83,6 +83,23 @@
               "$ref": "_defs.v1.json#/$defs/Ref",
               "description": "MISDELIVERY_RECOVERY — 오배송 확인 사건(case)"
             },
+            "returnLines": {
+              "type": "array",
+              "description": "CLAIM_RETURN(2026-11-17) — claim 이 회수 요청한 줄·수량(ReturnPickupRequested lines 그대로). execution 이 ReturnPickedUp·ReturnDelivered lines 로 싣는다",
+              "items": {
+                "type": "object",
+                "required": ["orderLineId", "qty"],
+                "properties": {
+                  "orderLineId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+                  "qty": { "$ref": "_defs.v1.json#/$defs/PositiveQty" }
+                },
+                "additionalProperties": true
+              }
+            },
+            "pickupAddressRef": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "CLAIM_RETURN(2026-11-17) — 회수지(고객 집) 주소 참조 order:<orderId>. 주소 원문 없음"
+            },
             "originDeliveryId": {
               "$ref": "_defs.v1.json#/$defs/Ref",
               "description": "MISDELIVERY_RECOVERY — 오배송된 원래 배송"

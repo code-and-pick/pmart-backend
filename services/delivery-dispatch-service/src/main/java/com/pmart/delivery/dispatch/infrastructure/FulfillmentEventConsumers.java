@@ -58,4 +58,19 @@ class FulfillmentEventConsumers {
   PmartEventConsumer caseEvents(EventConsumers consumers, RecoveryHandler handler) {
     return consumers.of(e -> RecoveryHandler.TYPES.contains(e.eventType()), handler::on);
   }
+
+  /**
+   * claim 반품 회수 요청(토픽 order.claim.v1, 바인딩 {@code claimEvents-in-0}, CL-1 2026-11-17) → 고객 반품 회수
+   * 배송·배차. 다른 클레임 사건은 버린다. 처음 켜기 전 소비 그룹 시작 위치 = latest.
+   */
+  @Bean
+  PmartEventConsumer claimEvents(
+      EventConsumers consumers,
+      com.pmart.delivery.dispatch.application.ClaimReturnHandler handler) {
+    return consumers.of(
+        e ->
+            com.pmart.delivery.dispatch.application.ClaimReturnHandler.TYPES.contains(
+                e.eventType()),
+        handler::on);
+  }
 }

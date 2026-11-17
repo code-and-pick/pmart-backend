@@ -40,7 +40,8 @@ public final class ProgressRules {
       case "PickupCompleted", "ReturnPickedUp" -> new Target(TO_CUSTOMER, null);
       case "RiderArrivedAtCustomer" -> new Target(AT_CUSTOMER, null);
       case "DeliveryCompleted", "ReturnDelivered" -> new Target(DONE, "COMPLETED");
-      case "DeliveryFailed" -> new Target(DONE, "FAILED");
+      case "DeliveryFailed", "ReturnPickupFailed" ->
+          new Target(DONE, "FAILED"); // 반품 회수 실패(CL-1, 2026-11-17)
       case "DeliveryCancelledBeforePickup" -> new Target(DONE, "CANCELLED");
       default -> null;
     };

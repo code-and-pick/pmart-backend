@@ -55,3 +55,10 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **할 것(작음, 필드 추가만)**: `DispatchEvents.failed(...)` 가 `p.put("mfcId", before.mfcId())` — 계약 `contracts/events/DispatchFailed.v1.json` payload 에 `mfcId`(선택, `_defs` CenterId) 추가(필드 추가라 하위 호환). `DispatchDelayed` 도 같은 이유로 있으면 좋다(지금 사건함은 구독 안 함).
 - **case 쪽**: 이미 읽는다(값이 없으면 센터 없음 → 지원센터·관리자만 봄). 바꿀 것 없음.
 - **구현(2026-11-16, PC 5)**: `DispatchFailed`·`DispatchDelayed` payload 에 `mfcId`(선택 — 계약 필드 추가). DispatchFlowIT 로 확인.
+
+## DD-3. 고객 반품 회수 배차 — CL-1 의 배송 쪽 (2026-11-17, PC 5 — 브랜치 `delivery/claim-return-pickup`)
+- 요청 근거: `claim-service.md` CL-1 "구현 claim(PC 1), 고객 반품 회수 배송은 delivery(PC 5) 요청"(2026-11-17 사용자 "추천대로").
+- **사용자 결정(2026-11-17, PC 5 물음)**: 회수 시기 = **바로 배차**(시간 약속은 상담원이 미리), 회수 라이더 수행료 = **일반 표·고객 집 → MFC**(DD-2 와 같음, 고객 회수비 9,000원과 따로), 회수 실패 = **실패마다 알림, 다시 시도는 반품 쪽**(claim 이 횟수를 세고 새 회수 요청을 보냄), 고객 사정(부재·거부) 실패의 라이더 수행료 = **수락 당시 금액 지급**.
+- dispatch 0.5.0(V11): 구독 `claimEvents-in-0` ← order.claim.v1 `ReturnPickupRequested` → 회수 배송(type RETURN, purpose CLAIM_RETURN, shipment `CLR-<사건 ID>`, 배송 ID 도 사건 ID 로 — 같은 사건은 하나) + 시도(제외 없음) + DeliveryCreated(claimId·originDeliveryId·returnLines·pickupAddressRef). 같은 클레임에 끝나지 않은 회수 배송이 있으면 만들지 않음. 회수지 = 원래 배송지 좌표(없으면 주문 배송지 → 좌표), 도착 MFC, 예상 배달료 일반 표. 판단은 회수 배차와 같은 길(`runRecovery`). `ReturnPickupFailed`·`ReturnDelivered` → CLOSED.
+- execution 0.10.0(V11): 받기 전 전달지(= 고객 집) 열림, 사진·받음(lines = 요청 줄) → 반납, 받기 전 실패 등록 → 확정 → `ReturnPickupFailed`(새 사건), 고객 사유면 수행료 지급. tracking: `ReturnPickupFailed` = 진행 끝.
+- **PC 1 할 것**: pmart-config `delivery-dispatch-service.yml` 에 `claimEvents` 바인딩(order.claim.v1, 처음 켜기 전 시작 위치 latest — 시험 사본은 이 PR), 배포 순서 tracking → execution → dispatch. claim 은 `ReturnPickupRequested` 발행 때 `mfcId` 를 실어 주면 좋다(없으면 원래 배송의 MFC), 다시 보낼 때는 **새 사건**(같은 사건 ID 재발행은 무시됨), `ReturnPickupFailed` 구독(몇 번째 실패인지 세기).

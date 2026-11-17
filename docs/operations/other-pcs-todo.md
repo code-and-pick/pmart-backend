@@ -44,6 +44,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] MFC 시뮬레이터 요청 R-13(상온 대기 칸 — 사용자 결정 대기)·R-15/16(칸·여러 SKU 재고 조회)·R-17(작업 실적 목록)·R-19(인계 끝난 출고 `deliveryId` 비어 있음) — 시뮬레이터 저장소 `docs/backend-requests.md`(GitHub 판이 11-10 이라 아직 안 보이면 PC 1 에 요청)
 
 ## PC 5 — delivery 영역
+- [x] **고객 반품 회수 배차(CL-1 배송 쪽, DD-3)**(2026-11-17 PC 5 — 브랜치 `delivery/claim-return-pickup`, 사용자 결정 바로 배차·일반 표·실패마다 알림·고객 사정 실패도 지급): dispatch 0.5.0 V11·execution 0.10.0 V11·tracking, 새 사건 `ReturnPickupFailed`. 라이더 앱 화면은 요청 handoff(`docs/handoff/clients/rider-app/2026-11-17-request-claim-return-pickup.md`)
 - [x] **TR-3 고객·직원 ETA 조회·실시간 구독**(2026-11-17 PC 5 구현 — 브랜치 `delivery/tr-3-eta` PR)(2026-11-17 사용자 "PC 5에 요청" — 요청서 `docs/architecture/service-requests/delivery-tracking-service.md` TR-3): `GET /deliveries/{id}/eta`·`/stream`(SSE) 구현 — 고객 본인 배송 dropEta 만, 직원은 execution `Access` 범위, ETA 계산 꺼짐이면 ETA_PENDING. 고객앱은 이미 부른다. **main 에서 새 브랜치로**(예 `delivery/tr-3-eta-api`)
 - [ ] **PR #71 다시 맞추기**(2026-11-16 PC 1): #68(PC 2 CS 접수)과 case V10·0.12.0·문의 코드 4곳이 겹침 → main 위로 rebase, `V11__rider_inquiry.sql`·case 0.13.0, 허용 목록 다시 생성. PR 댓글 참고. case-service 는 PC 2 검토도
 

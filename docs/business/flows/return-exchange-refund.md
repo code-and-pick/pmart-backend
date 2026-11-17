@@ -26,6 +26,10 @@
            · 3건 중 2건 승인 → 2건만 후속. 회수 없는 처리는 승인 사유·증빙 필수(기본 원칙의 예외)
 (3) 회수   claim ─ ReturnPickupRequested ─► delivery-dispatch: 회수 배송(type RETURN, 별도 배송번호, 원주문 연결) → 배차
            delivery-execution: 고객 수거 ReturnPickedUp → 점포 반납 ReturnDelivered
+           · 2026-11-17 배송 쪽 구현(사용자 결정): 사건 받으면 바로 배차(근처 라이더, 원래 기사도 가능), 회수 라이더 수행료 = 일반 표(고객 집 → MFC),
+             회수지 = 원래 배송지. 고객 부재·거부면 라이더 실패 등록(사진 + 연락 2회) → 지원센터 확정 → ReturnPickupFailed(상품은 고객에게).
+             실패마다 claim 에 알리고 다시 보낼지는 claim(2번 실패 → 상담원 재연락, 회수비 한 번). 고객 사정 실패도 라이더는 수락 당시 금액.
+             같은 클레임에 진행 중인 회수 배송이 있으면 새 요청은 무시(경고)
 (4) 수령   mfc-inbound: 점원 수령 확인 → ReturnItemReceived → mfc-inventory H+q, Q+q (검수 대기; 판매 가능 재고 아님)
            · 회수 승인량 2 / 실수령 1 → 미수령 1 남김. 검수·PG 결과 선완료 금지
 (5) 검수   mfc-quality: ReturnInspected(품목별 RESALE / DISPOSE) → mfc-inventory: RESALE → Q−q, E+q ; DISPOSE → 폐기 승인 후 H−q

@@ -34,6 +34,9 @@ public final class ExecutionRules {
   /** 전달 실패를 등록할 수 있는 상태 — 상품을 가지고 있을 때(픽업 전은 dispatch 배차 취소). */
   public static final Set<String> FAILURE_FROM = Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER");
 
+  /** 고객 반품 회수 실패 등록 상태(CL-1, 2026-11-17) — 고객 집에서 받기 전(받은 뒤 문제는 도움요청). */
+  public static final Set<String> CLAIM_RETURN_FAILURE_FROM = Set.of("ASSIGNED");
+
   /** 고객 사유 — 연락 2회 이상이 있어야 실패 등록(원문 §9.2 "연락 시도 2회 이상"). */
   public static final Set<String> CUSTOMER_REASONS =
       Set.of("CUSTOMER_ABSENT", "UNREACHABLE", "ADDRESS_ERROR", "REFUSED");

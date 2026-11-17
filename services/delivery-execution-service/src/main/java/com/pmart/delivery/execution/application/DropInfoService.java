@@ -38,6 +38,9 @@ public class DropInfoService {
     return order.riderSummary(orderId);
   }
 
+  /** 고객 반품 회수(CL-1, 2026-11-17)의 전달지(= 회수지, 고객 집)를 여는 상태 — 배정 뒤 받기 전·실패 등록 중. */
+  public static final Set<String> CLAIM_RETURN_OPEN = Set.of("ASSIGNED", "FAILURE_REPORTED");
+
   /** 회수 연락처를 여는 상태 — 회수 진행 중. */
   public static final Set<String> RECOVERY_OPEN = Set.of("ASSIGNED", "RETURN_PICKED_UP");
 
@@ -106,7 +109,7 @@ public class DropInfoService {
           false,
           java.util.List.of());
     }
-    if (!OPEN.contains(d.state())) {
+    if (!(d.claimReturn() ? CLAIM_RETURN_OPEN : OPEN).contains(d.state())) {
       throw new PmartException(
           "DROP_INFO_CLOSED",
           HttpStatus.CONFLICT,

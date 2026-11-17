@@ -35,5 +35,10 @@ class ProgressRulesTest {
     assertThat(ProgressRules.shouldMove("DONE", ProgressRules.target("DeliveryAssigned", false)))
         .isFalse();
     assertThat(ProgressRules.target("DeliveryEtaUpdated", false)).isNull();
+    // 고객 반품 회수 실패(CL-1, 2026-11-17) — 받기 전(TO_CUSTOMER 아님)에도 끝
+    var returnFailed = ProgressRules.target("ReturnPickupFailed", false);
+    assertThat(returnFailed.stage()).isEqualTo("DONE");
+    assertThat(returnFailed.outcome()).isEqualTo("FAILED");
+    assertThat(ProgressRules.shouldMove("TO_STORE", returnFailed)).isTrue();
   }
 }

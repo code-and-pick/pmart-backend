@@ -1300,6 +1300,161 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(photo(rec, spotPhoto, TestJwt.rider(r2)).getStatusCode().value()).isEqualTo(200);
   }
 
+  /**
+   * 고객 반품 회수(CL-1 배송 쪽, 2026-11-17 — 사용자 "실패마다 알림, 다시 시도는 반품 쪽", "고객 사정 실패도 수락 당시 금액"): 배정 → 고객 집
+   * 전달지(= 회수지) → 사진·받음(lines = claim 요청 줄) → MFC 반납(claimId). 받기 전 실패 등록 → 확정이면 FAILED +
+   * ReturnPickupFailed, 고객 사정이면 수행료 지급(산정 가능), 그 밖 사유는 산정 불가.
+   */
+  @Test
+  void claimReturnPicksUpAtCustomerHomeOrFailsWithNotice() {
+    String order = "ORD-" + UUID.randomUUID();
+    String claimId = "CLM-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "orderId",
+                                order,
+                                "roadAddress",
+                                "서울 강남구 테헤란로 1",
+                                "detailAddress",
+                                "101동 1001호",
+                                "receiverName",
+                                "김고객",
+                                "receiverPhone",
+                                "01012345678")))));
+
+    // 1) 받음 → 반납
+    String ok = claimReturn(claimId, order, rider);
+    ResponseEntity<String> drop = dropInfo(ok, rider);
+    assertThat(drop.getStatusCode().value()).isEqualTo(200); // 회수지 = 고객 집(받기 전에도)
+    assertThat(body(drop).path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 1");
+    assertThat(post(ok, "store-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(409); // 일반 배송 단계 없음
+    String photo = body(upload(ok, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(
+                    ok,
+                    "returns/pickups",
+                    rider,
+                    Map.of("items", List.of(), "evidenceRefs", List.of(photo)))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(ok)).isEqualTo("RETURN_PICKED_UP");
+    JsonNode picked = outbox(ok, "ReturnPickedUp").path("payload");
+    assertThat(picked.path("purpose").asString()).isEqualTo("CLAIM_RETURN");
+    assertThat(picked.path("claimId").asString()).isEqualTo(claimId);
+    assertThat(picked.path("lines").get(0).path("orderLineId").asString()).isEqualTo("L-7");
+    assertThat(picked.path("lines").get(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(dropInfo(ok, rider).getStatusCode().value()).isEqualTo(409); // 받은 뒤에는 닫힘
+    assertThat(post(ok, "returns/store-deliveries", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    JsonNode returned = outbox(ok, "ReturnDelivered").path("payload");
+    assertThat(returned.path("claimId").asString()).isEqualTo(claimId);
+    assertThat(returned.path("lines").get(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT total FROM rider_earning WHERE delivery_id = ?", Integer.class, ok))
+        .isEqualTo(3900);
+
+    // 2) 고객 부재 → 실패 등록(사진 + 연락 2회) → 확정 → ReturnPickupFailed, 수락 당시 금액 지급
+    String absent = claimReturn(claimId, order, rider);
+    String p2 = body(upload(absent, rider, JPEG)).path("photoRef").asString();
+    ResponseEntity<String> oneCall =
+        post(absent, "failures", rider, failure("CUSTOMER_ABSENT", List.of(p2), 1));
+    assertThat(body(oneCall).path("code").asString()).isEqualTo("CONTACT_ATTEMPTS_REQUIRED");
+    assertThat(
+            post(absent, "failures", rider, failure("CUSTOMER_ABSENT", List.of(p2), 2))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(absent)).isEqualTo("FAILURE_REPORTED");
+    assertThat(dropInfo(absent, rider).getStatusCode().value()).isEqualTo(200); // 실패 등록 중에도 연락
+    assertThat(decide(absent, "OP-1", List.of("MFC-1"), "CONFIRM").getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(state(absent)).isEqualTo("FAILED");
+    JsonNode failed = outbox(absent, "ReturnPickupFailed").path("payload");
+    assertThat(failed.path("claimId").asString()).isEqualTo(claimId);
+    assertThat(failed.path("reason").asString()).isEqualTo("CUSTOMER_ABSENT");
+    assertThat(failed.path("customerReason").asBoolean()).isTrue();
+    assertThat(failed.path("contactAttempts").asInt()).isEqualTo(2);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryFailed'",
+                Integer.class,
+                absent))
+        .isZero(); // 상품은 고객에게 그대로 — 전달 실패 사건이 아니다
+    Map<String, Object> paid =
+        jdbc.queryForMap(
+            "SELECT calculable, total FROM rider_earning WHERE delivery_id = ?", absent);
+    assertThat(paid.get("calculable")).isEqualTo(true);
+    assertThat(paid.get("total")).isEqualTo(3900);
+
+    // 3) 고객 사유가 아닌 실패(사고) → 산정 불가(지원센터 조정)
+    String accident = claimReturn(claimId, order, rider);
+    String p3 = body(upload(accident, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(accident, "failures", rider, failure("RIDER_INCIDENT", List.of(p3), 0))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(decide(accident, "OP-1", List.of("MFC-1"), "CONFIRM").getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(
+            outbox(accident, "ReturnPickupFailed")
+                .path("payload")
+                .path("customerReason")
+                .asBoolean())
+        .isFalse();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT calculable FROM rider_earning WHERE delivery_id = ?",
+                Boolean.class,
+                accident))
+        .isFalse();
+  }
+
+  /** 반품 회수 배송 하나를 만들고 배정한다(DeliveryCreated claimId·returnLines). */
+  String claimReturn(String claimId, String order, String rider) {
+    String id = "DLV-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", id);
+    created.put("orderId", order);
+    created.put("shipmentId", "CLR-" + UUID.randomUUID());
+    created.put("type", "RETURN");
+    created.put("purpose", "CLAIM_RETURN");
+    created.put("claimId", claimId);
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "mfc:MFC-1");
+    created.put("returnLines", List.of(Map.of("orderLineId", "L-7", "qty", 2)));
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", id, created);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    long until = System.currentTimeMillis() + 20_000;
+    while (System.currentTimeMillis() < until
+        && jdbc.queryForObject(
+                "SELECT count(*) FROM execution_delivery WHERE delivery_id = ? AND claim_id IS NOT"
+                    + " NULL AND return_lines IS NOT NULL",
+                Integer.class,
+                id)
+            == 0) {
+      try {
+        Thread.sleep(100);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    return id;
+  }
+
   ResponseEntity<String> riderGet(String uri, String id, String rider) {
     return http.get()
         .uri(uri, id)

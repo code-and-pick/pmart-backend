@@ -22,3 +22,7 @@
 - **사용자 결정(2026-11-13, PC 1 검토 H1 답)**: "고객센터 취소 못하는 걸로 정할 거야." — ADR-0052 2번(상품준비 뒤 고객센터 경유 취소·미인계분)을 하지 않는다. 고객 취소는 자율 취소(피킹 시작 전)만.
 - 할 것(platform): 새 ADR 로 ADR-0052 2번 대체, claim·order·orchestration 의 고객센터 취소 경로 정리, 고객앱·고객센터 안내 문구.
 - 남는 중지 경로: 시스템 전체 결품 취소(PREPARING 주문). delivery-dispatch 는 포장 전 중지를 전체 중지로 보고 배차 취소·차단(2026-11-13, PR #8).
+
+## CL-1 배송 쪽 구현 (2026-11-17, 보낸 영역 delivery — PC 5, 브랜치 `delivery/claim-return-pickup`)
+- 고객 반품 회수 배송은 delivery 가 받는다: `ReturnPickupRequested` → 바로 배차 → `ReturnPickedUp`(claimId, lines = 요청 줄) → `ReturnDelivered`(MFC 반납). 자세히 `delivery-dispatch-service.md` DD-3.
+- **claim 이 할 것**: ① `ReturnPickupRequested` 에 `mfcId` 싣기(선택 — 없으면 원래 배송의 MFC) ② 다시 회수할 때 새 사건으로(같은 사건 ID 를 다시 내면 delivery 는 무시한다) ③ 새 사건 `ReturnPickupFailed`(delivery.delivery.v1 — claimId·reason·customerReason·contactAttempts 횟수) 구독 → 몇 번째 실패인지 세기, 2번이면 상담원 재연락(사용자 결정 2026-11-17) ④ 진행 중인 회수 배송이 있는 동안 새 요청을 내지 않기(내도 delivery 가 무시하고 경고만).

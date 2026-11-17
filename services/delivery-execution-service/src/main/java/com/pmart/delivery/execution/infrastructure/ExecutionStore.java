@@ -37,7 +37,14 @@ public class ExecutionStore {
       @Nullable String purpose,
       @Nullable String caseId,
       @Nullable String originDeliveryId,
-      @Nullable String redeliveryDestinationId) {
+      @Nullable String redeliveryDestinationId,
+      @Nullable String claimId,
+      @Nullable String returnLinesJson) {
+
+    /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. */
+    public boolean claimReturn() {
+      return "RETURN".equals(type) && "CLAIM_RETURN".equals(purpose);
+    }
 
     /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 받아 실제 집으로. */
     public boolean redelivery() {
@@ -120,7 +127,7 @@ public class ExecutionStore {
       "delivery_id, version, type, order_id, shipment_id, mfc_id, state, rider_id,"
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
-          + " origin_delivery_id, redelivery_destination_id";
+          + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text";
 
   private final JdbcTemplate jdbc;
 
@@ -230,17 +237,22 @@ public class ExecutionStore {
       @Nullable String purpose,
       @Nullable String caseId,
       @Nullable String originDeliveryId,
-      @Nullable String redeliveryDestinationId) {
+      @Nullable String redeliveryDestinationId,
+      @Nullable String claimId,
+      @Nullable String returnLinesJson) {
     jdbc.update(
         "UPDATE execution_delivery SET type = COALESCE(?, type), purpose = COALESCE(?, purpose),"
             + " case_id = COALESCE(?, case_id), origin_delivery_id = COALESCE(?, origin_delivery_id),"
-            + " redelivery_destination_id = COALESCE(?, redelivery_destination_id) WHERE delivery_id ="
-            + " ?",
+            + " redelivery_destination_id = COALESCE(?, redelivery_destination_id), claim_id ="
+            + " COALESCE(?, claim_id), return_lines = COALESCE(?::jsonb, return_lines) WHERE"
+            + " delivery_id = ?",
         type,
         purpose,
         caseId,
         originDeliveryId,
         redeliveryDestinationId,
+        claimId,
+        returnLinesJson,
         deliveryId);
   }
 
@@ -1149,7 +1161,9 @@ public class ExecutionStore {
         rs.getString(20),
         rs.getString(21),
         rs.getString(22),
-        rs.getString(23));
+        rs.getString(23),
+        rs.getString(24),
+        rs.getString(25));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

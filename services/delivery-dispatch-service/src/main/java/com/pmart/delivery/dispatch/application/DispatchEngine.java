@@ -547,7 +547,9 @@ public class DispatchEngine {
           List.of(r),
           byId.get(riderId),
           legs[best][0],
-          d.redelivery() ? "REDELIVERY nearest" : "RECOVERY nearest",
+          d.redelivery()
+              ? "REDELIVERY nearest"
+              : d.claimReturn() ? "CLAIM_RETURN nearest" : "RECOVERY nearest",
           now);
       taken.add(riderId);
     }
@@ -762,6 +764,9 @@ public class DispatchEngine {
     if (d.recovery()) {
       return prepareRecoveryGeo(d, a, now);
     }
+    if (d.claimReturn()) {
+      return prepareClaimReturnGeo(d, a, now);
+    }
     if (d.redelivery()) {
       return prepareRedeliveryGeo(d, a, now);
     }
@@ -877,6 +882,63 @@ public class DispatchEngine {
       return store.delivery(d.deliveryId());
     } catch (PmartException e) {
       log.warn("회수 배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
+      return later(d, a, e.code(), now);
+    }
+  }
+
+  /**
+   * 고객 반품 회수 좌표(CL-1, 2026-11-17 — 사용자 "일반 표·고객 집 → MFC"): 회수지 = 고객 집 — 원래 배송의 배송지 좌표, 배차 쪽에 없으면 주문
+   * 배송지(order O-4) → serviceability 좌표. 도착 = MFC, 거리 = 고객 집 → MFC 도로 거리(예상 배달료 — 일반 표).
+   */
+  private Optional<DeliveryRow> prepareClaimReturnGeo(DeliveryRow d, AttemptRow a, Instant now) {
+    try {
+      Optional<Geo> mfc = upstreams.centerCoordinates(d.mfcId());
+      if (mfc.isEmpty()) {
+        return later(d, a, "NO_MFC_COORDINATES", now);
+      }
+      DeliveryRow origin =
+          d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null);
+      Geo pickup;
+      String area;
+      if (origin != null && origin.dropLat() != null && origin.dropLng() != null) {
+        pickup = new Geo(origin.dropLat(), origin.dropLng());
+        area = origin.dropAreaLabel();
+      } else {
+        Upstreams.Destination dest = upstreams.destination(d.orderId());
+        if (dest.roadAddress() == null) {
+          return failSystem(d, a, "NO_ADDRESS", now);
+        }
+        Optional<Upstreams.Place> place = upstreams.geocode(dest.roadAddress());
+        if (place.isEmpty()) {
+          return failSystem(d, a, "ADDRESS_NOT_GEOCODED", now);
+        }
+        pickup = place.get().at();
+        area = place.get().areaLabel();
+      }
+      Upstreams.Leg leg = upstreams.matrix(List.of(pickup), List.of(mfc.get()))[0][0];
+      if (!leg.ok()) {
+        return failSystem(d, a, "NO_ROUTE_TO_MFC", now);
+      }
+      Geo p = pickup;
+      String areaLabel = area;
+      tx.executeWithoutResult(
+          s ->
+              store.saveRecoveryGeo(
+                  d.deliveryId(),
+                  mfc.get().lat(),
+                  mfc.get().lng(),
+                  p.lat(),
+                  p.lng(),
+                  "DROP_ADDRESS",
+                  null,
+                  areaLabel,
+                  leg.distanceM(),
+                  leg.durationS(),
+                  now));
+      log.info("반품 회수 배송 {} 회수지(고객 집) 준비 — 고객 집 → MFC {}m", d.deliveryId(), leg.distanceM());
+      return store.delivery(d.deliveryId());
+    } catch (PmartException e) {
+      log.warn("반품 회수 배송 {} 좌표·도로 거리 준비 실패({}) — 30초 뒤 다시", d.deliveryId(), e.code());
       return later(d, a, e.code(), now);
     }
   }

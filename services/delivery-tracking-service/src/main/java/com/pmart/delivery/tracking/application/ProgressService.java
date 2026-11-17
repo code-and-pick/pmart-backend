@@ -44,6 +44,7 @@ public class ProgressService {
           "DeliveryCompleted",
           "ReturnDelivered",
           "DeliveryFailed",
+          "ReturnPickupFailed",
           "DeliveryCancelledBeforePickup");
 
   /** 조회 결과 — staff 면 픽업 예정도 보인다. */

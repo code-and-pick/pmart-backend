@@ -42,6 +42,7 @@ public class RiderWatch {
           "DeliveryCancelledBeforePickup",
           "DeliveryCompleted",
           "DeliveryFailed",
+          "ReturnPickupFailed", // 고객 반품 회수 실패(CL-1, 2026-11-17) — 감시 끝
           "ReturnDelivered", // 회수 배송 반납(DD-2, 2026-11-16) — 회수 라이더 감시 끝
           "PickupCompleted", // 픽업(TR-1 ETA — 이제 라이더 → 도착지)
           "ReturnPickedUp"); // 회수지·잘못 둔 곳에서 받음(TR-1)

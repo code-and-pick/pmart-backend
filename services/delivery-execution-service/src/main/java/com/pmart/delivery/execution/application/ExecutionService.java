@@ -392,9 +392,21 @@ public class ExecutionService {
         expectedVersion,
         Map.of("failure", f),
         (d, rider, now) -> {
-          forwardOnly(d);
-          if (!ExecutionRules.FAILURE_FROM.contains(d.state())) {
-            throw PmartException.invalidState("픽업 뒤 전달 전에만 실패를 등록할 수 있습니다(지금 " + d.state() + ").");
+          if (d.claimReturn()) {
+            // 고객 반품 회수(CL-1, 2026-11-17): 고객 집에서 받기 전 — 부재·거부 등. 확정되면 ReturnPickupFailed(다시 시도는 반품
+            // 쪽)
+            if (!ExecutionRules.CLAIM_RETURN_FAILURE_FROM.contains(d.state())) {
+              throw PmartException.invalidState(
+                  "반품 회수는 고객에게서 받기 전에만 실패를 등록할 수 있습니다(지금 "
+                      + d.state()
+                      + "). 받은 뒤 문제는 도움요청을 써 주세요.");
+            }
+          } else {
+            forwardOnly(d);
+            if (!ExecutionRules.FAILURE_FROM.contains(d.state())) {
+              throw PmartException.invalidState(
+                  "픽업 뒤 전달 전에만 실패를 등록할 수 있습니다(지금 " + d.state() + ").");
+            }
           }
           Set<String> mine =
               store.photos(deliveryId).stream()
@@ -546,7 +558,8 @@ public class ExecutionService {
 
   /**
    * 회수지에서 회수품을 받음: ASSIGNED → RETURN_PICKED_UP + ReturnPickedUp. 이 배송에 같은 라이더가 올린 사진 1장 이상(아니면 422
-   * EVIDENCE_REQUIRED). 사건 lines = 원래 배송이 전달한 줄·수량(회수 대상). 고객 반품 회수(CLAIM_RETURN)는 아직 없다.
+   * EVIDENCE_REQUIRED). 사건 lines = 원래 배송이 전달한 줄·수량(회수 대상), 고객 반품 회수(CLAIM_RETURN, 2026-11-17)는
+   * claim 이 요청한 줄.
    */
   public Applied returnPickup(
       String deliveryId,
@@ -562,14 +575,14 @@ public class ExecutionService {
         expectedVersion,
         Map.of("evidenceRefs", evidenceRefs),
         (d, rider, now) -> {
-          if (!d.redelivery()) {
+          if (!d.redelivery() && !d.claimReturn()) {
             recoveryOnly(d);
           }
           if (!"ASSIGNED".equals(d.state())) {
             throw PmartException.invalidState("배정된 회수·다시 배송만 받을 수 있습니다(지금 " + d.state() + ").");
           }
           requireMyPhotos(deliveryId, rider, evidenceRefs, true);
-          List<Map<String, Object>> lines = originLines(d);
+          List<Map<String, Object>> lines = returnLines(d);
           String evidenceId = "EVD-" + UUID.randomUUID();
           Map<String, Object> evidence = new LinkedHashMap<>();
           evidence.put(
@@ -606,12 +619,14 @@ public class ExecutionService {
         expectedVersion,
         body,
         (d, rider, now) -> {
-          recoveryOnly(d);
+          if (!d.claimReturn()) {
+            recoveryOnly(d);
+          }
           if (!"RETURN_PICKED_UP".equals(d.state())) {
             throw PmartException.invalidState("회수한 배송만 반납할 수 있습니다(지금 " + d.state() + ").");
           }
           requireMyPhotos(deliveryId, rider, evidenceRefs, false);
-          List<Map<String, Object>> lines = originLines(d);
+          List<Map<String, Object>> lines = returnLines(d);
           String evidenceId = "EVD-" + UUID.randomUUID();
           Map<String, Object> evidence = new LinkedHashMap<>();
           if (d.evidenceJson() != null) {
@@ -633,6 +648,29 @@ public class ExecutionService {
           earnings.completed(d, now); // 회수 수행료 = 수락 당시 금액(일반 표, 회수지 → MFC — 사용자 2026-11-16)
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });
+  }
+
+  /**
+   * 회수 대상 줄·수량: 고객 반품 회수는 claim 회수 요청 lines(CL-1), 오배송 회수·다시 배송은 원래 배송이 전달한 줄. 모르면 회수를 내지 않는다(사건
+   * lines 최소 1).
+   */
+  private List<Map<String, Object>> returnLines(DeliveryRow d) {
+    if (!d.claimReturn()) {
+      return originLines(d);
+    }
+    List<Map<String, Object>> lines = new ArrayList<>();
+    if (d.returnLinesJson() != null) {
+      for (var n : mapper.readTree(d.returnLinesJson())) {
+        Map<String, Object> l = new LinkedHashMap<>();
+        l.put("orderLineId", n.path("orderLineId").asString());
+        l.put("qty", n.path("qty").asInt());
+        lines.add(l);
+      }
+    }
+    if (lines.isEmpty()) {
+      throw PmartException.invalidState("반품 회수할 상품을 확인할 수 없습니다. 지원센터에 문의해 주세요.");
+    }
+    return lines;
   }
 
   /** 원래 배송이 전달한 줄·수량(회수 대상). 모르면 회수를 내지 않는다(사건 lines 최소 1). */
@@ -715,7 +753,7 @@ public class ExecutionService {
 
   private static void recoveryOnly(DeliveryRow d) {
     if (!d.recovery()) {
-      throw unprocessable("RETURN_NOT_SUPPORTED", "오배송 회수 배송만 회수·반납할 수 있습니다(고객 반품 회수는 아직 없음).");
+      throw unprocessable("RETURN_NOT_SUPPORTED", "회수 배송(오배송 회수·고객 반품 회수)만 회수·반납할 수 있습니다.");
     }
   }
 

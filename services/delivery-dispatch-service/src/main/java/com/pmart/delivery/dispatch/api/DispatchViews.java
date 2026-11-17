@@ -195,7 +195,11 @@ class DispatchViews {
     if (!d.pickupBased()) {
       return null;
     }
-    RecoveryInfo r = new RecoveryInfo().caseId(d.caseId()).originDeliveryId(d.originDeliveryId());
+    RecoveryInfo r =
+        new RecoveryInfo()
+            .caseId(d.caseId())
+            .claimId(d.claimId())
+            .originDeliveryId(d.originDeliveryId());
     if (showAssignment && d.pickupLat() != null && d.pickupLng() != null) {
       r.pickup(
           new RecoveryInfoPickup()

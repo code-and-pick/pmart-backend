@@ -117,6 +117,9 @@ public class ExecutionEvents {
       p.put("mfcId", d.mfcId());
     }
     p.put("purpose", d.purpose());
+    if (d.claimId() != null) {
+      p.put("claimId", d.claimId()); // 고객 반품 회수(CL-1)
+    }
     if (d.caseId() != null) {
       p.put("caseId", d.caseId());
     }
@@ -128,6 +131,44 @@ public class ExecutionEvents {
         "evidenceRef",
         Map.of("evidenceId", evidenceId, "kind", "PHOTO", "capturedAt", at.toString()));
     return p;
+  }
+
+  /**
+   * 고객 반품 회수 실패 확정(CL-1, 2026-11-17 — 사용자 "실패마다 알림, 다시 시도는 반품 쪽"). 회수 배송 끝, 상품은 고객에게 그대로. 연락 번호·내용은
+   * 싣지 않고 횟수만.
+   */
+  public void returnPickupFailed(
+      DeliveryRow before,
+      String reason,
+      boolean customerReason,
+      int contactAttempts,
+      @org.jspecify.annotations.Nullable String reportedAt,
+      String operatorId,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", before.deliveryId());
+    p.put("claimId", before.claimId());
+    if (before.orderId() != null) {
+      p.put("orderId", before.orderId());
+    }
+    if (before.mfcId() != null) {
+      p.put("mfcId", before.mfcId());
+    }
+    if (before.riderId() != null) {
+      p.put("riderId", before.riderId());
+    }
+    p.put("reason", reason);
+    p.put("customerReason", customerReason);
+    p.put("contactAttempts", contactAttempts);
+    if (reportedAt != null) {
+      p.put("reportedAt", reportedAt);
+    }
+    p.put("failedAt", at.toString());
+    publish(
+        "ReturnPickupFailed",
+        before,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, operatorId),
+        p);
   }
 
   /** 운영자가 실패를 확정(2026-11-13) — 배송 종료. 회수 배차는 새 배송(claim·case 판단). */

@@ -19,9 +19,11 @@ import org.springframework.stereotype.Component;
 public class DispatchEvents {
 
   private final EventPublisher events;
+  private final tools.jackson.databind.ObjectMapper mapper;
 
-  public DispatchEvents(EventPublisher events) {
+  public DispatchEvents(EventPublisher events, tools.jackson.databind.ObjectMapper mapper) {
     this.events = events;
+    this.mapper = mapper;
   }
 
   public void created(DeliveryRow d, List<String> packageIds) {
@@ -38,6 +40,18 @@ public class DispatchEvents {
       p.put("purpose", d.purpose());
       p.put("caseId", d.caseId());
       p.put("originDeliveryId", d.originDeliveryId());
+    } else if (d.claimReturn()) {
+      // 고객 반품 회수(CL-1) — 회수지 = 고객 집(주소 원문 없음), 도착지는 MFC. 회수할 줄은 execution 이 회수·반납 사건에 싣는다
+      p.put("dropAddressRef", "mfc:" + d.mfcId());
+      p.put("purpose", d.purpose());
+      p.put("claimId", d.claimId());
+      if (d.originDeliveryId() != null) {
+        p.put("originDeliveryId", d.originDeliveryId());
+      }
+      p.put("pickupAddressRef", "order:" + d.orderId());
+      if (d.returnLinesJson() != null) {
+        p.put("returnLines", mapper.readTree(d.returnLinesJson()));
+      }
     } else if (d.recovery()) {
       // 오배송 회수(DD-2) — 도착지는 MFC, 회수지 좌표는 싣지 않는다
       p.put("dropAddressRef", "mfc:" + d.mfcId());

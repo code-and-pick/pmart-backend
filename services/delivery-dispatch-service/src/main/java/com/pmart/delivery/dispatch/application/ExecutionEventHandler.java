@@ -24,7 +24,12 @@ import tools.jackson.databind.JsonNode;
 public class ExecutionEventHandler {
 
   public static final Set<String> TYPES =
-      Set.of("DeliveryCompleted", "DeliveryFailed", "ReturnPickedUp", "ReturnDelivered");
+      Set.of(
+          "DeliveryCompleted",
+          "DeliveryFailed",
+          "ReturnPickedUp",
+          "ReturnDelivered",
+          "ReturnPickupFailed"); // 고객 반품 회수 실패(CL-1, 2026-11-17) — 배차 끝, 다시 시도는 반품 쪽이 새 요청으로
 
   private static final Logger log = LoggerFactory.getLogger(ExecutionEventHandler.class);
   private static final Set<String> OPEN = Set.of("ASSIGNED", "PICKED_UP");

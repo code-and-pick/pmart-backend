@@ -195,7 +195,11 @@ public class ExecutionEventHandler {
             p.path("purpose").asString(null),
             p.path("caseId").asString(null),
             p.path("originDeliveryId").asString(null),
-            redeliveryDestination(p.path("dropAddressRef").asString("")));
+            redeliveryDestination(p.path("dropAddressRef").asString("")),
+            p.path("claimId").asString(null), // 고객 반품 회수(CL-1, 2026-11-17)
+            p.path("returnLines").isArray()
+                ? mapper.writeValueAsString(p.path("returnLines"))
+                : null);
         List<String> pkgs = strings(p.path("packageIds"));
         if (d.shipmentId() != null
             && !pkgs.isEmpty()

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/ReturnPickupFailed.v1.json",
+  "title": "ReturnPickupFailed",
+  "description": "고객 반품 회수 실패(2026-11-17, CL-1 배송 쪽 — 사용자 결정 \"실패마다 알림, 다시 시도는 반품 쪽\"). 라이더가 고객 집에서 회수하지 못해(부재·연락 두절·거부 등 — 사진 + 고객 사유면 연락 2회) 실패를 등록하고 지원센터·관리자가 확정했을 때. 회수 배송은 여기서 끝(상품은 고객에게 그대로 — DeliveryFailed 의 custody 와 다르다). 몇 번째 실패인지·다시 보낼지·상담원 재연락은 claim 이 정한다(2번 실패 → 상담원 재연락, 회수비 한 번). 발행 delivery-execution. 구독 claim, delivery-dispatch(배차 끝), delivery-tracking(진행 끝), notification(선택). 토픽 delivery.delivery.v1. 단계 ②",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "ReturnPickupFailed"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "claimId",
+            "reason",
+            "failedAt"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "회수 배송"
+            },
+            "claimId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "orderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "mfcId": {
+              "$ref": "_defs.v1.json#/$defs/CenterId"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "reason": {
+              "type": "string",
+              "description": "라이더가 고른 실패 사유 — 전달 실패와 같은 코드(CUSTOMER_ABSENT·UNREACHABLE·ADDRESS_ERROR·REFUSED·DAMAGED·RIDER_INCIDENT·OTHER)"
+            },
+            "customerReason": {
+              "type": "boolean",
+              "description": "고객 사유(부재·연락 두절·주소 오류·거부)인가 — 회수비·다시 시도 판단에 claim 이 쓴다"
+            },
+            "contactAttempts": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "라이더가 기록한 고객 연락 시도 횟수(번호·내용은 싣지 않는다)"
+            },
+            "failedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "실패 확정 시각"
+            },
+            "reportedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime",
+              "description": "라이더가 실패를 등록한 시각"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -1864,6 +1864,147 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 고객 반품 회수(CL-1 배송 쪽, 2026-11-17 — 사용자 "바로 배차·일반 표(고객 집 → MFC)·실패마다 알림, 다시 시도는 반품 쪽"): claim
+   * ReturnPickupRequested → 회수 배송(RETURN·CLAIM_RETURN) 바로 배차 — 회수지 = 고객 집(원래 배송지 좌표), 예상 배달료 = 일반
+   * 표(고객 집 → MFC), 원래 기사도 받을 수 있다. 같은 사건은 하나, 진행 중이면 같은 클레임의 새 요청도 만들지 않는다. 회수
+   * 실패(ReturnPickupFailed) → CLOSED, 그 뒤 반품 쪽의 새 요청은 새 회수 배송.
+   */
+  @Test
+  void claimReturnRequestDispatchesPickupFromCustomerHome() {
+    String mfc = "MFC-D21";
+    String r1 = "RD-cr1-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String order = "ORD-" + UUID.randomUUID();
+    String origin =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-cr-" + UUID.randomUUID(), order);
+    engine.tick();
+    String offer1 =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin);
+    assertThat(body(respond(r1, offer1, "a-" + origin, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    executionEvent(
+        "DeliveryCompleted",
+        origin,
+        Map.of(
+            "deliveryId",
+            origin,
+            "riderId",
+            r1,
+            "deliveredAt",
+            Instant.now().minusSeconds(3600).toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 2)),
+            "method",
+            "CONTACTLESS"));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '" + origin + "' AND state = 'CLOSED'");
+
+    // 고객 집(37.5006) → MFC 2,400m·600초. 라이더 → 고객 집은 기본(900m·300초)
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.origins[0].lat", equalTo("37.5006")))
+            .willReturn(json(matrix(List.of(List.of(2400, 600))))));
+    locations(Map.of(r1, new double[] {37.5008, 127.0362}));
+
+    String claimId = "CLM-" + UUID.randomUUID();
+    String request = claimReturnRequested(claimId, order, origin, mfc);
+    kafka.send("order.claim.v1", claimId, request).join();
+    kafka.send("order.claim.v1", claimId, request).join(); // 같은 사건을 다시 받아도 하나
+    awaitSql("SELECT count(*) FROM delivery WHERE claim_id = '" + claimId + "'");
+    // 진행 중인데 같은 클레임의 새 요청 — 만들지 않는다
+    kafka.send("order.claim.v1", claimId, claimReturnRequested(claimId, order, origin, mfc)).join();
+    String pickup =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE claim_id = ?", String.class, claimId);
+    JsonNode created = outbox(pickup, "DeliveryCreated").path("payload");
+    assertThat(created.path("type").asString()).isEqualTo("RETURN");
+    assertThat(created.path("purpose").asString()).isEqualTo("CLAIM_RETURN");
+    assertThat(created.path("claimId").asString()).isEqualTo(claimId);
+    assertThat(created.path("originDeliveryId").asString()).isEqualTo(origin);
+    assertThat(created.path("dropAddressRef").asString()).isEqualTo("mfc:" + mfc);
+    assertThat(created.path("returnLines").get(0).path("qty").asInt()).isEqualTo(2);
+
+    engine.tick();
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT pickup_lat, pickup_source, drop_distance_m, mfc_lat, drop_lat FROM delivery"
+                + " WHERE delivery_id = ?",
+            pickup);
+    assertThat(row.get("pickup_source")).isEqualTo("DROP_ADDRESS"); // 고객 집
+    assertThat(((Number) row.get("pickup_lat")).doubleValue()).isEqualTo(37.5006);
+    assertThat(row.get("drop_distance_m")).isEqualTo(2400);
+    assertThat(row.get("drop_lat")).isEqualTo(row.get("mfc_lat"));
+    Map<String, Object> o =
+        jdbc.queryForMap(
+            "SELECT offer_id, rider_id, fee FROM dispatch_offer WHERE delivery_id = ? AND state ="
+                + " 'SENT'",
+            pickup);
+    assertThat(o.get("rider_id")).isEqualTo(r1); // 원래 기사도 받을 수 있다
+    assertThat(o.get("fee"))
+        .isEqualTo(com.pmart.delivery.dispatch.domain.FeeTable.estimate("MOTORCYCLE", 2400));
+    assertThat(
+            body(respond(r1, (String) o.get("offer_id"), "a-" + pickup, "ACCEPT"))
+                .path("outcome")
+                .asString())
+        .isEqualTo("ASSIGNED");
+    JsonNode view = dispatchView(TestJwt.rider(r1), pickup);
+    assertThat(view.path("purpose").asString()).isEqualTo("CLAIM_RETURN");
+    assertThat(view.path("recovery").path("claimId").asString()).isEqualTo(claimId);
+    assertThat(view.path("recovery").path("pickup").path("source").asString())
+        .isEqualTo("DROP_ADDRESS");
+
+    // 회수 실패 확정(execution) → 배차 끝. 다시 보낼지는 반품 쪽 — 새 요청이면 새 회수 배송
+    executionEvent(
+        "ReturnPickupFailed",
+        pickup,
+        Map.of(
+            "deliveryId",
+            pickup,
+            "claimId",
+            claimId,
+            "reason",
+            "CUSTOMER_ABSENT",
+            "failedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '" + pickup + "' AND state = 'CLOSED'");
+    kafka.send("order.claim.v1", claimId, claimReturnRequested(claimId, order, origin, mfc)).join();
+    awaitSql(
+        "SELECT CASE WHEN count(*) = 2 THEN 1 ELSE 0 END FROM delivery WHERE claim_id = '"
+            + claimId
+            + "'");
+  }
+
+  String claimReturnRequested(String claimId, String orderId, String deliveryId, String mfcId) {
+    return EventEnvelopeFixtures.envelope("ReturnPickupRequested")
+        .from("claim-service")
+        .aggregate("Claim", claimId, 2)
+        .payload(
+            Map.of(
+                "claimId",
+                claimId,
+                "orderId",
+                orderId,
+                "deliveryId",
+                deliveryId,
+                "mfcId",
+                mfcId,
+                "lines",
+                List.of(Map.of("orderLineId", "L-1", "qty", 2)),
+                "pickupAddressRef",
+                "order:" + orderId,
+                "requestedAt",
+                Instant.now().toString()))
+        .buildJson();
+  }
+
+  /**
    * 오배송 재발송(2026-11-16, ADR-0052 결정 4): MFC 재발송 출고(purpose MISDELIVERY_RESHIPMENT·caseId)로 만든 배송은
    * RESHIPMENT, DeliveryCreated 에 purpose·caseId, 약속 = 같은 사건이 처음 보인 때 + 50분. 내부 배정 조회에
    * orderId·mfcId.
