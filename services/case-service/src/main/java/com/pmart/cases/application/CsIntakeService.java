@@ -147,7 +147,8 @@ public class CsIntakeService {
                             null,
                             0,
                             null,
-                            null));
+                            null,
+                            InquiryRules.CUSTOMER));
                   }
                   Consent c = cmd.consent();
                   store.insert(

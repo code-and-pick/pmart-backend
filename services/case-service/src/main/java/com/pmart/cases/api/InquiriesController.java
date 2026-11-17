@@ -5,12 +5,14 @@ import com.pmart.cases.api.generated.model.CreateInquiryRequest;
 import com.pmart.cases.api.generated.model.Inquiry;
 import com.pmart.cases.api.generated.model.InquiryAllOfReplies;
 import com.pmart.cases.api.generated.model.InquiryCategory;
+import com.pmart.cases.api.generated.model.InquiryRequesterType;
 import com.pmart.cases.api.generated.model.InquiryStatus;
 import com.pmart.cases.api.generated.model.InquirySummary;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ListInquiries200Response;
 import com.pmart.cases.api.generated.model.ReplyInquiryRequest;
 import com.pmart.cases.application.InquiryService;
+import com.pmart.cases.domain.InquiryRules;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
 import java.time.ZoneOffset;
 import org.jspecify.annotations.Nullable;
@@ -49,8 +51,15 @@ public class InquiriesController implements InquiriesApi {
       Integer size,
       @Nullable String cursor,
       @Nullable InquiryStatus status,
-      @Nullable String orderId) {
-    var page = service.list(status == null ? null : status.getValue(), orderId, cursor, size);
+      @Nullable String orderId,
+      @Nullable InquiryRequesterType requesterType) {
+    var page =
+        service.list(
+            status == null ? null : status.getValue(),
+            orderId,
+            requesterType == null ? null : requesterType.getValue(),
+            cursor,
+            size);
     var out = new ListInquiries200Response();
     out.setItems(page.items().stream().map(InquiriesController::summary).toList());
     var p = new ListCases200ResponsePage();
@@ -88,6 +97,7 @@ public class InquiriesController implements InquiriesApi {
     s.setOrigin(r.origin());
     s.setChannel(r.channel());
     s.setCallerRelation(r.callerRelation());
+    s.setRequesterType(InquiryRequesterType.fromValue(r.requesterType()));
     s.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     s.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     s.setVersion(r.version());
@@ -99,7 +109,12 @@ public class InquiriesController implements InquiriesApi {
     var d = new Inquiry();
     d.setInquiryId(r.inquiryId());
     d.setCaseId(r.caseId());
-    d.setCustomerId(r.customerId());
+    if (InquiryRules.RIDER.equals(r.requesterType())) {
+      d.setRiderId(r.customerId());
+    } else {
+      d.setCustomerId(r.customerId());
+    }
+    d.setRequesterType(InquiryRequesterType.fromValue(r.requesterType()));
     d.setCategory(InquiryCategory.fromValue(r.category()));
     d.setOrderId(r.orderId());
     d.setTitle(r.title());

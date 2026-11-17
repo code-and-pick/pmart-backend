@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -661,14 +661,17 @@ paths:
   /inquiries:
     post:
       tags: [inquiries]
-      summary: 고객센터 문의 남기기 (고객 — 0.2.0)
+      summary: 고객센터 문의 남기기 (고객 — 0.2.0, 라이더 — 0.13.0)
       description: |
         2026-11-09 사용자 결정(C4): 고객앱 "고객센터 문의" 페이지 + 고객 RAG 가 답하지 못할 때 연결할 곳. 회원(고객 토큰)만 — 비회원 불가(C2).
+        **라이더(0.13.0, 2026-11-16 — 라이더 앱 요청 §11-4, 사용자 "추천대로")**: 배송과 상관없는 문의(정산·계정·앱 오류·기타)를 라이더 토큰으로 남긴다.
+        분류는 SETTLEMENT·ACCOUNT·APP_ERROR·OTHER 만(그 밖 400), orderId 는 받지 않는다(400 — 배송 건은 배송 화면 도움요청).
+        사건 종류 RIDER_INQUIRY, 답은 지원센터(RIDER_OPS)가 한다. 고객 분류에 SETTLEMENT·APP_ERROR 는 쓰지 않는다(400).
         CS 접수(channel APP)와 사건(CS_INQUIRY)을 함께 만든다. 접수는 명령이 아니다 — 취소·환불을 실행하지 않는다.
         orderId 를 주면 order-service 에 고객 토큰으로 본인 주문인지 확인한다(남의·없는 주문 422 ORDER_NOT_FOUND, order 응답 불가 503).
         같은 Idempotency-Key 재전송은 같은 문의. 내용은 로그에 남기지 않는다.
       operationId: createInquiry
-      x-pmart-user-types: [CUSTOMER]
+      x-pmart-user-types: [CUSTOMER, RIDER]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -698,15 +701,16 @@ paths:
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
     get:
       tags: [inquiries]
-      summary: 문의 목록 (고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN = 전체)
-      description: 최근 접수 순. 고객 토큰은 본인 문의만(0.12.0 — 상담원 접수 STAFF_INTAKE 는 빼고, 상세도 404), 운영자는 역할 CS_AGENT·OPERATOR_ADMIN 만(그 밖 403 — OPERATOR_ADMIN 은 보기만, 0.4.2). status 로 거른다. 0.5.0(2026-11-16 통합 조회) — orderId 로도 거른다(완전 일치, 고객은 여전히 본인 것만).
+      summary: 문의 목록 (고객·라이더 = 본인 것, CS_AGENT = 고객 문의, RIDER_OPS = 라이더 문의, OPERATOR_ADMIN = 전체)
+      description: 최근 접수 순. 고객 토큰은 본인 문의만(0.12.0 — 상담원 접수 STAFF_INTAKE 는 빼고, 상세도 404), 라이더 토큰은 본인 라이더 문의만(0.13.0), 운영자는 CS_AGENT 고객 문의·RIDER_OPS 라이더 문의(0.13.0)·OPERATOR_ADMIN 전부(그 밖 403 — OPERATOR_ADMIN 은 보기만, 0.4.2). status 로 거른다. 0.5.0(2026-11-16 통합 조회) — orderId 로도 거른다(완전 일치, 고객은 여전히 본인 것만).
       operationId: listInquiries
-      x-pmart-user-types: [CUSTOMER, OPERATOR]
+      x-pmart-user-types: [CUSTOMER, RIDER, OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
         - { name: status, in: query, schema: { $ref: '#/components/schemas/InquiryStatus' } }
         - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: '주문 ID 완전 일치(0.5.0 — 백오피스 통합 조회)', x-added-in: '2026-11-16' }
+        - { name: requesterType, in: query, schema: { $ref: '#/components/schemas/InquiryRequesterType' }, description: '운영자 거르기(0.13.0). 비우면 볼 수 있는 것 전부 — CS_AGENT 는 고객 문의, RIDER_OPS 는 라이더 문의. 볼 수 없는 종류를 고르면 403. 고객 문의를 못 보는 직원이 orderId 로 거르면 403', x-added-in: '2026-11-16' }
       responses:
         '200':
           description: OK
@@ -722,10 +726,10 @@ paths:
   /inquiries/{inquiryId}:
     get:
       tags: [inquiries]
-      summary: 문의 상세 + 답변 (고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN)
+      summary: 문의 상세 + 답변 (고객·라이더 = 본인 것, CS_AGENT = 고객 문의, RIDER_OPS = 라이더 문의, OPERATOR_ADMIN)
       description: 남의 문의는 404(존재를 드러내지 않음). OPERATOR_ADMIN 은 보기만(답변은 CS_AGENT — 0.4.2).
       operationId: getInquiry
-      x-pmart-user-types: [CUSTOMER, OPERATOR]
+      x-pmart-user-types: [CUSTOMER, RIDER, OPERATOR]
       parameters:
         - { name: inquiryId, in: path, required: true, schema: { type: string } }
       responses:
@@ -740,8 +744,9 @@ paths:
   /inquiries/{inquiryId}/replies:
     post:
       tags: [inquiries]
-      summary: 문의에 답변 (운영자 CS_AGENT)
+      summary: 문의에 답변 (고객 문의 = CS_AGENT, 라이더 문의 = RIDER_OPS)
       description: |
+        라이더 문의(0.13.0)는 지원센터(RIDER_OPS)가 답하고 CS_AGENT 는 403. 라이더 문의 답변은 `InquiryAnswered` 를 내지 않는다(고객 알림 사건 — 라이더 푸시는 아직 없음).
         답변을 붙이면 상태가 ANSWERED. 닫힌(CLOSED) 문의는 409 INQUIRY_CLOSED. X-Expected-Version = 문의 version.
         고객 앱 알림은 notification-service 구현 뒤(지금은 고객이 문의 페이지에서 확인).
         0.12.0: 상담원 접수(origin STAFF_INTAKE) 문의에 답을 붙이면 상태는 같게 바뀌지만 InquiryAnswered 를 내지 않는다(고객 앱에 없는 문의 — 답변은 통화·채팅 기록).
@@ -1275,8 +1280,12 @@ components:
             note: { type: string, nullable: true }
     InquiryCategory:
       type: string
-      enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, OTHER]
-      description: 주문·배송·결제·환불·상품·회원·기타
+      enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, OTHER, SETTLEMENT, APP_ERROR]
+      description: '주문·배송·결제·환불·상품·회원·기타 + 라이더 정산·앱 오류(0.13.0). 고객 = ORDER~OTHER, 라이더 = SETTLEMENT·ACCOUNT·APP_ERROR·OTHER'
+    InquiryRequesterType:
+      type: string
+      enum: [CUSTOMER, RIDER]
+      x-added-in: '2026-11-16'
     InquiryStatus:
       type: string
       enum: [RECEIVED, ANSWERED, CLOSED]
@@ -1293,6 +1302,7 @@ components:
         origin: { type: string, description: 'INQUIRY_PAGE / ASSISTANT_HANDOFF / STAFF_INTAKE(0.12.0 — 상담원이 전화·채팅·메일로 받아 남긴 것, 고객 앱에는 안 보임)' }
         channel: { type: [string, 'null'], x-added-in: '2026-11-16', description: '(0.12.0) STAFF_INTAKE 의 연락 경로 PHONE·CHAT·EMAIL' }
         callerRelation: { type: [string, 'null'], x-added-in: '2026-11-16', description: '(0.12.0) STAFF_INTAKE 의 본인/대리 — PROXY 면 화면 경고' }
+        requesterType: { $ref: '#/components/schemas/InquiryRequesterType' }
         createdAt: { type: string, format: date-time }
         answeredAt: { type: string, format: date-time, nullable: true }
         version: { type: integer }
@@ -1303,7 +1313,8 @@ components:
           required: [body, replies, caseId]
           properties:
             caseId: { type: string }
-            customerId: { type: string, description: 운영자 조회에만 의미(고객에게는 본인) }
+            customerId: { type: string, description: '운영자 조회에만 의미(고객에게는 본인). 라이더 문의는 없음' }
+            riderId: { type: string, description: '라이더 문의를 남긴 라이더(0.13.0). 고객 문의는 없음', x-added-in: '2026-11-16' }
             body: { type: string }
             replies:
               type: array

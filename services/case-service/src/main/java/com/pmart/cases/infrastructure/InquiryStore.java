@@ -1,5 +1,6 @@
 package com.pmart.cases.infrastructure;
 
+import com.pmart.cases.domain.InquiryRules;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -29,19 +30,20 @@ public class InquiryStore {
       @Nullable Instant answeredAt,
       int version,
       @Nullable String channel,
-      @Nullable String callerRelation) {}
+      @Nullable String callerRelation,
+      String requesterType) {}
 
   public record ReplyRow(
       String replyId, String authorType, String authorId, String body, Instant createdAt) {}
 
   private static final String COLS =
       "inquiry_id, case_id, customer_id, category, order_id, title, body, origin, status,"
-          + " created_at, answered_at, version";
+          + " created_at, answered_at, version, requester_type";
 
   /** 상담원 접수(0.12.0)면 연락 경로·본인/대리를 같이 — cs_intake 는 이 서비스 표. */
   private static final String SELECT =
       "SELECT q.inquiry_id, q.case_id, q.customer_id, q.category, q.order_id, q.title, q.body,"
-          + " q.origin, q.status, q.created_at, q.answered_at, q.version, i.channel,"
+          + " q.origin, q.status, q.created_at, q.answered_at, q.version, q.requester_type, i.channel,"
           + " i.caller_relation FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
           + " q.inquiry_id";
 
@@ -54,12 +56,13 @@ public class InquiryStore {
   public void insert(InquiryRow r) {
     jdbc.update(
         "INSERT INTO case_record (case_id, case_type, state, subject_ref, created_at)"
-            + " VALUES (?, 'CS_INQUIRY', 'OPEN', ?, ?)",
+            + " VALUES (?, ?, 'OPEN', ?, ?)",
         r.caseId(),
+        InquiryRules.caseType(r.requesterType()),
         r.orderId(),
         Timestamp.from(r.createdAt()));
     jdbc.update(
-        "INSERT INTO cs_inquiry (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO cs_inquiry (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         r.inquiryId(),
         r.caseId(),
         r.customerId(),
@@ -71,7 +74,8 @@ public class InquiryStore {
         r.status(),
         Timestamp.from(r.createdAt()),
         null,
-        0);
+        0,
+        r.requesterType());
   }
 
   public Optional<InquiryRow> find(String inquiryId) {
@@ -94,6 +98,7 @@ public class InquiryStore {
    */
   public List<InquiryRow> page(
       @Nullable String customerId,
+      @Nullable String requesterType,
       @Nullable String status,
       @Nullable String orderId,
       @Nullable String cursor,
@@ -103,6 +108,10 @@ public class InquiryStore {
     if (customerId != null) {
       sql.append(" AND q.customer_id = ? AND q.origin <> 'STAFF_INTAKE'");
       args.add(customerId);
+    }
+    if (requesterType != null) {
+      sql.append(" AND q.requester_type = ?");
+      args.add(requesterType);
     }
     if (status != null) {
       sql.append(" AND q.status = ?");
@@ -176,6 +185,7 @@ public class InquiryStore {
         answered == null ? null : answered.toInstant(),
         rs.getInt("version"),
         rs.getString("channel"),
-        rs.getString("caller_relation"));
+        rs.getString("caller_relation"),
+        rs.getString("requester_type"));
   }
 }

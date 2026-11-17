@@ -121,7 +121,7 @@ public final class CaseRules {
     return DELIVERY_KINDS.contains(kind);
   }
 
-  /** 사건함에 나오는 종류(고객 문의 CS_INQUIRY 는 /inquiries). */
+  /** 사건함에 나오는 종류(고객 문의 CS_INQUIRY·라이더 문의 RIDER_INQUIRY 는 /inquiries). */
   public static final Set<String> ALL_INBOX_KINDS =
       Set.of(
           RIDER_HELP,

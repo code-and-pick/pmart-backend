@@ -74,9 +74,30 @@ public class InquiryService {
     this.clock = clock;
   }
 
-  /** 고객이 문의를 남긴다. 본인 주문 확인은 트랜잭션 밖(외부 호출). */
+  /**
+   * 고객·라이더가 문의를 남긴다. 본인 주문 확인은 트랜잭션 밖(외부 호출). 라이더(0.13.0)는 배송과 상관없는 문의만 — 분류 SETTLEMENT·ACCOUNT·
+   * APP_ERROR·OTHER, 주문 없음.
+   */
   public View create(String requestId, String sourceSystem, CreateCommand cmd) {
-    String customerId = requireCustomer();
+    PmartPrincipal who = requireRequester();
+    String customerId = who.subject();
+    String requesterType =
+        who.type() == PmartPrincipal.PrincipalType.RIDER
+            ? InquiryRules.RIDER
+            : InquiryRules.CUSTOMER;
+    if (!InquiryRules.categoryAllowed(requesterType, cmd.category())) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED,
+          InquiryRules.RIDER.equals(requesterType)
+              ? "라이더 문의 분류는 SETTLEMENT·ACCOUNT·APP_ERROR·OTHER 입니다."
+              : "고객 문의 분류가 아닙니다.");
+    }
+    if (InquiryRules.RIDER.equals(requesterType)
+        && cmd.orderId() != null
+        && !cmd.orderId().isBlank()) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "배송 건 문의는 배송 화면의 도움요청으로 남기세요(라이더 문의는 주문 없이).");
+    }
     if (cmd.orderId() != null && !cmd.orderId().isBlank()) {
       if (props.orderServiceBaseUrl() == null) {
         throw PmartException.configRequired("pmart.cases.order-service-base-url");
@@ -114,25 +135,57 @@ public class InquiryService {
                           null,
                           0,
                           null,
-                          null));
-                  log.info("inquiry received id={} category={}", id, cmd.category());
+                          null,
+                          requesterType));
+                  log.info(
+                      "inquiry received id={} requester={} category={}",
+                      id,
+                      requesterType,
+                      cmd.category());
                   return id;
                 })
             .value();
     return view(inquiryId);
   }
 
-  /** 고객 = 본인 것, CS_AGENT·OPERATOR_ADMIN = 전체(관리자는 보기만 — 2026-11-16 사용자 (가)). */
+  /**
+   * 고객·라이더 = 본인 것, 운영자 = 볼 수 있는 종류(CS_AGENT 고객 문의, RIDER_OPS 라이더 문의, OPERATOR_ADMIN 전부 — 관리자는 보기만,
+   * 2026-11-16 사용자 (가)).
+   */
   public Page list(
-      @Nullable String status, @Nullable String orderId, @Nullable String cursor, int size) {
+      @Nullable String status,
+      @Nullable String orderId,
+      @Nullable String requesterType,
+      @Nullable String cursor,
+      int size) {
     PmartPrincipal p = principal();
     String customerId = null;
+    String type;
     if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
       customerId = p.subject();
-    } else if (!canRead(p)) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "문의 목록을 볼 권한이 없습니다.");
+      type = InquiryRules.CUSTOMER;
+    } else if (p.type() == PmartPrincipal.PrincipalType.RIDER) {
+      customerId = p.subject();
+      type = InquiryRules.RIDER;
+    } else {
+      java.util.Set<String> readable = readableTypes(p);
+      if (readable.isEmpty()) {
+        throw new PmartException(ErrorCode.FORBIDDEN, "문의 목록을 볼 권한이 없습니다.");
+      }
+      if (requesterType != null && !readable.contains(requesterType)) {
+        throw new PmartException(ErrorCode.FORBIDDEN, "그 종류의 문의를 볼 권한이 없습니다.");
+      }
+      // 주문으로 찾기는 고객 문의 — 고객 문의를 못 보는 직원은 예전처럼 403(통합 조회가 원천 불가로 표시)
+      if (blankToNull(orderId) != null && !readable.contains(InquiryRules.CUSTOMER)) {
+        throw new PmartException(ErrorCode.FORBIDDEN, "고객 문의를 볼 권한이 없습니다.");
+      }
+      type =
+          requesterType != null
+              ? requesterType
+              : readable.size() == 1 ? readable.iterator().next() : null;
     }
-    List<InquiryRow> rows = store.page(customerId, status, blankToNull(orderId), cursor, size);
+    List<InquiryRow> rows =
+        store.page(customerId, type, status, blankToNull(orderId), cursor, size);
     boolean more = rows.size() > size;
     List<InquiryRow> items = more ? rows.subList(0, size) : rows;
     return new Page(List.copyOf(items), more ? items.get(items.size() - 1).inquiryId() : null);
@@ -142,14 +195,22 @@ public class InquiryService {
   public View get(String inquiryId) {
     PmartPrincipal p = principal();
     InquiryRow row = store.find(inquiryId).orElseThrow(() -> notFound(inquiryId));
-    if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
+    if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER
+        || p.type() == PmartPrincipal.PrincipalType.RIDER) {
+      String mineType =
+          p.type() == PmartPrincipal.PrincipalType.RIDER
+              ? InquiryRules.RIDER
+              : InquiryRules.CUSTOMER;
       // 상담원 접수(0.12.0)는 고객 앱에 보이지 않는다
       if (!row.customerId().equals(p.subject())
+          || !mineType.equals(row.requesterType())
           || CsIntakeRules.ORIGIN_STAFF_INTAKE.equals(row.origin())) {
         throw notFound(inquiryId);
       }
-    } else if (!canRead(p)) {
+    } else if (readableTypes(p).isEmpty()) {
       throw new PmartException(ErrorCode.FORBIDDEN, "문의를 볼 권한이 없습니다.");
+    } else if (!readableTypes(p).contains(row.requesterType())) {
+      throw notFound(inquiryId);
     }
     return new View(row, store.replies(inquiryId));
   }
@@ -162,8 +223,9 @@ public class InquiryService {
       String body,
       @Nullable Integer expectedVersion) {
     PmartPrincipal p = principal();
-    if (!isAgent(p)) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "문의 답변은 상담원(CS_AGENT)만 할 수 있습니다.");
+    if (!isAgent(p) && !isRiderOps(p)) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, "문의 답변은 상담원(CS_AGENT)·지원센터(RIDER_OPS)만 할 수 있습니다.");
     }
     idempotency.execute(
         new RequestKey(sourceSystem, requestId, "replyInquiry", p.subject()),
@@ -171,6 +233,13 @@ public class InquiryService {
         String.class,
         () -> {
           InquiryRow row = store.lock(inquiryId).orElseThrow(() -> notFound(inquiryId));
+          if (!p.hasRole(InquiryRules.answerRole(row.requesterType()))) {
+            throw new PmartException(
+                ErrorCode.FORBIDDEN,
+                InquiryRules.RIDER.equals(row.requesterType())
+                    ? "라이더 문의는 지원센터(RIDER_OPS)가 답합니다."
+                    : "고객 문의는 상담원(CS_AGENT)이 답합니다.");
+          }
           if (expectedVersion != null && expectedVersion != row.version()) {
             throw PmartException.versionConflict("문의가 그사이 바뀌었습니다. 다시 조회하세요.");
           }
@@ -190,6 +259,11 @@ public class InquiryService {
           // 상담원 접수(0.12.0)는 고객 앱에 없는 문의 — 알림을 내지 않는다
           if (CsIntakeRules.ORIGIN_STAFF_INTAKE.equals(row.origin())) {
             log.info("inquiry answered id={} (staff intake, no notification)", inquiryId);
+            return inquiryId;
+          }
+          if (InquiryRules.RIDER.equals(row.requesterType())) {
+            // 라이더 문의: 고객 알림 사건(InquiryAnswered — customerId 필수)은 내지 않는다. 라이더 푸시는 아직 없음(§11-5)
+            log.info("rider inquiry answered id={}", inquiryId);
             return inquiryId;
           }
           // 고객 알림(notification N-2, 2026-11-16). 답변 내용은 싣지 않는다
@@ -228,24 +302,37 @@ public class InquiryService {
         .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "토큰이 필요합니다."));
   }
 
-  /** 회원 고객만(비회원·운영자·라이더 불가 — 사용자 결정 C2). */
-  private static String requireCustomer() {
+  /** 회원 고객(사용자 결정 C2)·라이더(0.13.0 — §11-4)만. 비회원·운영자 불가. */
+  private static PmartPrincipal requireRequester() {
     PmartPrincipal p = principal();
-    if (p.type() != PmartPrincipal.PrincipalType.CUSTOMER) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "고객센터 문의는 로그인한 회원만 남길 수 있습니다.");
+    if (p.type() != PmartPrincipal.PrincipalType.CUSTOMER
+        && p.type() != PmartPrincipal.PrincipalType.RIDER) {
+      throw new PmartException(ErrorCode.FORBIDDEN, "고객센터 문의는 로그인한 회원·라이더만 남길 수 있습니다.");
     }
-    return p.subject();
+    return p;
+  }
+
+  private static boolean isRiderOps(PmartPrincipal p) {
+    return p.type() == PmartPrincipal.PrincipalType.OPERATOR && p.hasRole(InquiryRules.RIDER_OPS);
+  }
+
+  /** 운영자가 볼 수 있는 문의 종류(InquiryRules.readableTypes). */
+  private static java.util.Set<String> readableTypes(PmartPrincipal p) {
+    if (p.type() != PmartPrincipal.PrincipalType.OPERATOR) {
+      return java.util.Set.of();
+    }
+    java.util.Set<String> roles = new java.util.HashSet<>();
+    for (String r :
+        List.of(InquiryRules.CS_AGENT, InquiryRules.RIDER_OPS, InquiryRules.OPERATOR_ADMIN)) {
+      if (p.hasRole(r)) {
+        roles.add(r);
+      }
+    }
+    return InquiryRules.readableTypes(roles);
   }
 
   private static boolean isAgent(PmartPrincipal p) {
     return p.type() == PmartPrincipal.PrincipalType.OPERATOR && p.hasRole(InquiryRules.CS_AGENT);
-  }
-
-  /** 운영자 보기: 상담원 + 본사 관리자(보기만, 답변은 상담원 — 2026-11-16 사용자 (가)). */
-  private static boolean canRead(PmartPrincipal p) {
-    return isAgent(p)
-        || (p.type() == PmartPrincipal.PrincipalType.OPERATOR
-            && p.hasRole(InquiryRules.OPERATOR_ADMIN));
   }
 
   private static PmartException notFound(String inquiryId) {

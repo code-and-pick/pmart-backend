@@ -196,7 +196,7 @@ public class ShiftHandoverStore {
             + " (SELECT count(*) FROM case_obligation o WHERE o.case_id = c.case_id"
             + "   AND o.state IN ('OPEN', 'PARTIALLY_RESOLVED')) AS open_obl"
             + " FROM case_record c WHERE c.assignee_group = ? AND c.state <> 'CLOSED'"
-            + " AND c.case_type <> 'CS_INQUIRY' ORDER BY c.created_at LIMIT 200",
+            + " AND c.case_type NOT IN ('CS_INQUIRY', 'RIDER_INQUIRY') ORDER BY c.created_at LIMIT 200",
         (rs, n) -> {
           Map<String, Object> m = new java.util.LinkedHashMap<>();
           m.put("caseId", rs.getString(1));

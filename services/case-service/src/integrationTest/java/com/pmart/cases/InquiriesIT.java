@@ -210,6 +210,111 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
     assertThat(notMine.body().path("code").asString()).isEqualTo("ORDER_NOT_FOUND");
   }
 
+  /** 라이더 문의(0.13.0 — 라이더 앱 요청 §11-4, 사용자 "추천대로"): 지원센터(RIDER_OPS)가 답하고 상담원과 나뉜다. */
+  @Test
+  void riderAsksSupportCenterAnswers() {
+    String rider = "RD-" + UUID.randomUUID().toString().substring(0, 8);
+    String riderTok = TestJwt.rider(rider);
+    String otherRider = TestJwt.rider("RD-" + UUID.randomUUID().toString().substring(0, 8));
+    String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
+    String agent = TestJwt.operator("cs-3", List.of("CS_AGENT"), List.of());
+    String admin = TestJwt.operator("admin-2", List.of("OPERATOR_ADMIN"), List.of());
+
+    // 라이더 분류만, 주문 없이
+    assertThat(
+            send("POST", riderTok, "/inquiries", Map.of("category", "ORDER", "body", "x"), null)
+                .status())
+        .isEqualTo(400);
+    assertThat(
+            send(
+                    "POST",
+                    riderTok,
+                    "/inquiries",
+                    Map.of("category", "OTHER", "orderId", "ORD-1", "body", "x"),
+                    null)
+                .status())
+        .isEqualTo(400);
+    // 고객은 라이더 분류를 못 쓴다
+    assertThat(
+            send(
+                    "POST",
+                    TestJwt.customer("CU-x"),
+                    "/inquiries",
+                    Map.of("category", "SETTLEMENT", "body", "x"),
+                    null)
+                .status())
+        .isEqualTo(400);
+
+    Res created =
+        send(
+            "POST",
+            riderTok,
+            "/inquiries",
+            Map.of("category", "SETTLEMENT", "title", "정산", "body", "지난주 정산이 빠졌어요"),
+            null);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String id = created.body().path("inquiryId").asString();
+    assertThat(created.body().path("requesterType").asString()).isEqualTo("RIDER");
+    assertThat(created.body().path("riderId").asString()).isEqualTo(rider);
+    assertThat(
+            created.body().path("customerId").isMissingNode()
+                || created.body().path("customerId").isNull())
+        .isTrue();
+    String caseType =
+        jdbc.queryForObject(
+            "SELECT case_type FROM case_record WHERE case_id = ?",
+            String.class,
+            created.body().path("caseId").asString());
+    assertThat(caseType).isEqualTo("RIDER_INQUIRY");
+
+    // 본인만, 다른 라이더 404, 상담원은 못 봄(404)·목록에 없음, 지원센터·관리자는 봄
+    assertThat(send("GET", riderTok, "/inquiries/" + id, null, null).status()).isEqualTo(200);
+    assertThat(send("GET", otherRider, "/inquiries/" + id, null, null).status()).isEqualTo(404);
+    assertThat(send("GET", agent, "/inquiries/" + id, null, null).status()).isEqualTo(404);
+    assertThat(
+            send("GET", agent, "/inquiries", null, null)
+                .body()
+                .path("items")
+                .findValuesAsString("inquiryId"))
+        .doesNotContain(id);
+    assertThat(send("GET", agent, "/inquiries?requesterType=RIDER", null, null).status())
+        .isEqualTo(403);
+    assertThat(
+            send("GET", ops, "/inquiries", null, null)
+                .body()
+                .path("items")
+                .findValuesAsString("inquiryId"))
+        .contains(id);
+    // 지원센터는 주문으로 찾기(고객 문의) 403 — 통합 조회가 원천 불가로 표시하던 그대로
+    assertThat(send("GET", ops, "/inquiries?orderId=ORD-1", null, null).status()).isEqualTo(403);
+    assertThat(send("GET", admin, "/inquiries/" + id, null, null).status()).isEqualTo(200);
+    assertThat(
+            send("GET", riderTok, "/inquiries", null, null)
+                .body()
+                .path("items")
+                .findValuesAsString("inquiryId"))
+        .containsExactly(id);
+
+    // 상담원 답변 403, 지원센터 답변 → ANSWERED, 고객 알림 사건 없음
+    assertThat(
+            send("POST", agent, "/inquiries/" + id + "/replies", Map.of("body", "x"), null)
+                .status())
+        .isEqualTo(403);
+    Res replied =
+        send("POST", ops, "/inquiries/" + id + "/replies", Map.of("body", "다음 정산에 넣었습니다"), 0);
+    assertThat(replied.status()).as(replied.body().toString()).isEqualTo(200);
+    assertThat(replied.body().path("status").asString()).isEqualTo("ANSWERED");
+    Integer events =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE type = 'InquiryAnswered' AND payload::text LIKE ?",
+            Integer.class,
+            "%" + id + "%");
+    assertThat(events).isZero();
+    Res seen = send("GET", riderTok, "/inquiries/" + id, null, null);
+    assertThat(seen.body().path("replies").path(0).path("body").asString())
+        .isEqualTo("다음 정산에 넣었습니다");
+  }
+
   @Test
   void onlyLoggedInCustomersCanAsk() {
     String agent = TestJwt.operator("cs-2", List.of("CS_AGENT"), List.of());
