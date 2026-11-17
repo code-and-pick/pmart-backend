@@ -46,6 +46,7 @@
 ## 사건함 화면 (2026-11-16 — 계약 0.5.0)
 - `GET /views/case-inbox`(`application/CaseInboxView`, `LookupClients` 재사용): case `GET /cases` 를 **직원 토큰**으로(필터 이름 옮김 — assignee → assigneeId, size ≤ 50). 보이는 범위·정렬·403 은 case 판정 그대로(case 403·400 은 그대로 돌려줌, case 장애는 200 + 빈 items + unavailableSources).
 - 사건마다 연결 배송(subjectType DELIVERY·refs deliveryId·**recoveryDeliveryId(오배송 회수 배송, 0.5.1)·reshipmentDeliveryId(오배송 재발송 배송, 0.5.2)** → execution `/deliveries/{id}` 의 state)·주문(subjectType ORDER·refs orderId → order `/orders/lookups/{id}` 의 status)을 `linked` 에 — 같은 ID 는 한 번만, 합치거나 해석하지 않음. 연결 원천 실패·403 은 그 칸만 state null·UNKNOWN + unavailableSources, 404 는 state null·DIRECT(없음).
+- **도움요청 대화(0.6.0, 2026-11-17 — PC 5 DE-2 반영)**: 라이더 도움요청 사건(kind RIDER_HELP, refs deliveryId·requestId)은 execution `GET /deliveries/{id}/help-requests/{requestId}` 를 직원 토큰으로 읽어 `linked` 에 kind HELP_REQUEST(state·`lastRiderMessageAt`·`lastSupportMessageAt`). "새 메시지" 판단(두 시각 비교·직원별 읽음)은 화면이 한다. 실패·403·404 규칙은 배송·주문과 같다.
 
 ## 상태
 3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황·사건함(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.

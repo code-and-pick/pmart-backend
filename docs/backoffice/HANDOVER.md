@@ -33,7 +33,7 @@
 
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
-| backoffice-bff **0.5.2 배포**(8504, LAN PC 4 — #48, PC 1 기록 67740cf3) | 승인함(11-03), 처리 대기 `pending-work`(멈춘 사가 + 이행 확인 필요 + **MFC 중지 실패·인계 거절 0.4.0 — 목록은 F-4 뒤 설정 `pmart.bff.mfc-pending-lists` 로 켬**, OPERATOR_ADMIN) + 명령 `saga-requery·saga-resolve·stop-retry·handover-retry`, 통합 조회 `unified-lookup`, 실시간 배송 현황 `live-delivery`(센터 관리자 자기 센터 0.3.1), **사건함 `case-inbox`**(연결 배송·주문 지금 상태 0.5.0, 오배송 회수 배송 0.5.1·재발송 배송 0.5.2) | `replenishment-status`·`trip-control`·`packing-handover`·`metrics`·명령 결과 조회 501. 통합 조회 MFC 칸(F-3 대기), latestEta(tracking ETA 조회 API 501 — TR-1 은 이벤트만, 설정 있을 때). 도움요청 새 메시지 표시(DE-2 의 `lastRiderMessageAt` 뒤) |
+| backoffice-bff **0.5.2 배포**(8504, LAN PC 4 — #48, PC 1 기록 67740cf3) | 승인함(11-03), 처리 대기 `pending-work`(멈춘 사가 + 이행 확인 필요 + **MFC 중지 실패·인계 거절 0.4.0 — 목록은 F-4 뒤 설정 `pmart.bff.mfc-pending-lists` 로 켬**, OPERATOR_ADMIN) + 명령 `saga-requery·saga-resolve·stop-retry·handover-retry`, 통합 조회 `unified-lookup`, 실시간 배송 현황 `live-delivery`(센터 관리자 자기 센터 0.3.1), **사건함 `case-inbox`**(연결 배송·주문 지금 상태 0.5.0, 오배송 회수 배송 0.5.1·재발송 배송 0.5.2) | `replenishment-status`·`trip-control`·`packing-handover`·`metrics`·명령 결과 조회 501. 통합 조회 MFC 칸(F-3 대기), latestEta(tracking ETA 조회 API 501 — TR-1 은 이벤트만, 설정 있을 때). |
 | case-service **0.12.0 배포**(8506, LAN PC 4 — 2026-11-16 자정 #68, PC 1 배포 39c0d17f) | 고객 문의, 라이더 컴플레인, 사건함 `/cases`(도움요청·전달 실패·위치 끊김·오배송 확인·사가/결제 이상·배차 실패 — **센터 관리자 자기 센터 배차 실패: DD-MFC 배포로 이제 실제로 보임**), 재개 0.6.0, 이관 0.7.0, 후속 처리(의무) 0.8.0, 오배송 회수 진행 0.8.1, 교대 인수인계 0.9.0, 메모 0.10.0, **오배송 귀책·고객 선택 0.11.0(PC 5 #44 — ADR-0065, 고객 잘못 3·4단계 #49~#53 도 배포)**, 도움요청 접수 `/help-requests` 사용 안 함 0.11.1, 오배송 재발송 연결 0.11.2, **CS 접수 0.12.0(BO-11 — 상담원 전화·채팅·메일 기록 `/cs-intakes`, 본인 확인 방법 필수·대리 표시, 새 건은 고객에게 안 보이는 문의 STAFF_INTAKE, V10)**. LAN 쓰기 시험: 재개·이관·후속 처리·교대·메모 통과(일지 2026-11-16), CS 접수는 읽기 확인만(2026-11-17) | 행위 요청(501), 사건 알림(ADR-0064 — 직원 알림 없음), 대리 정책(대리 취소·환불 막기)·등록 번호로 다시 걸기·앱 확인 요청·외부 본인인증 |
 
 PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
@@ -60,7 +60,7 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
 ## 4. 할 일 (추천 순서)
 1. **LAN 웹 빌드가 올라오면** 시험 계정(§6)으로 오늘 화면을 눌러 보고 빠진 것만 고친다(실서버 쓰기는 사용자 승인 — 남는 기록을 먼저 알린다).
-2. **PC 5 DE-2(도움요청 대화)** 가 오면 bff `case-inbox` 의 RIDER_HELP 건에 `lastRiderMessageAt` 붙이기.
+2. ~~PC 5 DE-2 → bff `case-inbox` RIDER_HELP 건에 `lastRiderMessageAt`~~ — 2026-11-17 bff 0.6.0(PR 대기).
 3. **PC 3 F-4**(멈춘 중지 요청·거절된 인계 목록)가 오면 bff 설정 `pmart.bff.mfc-pending-lists` 켜고 경로·필드 맞추기. **F-3**(주문 번호로 현장 상태)이 오면 통합 조회에 MFC 칸. F-4 가 더 급하다(고객 취소·환불이 조용히 멈춤).
 4. **PC 5 PR #71(라이더 문의 — `/inquiries` 를 라이더에게)** 이 case V11·0.13.0 으로 다시 올라오면 case-service 를 검토한다(#68 CS 접수와 `InquiriesController`·`InquiryService`·`InquiryStore`·계약이 겹침 — STAFF_INTAKE 숨김·답변 알림 없음·channel/callerRelation 이 남는지). 웹 세션에 `/inquiries` 응답 변화를 알린다.
 5. 결정이 필요한 것: 대리 정책(대리 접수 뒤 취소·환불을 막을지 — CS 접수 0.12.0 은 표시만), 행위 요청(처리 대기·후속 처리와 겹침), 지표(BO-28). 실시간 배송 latestEta 는 tracking ETA 조회 API(501) 뒤.

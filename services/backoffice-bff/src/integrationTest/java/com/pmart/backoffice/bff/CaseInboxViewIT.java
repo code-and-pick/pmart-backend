@@ -81,7 +81,7 @@ class CaseInboxViewIT {
                     {"items":[
                       {"caseId":"CASE-1","kind":"RIDER_HELP","state":"OPEN","priority":"P1","subjectType":"DELIVERY","subjectRef":"DLV-1",
                        "summary":"라이더 도움요청","overdue":true,"slaDueAt":"2026-11-16T01:10:00Z","openObligationCount":0,
-                       "refs":[{"refType":"deliveryId","refId":"DLV-1"},{"refType":"orderId","refId":"ORD-1"},{"refType":"incidentId","refId":"DLV-1:R1"}]},
+                       "refs":[{"refType":"deliveryId","refId":"DLV-1"},{"refType":"orderId","refId":"ORD-1"},{"refType":"incidentId","refId":"DLV-1:R1"},{"refType":"requestId","refId":"R1"}]},
                       {"caseId":"CASE-2","kind":"MISDELIVERY","state":"ASSIGNED","priority":"P2","subjectType":"DELIVERY","subjectRef":"DLV-1",
                        "refs":[{"refType":"orderId","refId":"ORD-404"},{"refType":"recoveryDeliveryId","refId":"DLV-R"},{"refType":"reshipmentDeliveryId","refId":"DLV-S"}]}],
                      "page":{"nextCursor":"n2"}}""")));
@@ -99,6 +99,12 @@ class CaseInboxViewIT {
         WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-S"))
             .willReturn(
                 json(200, "{\"deliveryId\":\"DLV-S\",\"state\":\"ASSIGNED\",\"version\":1}")));
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-1/help-requests/R1"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"requestId\":\"R1\",\"state\":\"IN_PROGRESS\",\"lastRiderMessageAt\":\"2026-11-17T01:05:00Z\",\"lastSupportMessageAt\":\"2026-11-17T01:00:00Z\"}")));
     order.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-1"))
             .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
@@ -134,7 +140,7 @@ class CaseInboxViewIT {
     JsonNode c1 = items.get(0);
     assertThat(c1.path("kind").asString()).isEqualTo("RIDER_HELP");
     assertThat(c1.path("overdue").asBoolean()).isTrue();
-    assertThat(c1.path("linkedRefs")).hasSize(3);
+    assertThat(c1.path("linkedRefs")).hasSize(4);
     JsonNode dl = c1.path("linked").get(0);
     assertThat(dl.path("kind").asString()).isEqualTo("DELIVERY");
     assertThat(dl.path("state").asString()).isEqualTo("PICKED_UP");
@@ -144,6 +150,15 @@ class CaseInboxViewIT {
     assertThat(od.path("kind").asString()).isEqualTo("ORDER");
     assertThat(od.path("state").isNull()).as("주문을 못 보는 역할 — 그 칸만 모름").isTrue();
     assertThat(od.path("source").path("confidence").asString()).isEqualTo("UNKNOWN");
+    JsonNode help = c1.path("linked").get(2);
+    assertThat(help.path("kind").asString()).as("도움요청 대화(0.6.0, DE-2)").isEqualTo("HELP_REQUEST");
+    assertThat(help.path("id").asString()).isEqualTo("R1");
+    assertThat(help.path("state").asString()).isEqualTo("IN_PROGRESS");
+    assertThat(help.path("lastRiderMessageAt").asString()).isEqualTo("2026-11-17T01:05:00Z");
+    assertThat(help.path("lastSupportMessageAt").asString()).isEqualTo("2026-11-17T01:00:00Z");
+    assertThat(items.get(1).path("linked").findValuesAsString("kind"))
+        .as("오배송 건엔 도움요청 없음")
+        .doesNotContain("HELP_REQUEST");
 
     JsonNode c2 = items.get(1);
     assertThat(c2.path("linked").get(1).path("id").asString())

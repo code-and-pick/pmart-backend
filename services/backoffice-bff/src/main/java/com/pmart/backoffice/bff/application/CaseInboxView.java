@@ -155,6 +155,20 @@ public class CaseInboxView {
         linked.add(
             linkedEntry("ORDER", o, orders.get(o), "status", Source.ORDER, orderOk.get(o), now));
       }
+      // 0.6.0(DE-2): 라이더 도움요청 사건은 그 도움요청의 상태·대화 마지막 시각
+      String helpDelivery = refValue(c, "deliveryId");
+      String helpRequest = refValue(c, "requestId");
+      if ("RIDER_HELP".equals(text(c, "kind")) && helpDelivery != null && helpRequest != null) {
+        used.add(Source.EXECUTION);
+        Map<String, Boolean> ok = new HashMap<>();
+        JsonNode h = fetchHelp(token, helpDelivery, helpRequest, failed, ok);
+        Map<String, Object> e =
+            linkedEntry(
+                "HELP_REQUEST", helpRequest, h, "state", Source.EXECUTION, ok.get("h"), now);
+        e.put("lastRiderMessageAt", h == null ? null : text(h, "lastRiderMessageAt"));
+        e.put("lastSupportMessageAt", h == null ? null : text(h, "lastSupportMessageAt"));
+        linked.add(e);
+      }
       i.put("linked", linked);
       i.put("source", stamp(Source.CASE.system, now, true));
       items.add(i);
@@ -205,6 +219,44 @@ public class CaseInboxView {
       ok.put(key, false);
       return null;
     }
+  }
+
+  /** 도움요청 단건(execution DE-2) — 실패 규칙은 {@link #fetch} 와 같다. */
+  private @Nullable JsonNode fetchHelp(
+      String token,
+      String deliveryId,
+      String requestId,
+      Set<Source> failed,
+      Map<String, Boolean> ok) {
+    try {
+      JsonNode n =
+          clients.get(
+              Source.EXECUTION,
+              token,
+              "/deliveries/{id}/help-requests/{rid}",
+              Map.of("id", deliveryId, "rid", requestId),
+              Map.of());
+      ok.put("h", true);
+      return n;
+    } catch (HttpClientErrorException.NotFound e) {
+      ok.put("h", true);
+      return null;
+    } catch (HttpClientErrorException | PmartException e) {
+      log.warn("사건함: 도움요청 조회 실패 — {}", e.getClass().getSimpleName());
+      failed.add(Source.EXECUTION);
+      ok.put("h", false);
+      return null;
+    }
+  }
+
+  /** case refs 에서 그 종류의 첫 값. */
+  private static @Nullable String refValue(JsonNode c, String refType) {
+    for (JsonNode r : c.path("refs")) {
+      if (refType.equals(text(r, "refType"))) {
+        return text(r, "refId");
+      }
+    }
+    return null;
   }
 
   private static Map<String, Object> linkedEntry(
