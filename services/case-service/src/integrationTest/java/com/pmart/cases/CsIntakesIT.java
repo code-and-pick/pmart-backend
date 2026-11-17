@@ -184,6 +184,28 @@ class CsIntakesIT extends PostgresKafkaContainerSupport {
         .containsExactly(intakeId);
   }
 
+  /** 0.19.2: 같은 키 재전송은 order 가 내려가 있어도 저장된 결과를 재생, 새 요청은 503. */
+  @Test
+  void replayDoesNotNeedOrderServiceButNewRequestDoes() {
+    String key = UUID.randomUUID().toString();
+    Res first = send("POST", AGENT, "/cs-intakes", phoneCall(), key);
+    assertThat(first.status()).as(first.body().toString()).isEqualTo(201);
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/" + orderId))
+            .willReturn(aResponse().withStatus(503)));
+    Res replay = send("POST", AGENT, "/cs-intakes", phoneCall(), key);
+    assertThat(replay.status()).as(replay.body().toString()).isBetween(200, 201);
+    assertThat(replay.body().path("intakeId").asString())
+        .isEqualTo(first.body().path("intakeId").asString());
+    Res fresh = send("POST", AGENT, "/cs-intakes", phoneCall(), UUID.randomUUID().toString());
+    assertThat(fresh.status()).as("새 요청은 주문 확인이 필요").isEqualTo(503);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM cs_intake WHERE customer_id = ?", Integer.class, me))
+        .as("재전송·실패로 더 남지 않음")
+        .isEqualTo(1);
+  }
+
   @Test
   void proxyCallWithConsentLinksToExistingCase() {
     Res first = send("POST", AGENT, "/cs-intakes", phoneCall());

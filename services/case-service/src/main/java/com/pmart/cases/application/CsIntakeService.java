@@ -105,9 +105,21 @@ public class CsIntakeService {
     if (linkCaseId != null) {
       linkable(linkCaseId); // 못 보면 404 — 트랜잭션 밖 선검사, 안에서 다시 본다
     }
+    // 외부 호출은 트랜잭션 밖. 0.19.2: order 장애(연결 실패·결과 모름)면 바로 503 이 아니라 멱등 처리로 넘긴다 —
+    // 같은 키로 이미 남긴 요청이면 저장된 결과를 재생하고, 새 요청이면 그때 503(아래 action 안에서 던짐 → 기록도 롤백)
+    PmartException orderDown = null;
     if (subjectRef != null) {
-      checkOrder(subjectRef, customerId); // 외부 호출은 트랜잭션 밖
+      try {
+        checkOrder(subjectRef, customerId);
+      } catch (PmartException e) {
+        if (!ErrorCode.DEPENDENCY_UNAVAILABLE.name().equals(e.code())
+            && !ErrorCode.UNKNOWN_RESULT.name().equals(e.code())) {
+          throw e;
+        }
+        orderDown = e;
+      }
     }
+    PmartException pendingOrderFailure = orderDown;
     String id =
         idempotency
             .execute(
@@ -115,6 +127,9 @@ public class CsIntakeService {
                 cmd,
                 String.class,
                 () -> {
+                  if (pendingOrderFailure != null) {
+                    throw pendingOrderFailure;
+                  }
                   Instant now = clock.instant().truncatedTo(ChronoUnit.MICROS);
                   String intakeId = "CSI-" + UUID.randomUUID();
                   String caseId;

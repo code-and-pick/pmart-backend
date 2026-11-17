@@ -2,6 +2,7 @@ package com.pmart.cases.infrastructure;
 
 import com.pmart.cases.application.CaseProperties;
 import com.pmart.common.web.Downstream;
+import com.pmart.common.web.PmartException;
 import java.util.Map;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -50,7 +51,10 @@ public class OrderClient {
                         (req, res) -> {
                           int s = res.getStatusCode().value();
                           if (s >= 500) {
-                            throw new IllegalStateException("order-service " + s);
+                            // 0.19.2: 원천 장애로(계약 503, 전에는 500)
+                            throw PmartException.dependencyUnavailable(
+                                "order-service 가 응답할 수 없습니다.",
+                                new IllegalStateException("order-service " + s));
                           }
                           return s;
                         }));
@@ -89,7 +93,11 @@ public class OrderClient {
                     (req, res) -> {
                       int s = res.getStatusCode().value();
                       if (s >= 500) {
-                        throw new IllegalStateException("order-service " + s);
+                        // 0.19.2: exchange 는 상태 처리기를 거치지 않아 Downstream 이 503 으로 바꾸지 못한다 — 직접 원천
+                        // 장애로(계약 503, 전에는 500)
+                        throw PmartException.dependencyUnavailable(
+                            "order-service 가 응답할 수 없습니다.",
+                            new IllegalStateException("order-service " + s));
                       }
                       if (s == 404) {
                         return new StaffOrder.NotFound();
