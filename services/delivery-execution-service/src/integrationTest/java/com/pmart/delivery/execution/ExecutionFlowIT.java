@@ -1621,6 +1621,43 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .getStatusCode()
                 .value())
         .isEqualTo(400);
+
+    // 라이더 백오피스(2026-11-17): 직원이 라이더 ID 로 같은 값을 본다, 화면용 주문번호로 배송 찾기
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode st =
+        body(
+            staffGet(
+                "/rider-operating-time?riderId="
+                    + rider
+                    + "&from="
+                    + today.minusDays(1)
+                    + "&to="
+                    + today,
+                ops));
+    assertThat(st.path("totalSeconds").asLong()).isEqualTo(25 * 60);
+    JsonNode se = body(staffGet("/rider-earnings?riderId=" + rider, ops));
+    assertThat(se.path("items").valueStream().map(n -> n.path("deliveryId").asString()))
+        .contains(id);
+    assertThat(
+            staffGet(
+                    "/rider-earnings?riderId=" + rider,
+                    TestJwt.operator("OP-SUP", List.of("MFC_SUPERVISOR"), List.of("MFC-1")))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(
+            staffGet("/rider-operating-time?riderId=" + rider, TestJwt.rider(rider))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    JsonNode found = body(staffGet("/deliveries?orderNumber=12345678&riderId=" + rider, ops));
+    assertThat(found.path("items").valueStream().map(n -> n.path("deliveryId").asString()))
+        .contains(id, open);
+    assertThat(
+            body(staffGet("/deliveries?orderNumber=99999999&riderId=" + rider, ops))
+                .path("items")
+                .size())
+        .isZero();
   }
 
   /** 라이더 탈퇴를 막는 것(2026-11-17 — rider-service 가 부름): 진행 중 배송 → 완료 뒤 확정 전 수행료, 모르는 라이더는 빈 목록. */

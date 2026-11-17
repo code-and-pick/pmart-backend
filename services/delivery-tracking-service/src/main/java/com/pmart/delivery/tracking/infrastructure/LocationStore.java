@@ -115,6 +115,37 @@ public class LocationStore {
         riderIds.toArray());
   }
 
+  /** 라이더 관제(2026-11-17) — 감시 중인 배정과 단계·도착 예정. */
+  public record Active(
+      String riderId,
+      String deliveryId,
+      @Nullable String stage,
+      boolean pickedUp,
+      @Nullable Instant etaPickup,
+      @Nullable Instant etaDrop) {}
+
+  public List<Active> activeOf(List<String> riderIds) {
+    if (riderIds.isEmpty()) {
+      return List.of();
+    }
+    String in = String.join(",", Collections.nCopies(riderIds.size(), "?"));
+    return jdbc.query(
+        "SELECT a.rider_id, a.delivery_id, p.stage, a.picked_up_at, a.eta_pickup, a.eta_drop FROM"
+            + " rider_active_delivery a LEFT JOIN delivery_progress p ON p.delivery_id ="
+            + " a.delivery_id WHERE a.state = 'ACTIVE' AND a.rider_id IN ("
+            + in
+            + ") ORDER BY a.rider_id, a.since",
+        (rs, i) ->
+            new Active(
+                rs.getString(1),
+                rs.getString(2),
+                rs.getString(3),
+                rs.getTimestamp(4) != null,
+                rs.getTimestamp(5) == null ? null : rs.getTimestamp(5).toInstant(),
+                rs.getTimestamp(6) == null ? null : rs.getTimestamp(6).toInstant()),
+        riderIds.toArray());
+  }
+
   // ---------- 위치 끊김·진행 중 배송·보존(V3, 2026-11-14) ----------
 
   /** 끊김 후보 — 진행 중 배송이 있는 라이더의 기준 시각(마지막 수신과 가장 이른 배정 중 늦은 것). */

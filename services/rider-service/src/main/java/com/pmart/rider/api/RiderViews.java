@@ -83,6 +83,16 @@ final class RiderViews {
         .lastHeartbeatAt(time(r.lastHeartbeatAt()));
   }
 
+  static com.pmart.rider.api.generated.model.OnDutyRider onDuty(Rider r) {
+    return new com.pmart.rider.api.generated.model.OnDutyRider()
+        .riderId(r.riderId())
+        .nameMasked(r.name() == null || r.name().isBlank() ? null : maskName(r.name()))
+        .vehicleType(VehicleType.fromValue(r.vehicleType()))
+        .operating(operating(r))
+        .restriction(AccountRestriction.fromValue(r.restriction().name()))
+        .lastHeartbeatAt(time(r.lastHeartbeatAt()));
+  }
+
   /** 직원 화면용 이름 가림: 첫·끝 글자만(두 글자면 첫 글자 + *) — order 직원 상세와 같은 방식(ADR-0062). */
   static String maskName(String name) {
     int[] cp = name.strip().codePoints().toArray();

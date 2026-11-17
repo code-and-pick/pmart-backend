@@ -30,7 +30,12 @@
 4. LAN 반영: PC 5 는 pmart-clients 에 PR 만 올린다. **빌드·올리기는 PC 1** — 병합한 main 에서 `npm run build:lan -w web/rider-backoffice` → `lan.sh publish-rider-backoffice <dist>`(다른 백오피스와 같은 방식). PC 5 는 확인용으로 로컬에서만 빌드하고, PC 4 에 직접 복사하지 않는다.
 5. 확인: 라이더 시뮬레이터(pmart-rider-simulation)로 위치를 움직여 관제 화면에서 본다.
 
-## 3. 사용자 결정이 남은 것
+## 3. 사용자 결정 — **정함(2026-11-17 "추천대로 전부 시작해" → ADR-0068)**
+
+> 1 옮김(같은 화면이 올라간 뒤 기본 백오피스 메뉴를 내림, 상담원 조회는 남김) · 2 RIDER_OPS·OPERATOR_ADMIN 만(센터 관리자는 다음) · 3 운행 중 라이더의 현재 위치만, 이력 없음 · 4 10초 다시 불러오기(SSE 다음).
+> 백엔드: tracking `GET /rider-locations?mfcId=`(0.8.0), rider `/internal/riders/on-duty`(0.8.0), execution `/rider-earnings`·`/rider-operating-time`·배송 찾기 `orderNumber`(0.16.0). 게이트웨이 경로는 PC 1.
+
+아래는 정하기 전 원문(기록).
 
 1. **기존 라이더 운영 화면을 이 앱으로 옮길지**(2026-11-15 결정 "고객센터·라이더 운영 메뉴는 기본 백오피스에"를 바꾸는 일 — 바꾸면 ADR) — 라이더 찾기·상세·원문 열람·계정 제한·제한 검토, 배송 찾기·배차 조회/취소, 전달 실패 확정, 지원센터 사건함(배송 쪽), 도움요청 대화, 라이더 문의, 수행료 조정. 추천: 옮기고, 상담원(CS_AGENT)이 보는 라이더·배송 조회는 기본 백오피스에 남김.
 2. 관제를 볼 사람: RIDER_OPS·OPERATOR_ADMIN(모든 센터) + MFC_SUPERVISOR 자기 센터도?

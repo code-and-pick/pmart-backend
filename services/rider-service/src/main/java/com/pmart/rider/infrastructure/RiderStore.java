@@ -203,6 +203,21 @@ public class RiderStore {
     return withAreas(rows);
   }
 
+  /** 운행 중·탈퇴 안 함·배달지역에 mfcId — 신규배차·제한 무관(라이더 관제, 2026-11-17). */
+  public List<Rider> onDuty(String mfcId, int limit) {
+    List<Row> rows =
+        jdbc.query(
+            "SELECT "
+                + COLUMNS
+                + " FROM rider r WHERE r.withdrawn_at IS NULL AND r.operating_status = 'ON_DUTY' AND"
+                + " EXISTS (SELECT 1 FROM rider_delivery_area a WHERE a.rider_id = r.rider_id AND"
+                + " a.mfc_id = ?) ORDER BY r.rider_id LIMIT ?",
+            (rs, i) -> row(rs),
+            mfcId,
+            limit);
+    return withAreas(rows);
+  }
+
   /** 운행 중·신규배차 ON·제한 없음(기한 지난 제한 포함)·배달지역에 mfcId(적격 라이더 조회). */
   public List<Rider> eligible(String mfcId, @Nullable String vehicleType, int limit, Instant now) {
     List<Object> args = new ArrayList<>();

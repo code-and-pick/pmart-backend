@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.15.1
+  version: 0.16.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -677,6 +677,61 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
 
+  /rider-earnings:
+    get:
+      tags: [staff]
+      summary: (2026-11-17 라이더 백오피스) 직원용 라이더 수행료 내역 — 라이더 한 명 (RIDER_OPS·OPERATOR_ADMIN·CS_AGENT 보기)
+      x-added-in: '2026-11-17'
+      description: |
+        `/riders/me/earnings` 와 같은 값·같은 모양을 직원이 라이더 ID 로 본다(라이더 찾기 상세). 수행일(Asia/Seoul) 기간, 합계는 산정 가능한 것만. 그 밖 직원 403.
+      operationId: listRiderEarningsForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: settlementState, in: query, schema: { $ref: '#/components/schemas/SettlementState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Earning' } }
+                  totals:
+                    type: object
+                    properties:
+                      estimated: { $ref: '_common.yaml#/components/schemas/Money' }
+                      confirmed: { $ref: '_common.yaml#/components/schemas/Money' }
+                      paid: { $ref: '_common.yaml#/components/schemas/Money' }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /rider-operating-time:
+    get:
+      tags: [staff]
+      summary: (2026-11-17 라이더 백오피스) 직원용 라이더 운행시간 — 날짜별 (RIDER_OPS·OPERATOR_ADMIN·CS_AGENT 보기)
+      x-added-in: '2026-11-17'
+      description: '`/riders/me/operating-time` 과 같은 규칙(배차 수락 ~ 전달 완료, 겹치면 한 번, 최대 31일)을 직원이 라이더 ID 로 본다. 그 밖 직원 403.'
+      operationId: getRiderOperatingTimeForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperatingTime' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /riders/me/operating-time:
     get:
       tags: [me]
@@ -714,6 +769,7 @@ paths:
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: 주문 ID 완전 일치 }
+        - { name: orderNumber, in: query, schema: { type: string, pattern: '^[0-9]{8}$' }, description: '(2026-11-17 라이더 백오피스) 화면용 주문번호 8자리 완전 일치 — 배정 사건이 실어 준 값이라 배정 전 배송은 없다', x-added-in: '2026-11-17' }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 }, description: 배정 라이더 완전 일치 }
         - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/ExecutionState' } }

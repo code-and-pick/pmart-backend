@@ -107,6 +107,17 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
 
     assertThat(eligibleIds("MFC-IT-1")).contains(rider);
     assertThat(eligibleIds("MFC-OTHER")).doesNotContain(rider);
+    // 라이더 관제(2026-11-17): 센터의 운행 중 라이더 — 가린 이름만
+    JsonNode duty = onDuty("MFC-IT-1");
+    JsonNode me =
+        duty.path("items")
+            .valueStream()
+            .filter(i -> rider.equals(i.path("riderId").asString()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(me.path("operating").path("status").asString()).isEqualTo("ON_DUTY");
+    assertThat(me.path("nameMasked").asString()).contains("*");
+    assertThat(duty.toString()).doesNotContain("010");
 
     // 배달지역 밖 MFC 로 운행 시작 400, 옛 버전 409
     assertThat(
@@ -150,6 +161,7 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
             .toEntity(String.class);
     assertThat(json(off.getBody()).path("newDispatchEnabled").asBoolean()).isFalse();
     assertThat(eligibleIds("MFC-IT-1")).doesNotContain(rider);
+    assertThat(onDuty("MFC-IT-1").toString()).doesNotContain(rider); // 운행 끝 → 관제에서 빠짐
   }
 
   @Test
@@ -575,6 +587,15 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(json(withLic.getBody()).path("vehicleType").asString()).isEqualTo("MOTORCYCLE");
     assertThat(json(withLic.getBody()).path("licenseNumberMasked").asString())
         .endsWith(own.substring(own.length() - 2));
+  }
+
+  private JsonNode onDuty(String mfcId) {
+    return json(
+        http.get()
+            .uri("/internal/riders/on-duty?mfcId={m}", mfcId)
+            .header("X-Source-System", "delivery-tracking-service")
+            .retrieve()
+            .body(String.class));
   }
 
   private List<String> eligibleIds(String mfcId) {

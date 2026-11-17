@@ -58,6 +58,14 @@ public class InternalController implements InternalApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.ListOnDutyRidersInternal200Response>
+      listOnDutyRidersInternal(String mfcId) {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.ListOnDutyRidersInternal200Response()
+            .items(riders.onDuty(mfcId).stream().map(RiderViews::onDuty).toList()));
+  }
+
+  @Override
   public ResponseEntity<EligibleRider> getRiderInternal(String riderId) {
     return ResponseEntity.ok(RiderViews.eligible(riders.internal(riderId)));
   }

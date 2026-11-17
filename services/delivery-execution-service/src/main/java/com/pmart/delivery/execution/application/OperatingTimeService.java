@@ -41,6 +41,16 @@ public class OperatingTimeService {
             .filter(p -> p.type() == PmartPrincipal.PrincipalType.RIDER)
             .map(PmartPrincipal::subject)
             .orElseThrow(() -> ExecutionService.forbidden("라이더만 볼 수 있습니다."));
+    return of(rider, from, to);
+  }
+
+  /** 직원용(2026-11-17 라이더 백오피스) — RIDER_OPS·OPERATOR_ADMIN·CS_AGENT 보기. */
+  public Result forStaff(String rider, @Nullable LocalDate from, @Nullable LocalDate to) {
+    EarningService.requireRiderStaff();
+    return of(rider, from, to);
+  }
+
+  private Result of(String rider, @Nullable LocalDate from, @Nullable LocalDate to) {
     LocalDate f = from != null ? from : LocalDate.now(clock.withZone(SEOUL));
     LocalDate t = to != null ? to : f;
     if (t.isBefore(f) || ChronoUnit.DAYS.between(f, t) >= MAX_DAYS) {

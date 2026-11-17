@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -111,6 +111,35 @@ paths:
               schema: { $ref: '#/components/schemas/StreamEvent' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /rider-locations:
+    get:
+      tags: [control]
+      summary: (0.8.0) 라이더 관제 — 센터의 운행 중 라이더 현재 위치·끊김·진행 중 배송 (RIDER_OPS·OPERATOR_ADMIN)
+      x-added-in: '2026-11-17'
+      description: |
+        2026-11-17 라이더 백오피스 관제(사용자 "추천대로 전부"): 보는 사람은 라이더 운영(RIDER_OPS)·관리자(OPERATOR_ADMIN)만(센터 관리자는 다음 단계), 그 밖 403.
+        **운행 중인 라이더의 현재 위치만** — 라이더 목록은 rider-service 내부(`/internal/riders/on-duty`, 운행 중·배달지역에 mfcId)에서 매번 고르므로
+        운행을 끈 라이더는 나오지 않는다. 이동 이력은 주지 않는다(이력 열람은 사유·기록이 필요 — 다음 단계). 화면은 10초마다 다시 부른다(SSE 는 다음).
+        위치가 아직 없는 라이더도 나온다(location null). `stale` = 위치가 없거나 마지막 수신이 끊김 기준(`pmart.tracking.stale-after`, 3분)보다 오래됨.
+        진행 중 배송 = 이 서비스가 감시 중인 배정(단계·도착 예정 — ETA 계산이 꺼져 있으면 비어 있다). rider-service 장애면 503. 좌표는 응답 본문에만, 로그 금지.
+      operationId: listRiderLocationsForControl
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: query, required: true, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK — 200명까지
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, asOf]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ControlRider' } }
+                  asOf: { type: string, format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /internal/distance-matrix:
     post:
@@ -226,6 +255,38 @@ components:
     GpsQuality:
       type: string
       enum: [GOOD, LOW_ACCURACY, OUT_OF_ZONE, TIME_SKEW, STALE, UNKNOWN]
+    ControlRider:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [riderId, stale, activeDeliveries]
+      properties:
+        riderId: { type: string }
+        nameMasked: { type: [string, 'null'] }
+        vehicleType: { type: [string, 'null'] }
+        newDispatchEnabled: { type: boolean }
+        restriction: { type: [string, 'null'], description: 'rider AccountRestriction — NORMAL 이 아니면 계정 제한' }
+        location:
+          type: [object, 'null']
+          properties:
+            lat: { type: number }
+            lng: { type: number }
+            accuracyM: { type: [number, 'null'] }
+            recordedAt: { type: string, format: date-time }
+            receivedAt: { type: string, format: date-time }
+            quality: { $ref: '#/components/schemas/GpsQuality' }
+        staleSinceSeconds: { type: [integer, 'null'], description: 마지막 수신 뒤 지난 초(위치 없으면 null) }
+        stale: { type: boolean, description: 위치 없음 또는 끊김 기준(3분)보다 오래됨 }
+        activeDeliveries:
+          type: array
+          items:
+            type: object
+            required: [deliveryId]
+            properties:
+              deliveryId: { type: string }
+              stage: { type: [string, 'null'], enum: [UNASSIGNED, TO_STORE, AT_STORE, TO_CUSTOMER, AT_CUSTOMER, DONE, null] }
+              pickedUp: { type: boolean }
+              etaPickup: { type: [string, 'null'], format: date-time }
+              etaDrop: { type: [string, 'null'], format: date-time }
     RiderLocation:
       type: object
       properties:

@@ -223,8 +223,38 @@ public class EarningService {
   }
 
   /** 예상 = 확정 전(ESTIMATED·PENDING_CONFIRMATION), 확정 = CONFIRMED·PAYING, 지급 = PAID. 산정 불가는 빼고. */
+  /** 직원용(2026-11-17 라이더 백오피스) — RIDER_OPS·OPERATOR_ADMIN·CS_AGENT 보기. */
+  public List<EarningRow> ofRider(
+      String riderId,
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable String state,
+      int size,
+      int offset) {
+    requireRiderStaff();
+    return store.riderEarnings(riderId, from, to, state, size, offset);
+  }
+
+  public Totals totalsOf(String riderId, @Nullable LocalDate from, @Nullable LocalDate to) {
+    requireRiderStaff();
+    return totals(store.riderTotals(riderId, from, to));
+  }
+
+  static void requireRiderStaff() {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> ExecutionService.forbidden("직원만 볼 수 있습니다."));
+    if (!(p.hasRole("OPERATOR_ADMIN") || p.hasRole("RIDER_OPS") || p.hasRole("CS_AGENT"))) {
+      throw ExecutionService.forbidden("라이더 수행료·운행시간은 라이더 운영·관리자·상담원만 볼 수 있습니다.");
+    }
+  }
+
   public Totals totals(@Nullable LocalDate from, @Nullable LocalDate to) {
-    Map<String, Long> t = store.riderTotals(riderId(), from, to);
+    return totals(store.riderTotals(riderId(), from, to));
+  }
+
+  private static Totals totals(Map<String, Long> t) {
     return new Totals(
         t.getOrDefault("ESTIMATED", 0L) + t.getOrDefault("PENDING_CONFIRMATION", 0L),
         t.getOrDefault("CONFIRMED", 0L) + t.getOrDefault("PAYING", 0L),

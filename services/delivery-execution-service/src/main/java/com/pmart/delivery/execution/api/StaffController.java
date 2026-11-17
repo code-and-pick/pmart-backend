@@ -40,21 +40,84 @@ public class StaffController implements StaffApi {
   private final ObjectMapper mapper;
 
   private final com.pmart.delivery.execution.application.EarningAdjustments adjustments;
+  private final com.pmart.delivery.execution.application.EarningService earnings;
+  private final com.pmart.delivery.execution.application.OperatingTimeService operating;
 
   public StaffController(
       StaffQueries queries,
       HelpRequestService helps,
       ObjectMapper mapper,
-      com.pmart.delivery.execution.application.EarningAdjustments adjustments) {
+      com.pmart.delivery.execution.application.EarningAdjustments adjustments,
+      com.pmart.delivery.execution.application.EarningService earnings,
+      com.pmart.delivery.execution.application.OperatingTimeService operating) {
     this.adjustments = adjustments;
+    this.earnings = earnings;
+    this.operating = operating;
     this.queries = queries;
     this.helps = helps;
     this.mapper = mapper;
   }
 
+  /** 직원용 라이더 수행료(2026-11-17 라이더 백오피스) — 라이더 앱 내역과 같은 값. */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.ListRiderEarningsForStaff200Response>
+      listRiderEarningsForStaff(
+          String riderId,
+          java.time.@Nullable LocalDate from,
+          java.time.@Nullable LocalDate to,
+          com.pmart.delivery.execution.api.generated.model.@Nullable SettlementState
+              settlementState,
+          Integer size,
+          @Nullable String cursor) {
+    int offset = offset(cursor);
+    var rows =
+        earnings.ofRider(
+            riderId,
+            from,
+            to,
+            settlementState == null ? null : settlementState.getValue(),
+            size + 1,
+            offset);
+    boolean more = rows.size() > size;
+    var page = more ? rows.subList(0, size) : rows;
+    var t = earnings.totalsOf(riderId, from, to);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.ListRiderEarningsForStaff200Response()
+            .items(page.stream().map(ExecutionViews::earning).toList())
+            .totals(
+                new com.pmart.delivery.execution.api.generated.model
+                        .ListMyEarnings200ResponseTotals()
+                    .estimated((int) t.estimated())
+                    .confirmed((int) t.confirmed())
+                    .paid((int) t.paid()))
+            .page(page(more, offset, size, page.size())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.OperatingTime>
+      getRiderOperatingTimeForStaff(
+          String riderId, java.time.@Nullable LocalDate from, java.time.@Nullable LocalDate to) {
+    var r = operating.forStaff(riderId, from, to);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.OperatingTime()
+            .from(r.from())
+            .to(r.to())
+            .totalSeconds(r.totalSeconds())
+            .days(
+                r.days().entrySet().stream()
+                    .map(
+                        e ->
+                            new com.pmart.delivery.execution.api.generated.model.OperatingTimeDay()
+                                .date(e.getKey())
+                                .seconds(e.getValue()))
+                    .toList()));
+  }
+
   @Override
   public ResponseEntity<SearchDeliveriesForStaff200Response> searchDeliveriesForStaff(
       @Nullable String orderId,
+      @Nullable String orderNumber,
       @Nullable String riderId,
       @Nullable String mfcId,
       @Nullable ExecutionState state,
@@ -73,6 +136,7 @@ public class StaffController implements StaffApi {
         queries.deliveries(
             new ExecutionStore.DeliveryFilter(
                 blankToNull(orderId),
+                blankToNull(orderNumber),
                 blankToNull(riderId),
                 blankToNull(mfcId),
                 state == null ? null : state.getValue(),

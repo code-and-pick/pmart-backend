@@ -940,6 +940,7 @@ public class ExecutionStore {
   /** 직원 배송 찾기 조건. 비어 있는 값은 거르지 않는다. */
   public record DeliveryFilter(
       @Nullable String orderId,
+      @Nullable String orderNumber,
       @Nullable String riderId,
       @Nullable String mfcId,
       @Nullable String state,
@@ -951,6 +952,7 @@ public class ExecutionStore {
         new StringBuilder("SELECT " + DELIVERY_COLUMNS + " FROM execution_delivery WHERE TRUE");
     List<Object> args = new java.util.ArrayList<>();
     eq(sql, args, "order_id", f.orderId());
+    eq(sql, args, "order_number", f.orderNumber());
     eq(sql, args, "rider_id", f.riderId());
     eq(sql, args, "mfc_id", f.mfcId());
     eq(sql, args, "state", f.state());

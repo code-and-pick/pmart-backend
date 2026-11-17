@@ -61,7 +61,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock({
   @ConfigureWireMock(name = "kakao", baseUrlProperties = "pmart.tracking.kakao-mobility.base-url"),
   @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.tracking.dispatch-base-url"),
-  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.tracking.order-base-url")
+  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.tracking.order-base-url"),
+  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.tracking.rider-base-url")
 })
 class TrackingFlowIT extends PostgresKafkaContainerSupport {
 
@@ -86,6 +87,9 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("order")
   WireMockServer orderApi;
 
+  @InjectWireMock("rider")
+  WireMockServer riderApi;
+
   @Autowired com.pmart.delivery.tracking.application.EtaService eta;
 
   RestClient http;
@@ -98,6 +102,100 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     kakao.resetAll();
+  }
+
+  /**
+   * 라이더 관제(2026-11-17, 사용자 "추천대로 전부"): RIDER_OPS·OPERATOR_ADMIN 만, 운행 중 라이더(rider-service 가 고름)의 현재
+   * 위치·끊김만 — 위치 없는 라이더도 나오고(stale), 운행 중이 아닌 라이더는 위치가 있어도 안 나온다.
+   */
+  @Test
+  void controlBoardShowsOnDutyRidersCurrentLocationOnlyToRiderOps() {
+    String r1 = "RD-ctl-" + UUID.randomUUID();
+    String r2 = "RD-ctl-" + UUID.randomUUID();
+    String off = "RD-ctl-" + UUID.randomUUID();
+    Instant now = Instant.now();
+    assertThat(
+            upload(r1, "k-" + r1, List.of(point(35.1585, 129.0620, 10, now.minusSeconds(5))))
+                .getStatusCode()
+                .value())
+        .isEqualTo(202);
+    assertThat(
+            upload(off, "k-" + off, List.of(point(35.1586, 129.0621, 10, now.minusSeconds(5))))
+                .getStatusCode()
+                .value())
+        .isEqualTo(202);
+    riderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                urlPathEqualTo("/api/v1/internal/riders/on-duty"))
+            .withQueryParam("mfcId", equalTo("MFC-CTL"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        mapper.writeValueAsString(
+                            java.util.Map.of(
+                                "items",
+                                List.of(
+                                    java.util.Map.of(
+                                        "riderId", r1,
+                                        "nameMasked", "김*수",
+                                        "vehicleType", "MOTORCYCLE",
+                                        "operating",
+                                            java.util.Map.of(
+                                                "status", "ON_DUTY", "newDispatchEnabled", true),
+                                        "restriction", "NORMAL"),
+                                    java.util.Map.of(
+                                        "riderId",
+                                        r2,
+                                        "vehicleType",
+                                        "BICYCLE",
+                                        "operating",
+                                        java.util.Map.of(
+                                            "status", "ON_DUTY", "newDispatchEnabled", false),
+                                        "restriction",
+                                        "NORMAL")))))));
+    String ops = TestJwt.operator("ro-ctl", List.of("RIDER_OPS"), List.of());
+    ResponseEntity<String> res = control(ops, "MFC-CTL");
+    assertThat(res.getStatusCode().value()).as(res.getBody()).isEqualTo(200);
+    assertThat(res.getHeaders().getCacheControl()).contains("no-store");
+    JsonNode items = json(res.getBody()).path("items");
+    assertThat(items.size()).isEqualTo(2);
+    JsonNode a = items.get(0).path("riderId").asString().equals(r1) ? items.get(0) : items.get(1);
+    JsonNode b = a == items.get(0) ? items.get(1) : items.get(0);
+    assertThat(a.path("nameMasked").asString()).isEqualTo("김*수");
+    assertThat(a.path("location").path("lat").asDouble()).isEqualTo(35.1585);
+    assertThat(a.path("stale").asBoolean()).isFalse();
+    assertThat(b.path("location").isNull() || b.path("location").isMissingNode()).isTrue();
+    assertThat(b.path("stale").asBoolean()).isTrue();
+    assertThat(b.path("newDispatchEnabled").asBoolean()).isFalse();
+    assertThat(res.getBody()).doesNotContain(off); // 운행 중이 아니면 위치가 있어도 안 보임
+    // 관리자도 됨, 상담원·센터 관리자·라이더는 403
+    assertThat(
+            control(TestJwt.operator("adm", List.of("OPERATOR_ADMIN"), List.of()), "MFC-CTL")
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(
+            control(TestJwt.operator("cs", List.of("CS_AGENT"), List.of()), "MFC-CTL")
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(
+            control(
+                    TestJwt.operator("sup", List.of("MFC_SUPERVISOR"), List.of("MFC-CTL")),
+                    "MFC-CTL")
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(control(TestJwt.rider(r1), "MFC-CTL").getStatusCode().value()).isEqualTo(403);
+  }
+
+  private ResponseEntity<String> control(String token, String mfcId) {
+    return http.get()
+        .uri("/rider-locations?mfcId={m}", mfcId)
+        .header("Authorization", "Bearer " + token)
+        .retrieve()
+        .toEntity(String.class);
   }
 
   @Test

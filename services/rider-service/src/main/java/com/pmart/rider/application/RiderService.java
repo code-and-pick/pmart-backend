@@ -409,6 +409,12 @@ public class RiderService {
         .toList();
   }
 
+  /** 라이더 관제(2026-11-17) — 센터의 운행 중 라이더 200명까지. */
+  public List<Rider> onDuty(String mfcId) {
+    Instant now = clock.instant();
+    return store.onDuty(mfcId, 200).stream().map(r -> r.asOf(now)).toList();
+  }
+
   public Rider internal(String riderId) {
     return get(riderId);
   }
