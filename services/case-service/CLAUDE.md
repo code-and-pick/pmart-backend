@@ -96,6 +96,7 @@
   - 문의 status CLOSED(version + 1) + 그 접수 건 행 CLOSED(closed_at·closed_by·resolution INQUIRY_CLOSED) + 이력 INQUIRY_CLOSED — 주문·클레임·다른 접수 건은 그대로. 이벤트·알림 없음, 사유·의견 로그 금지.
 
 - **검토 후속(2026-11-17, 0.19.1 — 검토자 결과 중 확인한 것)**: 경로 ID 모두 maxLength 64(멱등 기록 operation varchar(96) 에 "작업:ID" 를 붙여 긴 ID 면 500 → 400). 직원 닫기 사유는 `inquiry_closure.reason` 에만(이력 메모 varchar(500) 에 붙이면 494자 넘는 사유가 500). 사진 올리기 같은 키 재전송인데 그사이 정리됐으면 404 PHOTO_NOT_FOUND(전에는 500). 사진 본문 삭제 실패 로그에 key(고객·라이더 ID 포함)를 남기지 않음 — 행은 이미 지워져 다시 시도되지 않으니 버킷 수명 규칙으로 정리(남은 할 일).
+- **직원별 마지막으로 본 시각(2026-11-17, 계약 0.20.0, V17 case_view — 사용자 ① (가))**: `CaseViewService`·`CaseViewStore`. `POST /cases/{id}/views`(그 건을 볼 수 있는 직원 — `visibleCase`, 본문·멱등 키 없음, 더 늦은 시각만 남김) → 목록·상세 `myLastSeenAt`(부른 직원 자신 것만). 사건 상태·version·이력·이벤트 무관. 도움요청 새 메시지 점 = bff HELP_REQUEST `lastRiderMessageAt` > `myLastSeenAt`.
 
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.

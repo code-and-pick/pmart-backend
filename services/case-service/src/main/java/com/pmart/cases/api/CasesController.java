@@ -22,6 +22,7 @@ import com.pmart.cases.api.generated.model.InquiryRequesterType;
 import com.pmart.cases.api.generated.model.ListCaseNotes200Response;
 import com.pmart.cases.api.generated.model.ListCases200Response;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
+import com.pmart.cases.api.generated.model.MarkCaseSeen200Response;
 import com.pmart.cases.api.generated.model.MaskCaseNoteRequest;
 import com.pmart.cases.api.generated.model.ModelCase;
 import com.pmart.cases.api.generated.model.Obligation;
@@ -32,6 +33,7 @@ import com.pmart.cases.application.ActionRequestService;
 import com.pmart.cases.application.CaseInboxService;
 import com.pmart.cases.application.CaseMetricsService;
 import com.pmart.cases.application.CaseNoteService;
+import com.pmart.cases.application.CaseViewService;
 import com.pmart.cases.application.ObligationService;
 import com.pmart.cases.domain.CaseRules;
 import com.pmart.cases.domain.ObligationRules;
@@ -60,13 +62,16 @@ public class CasesController implements CasesApi {
   private final CaseNoteService notes;
   private final ActionRequestService actions;
   private final CaseMetricsService metrics;
+  private final CaseViewService views;
 
   public CasesController(
       CaseInboxService cases,
       ObligationService obligations,
       CaseNoteService notes,
       ActionRequestService actions,
-      CaseMetricsService metrics) {
+      CaseMetricsService metrics,
+      CaseViewService views) {
+    this.views = views;
     this.cases = cases;
     this.obligations = obligations;
     this.notes = notes;
@@ -186,13 +191,17 @@ public class CasesController implements CasesApi {
                 Boolean.TRUE.equals(overdue)),
             cursor,
             size);
-    Map<String, Integer> open =
-        obligations.openCounts(page.items().stream().map(CaseRow::caseId).toList());
+    List<String> ids = page.items().stream().map(CaseRow::caseId).toList();
+    Map<String, Integer> open = obligations.openCounts(ids);
+    var seen = views.mine(ids);
     return ResponseEntity.ok(
         new ListCases200Response()
             .items(
                 page.items().stream()
-                    .map(c -> summary(c, open.getOrDefault(c.caseId(), 0)))
+                    .map(
+                        c ->
+                            summary(c, open.getOrDefault(c.caseId(), 0))
+                                .myLastSeenAt(odt(seen.get(c.caseId()))))
                     .toList())
             .page(
                 new ListCases200ResponsePage()
@@ -200,9 +209,18 @@ public class CasesController implements CasesApi {
                     .size(page.items().size())));
   }
 
+  /** 접수 건을 지금 봤음(0.20.0 — 직원별 마지막으로 본 시각). */
+  @Override
+  public ResponseEntity<MarkCaseSeen200Response> markCaseSeen(String caseId) {
+    var at = views.markSeen(caseId);
+    return ResponseEntity.ok(new MarkCaseSeen200Response().caseId(caseId).lastSeenAt(odt(at)));
+  }
+
   @Override
   public ResponseEntity<ModelCase> getCase(String caseId) {
-    return ResponseEntity.ok(detail(cases.get(caseId)));
+    ModelCase m = detail(cases.get(caseId));
+    m.setMyLastSeenAt(odt(views.mine(List.of(caseId)).get(caseId)));
+    return ResponseEntity.ok(m);
   }
 
   @Override

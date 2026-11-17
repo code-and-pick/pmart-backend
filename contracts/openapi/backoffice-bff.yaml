@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.9.3
+  version: 0.10.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -214,6 +214,7 @@ paths:
                             overdue: { type: [boolean, 'null'], x-added-in: '2026-11-16' }
                             openedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-16' }
                             openObligations: { type: integer }
+                            myLastSeenAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.10.0) 부른 직원이 이 건을 마지막으로 본 시각(case POST /cases/{id}/views) — 새 메시지 점 = HELP_REQUEST lastRiderMessageAt > myLastSeenAt' }
                             linkedRefs: { type: array, items: { type: object, properties: { kind: { type: string }, id: { type: string } } }, description: 'case refs 그대로(kind = refType)' }
                             linked:
                               type: array

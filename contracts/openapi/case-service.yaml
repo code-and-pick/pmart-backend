@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.19.1
+  version: 0.20.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -303,6 +303,33 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cases/{caseId}/views:
+    post:
+      tags: [cases]
+      summary: 접수 건을 지금 봤음 — 직원별 마지막으로 본 시각 (0.20.0)
+      x-added-in: '2026-11-17'
+      description: |
+        2026-11-17 사용자 결정(① 직원별 읽음 기록 (가)): 도움요청 새 메시지 점 같은 "새로 생김" 표시를 화면 탭이 아니라 서버에 직원별로 둔다.
+        화면이 접수 건(또는 그 도움요청 대화)을 열 때 부른다. 그 건을 볼 수 있는 직원만(못 보면 404 — 사건함 규칙), 본문 없음, 멱등 키 불필요(늘 지금 시각 — 더 늦은 시각만 남김).
+        목록·상세의 `myLastSeenAt` 은 부른 직원 자신의 값만. 사건 상태·version·이력·이벤트는 바뀌지 않는다.
+      operationId: markCaseSeen
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: caseId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: 남긴 시각
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [caseId, lastSeenAt]
+                properties:
+                  caseId: { type: string }
+                  lastSeenAt: { type: string, format: date-time }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /cases/{caseId}/notes:
     post:
@@ -1416,6 +1443,7 @@ components:
         assigneeId: { type: [string, 'null'] }
         assigneeGroup: { type: [string, 'null'] }
         openObligationCount: { type: integer }
+        myLastSeenAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.20.0) 부른 직원이 이 건을 마지막으로 본 시각(POST …/views) — 본 적 없으면 null. 새 메시지 점 = 도움요청 lastRiderMessageAt > myLastSeenAt' }
         slaDueAt: { type: [string, 'null'], format: date-time }
         overdue: { type: boolean, description: '열린 사건이 처리 기한을 넘겼는가(0.4.0 — 화면 강조용, 알림 없음)', x-added-in: '2026-11-16' }
         summary: { type: string, description: '한 줄 요약(0.4.0 — 개인정보 원문 없음)', x-added-in: '2026-11-16' }

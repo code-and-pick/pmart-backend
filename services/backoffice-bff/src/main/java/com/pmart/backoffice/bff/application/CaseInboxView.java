@@ -128,6 +128,7 @@ public class CaseInboxView {
       i.put("overdue", c.path("overdue").isBoolean() ? c.path("overdue").asBoolean() : null);
       i.put("openedAt", text(c, "openedAt"));
       i.put("openObligations", c.path("openObligationCount").asInt(0));
+      i.put("myLastSeenAt", text(c, "myLastSeenAt")); // 0.10.0 — 부른 직원이 마지막으로 본 시각(case 0.20.0)
       List<Map<String, Object>> refs = new ArrayList<>();
       for (JsonNode r : c.path("refs")) {
         Map<String, Object> ref = new LinkedHashMap<>();

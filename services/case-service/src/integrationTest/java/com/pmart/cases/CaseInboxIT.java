@@ -1454,6 +1454,40 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .isEqualTo("CANCELLED");
   }
 
+  /** 직원별 마지막으로 본 시각(0.20.0 — 2026-11-17 사용자 ① (가)): 볼 수 있는 직원만, 자기 것만 보이고, 사건은 그대로. */
+  @Test
+  void lastSeenIsPerStaffAndDoesNotTouchTheCase() {
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    String a = misdeliveryCase("DLV-SEEN");
+    JsonNode before = send("GET", ops, "/cases/" + a, null).body();
+    assertThat(before.path("myLastSeenAt").isNull()).as("본 적 없음").isTrue();
+
+    Res seen = send("POST", ops, "/cases/" + a + "/views", null);
+    assertThat(seen.status()).as(seen.body().toString()).isEqualTo(200);
+    String at = seen.body().path("lastSeenAt").asString();
+    assertThat(at).isNotBlank();
+
+    JsonNode mine = send("GET", ops, "/cases/" + a, null).body();
+    assertThat(mine.path("myLastSeenAt").asString()).isEqualTo(at);
+    assertThat(mine.path("version").asInt())
+        .as("사건은 그대로")
+        .isEqualTo(before.path("version").asInt());
+    assertThat(send("GET", ops2, "/cases/" + a, null).body().path("myLastSeenAt").isNull())
+        .as("다른 직원 것은 안 보임")
+        .isTrue();
+    JsonNode listed = send("GET", ops, "/cases?kind=MISDELIVERY&size=50", null).body();
+    for (JsonNode c : listed.path("items")) {
+      if (a.equals(c.path("caseId").asString())) {
+        assertThat(c.path("myLastSeenAt").asString()).isEqualTo(at);
+      }
+    }
+    assertThat(send("POST", md, "/cases/" + a + "/views", null).status())
+        .as("볼 수 없는 직원")
+        .isIn(403, 404);
+  }
+
   /**
    * 행위 요청 기록(0.17.0 — 2026-11-17 사용자 "기록만 먼저"): 그 건을 다룰 수 있는 사람이 요청·결과를 남기고(case 는 대상 서비스를 부르지 않음),
    * 보상 실행은 승인 번호 필수, 강제 명령 거절, 끝난 요청은 더 못 남기고, 처리 끝난 건엔 새 요청 없음.

@@ -81,7 +81,7 @@ class CaseInboxViewIT {
                     """
                     {"items":[
                       {"caseId":"CASE-1","kind":"RIDER_HELP","state":"OPEN","priority":"P1","subjectType":"DELIVERY","subjectRef":"DLV-1",
-                       "summary":"라이더 도움요청","overdue":true,"slaDueAt":"2026-11-16T01:10:00Z","openObligationCount":0,
+                       "summary":"라이더 도움요청","overdue":true,"slaDueAt":"2026-11-16T01:10:00Z","openObligationCount":0,"myLastSeenAt":"2026-11-17T01:02:00Z",
                        "refs":[{"refType":"deliveryId","refId":"DLV-1"},{"refType":"orderId","refId":"ORD-1"},{"refType":"incidentId","refId":"DLV-1:R1"},{"refType":"requestId","refId":"R1"}]},
                       {"caseId":"CASE-2","kind":"MISDELIVERY","state":"ASSIGNED","priority":"P2","subjectType":"DELIVERY","subjectRef":"DLV-1",
                        "refs":[{"refType":"orderId","refId":"ORD-404"},{"refType":"recoveryDeliveryId","refId":"DLV-R"},{"refType":"reshipmentDeliveryId","refId":"DLV-S"}]}],
@@ -141,6 +141,10 @@ class CaseInboxViewIT {
     JsonNode c1 = items.get(0);
     assertThat(c1.path("kind").asString()).isEqualTo("RIDER_HELP");
     assertThat(c1.path("overdue").asBoolean()).isTrue();
+    assertThat(c1.path("myLastSeenAt").asString())
+        .as("부른 직원이 본 시각(0.10.0)")
+        .isEqualTo("2026-11-17T01:02:00Z");
+    assertThat(items.get(1).path("myLastSeenAt").isNull()).isTrue();
     assertThat(c1.path("linkedRefs")).hasSize(4);
     JsonNode dl = c1.path("linked").get(0);
     assertThat(dl.path("kind").asString()).isEqualTo("DELIVERY");

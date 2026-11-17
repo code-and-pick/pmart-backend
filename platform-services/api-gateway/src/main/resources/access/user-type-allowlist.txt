@@ -304,6 +304,7 @@ POST /api/v1/cases/{caseId}/notes/{noteId}/maskings OPERATOR
 POST /api/v1/cases/{caseId}/obligations OPERATOR
 POST /api/v1/cases/{caseId}/reopenings OPERATOR
 POST /api/v1/cases/{caseId}/transfers OPERATOR
+POST /api/v1/cases/{caseId}/views OPERATOR
 POST /api/v1/category-tree-addition-uploads OPERATOR
 POST /api/v1/category-tree-additions OPERATOR
 POST /api/v1/category-tree-versions OPERATOR
