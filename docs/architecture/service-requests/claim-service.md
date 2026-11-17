@@ -56,3 +56,13 @@
 - **PC 1 회신(2026-11-17)**: ① `ReturnPickupRequested` 에 `mfcId` 이미 실음(원주문 이행 센터) ② 다시 회수는 새 회수 요청 ID·attempt 로 새 사건 ③ **`ReturnPickupFailed` 구독 추가**(claim `ReturnService` — 회수 줄이 REQUESTED 일 때만 실패로 셈, 2번이면 RECOVERY_FAILED + `ReturnRecoveryFailed`; `DeliveryFailed` 에 claimId 가 있으면 같은 처리) ④ 실패한 회수 뒤에만 다음 요청을 낸다(진행 중엔 안 냄).
 - **delivery 추가 요청(2026-11-17, PC 5 — 사용자 결정 "배달 중이나 전달 완료 전에는 반품 불가")**: 원래 배송이 전달 완료 전(배달 중·실패)이면 RETURN 클레임 접수를 거절해 주세요. delivery 는 그런 `ReturnPickupRequested` 를 받으면 회수 배송을 만들지 않고 경고만 남긴다(claim 에 알리는 사건은 없음 — 접수에서 막는 것이 정본).
 - **delivery 점검 후속(2026-11-17, PC 5 — 브랜치 `delivery/return-after-delivery`, PC 1 검토 필요)**: claim 접수가 인계 수량(handedOverQty)으로 심사해 **배달 중 주문도 반품 접수**되고, 회수 요청에 원래 배송 ID 가 없어 delivery 의 "전달 전 거절"도 안 걸렸다(그 경우 반품이 REQUESTED 에서 멈춤). 이 PR 이 claim `ReturnRules` 를 **전달 완료 수량(deliveredQty)** 으로 바꿈(없으면 422 NOT_DELIVERED_YET — 계약에 있던 코드). delivery 쪽 안전장치는 `ReturnPickupFailed`(ORIGIN_NOT_DELIVERED).
+
+## CL-2. 반품 취소 때 회수비 돌려주기 — 화면이 고를 수 있는지 알 수 있게 (2026-11-18, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: backoffice 웹(고객센터 반품 상세), 같은 날 웹 세션 보고.
+- **공백**: claim 0.3.0 `recovery-actions` CANCEL 의 `feeRefund` 는 회수 실패 사유로 정해진다. 고객 사유(부재·연락 두절·주소 오류·거부) → 안 돌려줌(true 면 422), 라이더·우리 잘못뿐 → 돌려줌(false 면 422), 파손·기타 → 상담원이 고름. 그런데 `Claim`(`GET /claims/{id}`)에는 회수 실패 사유가 없다(`pickup` 은 state·attempts·failedAttempts·countedFailures·retryAllowed 만). 그래서 화면은 "파손·기타일 때만 고르기"를 보일 수 없다. 지금은 낸 회수비(PAID)가 있으면 늘 "낸 회수비 돌려주기"를 보이고, 고를 때만 `feeRefund: true` 를 보낸다. 규칙과 다르면 422 안내로 막는다.
+- **제안(추천 1)**:
+  1. `pickup.feeRefundOnCancel`: `REFUND`(자동 돌려줌)·`NO_REFUND`(안 돌려줌)·`AGENT_CHOOSES`(상담원이 고름)·null(낸 회수비 없음). 판정은 claim 이 이미 하고 있으니 결과만 내보낸다. 화면이 규칙을 따라 만들지 않아도 된다.
+  2. (또는) `pickup.failures[]`: `{reason, customerReason, countedInLimit, failedAt}`. 화면이 규칙을 다시 짜야 해서 1보다 낫지 않다. 다만 상담원이 사유 이력을 보는 데는 쓸모가 있다.
+- 필드 추가뿐이라 하위 호환. 정해지면 backoffice 웹이 AGENT_CHOOSES 일 때만 고르기를 보인다.
+- **상태**: 요청(PC 1 결정·구현 대기).
