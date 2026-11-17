@@ -77,6 +77,10 @@
   - 새 건 → 문의(origin **STAFF_INTAKE**): 고객 목록에서 빠지고 고객 상세 404, 답변해도 **InquiryAnswered 없음**. linkCaseId → 그 건(사건함에서 볼 수 있는 건 또는 문의 건)에 연결, 이력 CS_INTAKE_LINKED, 새 사건 없음.
   - 목록 `GET /cs-intakes?caseId|customerRef|subjectRef`(하나 이상), 문의 목록·상세에 channel·callerRelation(LEFT JOIN cs_intake). 이벤트 없음, 요약·메모 로그 금지.
 
+- **문의 사진(2026-11-17, 계약 0.14.0, V12 inquiry_photo — 사용자 "리뷰 방식 그대로", 업무 원문 Commerce §14.1)**: `InquiryPhotoService`·`InquiryPhotoStore`·`InquiryPhotosController`, 저장소 `InquiryPhotoStorage`(S3 호환 — `pmart.storage.s3.*`, 버킷 없으면 사진만 503, review-service 와 같은 방식).
+  - 올리기 `POST /inquiry-photos`(multipart, 문의를 남기는 고객·라이더만, JPEG·PNG·WEBP 앞부분 판정, 10MB, 멱등) → 문의 작성 `photoIds` 또는 보완 `POST /inquiries/{id}/photos`(남긴 본인, 닫힌 문의 409, 합쳐 5장, 상태·version 그대로). 남의·이미 붙은 사진 422 PHOTO_NOT_FOUND(트랜잭션째 되돌림).
+  - 본문 `GET /inquiry-photos/{id}`: 붙은 사진 = `InquiryService.get` 과 같은 규칙(본인·종류별 직원), 안 붙은 사진 = 올린 본인만, 그 밖 404(역할 없는 직원 403). private 캐시. 안 붙은 사진 하루 뒤 정리(`InquiryPhotoSweeper`, 1시간마다 — `@EnableScheduling`). STAFF_INTAKE 문의에는 못 붙임. 사진 내용·이름 로그 금지.
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
 - **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).

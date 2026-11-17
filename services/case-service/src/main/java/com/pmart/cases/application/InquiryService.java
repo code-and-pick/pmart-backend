@@ -2,6 +2,8 @@ package com.pmart.cases.application;
 
 import com.pmart.cases.domain.CsIntakeRules;
 import com.pmart.cases.domain.InquiryRules;
+import com.pmart.cases.infrastructure.InquiryPhotoStore;
+import com.pmart.cases.infrastructure.InquiryPhotoStore.PhotoRow;
 import com.pmart.cases.infrastructure.InquiryStore;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
 import com.pmart.cases.infrastructure.InquiryStore.ReplyRow;
@@ -43,13 +45,15 @@ public class InquiryService {
       @Nullable String orderId,
       @Nullable String title,
       String body,
-      @Nullable String origin) {}
+      @Nullable String origin,
+      @Nullable List<String> photoIds) {}
 
-  public record View(InquiryRow inquiry, List<ReplyRow> replies) {}
+  public record View(InquiryRow inquiry, List<ReplyRow> replies, List<PhotoRow> photos) {}
 
   public record Page(List<InquiryRow> items, @Nullable String nextCursor) {}
 
   private final InquiryStore store;
+  private final InquiryPhotoStore photos;
   private final OrderClient orders;
   private final CaseProperties props;
   private final RequestIdempotency idempotency;
@@ -59,6 +63,7 @@ public class InquiryService {
 
   public InquiryService(
       InquiryStore store,
+      InquiryPhotoStore photos,
       OrderClient orders,
       CaseProperties props,
       RequestIdempotency idempotency,
@@ -66,6 +71,7 @@ public class InquiryService {
       EventPublisher events,
       Clock clock) {
     this.store = store;
+    this.photos = photos;
     this.orders = orders;
     this.props = props;
     this.idempotency = idempotency;
@@ -92,6 +98,11 @@ public class InquiryService {
               ? "라이더 문의 분류는 SETTLEMENT·ACCOUNT·APP_ERROR·OTHER 입니다."
               : "고객 문의 분류가 아닙니다.");
     }
+    InquiryRules.photoIdsProblem(cmd.photoIds(), 0)
+        .ifPresent(
+            m -> {
+              throw new PmartException(ErrorCode.VALIDATION_FAILED, m);
+            });
     if (InquiryRules.RIDER.equals(requesterType)
         && cmd.orderId() != null
         && !cmd.orderId().isBlank()) {
@@ -137,6 +148,7 @@ public class InquiryService {
                           null,
                           null,
                           requesterType));
+                  attach(id, customerId, cmd.photoIds(), 0);
                   log.info(
                       "inquiry received id={} requester={} category={}",
                       id,
@@ -212,7 +224,7 @@ public class InquiryService {
     } else if (!readableTypes(p).contains(row.requesterType())) {
       throw notFound(inquiryId);
     }
-    return new View(row, store.replies(inquiryId));
+    return new View(row, store.replies(inquiryId), photos.ofInquiry(inquiryId));
   }
 
   /** 상담원 답변 → ANSWERED. */
@@ -303,12 +315,31 @@ public class InquiryService {
     return view(inquiryId);
   }
 
+  /**
+   * 내가 올리고 아직 붙지 않은 사진만 문의에 붙인다(0.14.0). 하나라도 못 붙이면 422 PHOTO_NOT_FOUND — 호출한 트랜잭션째 되돌린다. 문의 행은 호출
+   * 쪽이 잠갔다(새 문의는 방금 넣음).
+   */
+  void attach(String inquiryId, String ownerId, @Nullable List<String> photoIds, int already) {
+    if (photoIds == null || photoIds.isEmpty()) {
+      return;
+    }
+    if (photos.attach(inquiryId, ownerId, photoIds, already) != photoIds.size()) {
+      throw new PmartException(
+          "PHOTO_NOT_FOUND",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "내가 올린 사진이 아니거나 이미 다른 문의에 붙은 사진입니다.",
+          false,
+          List.of());
+    }
+  }
+
   private View view(String inquiryId) {
     return tx.execute(
         s ->
             new View(
                 store.find(inquiryId).orElseThrow(() -> notFound(inquiryId)),
-                store.replies(inquiryId)));
+                store.replies(inquiryId),
+                photos.ofInquiry(inquiryId)));
   }
 
   private static PmartPrincipal principal() {

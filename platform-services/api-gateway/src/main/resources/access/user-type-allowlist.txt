@@ -117,6 +117,7 @@ GET /api/v1/inbound-tasks/{taskId} OPERATOR
 GET /api/v1/initial-stock-loads OPERATOR
 GET /api/v1/inquiries CUSTOMER,OPERATOR,RIDER
 GET /api/v1/inquiries/{inquiryId} CUSTOMER,OPERATOR,RIDER
+GET /api/v1/inquiry-photos/{photoId} CUSTOMER,OPERATOR,RIDER
 GET /api/v1/locations OPERATOR
 GET /api/v1/locations/{locationCode} OPERATOR
 GET /api/v1/locations/{locationId} OPERATOR
@@ -355,7 +356,9 @@ POST /api/v1/inbound-tasks/{taskId}/inspections OPERATOR
 POST /api/v1/inbound-tasks/{taskId}/putaways OPERATOR
 POST /api/v1/initial-stock-loads/{receiptId}/receipts OPERATOR
 POST /api/v1/inquiries CUSTOMER,RIDER
+POST /api/v1/inquiries/{inquiryId}/photos CUSTOMER,RIDER
 POST /api/v1/inquiries/{inquiryId}/replies OPERATOR
+POST /api/v1/inquiry-photos CUSTOMER,RIDER
 POST /api/v1/inspection-results OPERATOR
 POST /api/v1/loading-results OPERATOR
 POST /api/v1/locations OPERATOR

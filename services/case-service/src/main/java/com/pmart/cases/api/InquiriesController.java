@@ -1,6 +1,7 @@
 package com.pmart.cases.api;
 
 import com.pmart.cases.api.generated.InquiriesApi;
+import com.pmart.cases.api.generated.model.AddInquiryPhotosRequest;
 import com.pmart.cases.api.generated.model.CreateInquiryRequest;
 import com.pmart.cases.api.generated.model.Inquiry;
 import com.pmart.cases.api.generated.model.InquiryAllOfReplies;
@@ -11,6 +12,7 @@ import com.pmart.cases.api.generated.model.InquirySummary;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ListInquiries200Response;
 import com.pmart.cases.api.generated.model.ReplyInquiryRequest;
+import com.pmart.cases.application.InquiryPhotoService;
 import com.pmart.cases.application.InquiryService;
 import com.pmart.cases.domain.InquiryRules;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
@@ -25,9 +27,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class InquiriesController implements InquiriesApi {
 
   private final InquiryService service;
+  private final InquiryPhotoService photos;
 
-  public InquiriesController(InquiryService service) {
+  public InquiriesController(InquiryService service, InquiryPhotoService photos) {
     this.service = service;
+    this.photos = photos;
+  }
+
+  @Override
+  public ResponseEntity<Inquiry> addInquiryPhotos(
+      String inquiryId, String idempotencyKey, String xSourceSystem, AddInquiryPhotosRequest req) {
+    return ResponseEntity.ok(
+        detail(photos.add(idempotencyKey, xSourceSystem, inquiryId, req.getPhotoIds())));
   }
 
   @Override
@@ -42,7 +53,8 @@ public class InquiriesController implements InquiriesApi {
                 req.getOrderId(),
                 req.getTitle(),
                 req.getBody(),
-                req.getOrigin() == null ? null : req.getOrigin().getValue()));
+                req.getOrigin() == null ? null : req.getOrigin().getValue(),
+                req.getPhotoIds()));
     return ResponseEntity.status(HttpStatus.CREATED).body(detail(view));
   }
 
@@ -138,6 +150,7 @@ public class InquiriesController implements InquiriesApi {
                   return y;
                 })
             .toList());
+    d.setPhotos(v.photos().stream().map(InquiryPhotosController::photo).toList());
     return d;
   }
 }

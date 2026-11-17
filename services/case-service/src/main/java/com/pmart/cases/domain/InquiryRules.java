@@ -1,5 +1,8 @@
 package com.pmart.cases.domain;
 
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -72,5 +75,78 @@ public final class InquiryRules {
   /** 문의 출처 기본값. */
   public static String origin(@Nullable String origin) {
     return origin == null || origin.isBlank() ? "INQUIRY_PAGE" : origin;
+  }
+
+  // ------------------------------------------------------------ 사진(0.14.0 — 2026-11-17 사용자 "리뷰 방식
+  // 그대로")
+
+  /** 문의 하나에 붙일 수 있는 사진 수(리뷰와 같게). */
+  public static final int MAX_PHOTOS = 5;
+
+  /** 장당 상한(리뷰와 같게). */
+  public static final int MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+
+  /** 문의에 붙지 않은 사진을 지우기까지. */
+  public static final Duration ORPHAN_PHOTO_TTL = Duration.ofHours(24);
+
+  /** 붙일 사진 ID 목록 문제(없으면 빈 값). already = 이미 붙은 장수. */
+  public static Optional<String> photoIdsProblem(@Nullable List<String> photoIds, int already) {
+    if (photoIds == null || photoIds.isEmpty()) {
+      return Optional.empty();
+    }
+    if (photoIds.stream().anyMatch(id -> id == null || id.isBlank())) {
+      return Optional.of("빈 사진 ID 가 있습니다.");
+    }
+    if (photoIds.stream().distinct().count() != photoIds.size()) {
+      return Optional.of("같은 사진이 두 번 있습니다.");
+    }
+    if (already + photoIds.size() > MAX_PHOTOS) {
+      return Optional.of("사진은 문의 하나에 " + MAX_PHOTOS + "장까지입니다.");
+    }
+    return Optional.empty();
+  }
+
+  /** 파일 앞부분으로 형식 판정(이름·보낸 Content-Type 은 믿지 않는다). JPEG·PNG·WEBP 만. */
+  public static Optional<String> photoType(byte[] b) {
+    if (b.length >= 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8 && (b[2] & 0xFF) == 0xFF) {
+      return Optional.of("image/jpeg");
+    }
+    if (b.length >= 8
+        && (b[0] & 0xFF) == 0x89
+        && b[1] == 'P'
+        && b[2] == 'N'
+        && b[3] == 'G'
+        && b[4] == 0x0D
+        && b[5] == 0x0A
+        && b[6] == 0x1A
+        && b[7] == 0x0A) {
+      return Optional.of("image/png");
+    }
+    if (b.length >= 12
+        && b[0] == 'R'
+        && b[1] == 'I'
+        && b[2] == 'F'
+        && b[3] == 'F'
+        && b[8] == 'W'
+        && b[9] == 'E'
+        && b[10] == 'B'
+        && b[11] == 'P') {
+      return Optional.of("image/webp");
+    }
+    return Optional.empty();
+  }
+
+  /** 사진 크기·형식 문제(없으면 빈 값). */
+  public static Optional<String> photoProblem(byte[] b) {
+    if (b.length == 0) {
+      return Optional.of("빈 파일입니다.");
+    }
+    if (b.length > MAX_PHOTO_BYTES) {
+      return Optional.of("사진은 장당 10MB 까지입니다.");
+    }
+    if (photoType(b).isEmpty()) {
+      return Optional.of("JPEG·PNG·WEBP 사진만 올릴 수 있습니다.");
+    }
+    return Optional.empty();
   }
 }
