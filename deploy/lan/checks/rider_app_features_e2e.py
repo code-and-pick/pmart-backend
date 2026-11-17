@@ -11,6 +11,8 @@
   G. 수행료 조정 대기(#119)  관리자 GET /rider-earnings/adjustment-queue 200, 라이더 403, 없는 수행료 조정 404
   H. 탈퇴(#118)              새 시험 라이더 가입 → POST /riders/me/withdrawals 202 APPLIED → 결과 COMPLETED → /riders/me 404
                              → (rider-auth SubjectBlocked 뒤) 같은 토큰 401
+  I. 가입 전 확인(#125)      phone-checks·bank-codes·account-checks, 없는 거주지 422 INVALID_ADDRESS(serviceability 호출까지),
+                             실제 주소(시험 MFC 주소)·은행 코드로 가입 201, 같은 계좌 다른 라이더 409
 
 실행: uv run --no-project --with cryptography python -I deploy/lan/checks/rider_app_features_e2e.py
         [--delivery DLV-…] [--customer-token-file 파일] [--ops 직원계정]
@@ -22,6 +24,8 @@ import sys
 import time
 import urllib.request
 import uuid
+
+MFC_ADDRESS = os.environ.get("PMART_MFC_ADDRESS", "부산광역시 부산진구 동천로 109")  # 시험 MFC 실제 주소(2026-11-16)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -129,6 +133,36 @@ def adjustment_queue(token, admin):
     check("G 없는 수행료 조정 404", s == 404, f"HTTP {s} {b.get('code', '')}")
 
 
+def signup_checks():
+    a = "RD-claude-ck-" + uuid.uuid4().hex[:10]
+    b = "RD-claude-ck-" + uuid.uuid4().hex[:10]
+    ta, tb = rider_token(a), rider_token(b)
+    s, body = http("GET", "/riders/bank-codes", ta)
+    if not_deployed("I 은행 목록", s):
+        return
+    codes = [i.get("code") for i in body.get("items", [])]
+    check("I 은행 목록(금융결제원 코드)", s == 200 and "004" in codes, f"HTTP {s} {len(codes)}개")
+    p = phone()
+    s, body = http("POST", "/riders/phone-checks", ta, {"phone": p})
+    check("I 번호 확인 — 사용 가능", s == 200 and body.get("available") is True, f"HTTP {s}")
+    acct = str(10_000_000_000 + uuid.uuid4().int % 89_999_999_999)
+    s, body = http("POST", "/riders/account-checks", ta, {"bankCode": "004", "accountNumber": acct})
+    check("I 계좌 확인 — 사용 가능", s == 200 and body.get("available") is True, f"HTTP {s}")
+    base = {"name": "시험라이더", "vehicleType": "BICYCLE", "deliveryAreas": [{"mfcId": MFC}],
+            "consents": [{"consentType": "TERMS", "version": "2026-11-17"}],
+            "bankAccount": {"bankCode": "004", "accountNumber": acct, "holderName": "시험라이더"}}
+    s, body = http("POST", "/riders/signups", ta, dict(base, phone=p, residence={"roadAddress": "없는로 99999", "detail": "1"}))
+    check("I 없는 거주지 422 INVALID_ADDRESS(주소 검색 호출)", s == 422 and body.get("code") == "INVALID_ADDRESS",
+          f"HTTP {s} {body.get('code', '')}")
+    s, body = http("POST", "/riders/signups", ta, dict(base, phone=p, residence={"roadAddress": MFC_ADDRESS, "detail": "101호"}))
+    check("I 실제 주소·은행 코드로 가입 201", s == 201, f"HTTP {s} {body.get('code', '')}")
+    s, body = http("POST", "/riders/phone-checks", tb, {"phone": p})
+    check("I 다른 라이더 — 번호 사용 중", s == 200 and body.get("available") is False, f"HTTP {s}")
+    s, body = http("POST", "/riders/signups", tb, dict(base, phone=phone()))
+    check("I 같은 계좌 다른 라이더 409 DUPLICATE_ACCOUNT", s == 409 and body.get("code") == "DUPLICATE_ACCOUNT",
+          f"HTTP {s} {body.get('code', '')}")
+
+
 def withdrawal():
     rider = "RD-claude-wd-" + uuid.uuid4().hex[:10]
     token = rider_token(rider)
@@ -219,6 +253,7 @@ def main():
     operating_time(token)
     adjustment_queue(token, admin)
     withdrawal()
+    signup_checks()
     if delivery:
         eta(delivery, admin, customer)
         if customer:
