@@ -158,7 +158,9 @@ def main():
 def assign(delivery, rider, token, admin, locate):
     # 1. 가입·운행 시작
     s, b = http("POST", "/riders/signups", token, {
+        # 오토바이는 면허 번호 필수(2026-11-16 #66 — 라이더 앱 요청 §7). 시험 번호는 매번 새로(중복 409 방지)
         "phone": phone(), "name": "시험라이더", "vehicleType": "MOTORCYCLE",
+        "licenseNumber": "".join(random.choice("0123456789") for _ in range(12)),
         "deliveryAreas": [{"mfcId": MFC}], "consents": [{"consentType": "TERMS", "version": "2026-11"}]})
     need("라이더 가입", s == 201, f"HTTP {s} {b.get('code', '')} {b.get('detail', '')}")
     s, b = http("PUT", "/riders/me/state", token, {"status": "ON_DUTY", "newDispatchEnabled": True, "mfcId": MFC},
