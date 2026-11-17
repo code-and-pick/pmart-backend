@@ -203,6 +203,47 @@ public class RiderStore {
     return withAreas(rows);
   }
 
+  /** 대시보드 라이더 수(2026-11-17). 기한 지난 제한은 NORMAL 로 센다. */
+  public com.pmart.rider.application.StaffRiderService.Stats stats(
+      @Nullable String mfcId, Instant now, Instant dayStart) {
+    String area =
+        mfcId == null
+            ? ""
+            : " AND EXISTS (SELECT 1 FROM rider_delivery_area a WHERE a.rider_id = r.rider_id AND"
+                + " a.mfc_id = ?)";
+    String eff =
+        "CASE WHEN r.restriction <> 'NORMAL' AND (r.restriction_until IS NULL OR r.restriction_until >"
+            + " ?) THEN r.restriction ELSE 'NORMAL' END";
+    List<Object> args = new ArrayList<>();
+    args.add(Timestamp.from(dayStart)); // 바깥 FILTER(joined_at) 가 먼저
+    args.add(Timestamp.from(now)); // 안쪽 제한 기한
+    if (mfcId != null) {
+      args.add(mfcId);
+    }
+    return jdbc.queryForObject(
+        "SELECT count(*), count(*) FILTER (WHERE r.operating_status = 'ON_DUTY'),"
+            + " count(*) FILTER (WHERE r.operating_status = 'ON_DUTY' AND r.new_dispatch_enabled),"
+            + " count(*) FILTER (WHERE eff = 'NORMAL'), count(*) FILTER (WHERE eff ="
+            + " 'DISPATCH_RESTRICTED'), count(*) FILTER (WHERE eff = 'SUSPENDED'), count(*) FILTER"
+            + " (WHERE eff = 'TERMINATED'), count(*) FILTER (WHERE r.joined_at >= ?) FROM (SELECT r.*, "
+            + eff
+            + " AS eff FROM rider r WHERE r.withdrawn_at IS NULL"
+            + area
+            + ") r",
+        (rs, i) ->
+            new com.pmart.rider.application.StaffRiderService.Stats(
+                rs.getInt(1),
+                rs.getInt(2),
+                rs.getInt(3),
+                rs.getInt(4),
+                rs.getInt(5),
+                rs.getInt(6),
+                rs.getInt(7),
+                rs.getInt(8),
+                now),
+        args.toArray());
+  }
+
   /** 운행 중·탈퇴 안 함·배달지역에 mfcId — 신규배차·제한 무관(라이더 관제, 2026-11-17). */
   public List<Rider> onDuty(String mfcId, int limit) {
     List<Row> rows =

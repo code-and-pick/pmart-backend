@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -592,6 +592,42 @@ paths:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
+  /riders/stats:
+    get:
+      tags: [operator]
+      summary: (0.9.0) 라이더 백오피스 대시보드 — 라이더 수 (RIDER_OPS·OPERATOR_ADMIN·CS_AGENT)
+      x-added-in: '2026-11-17'
+      description: |
+        2026-11-17 사용자 "대시보드에 필요한 것만 더해". 지금 스냅샷 — 전체(탈퇴 제외)·운행 중·운행 중 신규배차 켬·계정 제한 단계별(기한 지난 제한은 NORMAL)·오늘(Asia/Seoul) 가입.
+        mfcId 를 주면 배달지역에 그 센터가 있는 라이더만. 개인정보 없음. 그 밖 직원 403.
+      operationId: getRiderStatsForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, onDuty, onDutyAcceptingNew, byRestriction, joinedToday, asOf]
+                properties:
+                  total: { type: integer }
+                  onDuty: { type: integer }
+                  onDutyAcceptingNew: { type: integer }
+                  byRestriction:
+                    type: object
+                    required: [NORMAL, DISPATCH_RESTRICTED, SUSPENDED, TERMINATED]
+                    properties:
+                      NORMAL: { type: integer }
+                      DISPATCH_RESTRICTED: { type: integer }
+                      SUSPENDED: { type: integer }
+                      TERMINATED: { type: integer }
+                  joinedToday: { type: integer }
+                  asOf: { type: string, format: date-time }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /internal/riders/on-duty:
     get:
       tags: [internal]
@@ -837,6 +873,12 @@ components:
         restrictionUntil: { type: [string, 'null'], format: date-time }
         stateChangedAt: { type: string, format: date-time }
         joinedAt: { type: string, format: date-time }
+        signupStatus: { $ref: '#/components/schemas/SignupStatus' }
+    SignupStatus:
+      type: string
+      x-added-in: '2026-11-17'
+      enum: [PENDING, APPROVED, REJECTED]
+      description: '(0.9.0) 가입 승인 상태 — 사용자 2026-11-17 "승인 화면은 만들고, 일단은 바로 승인되게, 정책은 나중에": 지금은 가입하면 늘 APPROVED(자동 승인, 원문 §1.2 "즉시 운행 승인"). PENDING·REJECTED 는 정책이 정해지면'
     StaffRiderSearchResult:
       type: object
       x-added-in: '2026-11-15'
@@ -849,6 +891,8 @@ components:
       type: object
       x-added-in: '2026-11-15'
       properties:
+        signupStatus: { $ref: '#/components/schemas/SignupStatus' }
+        signupDecidedBy: { type: [string, 'null'], description: '(0.9.0) 승인한 주체 — 지금은 AUTO(자동 승인)' }
         riderId: { type: string }
         version: { type: integer, description: '지금 라이더 행 버전 — 계정 제한 X-Expected-Version(BOD-6)' }
         nameMasked: { type: [string, 'null'] }

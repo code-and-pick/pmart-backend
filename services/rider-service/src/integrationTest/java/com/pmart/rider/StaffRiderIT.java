@@ -89,6 +89,8 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
     assertThat(row.has("phone")).isFalse();
     assertThat(row.has("name")).isFalse();
     assertThat(byPhone.path("hasNext").asBoolean()).isFalse();
+    assertThat(row.path("signupStatus").asString())
+        .isEqualTo("APPROVED"); // 정책 전까지 자동 승인(2026-11-17)
 
     assertThat(json(get(OPS, "/riders?riderId=" + rider)).path("items")).hasSize(1);
     // 부분 번호·이름으로는 찾지 않는다
@@ -106,6 +108,15 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
     assertThat(detail.path("deliveryAreas").get(0).path("mfcId").asString()).isEqualTo("MFC-IT-1");
     assertThat(detail.has("bankAccountMasked")).isFalse();
     assertThat(detail.has("residence")).isFalse();
+    assertThat(detail.path("signupStatus").asString()).isEqualTo("APPROVED");
+    assertThat(detail.path("signupDecidedBy").asString()).isEqualTo("AUTO");
+    // 대시보드 라이더 수(2026-11-17)
+    JsonNode stats = json(get(OPS, "/riders/stats?mfcId=MFC-IT-1"));
+    assertThat(stats.path("total").asInt()).isPositive();
+    assertThat(stats.path("joinedToday").asInt()).isPositive();
+    assertThat(stats.path("byRestriction").path("NORMAL").asInt()).isPositive();
+    assertThat(json(get(OPS, "/riders/stats?mfcId=MFC-NONE")).path("total").asInt()).isZero();
+    assertThat(get(SUPERVISOR, "/riders/stats").getStatusCode().value()).isEqualTo(403);
     assertThat(get(OPS, "/riders/RD-none-" + UUID.randomUUID()).getStatusCode().value())
         .isEqualTo(404);
     // /riders/me 는 그대로 라이더 본인 API

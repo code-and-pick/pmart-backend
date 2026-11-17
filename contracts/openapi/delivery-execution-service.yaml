@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -807,6 +807,39 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /delivery-stats:
+    get:
+      tags: [staff]
+      summary: (0.21.0) 라이더 백오피스 대시보드 — 배송 수 (직원 — 배송 찾기와 같은 범위)
+      x-added-in: '2026-11-17'
+      description: |
+        2026-11-17 사용자 "대시보드에 필요한 것만 더해". 지금 스냅샷 — 진행 중 상태별 수(배정 전 ~ 실패 등록·회수 중), 오늘(Asia/Seoul) 완료·실패,
+        열린 도움요청, 수행료 조정 대기, 추가 배달료 신청 대기. mfcId 를 주면 그 센터만(센터 직원은 필수 — `GET /deliveries` 와 같은 범위).
+      operationId: getDeliveryStatsForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [inProgress, completedToday, failedToday, openHelpRequests, adjustmentPending, surchargeRequested, asOf]
+                properties:
+                  inProgress:
+                    type: object
+                    description: 끝나지 않은 배송의 상태별 수(0 인 상태도 키가 있다)
+                    additionalProperties: { type: integer }
+                  completedToday: { type: integer, description: '오늘 끝난 배송(COMPLETED·RETURNED_TO_STORE)' }
+                  failedToday: { type: integer }
+                  openHelpRequests: { type: integer, description: 'OPEN·IN_PROGRESS 도움요청' }
+                  adjustmentPending: { type: integer, description: '조정 전 산정 불가 수행료(/rider-earnings/adjustment-queue 와 같은 조건 — 센터 무관)' }
+                  surchargeRequested: { type: integer, description: '처리 전 추가 배달료 신청(센터 무관)' }
+                  asOf: { type: string, format: date-time }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /rider-earnings:
     get:

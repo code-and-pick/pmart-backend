@@ -170,4 +170,37 @@ public class StaffRiderService {
     return new PmartException(
         ErrorCode.FORBIDDEN.name(), HttpStatus.FORBIDDEN, message, false, List.of());
   }
+
+  /** 대시보드 라이더 수(2026-11-17 — 사용자 "대시보드에 필요한 것만"). RIDER_OPS·OPERATOR_ADMIN·CS_AGENT. */
+  public record Stats(
+      int total,
+      int onDuty,
+      int onDutyAcceptingNew,
+      int normal,
+      int dispatchRestricted,
+      int suspended,
+      int terminated,
+      int joinedToday,
+      java.time.Instant asOf) {}
+
+  public Stats stats(@org.jspecify.annotations.Nullable String mfcId) {
+    com.pmart.common.security.PmartPrincipal p =
+        com.pmart.common.security.PmartPrincipal.current()
+            .filter(
+                x -> x.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(
+                () ->
+                    new com.pmart.common.web.PmartException(
+                        com.pmart.common.web.ErrorCode.FORBIDDEN, "직원만 볼 수 있습니다."));
+    if (!(p.hasRole("RIDER_OPS") || p.hasRole("OPERATOR_ADMIN") || p.hasRole("CS_AGENT"))) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.FORBIDDEN, "라이더 현황은 라이더 운영·관리자·상담원만 볼 수 있습니다.");
+    }
+    java.time.Instant now = clock.instant();
+    java.time.Instant dayStart =
+        java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"))
+            .atStartOfDay(java.time.ZoneId.of("Asia/Seoul"))
+            .toInstant();
+    return store.stats(mfcId, now, dayStart);
+  }
 }

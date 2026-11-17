@@ -44,6 +44,7 @@ public class StaffController implements StaffApi {
   private final com.pmart.delivery.execution.application.OperatingTimeService operating;
   private final com.pmart.delivery.execution.application.StatusCorrectionService corrections;
   private final com.pmart.delivery.execution.application.SurchargeService surcharges;
+  private final com.pmart.delivery.execution.application.DeliveryStats stats;
 
   public StaffController(
       StaffQueries queries,
@@ -53,7 +54,9 @@ public class StaffController implements StaffApi {
       com.pmart.delivery.execution.application.EarningService earnings,
       com.pmart.delivery.execution.application.OperatingTimeService operating,
       com.pmart.delivery.execution.application.StatusCorrectionService corrections,
-      com.pmart.delivery.execution.application.SurchargeService surcharges) {
+      com.pmart.delivery.execution.application.SurchargeService surcharges,
+      com.pmart.delivery.execution.application.DeliveryStats stats) {
+    this.stats = stats;
     this.corrections = corrections;
     this.surcharges = surcharges;
     this.adjustments = adjustments;
@@ -95,6 +98,23 @@ public class StaffController implements StaffApi {
                 body.getDecision().getValue(),
                 body.getNote()),
             true));
+  }
+
+  /** 대시보드 배송 수(2026-11-17, 0.21.0). */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.GetDeliveryStatsForStaff200Response>
+      getDeliveryStatsForStaff(@Nullable String mfcId) {
+    var s = stats.stats(mfcId);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.GetDeliveryStatsForStaff200Response()
+            .inProgress(s.inProgress())
+            .completedToday(s.completedToday())
+            .failedToday(s.failedToday())
+            .openHelpRequests(s.openHelpRequests())
+            .adjustmentPending(s.adjustmentPending())
+            .surchargeRequested(s.surchargeRequested())
+            .asOf(ExecutionViews.time(s.asOf())));
   }
 
   /** 운영자 상태 정정(2026-11-17, 0.17.0). */

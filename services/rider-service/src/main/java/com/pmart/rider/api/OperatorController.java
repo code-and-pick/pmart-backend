@@ -102,6 +102,9 @@ public class OperatorController implements OperatorApi {
         new StaffRiderDetail()
             .riderId(r.riderId())
             .version(r.version())
+            // 가입 승인(2026-11-17 — 정책 전까지 자동 승인)
+            .signupStatus(com.pmart.rider.api.generated.model.SignupStatus.APPROVED)
+            .signupDecidedBy("AUTO")
             .nameMasked(r.name() == null ? null : RiderViews.maskName(r.name()))
             .phoneMasked(RiderViews.maskPhone(r.phone()))
             .vehicleType(VehicleType.fromValue(r.vehicleType()))
@@ -156,7 +159,30 @@ public class OperatorController implements OperatorApi {
         .restriction(AccountRestriction.fromValue(r.restriction().name()))
         .restrictionUntil(RiderViews.time(r.restrictionUntil()))
         .stateChangedAt(RiderViews.time(r.stateChangedAt()))
-        .joinedAt(RiderViews.time(r.joinedAt()));
+        .joinedAt(RiderViews.time(r.joinedAt()))
+        // 가입 승인(2026-11-17 — 정책 전까지 자동 승인)
+        .signupStatus(com.pmart.rider.api.generated.model.SignupStatus.APPROVED);
+  }
+
+  /** 대시보드 라이더 수(2026-11-17). */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.GetRiderStatsForStaff200Response>
+      getRiderStatsForStaff(@Nullable String mfcId) {
+    var s = staff.stats(blankToNull(mfcId));
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.GetRiderStatsForStaff200Response()
+            .total(s.total())
+            .onDuty(s.onDuty())
+            .onDutyAcceptingNew(s.onDutyAcceptingNew())
+            .byRestriction(
+                new com.pmart.rider.api.generated.model
+                        .GetRiderStatsForStaff200ResponseByRestriction()
+                    .NORMAL(s.normal())
+                    .DISPATCH_RESTRICTED(s.dispatchRestricted())
+                    .SUSPENDED(s.suspended())
+                    .TERMINATED(s.terminated()))
+            .joinedToday(s.joinedToday())
+            .asOf(RiderViews.time(s.asOf())));
   }
 
   private static @Nullable String blankToNull(@Nullable String s) {

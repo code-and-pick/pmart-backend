@@ -1955,6 +1955,18 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .size())
         .isZero();
+    // 대시보드 배송 수(2026-11-17): 오늘 완료·진행 중 상태별, 센터 직원은 mfcId 필수
+    JsonNode stats = body(staffGet("/delivery-stats?mfcId=MFC-1", ops));
+    assertThat(stats.path("completedToday").asInt()).isPositive();
+    assertThat(stats.path("inProgress").path("PICKED_UP").asInt()).isPositive(); // open
+    assertThat(stats.path("inProgress").has("UNASSIGNED")).isTrue();
+    assertThat(
+            staffGet(
+                    "/delivery-stats",
+                    TestJwt.operator("OP-SUP", List.of("MFC_SUPERVISOR"), List.of("MFC-1")))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
   }
 
   /** 라이더 탈퇴를 막는 것(2026-11-17 — rider-service 가 부름): 진행 중 배송 → 완료 뒤 확정 전 수행료, 모르는 라이더는 빈 목록. */
