@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.23.0
+  version: 0.24.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -108,6 +108,35 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/CaseMetrics' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cases/metrics/sla:
+    get:
+      tags: [cases]
+      summary: 접수 건 기한 준수 — 닫힌 건을 닫은 날(시)·종류·팀별로 (본사 관리자, 0.24.0)
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 "일단 그렇게 하고"(추천안 — bff `views/metrics` CASE_SLA 의 원천). 업무 원문 BO-28: 분모를 줄여 비율을 올리지 않는다, 분모 0 은 N/A.
+        - 센다: 사건함 종류(CaseKind 중 사건함 종류) 가운데 **기간 안에 닫힌 건**. 닫은 시각 = 마지막으로 닫은 시각(다시 처리하기 뒤 다시 닫았으면 그 시각),
+          기한 = 그때의 처리 기한(`slaDueAt` — 다시 처리하기 때 새로 정해진 기한).
+        - `closedOnTime` = 기한이 있고 닫은 시각 ≤ 기한. `closedWithoutSla` = 기한이 없던 건(판정 불가 — `closed` 에는 들어 있다. bff 는 분모 = closed − closedWithoutSla 로 쓰고 이 수를 따로 보인다).
+        - 묶음: 닫은 시각을 **한국 시각**(Asia/Seoul, ADR-0010)으로 DAY(`2026-11-18`)·HOUR(`2026-11-18T13:00`) + 종류 + 닫을 때의 담당 팀. 0건 묶음은 줄이 없다.
+        - 열린 채 기한이 지난 건은 여기 없다(지금 시각 스냅샷 `GET /cases/metrics` 의 overdue).
+        - 기간: from·to 는 한국 날짜(포함). DAY 는 93일까지, HOUR 는 7일까지(넘으면 400). OPERATOR_ADMIN 만(그 밖 403).
+      operationId: getCaseSlaMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: granularity, in: query, schema: { type: string, enum: [DAY, HOUR], default: DAY } }
+        - { name: centerId, in: query, schema: { type: string, maxLength: 64 }, description: 사건의 센터(centerId)로 거르기 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseSlaMetrics' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cases/{caseId}:
@@ -1803,6 +1832,26 @@ components:
               requesterType: { $ref: '#/components/schemas/InquiryRequesterType' }
               awaitingAnswer: { type: integer, format: int64, description: '답변 전(RECEIVED) — 상담원 접수 제외' }
               oldestReceivedAt: { type: [string, 'null'], format: date-time }
+    CaseSlaMetrics:
+      type: object
+      x-added-in: '2026-11-18'
+      required: [asOf, timeZone, granularity, rows]
+      properties:
+        asOf: { type: string, format: date-time, description: 센 시각 }
+        timeZone: { type: string, description: 묶음 기준 시간대 — 늘 Asia/Seoul }
+        granularity: { type: string, enum: [DAY, HOUR] }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [bucket, kind, closed, closedOnTime, closedWithoutSla]
+            properties:
+              bucket: { type: string, description: '한국 시각 묶음 시작 — DAY 2026-11-18, HOUR 2026-11-18T13:00' }
+              kind: { $ref: '#/components/schemas/CaseKind' }
+              assigneeGroup: { type: [string, 'null'], description: 닫을 때 담당 팀 }
+              closed: { type: integer, format: int64, description: 이 묶음에 닫힌 건 전체(기한 없던 건 포함) }
+              closedOnTime: { type: integer, format: int64, description: 그중 기한 안에 닫힌 건 }
+              closedWithoutSla: { type: integer, format: int64, description: 그중 기한이 없던 건(판정 불가) }
     Intake:
       type: object
       properties:

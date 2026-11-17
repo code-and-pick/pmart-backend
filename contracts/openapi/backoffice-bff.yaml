@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.12.0
+  version: 0.13.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -477,6 +477,16 @@ paths:
     get:
       tags: [views]
       summary: 지표 (분모 보존; 비율은 분자/분모를 함께 반환)
+      description: |
+        0.13.0(2026-11-18 사용자 "일단 그렇게 하고" — 추천안): 업무 원문 BO-28(분모를 줄여 비율을 올리지 않는다, 분모 0 은 N/A, 승인된 정의만).
+        **지금 되는 것은 CASE_SLA 하나**, OPERATOR_ADMIN 만(원천 case 가 403). 그 밖 지표는 **501 NOT_IMPLEMENTED**:
+        SHORTAGE_RATE(줄 단위·사유별로 정의 고친 뒤 mfc-fulfillment 에 분모 요청), ON_TIME_DELIVERY(order·delivery 누가 셀지 먼저), TRANSPORT_ON_TIME·UNPLANNED_RATE(원천 서비스 없음),
+        PAYMENT_UNKNOWN(만들지 않음 — 처리 대기·사건함 PAYMENT_UNKNOWN 으로 본다).
+        CASE_SLA(원천 case `GET /cases/metrics/sla`): 기간 안에 **닫힌** 사건함 건을 닫은 한국 시각(Asia/Seoul)으로 묶는다. 닫은 시각 = 마지막으로 닫은 시각, 기한 = 그때 기한(다시 처리하기 때 새로 정해짐).
+        numerator = 기한 안에 닫힌 건, denominator = 기한이 있던 닫힌 건, `unjudged` = 기한이 없던 닫힌 건(판정 불가 — 숨기지 않고 따로), ratio = 분모 0 이면 null.
+        `points` 는 묶음·종류(`segment.kind`)·닫을 때 팀(`segment.assigneeGroup`)별, `totals` 는 묶음별 합. 0건 묶음은 줄이 없다.
+        `currentOverdue` = 지금 열린 채 기한이 지난 건(종류별, case `GET /cases/metrics` 스냅샷 — 기간과 무관). 그 원천만 실패하면 null + unavailableSources.
+        기간: from·to 한국 날짜(포함), DAY 93일·HOUR 7일까지(넘으면 400). centerId 는 사건의 센터.
       operationId: getMetricsView
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -507,6 +517,47 @@ paths:
                             denominator: { type: integer, description: 0이면 비율 미정의(null) }
                             ratio: { type: [number, 'null'] }
                             source: { $ref: '#/components/schemas/SourceStamp' }
+                            segment:
+                              type: [object, 'null']
+                              x-added-in: '2026-11-18'
+                              description: 나눈 기준(CASE_SLA — kind·assigneeGroup) — 0.13.0
+                              properties:
+                                kind: { type: string }
+                                assigneeGroup: { type: [string, 'null'] }
+                            unjudged: { type: [integer, 'null'], x-added-in: '2026-11-18', description: 판정 불가(CASE_SLA — 기한이 없던 닫힌 건, 분모에 안 들어감) — 0.13.0 }
+                      totals:
+                        type: array
+                        x-added-in: '2026-11-18'
+                        description: 묶음별 합(0.13.0)
+                        items:
+                          type: object
+                          required: [bucket, numerator, denominator]
+                          properties:
+                            bucket: { type: string }
+                            numerator: { type: integer }
+                            denominator: { type: integer }
+                            ratio: { type: [number, 'null'] }
+                            unjudged: { type: [integer, 'null'] }
+                      timeZone: { type: string, x-added-in: '2026-11-18', description: 묶음 기준 시간대(Asia/Seoul) — 0.13.0 }
+                      currentOverdue:
+                        type: [array, 'null']
+                        x-added-in: '2026-11-18'
+                        description: CASE_SLA — 지금 열린 채 기한이 지난 건(종류별 스냅샷, 0.13.0). 원천 실패면 null
+                        items:
+                          type: object
+                          required: [kind, open, overdue]
+                          properties:
+                            kind: { type: string }
+                            open: { type: integer }
+                            overdue: { type: integer }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '501':
+          description: NOT_IMPLEMENTED — 정의·원천이 아직 없는 지표(0.13.0)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /commands/{targetService}/{command}:
     post:

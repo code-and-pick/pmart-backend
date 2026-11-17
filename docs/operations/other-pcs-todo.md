@@ -14,6 +14,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 > **2026-11-15 모든 PC — 로그인 코드는 PC 1 만**(`pc-split.md` §1-3): auth-service·employee-auth-service·common-security·게이트웨이 인증·Keycloak, 클라이언트 `web/core` 로그인·세션, 앱의 `features/auth`·`features/session`, `pmart_core` 토큰은 고치지 않는다 — 필요하면 요청. 이 경로를 바꾼 PR 은 PC 1 이 돌려보낸다. **예외: 라이더 로그인(rider-auth-service·rider_app 로그인)은 PC 5 그대로**.
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
+- [ ] **F-10 결품률 지표 분모 — 날짜별 피킹한 주문 줄 수·결품 줄 수(사유별)**(2026-11-18 PC 2 — 요청서 `mfc-fulfillment-service.md` F-10): bff `views/metrics` SHORTAGE_RATE 용, 급하지 않음
 - [ ] **`web/mfc-backoffice`(MFC 센터 관리자 웹) 이어받기**(2026-11-17 사용자 "MFC 백오피스를 PC2에서 PC3로"): pmart-clients `docs/apps/mfc-backoffice-web.md`·`docs/handoff/clients/mfc-backoffice/` 를 읽고 시작. PC 2 가 만든 메뉴 11개 화면이 있다. 로그인·세션 코드는 PC 1 만, 웹 공통(`web/core`·`web/ui`)은 PC 2 에 요청. 클라이언트도 포크 → PR(`mfc/<주제>` 브랜치)
 - [ ] **앱 바꾸기 메뉴(⋮⋮⋮) 붙이기**(2026-11-17 사용자 — 요청 `docs/handoff/clients/all/2026-11-17-request-app-launcher.md` §3-2): PC 2 의 `web/ui` `AppLauncher` 가 main 에 들어간 뒤 `web/mfc-backoffice` 머리줄에 `current="mfc-backoffice"` 한 줄
 - [ ] **F-8 포장 라벨 숫자로 인계**(2026-11-17 PC 5 — 라이더 앱 요청 §5, 요청서 `mfc-fulfillment-service.md` F-8): 라벨에 짧은 숫자, 라이더 인계 승인을 숫자로도. main 에서 새 브랜치로

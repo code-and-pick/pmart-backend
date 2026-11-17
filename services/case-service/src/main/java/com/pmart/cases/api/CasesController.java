@@ -11,6 +11,8 @@ import com.pmart.cases.api.generated.model.CaseMetricsCasesInner;
 import com.pmart.cases.api.generated.model.CaseMetricsInquiriesInner;
 import com.pmart.cases.api.generated.model.CaseMetricsObligationsInner;
 import com.pmart.cases.api.generated.model.CaseNote;
+import com.pmart.cases.api.generated.model.CaseSlaMetrics;
+import com.pmart.cases.api.generated.model.CaseSlaMetricsRowsInner;
 import com.pmart.cases.api.generated.model.CaseState;
 import com.pmart.cases.api.generated.model.CaseSummary;
 import com.pmart.cases.api.generated.model.CaseSummaryRefsInner;
@@ -41,6 +43,7 @@ import com.pmart.cases.infrastructure.CaseNoteStore;
 import com.pmart.cases.infrastructure.CaseStore.CaseRow;
 import com.pmart.common.web.PmartException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -77,6 +80,33 @@ public class CasesController implements CasesApi {
     this.notes = notes;
     this.actions = actions;
     this.metrics = metrics;
+  }
+
+  /** 접수 건 기한 준수(0.24.0 — 관리자만, bff CASE_SLA 원천). */
+  @Override
+  public ResponseEntity<CaseSlaMetrics> getCaseSlaMetrics(
+      LocalDate from, LocalDate to, String granularity, @Nullable String centerId) {
+    var v = metrics.sla(from, to, granularity, centerId);
+    var out = new CaseSlaMetrics();
+    out.setAsOf(odt(v.asOf()));
+    out.setTimeZone("Asia/Seoul");
+    out.setGranularity(
+        v.hour() ? CaseSlaMetrics.GranularityEnum.HOUR : CaseSlaMetrics.GranularityEnum.DAY);
+    out.setRows(
+        v.rows().stream()
+            .map(
+                r -> {
+                  var x = new CaseSlaMetricsRowsInner();
+                  x.setBucket(r.bucket());
+                  x.setKind(CaseKind.fromValue(r.kind()));
+                  x.setAssigneeGroup(r.assigneeGroup());
+                  x.setClosed(r.closed());
+                  x.setClosedOnTime(r.closedOnTime());
+                  x.setClosedWithoutSla(r.closedWithoutSla());
+                  return x;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
   }
 
   /** 접수 건 현황 건수(BO-28 1단계, 0.18.0 — 관리자만). */

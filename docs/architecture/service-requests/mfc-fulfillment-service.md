@@ -134,3 +134,12 @@
   - 항목 `CenterShipment`: shipmentId·orderId·**orderNumber**(F-5, 번호 전 주문 null)·fulfillmentId·mfcId·**workOrderKind**(ORIGINAL·RESHIPMENT — 오배송 재발송 구분, 요청에 없어 더함)·state·createdAt·readyAt·dispatchRequestedAt, `pick`·`pack` = {state, blockReason, startedAt}(없으면 null), `packageCounts` = {total, sealed, handedOver}, `packages[]` = {packageId, state, fenceState, handoverAuthorizedAt(라이더 스캔 시각), handedOverAt, riderId(인계 끝난 포장만)}.
   - 포장은 **살아 있는 것만**(재포장 전 INVALIDATED·재고 거절 VOIDED 제외 — 재포장하면 새 포장으로 보인다). 개인정보·메모·QR 없음. 조회는 출고·작업·포장 세 번(진행 중 수십 건 기준).
   - 게이트웨이: `/api/v1/shipments/**` 가 이미 fulfillment 라우트(경로 끝 `/shipments` 도 맞음) — 라우트 추가 없음, 허용 목록 GET 한 줄. 시험 `TaskFlowIT.assignedRiderHandsOverPackagesAndStopIsRefusedAfterHandover`(일부 인계 2 중 1·라이더·작업 상태·다른 센터 403·끝난 출고 거름).
+
+## F-10. 결품률 지표의 분모 — 날짜별 피킹한 주문 줄 수·결품 줄 수(사유별) (2026-11-18, 보낸 영역 backoffice — PC 2)
+- **왜**: 사용자 2026-11-18 "일단 그렇게 하고"(bff `views/metrics` 추천안). 결품률 SHORTAGE_RATE 는 **줄 단위·사유별**로 정했다 — 상품마다 단위(개·kg 등)가 달라 수량을 더하면 뜻이 없고, 결품 사유(SHORT·DAMAGED·BLOCKED)가 섞이면 원인이 안 보인다. 분자는 `LineShortageReported` 로 셀 수 있지만 **분모(피킹을 시작한 주문 줄 수)는 어느 이벤트·API 에도 없다**.
+- **요청**(경로·이름은 PC 3 이 정한다 — 예): `GET /api/v1/metrics/picking-lines?from=&to=&mfcId=`(한국 날짜 포함, 직원 토큰 — 본사 관리자 모든 센터, 센터 관리자는 자기 센터)
+  - 날짜(Asia/Seoul — 피킹 시작 시각 기준)·센터별: `pickedLines`(피킹을 시작한 주문 줄 수 — 재발송 작업 포함 여부는 PC 3 이 정해 적어 줌), `shortLines`(그중 결품이 하나라도 보고된 줄), 사유별 `shortLinesByReason`(SHORT·DAMAGED·BLOCKED — 한 줄에 사유가 둘이면 각각 센다), `asOf`.
+  - 개인정보 없음. 0건 날짜는 줄 없음.
+- **받는 쪽(backoffice)**: bff `views/metrics?metric=SHORTAGE_RATE` — numerator = shortLines, denominator = pickedLines, 사유별은 segment. 지금 501.
+- 급함: 낮음(지표는 운영 참고 — BO-28). 정의를 바꿔야 하면 이 절에 적어 주면 bff 를 맞춘다.
+- **상태**: 요청(PC 3).

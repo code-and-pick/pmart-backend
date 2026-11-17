@@ -1600,6 +1600,117 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
    * 행위 요청 기록(0.17.0 — 2026-11-17 사용자 "기록만 먼저"): 그 건을 다룰 수 있는 사람이 요청·결과를 남기고(case 는 대상 서비스를 부르지 않음),
    * 보상 실행은 승인 번호 필수, 강제 명령 거절, 끝난 요청은 더 못 남기고, 처리 끝난 건엔 새 요청 없음.
    */
+  void slaCase(
+      String id,
+      String kind,
+      String state,
+      String center,
+      String group,
+      @Nullable String closedAt,
+      @Nullable String slaDueAt) {
+    jdbc.update(
+        "INSERT INTO case_record (case_id, case_type, state, center_id, assignee_group, created_at,"
+            + " updated_at, closed_at, sla_due_at) VALUES (?, ?, ?, ?, ?, now(), now(), ?, ?)",
+        id,
+        kind,
+        state,
+        center,
+        group,
+        closedAt == null ? null : java.sql.Timestamp.from(Instant.parse(closedAt)),
+        slaDueAt == null ? null : java.sql.Timestamp.from(Instant.parse(slaDueAt)));
+  }
+
+  /**
+   * 기한 준수(0.24.0, 2026-11-18): 닫힌 사건만, 닫은 한국 시각으로 묶고, 종류·팀별. 기한 없던 건은 판정 불가로 따로(분모엔 있음). 열린 건·사건함
+   * 종류가 아닌 건·다른 센터는 빠진다. 관리자만, 기간 검사.
+   */
+  @Test
+  void slaMetricsCountClosedCasesByKoreanDay() {
+    String c = "MFC-SLA-" + UUID.randomUUID().toString().substring(0, 6);
+    // 한국 11-10 00:30 닫힘, 기한 01:00 → 지킴
+    slaCase(
+        c + "-A",
+        "DISPATCH_FAILED",
+        "CLOSED",
+        c,
+        "DELIVERY_OPS",
+        "2026-11-09T15:30:00Z",
+        "2026-11-09T16:00:00Z");
+    // 한국 11-10 01:10 닫힘, 기한 01:00 → 늦음
+    slaCase(
+        c + "-B",
+        "DISPATCH_FAILED",
+        "CLOSED",
+        c,
+        "DELIVERY_OPS",
+        "2026-11-09T16:10:00Z",
+        "2026-11-09T16:00:00Z");
+    // 한국 11-09 23:59 닫힘, 기한 없음 → 판정 불가
+    slaCase(c + "-C", "RECONCILIATION", "CLOSED", c, "ORDER_OPS", "2026-11-09T14:59:00Z", null);
+    slaCase(c + "-D", "DISPATCH_FAILED", "OPEN", c, "DELIVERY_OPS", null, "2026-11-09T16:00:00Z");
+    slaCase(c + "-E", "CS_INQUIRY", "CLOSED", c, null, "2026-11-09T15:30:00Z", null);
+    slaCase(
+        c + "-F",
+        "DISPATCH_FAILED",
+        "CLOSED",
+        c + "X",
+        "DELIVERY_OPS",
+        "2026-11-09T15:30:00Z",
+        "2026-11-09T16:00:00Z");
+
+    String q = "/cases/metrics/sla?from=2026-11-09&to=2026-11-10&centerId=" + c;
+    assertThat(send("GET", cs, q, null).status()).as("관리자만").isEqualTo(403);
+    Res day = send("GET", admin, q, null);
+    assertThat(day.status()).as(day.body().toString()).isEqualTo(200);
+    assertThat(day.body().path("timeZone").asString()).isEqualTo("Asia/Seoul");
+    assertThat(day.body().path("granularity").asString()).isEqualTo("DAY");
+    JsonNode rows = day.body().path("rows");
+    assertThat(rows.size()).as(rows.toString()).isEqualTo(2);
+    assertThat(rows.get(0).path("bucket").asString()).isEqualTo("2026-11-09");
+    assertThat(rows.get(0).path("kind").asString()).isEqualTo("RECONCILIATION");
+    assertThat(rows.get(0).path("assigneeGroup").asString()).isEqualTo("ORDER_OPS");
+    assertThat(rows.get(0).path("closed").asLong()).isEqualTo(1);
+    assertThat(rows.get(0).path("closedOnTime").asLong()).isZero();
+    assertThat(rows.get(0).path("closedWithoutSla").asLong()).isEqualTo(1);
+    assertThat(rows.get(1).path("bucket").asString()).isEqualTo("2026-11-10");
+    assertThat(rows.get(1).path("kind").asString()).isEqualTo("DISPATCH_FAILED");
+    assertThat(rows.get(1).path("closed").asLong()).isEqualTo(2);
+    assertThat(rows.get(1).path("closedOnTime").asLong()).isEqualTo(1);
+    assertThat(rows.get(1).path("closedWithoutSla").asLong()).isZero();
+
+    Res hour =
+        send(
+            "GET",
+            admin,
+            "/cases/metrics/sla?from=2026-11-10&to=2026-11-10&granularity=HOUR&centerId=" + c,
+            null);
+    assertThat(hour.status()).as(hour.body().toString()).isEqualTo(200);
+    assertThat(hour.body().path("rows").findValuesAsString("bucket"))
+        .containsExactly("2026-11-10T00:00", "2026-11-10T01:00");
+
+    assertThat(
+            send("GET", admin, "/cases/metrics/sla?from=2026-11-10&to=2026-11-09", null).status())
+        .as("to 가 앞")
+        .isEqualTo(400);
+    assertThat(
+            send(
+                    "GET",
+                    admin,
+                    "/cases/metrics/sla?from=2026-11-01&to=2026-11-08&granularity=HOUR",
+                    null)
+                .status())
+        .as("HOUR 7일 넘음")
+        .isEqualTo(400);
+    assertThat(
+            send("GET", admin, "/cases/metrics/sla?from=2026-08-01&to=2026-11-02", null).status())
+        .as("DAY 93일 넘음")
+        .isEqualTo(400);
+    assertThat(
+            send("GET", admin, "/cases/metrics/sla?from=2026-08-02&to=2026-11-02", null).status())
+        .as("DAY 93일")
+        .isEqualTo(200);
+  }
+
   @Test
   void actionRequestsAreRecordedNotExecuted() {
     dispatch.stubFor(

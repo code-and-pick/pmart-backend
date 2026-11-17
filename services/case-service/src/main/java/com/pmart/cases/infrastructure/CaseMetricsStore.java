@@ -30,10 +30,69 @@ public class CaseMetricsStore {
       long pendingHandovers,
       List<InquiryCount> inquiries) {}
 
+  /** 기한 준수 한 줄 — 닫은 한국 시각 묶음·종류·닫을 때 팀(0.24.0). */
+  public record SlaRow(
+      String bucket,
+      String kind,
+      @Nullable String assigneeGroup,
+      long closed,
+      long closedOnTime,
+      long closedWithoutSla) {}
+
   private final JdbcTemplate jdbc;
 
   public CaseMetricsStore(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
+  }
+
+  /**
+   * 기간 [from, toExclusive) 안에 닫힌 사건을 한국 시각 묶음·종류·팀별로 센다(0.24.0). closed_at 은 마지막으로 닫은 시각,
+   * sla_due_at 은 그때의 기한(다시 처리하기 때 새로 정해짐). hour = true 면 시 단위.
+   */
+  public List<SlaRow> sla(
+      List<String> kinds,
+      Instant from,
+      Instant toExclusive,
+      boolean hour,
+      @Nullable String centerId) {
+    if (kinds.isEmpty()) {
+      return List.of();
+    }
+    // 단위·형식은 상수 둘 중 하나(입력 문자열을 SQL 에 넣지 않는다)
+    String bucket =
+        hour
+            ? "to_char(date_trunc('hour', closed_at AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD\"T\"HH24:00')"
+            : "to_char(date_trunc('day', closed_at AT TIME ZONE 'Asia/Seoul'), 'YYYY-MM-DD')";
+    List<Object> args = new ArrayList<>();
+    args.add(Timestamp.from(from));
+    args.add(Timestamp.from(toExclusive));
+    args.addAll(kinds);
+    String center = "";
+    if (centerId != null) {
+      center = " AND center_id = ?";
+      args.add(centerId);
+    }
+    return jdbc.query(
+        "SELECT "
+            + bucket
+            + " AS b, case_type, assignee_group, count(*),"
+            + " count(*) FILTER (WHERE sla_due_at IS NOT NULL AND closed_at <= sla_due_at),"
+            + " count(*) FILTER (WHERE sla_due_at IS NULL)"
+            + " FROM case_record WHERE state = 'CLOSED' AND closed_at >= ? AND closed_at < ?"
+            + " AND case_type IN ("
+            + String.join(",", kinds.stream().map(k -> "?").toList())
+            + ")"
+            + center
+            + " GROUP BY b, case_type, assignee_group ORDER BY b, case_type, assignee_group",
+        (rs, n) ->
+            new SlaRow(
+                rs.getString(1),
+                rs.getString(2),
+                rs.getString(3),
+                rs.getLong(4),
+                rs.getLong(5),
+                rs.getLong(6)),
+        args.toArray());
   }
 
   public Snapshot snapshot(List<String> inboxKinds, Instant now) {
