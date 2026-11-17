@@ -1,0 +1,968 @@
+openapi: 3.1.0
+info:
+  title: product-service
+  version: 0.3.2
+  description: |
+    기초상품·상품·SKU(E-/B- 8자리, 재사용 금지)·구성 낱개 수·카테고리(4단계·노드별 필터, ADR-0015)·바코드↔SKU·판매 단위·중량·물류 규격·전사 판매 상태·승인 버전의 정본. (docs/architecture/service-map.md §1, ADR-0001)
+    비정본: 센터별 취급 ON/OFF·재고(각 inventory), 가격(pricing), 상세 콘텐츠(product-content), 승인 워크플로(approval).
+    발행 이벤트: ProductVersionPublished, ProductSaleStateChanged, CategoryChanged, SkuIssued.
+    0.2.0(2026-11-16): SKU 실물 치수 `dimensions`(widthMm·depthMm·heightMm, 1~5000 mm)·`dimensionsSource`(MEASURED/ESTIMATED) 추가 —
+    초안 입력·SkuDetail·상품 버전 조회·ProductVersionPublished.skus[] (선택 필드, 하위 호환). MFC 재고 적치·이동 칸 용량 계산에 쓴다.
+    0.3.0(2026-11-17): 상품 정보 수정 `POST /products/{productId}/edit-drafts` — 현재 승인 버전을 그대로 옮겨 담은 수정 초안(targetProductId)을 만든다
+    (열린 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS). 초안 검증에 GS1 검사 숫자(`BARCODE_CHECK_DIGIT_INVALID` — 숫자만 8·12·13·14자리) 추가.
+    0.3.1(2026-11-17): 한 상품에 열린 수정 초안은 하나 — 초안 생성(`POST /product-drafts`)·수정(`PUT /product-drafts/{draftId}`)에
+    targetProductId 를 직접 넣는 길도 그 상품을 가리키는 다른 열린(DRAFT·SUBMITTED) 초안이 있으면 409 EDIT_DRAFT_EXISTS(details[0].reason = 그 draftId).
+    0.3.2(2026-11-17): 그 길로 수정 대상(targetProductId)을 새로 정하거나 바꾸는 것도 수정 시작과 같은 역할(MD)만 — 아니면 403. 이미 정해진 수정 초안을 고치는 것은 운영자 누구나.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: products, description: 상품·SKU 조회(버전 포함) }
+  - { name: categories, description: 카테고리 트리(대표 노출 경로 1개) }
+  - { name: barcodes, description: 바코드 해석 }
+  - { name: commands, description: SKU 발급·판매 상태 변경 명령(승인 결과 참조) }
+  - { name: registration, description: 임시 백오피스 상품·카테고리 등록 초안·배치·제출 준비(승인은 approval-service) }
+  - { name: internal, description: 서비스 간 조회·검증(서비스 토큰) }
+
+paths:
+  /products:
+    get:
+      tags: [products]
+      summary: 상품 목록 조회 (카테고리·판매 상태 필터)
+      operationId: listProducts
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 고객은 product-content·search 를 씀(백오피스 상품 목록)"
+      parameters:
+        - { name: categoryId, in: query, schema: { type: string } }
+        - { name: saleState, in: query, schema: { $ref: '#/components/schemas/SaleState' } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ProductSummary' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+  /products/{productId}:
+    get:
+      tags: [products]
+      summary: 상품 상세 조회 (승인 버전·SKU 목록·규격 포함)
+      operationId: getProduct
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 고객 상세는 product-content(백오피스용)"
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - { name: version, in: query, description: 생략 시 현재 승인 버전, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /products/{productId}/sale-state-changes:
+    post:
+      tags: [commands]
+      summary: 전사 판매 상태 변경 (판매중/일시품절/판매중지)
+      description: |
+        전사 판매 상태의 정본 변경. 센터별 취급 ON/OFF는 각 inventory 서비스 책임이므로 여기서 다루지 않는다.
+        반영 시 ProductSaleStateChanged 발행. 행위 시점 권한 검증은 auth-service에 위임한다.
+      operationId: changeSaleState
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [saleState, reason]
+              properties:
+                saleState: { $ref: '#/components/schemas/SaleState' }
+                reason: { type: string, maxLength: 200 }
+                approvalId: { type: string, description: 승인이 필요한 변경일 때 approval-service 승인 ID }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /products/{productId}/sale-state-changes/{requestId}:
+    get:
+      tags: [commands]
+      summary: 판매 상태 변경 결과 조회
+      operationId: getSaleStateChange
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /skus/{sku}:
+    get:
+      tags: [products]
+      summary: SKU 조회 (구성 낱개 수·중량·판매 단위·판매 상태)
+      operationId: getSku
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 백오피스 SKU 조회"
+      parameters:
+        - { name: sku, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SkuDetail' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /sku-issuances:
+    post:
+      tags: [commands]
+      summary: SKU 발급 명령 (approval 승인 결과 참조)
+      description: |
+        승인된 ChangeRequest(approvalId)를 참조해 E-/B- 8자리 SKU를 발급한다. 번호 재사용 금지, 같은 approvalId 재전송은 기존 결과 반환.
+        반영 시 SkuIssued·ProductVersionPublished 발행. 승인 없는 발급은 APPROVAL_REQUIRED로 거절.
+      operationId: issueSku
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SkuIssuanceRequest' }
+      responses:
+        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPROVAL_REQUIRED / APPROVAL_SCOPE_MISMATCH (승인 범위와 요청 불일치) / BASE_PRODUCT_NOT_FOUND
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /sku-issuances/{requestId}:
+    get:
+      tags: [commands]
+      summary: SKU 발급 결과 조회 (발급된 sku 포함)
+      operationId: getSkuIssuance
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
+                  sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                  productId: { type: string }
+                  productVersion: { type: integer }
+                  approvalId: { type: string }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /categories/tree:
+    get:
+      tags: [categories]
+      summary: 카테고리 트리 (상위>하위>칩1>칩2 4단계, ADR-0015)
+      operationId: getCategoryTree
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
+      parameters:
+        - { name: version, in: query, description: 생략 시 현재 발효 버전, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK (발효 버전이 없으면 404 CATEGORY_TREE_NOT_EFFECTIVE)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: integer }
+                  effectiveFrom: { type: string, format: date-time }
+                  nodes: { type: array, items: { $ref: '#/components/schemas/CategoryNode' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /categories/{categoryId}/filters:
+    get:
+      tags: [categories]
+      summary: 카테고리 노드의 필터 패널 (그룹·선택 방식·옵션, 화면 순서)
+      operationId: getCategoryFilters
+      security: []   # 비회원 둘러보기(Commerce 비회원 조회 허용). 게시·발효된 것만 보인다
+      parameters:
+        - { name: categoryId, in: path, required: true, schema: { type: string } }
+        - { name: version, in: query, description: 생략 시 현재 발효 버전, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categoryId: { type: string }
+                  version: { type: integer }
+                  groups: { type: array, items: { $ref: '#/components/schemas/FilterGroup' } }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /category-tree-versions:
+    post:
+      tags: [registration]
+      summary: 카테고리 트리·필터 묶음 초안 등록 (승인 대상)
+      description: |
+        참고 자료 형식(categories.json + filters.json)을 그대로 받아 DRAFT 버전을 만든다. 발효는 approval-service PRODUCT 승인
+        (targetRef = categoryTreeVersion:{version}) 결과로만 일어나며, 발효 시 CategoryChanged 를 발행한다.
+        응답의 approvalRequest 를 그대로 approval-service POST /change-requests 에 보낸다.
+      operationId: createCategoryTreeVersion
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryTreeDraftRequest' }
+      responses:
+        '201':
+          description: DRAFT 생성
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryTreeVersion' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /category-tree-additions:
+    post:
+      tags: [registration]
+      summary: 발효 트리에 없는 카테고리만 더한 새 트리 초안 (승인 대상)
+      description: |
+        seed-v1 묶음의 categories.json(categories[] 의 pmartCategoryIdLevels·bmartPath)을 그대로 받는다. 현재 발효 트리(없으면 빈 트리)를
+        복사하고, 없는 노드만 단계별로 더해 DRAFT 버전을 만든다. 기존 노드·필터 패널은 그대로 둔다(지우거나 이름을 바꾸지 않음).
+        - id 규칙: 하위 id 는 "상위 id + '-'" 로 시작. 단계는 1~4(TOP·SUB·CHIP1·CHIP2).
+        - 같은 id 가 다른 이름으로 이미 있으면, 또는 같은 이름 경로가 다른 id 로 이미 있으면 400(CATEGORY_CONFLICT, 고치지 않음).
+        - 더할 노드가 없으면 422 NOTHING_TO_ADD.
+        발효는 기존과 같이 응답의 approvalRequest 로 PRODUCT 승인(targetRef = categoryTreeVersion:{version}). 승인 전에 다른 트리 버전이
+        발효되면 이 초안은 그 변경을 담지 않으므로 다시 만든다(baseVersion 으로 확인).
+      operationId: createCategoryTreeAddition
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CategoryAdditionRequest' }
+      responses:
+        '201':
+          description: DRAFT 생성 (addedCategoryIds = 새로 더한 노드, 상위부터)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryTreeVersion' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: NOTHING_TO_ADD
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /category-tree-addition-uploads:
+    post:
+      tags: [registration]
+      summary: 없는 카테고리만 더한 트리 초안 — seed-v1 묶음(zip) 업로드
+      description: |
+        POST /category-tree-additions 와 같지만 본문 대신 seed-v1 묶음(zip)을 받는다. 서버가 묶음 최상위(또는 한 단계 아래 폴더)의
+        categories.json 을 꺼내 같은 규칙으로 처리한다 — 상품·콘텐츠·가격 일괄 등록과 같은 파일을 그대로 올릴 수 있게(2026-11-03).
+        categories.json 이 없거나 형식이 다르면 422 BUNDLE_INVALID. 응답·승인 흐름은 /category-tree-additions 와 같다.
+      operationId: uploadCategoryTreeAddition
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: seed-v1.zip }
+      responses:
+        '201':
+          description: DRAFT 생성 (addedCategoryIds = 새로 더한 노드, 상위부터)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryTreeVersion' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: BUNDLE_INVALID / NOTHING_TO_ADD
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /category-tree-versions/{version}:
+    get:
+      tags: [registration]
+      summary: 카테고리 트리 버전 상태 조회
+      operationId: getCategoryTreeVersion
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CategoryTreeVersion' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /product-drafts:
+    post:
+      tags: [registration]
+      summary: 상품 등록 초안 1건 (임시 백오피스 개별 입력)
+      description: |
+        seed-v1 product.json 의 product·skus 블록과 같은 모양. 저장과 함께 필수값·바코드 충돌·카테고리 존재를 검증해 validationState 를
+        돌려준다(INVALID 도 저장한다). 고객용 명칭·설명·이미지는 product-content-service 초안으로 따로 넣는다(같은 sourceKey 로 연결).
+      operationId: createProductDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductDraftInput' }
+      responses:
+        '201':
+          description: 초안 생성
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: EDIT_DRAFT_EXISTS (targetProductId 상품에 다른 열린 수정 초안 — details[0].reason 이 그 draftId) / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /product-drafts/{draftId}:
+    get:
+      tags: [registration]
+      summary: 상품 초안 조회 (검증 결과·발급 결과 포함)
+      operationId: getProductDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDraft' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [registration]
+      summary: 상품 초안 수정 (제출 전 DRAFT 만)
+      description: |
+        targetProductId 가 가리키는 상품에 이 초안 말고 다른 열린(DRAFT·SUBMITTED) 초안이 있으면 409 EDIT_DRAFT_EXISTS(0.3.1).
+      operationId: updateProductDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductDraftInput' }
+      responses:
+        '200':
+          description: 수정·재검증
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDraft' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /product-drafts/{draftId}/submissions:
+    post:
+      tags: [registration]
+      summary: 초안 1건 제출 준비 — 잠그고 승인 요청 본문을 돌려준다
+      description: |
+        VALID 초안을 SUBMITTED 로 잠그고 draftHash 를 확정한다. 응답의 approvalRequest 를 approval-service 에 그대로 보내면
+        (POST /change-requests → /submissions) 승인자가 결정한다. 승인되면 product-service 가 ApprovalDecided 를 받아 SKU 를 발급한다.
+        승인 행의 draftHash 가 잠근 값과 다르면 APPROVAL_SCOPE_MISMATCH 로 반영하지 않는다.
+      operationId: submitProductDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: draftId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 잠금 완료
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: DRAFT_INVALID (검증 실패 초안) / DRAFT_NOT_EDITABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /products/{productId}/edit-drafts:
+    post:
+      tags: [registration]
+      summary: 상품 정보 수정 시작 — 현재 승인 버전으로 채운 수정 초안 (2026-11-17)
+      description: |
+        기존 상품을 고쳐 PRODUCT 승인으로 새 버전을 만드는 첫 단계. 현재 승인 버전의 상품 속성(관리용 이름·기초상품·대표/노출 카테고리·필터 옵션)과
+        SKU 속성(unitType·unitsPerSku·weightG·volumeMl·storageType·alcohol·shelfLifeGuarantee·dimensions·dimensionsSource·logistics·
+        활성 바코드 전부)을 옮겨 담은 DRAFT(input.targetProductId = productId)를 만든다. 재승인은 초안 값으로 바꾸므로(빠진 바코드·치수·소비기한
+        보장은 지워짐) 손으로 옮겨 적지 말고 이 초안을 고친다. 판매 상태(product.saleState)는 넣지 않는다 — 반영 때 현재 상태 유지.
+        이후 흐름은 개별 초안과 같다: PUT /product-drafts/{draftId}(바코드 추가·교체 포함) → POST /product-drafts/{draftId}/submissions →
+        approval-service 승인 → 같은 SKU 의 새 버전 + ProductVersionPublished. 원천 키(sourceSystem·sourceKey)는 싣지 않는다(재적재 초안과 섞이지 않게).
+        같은 상품에 열린(DRAFT·SUBMITTED) 수정 초안이 있으면 409 EDIT_DRAFT_EXISTS — details[0] = {field: existingDraftId, reason: <draftId>}.
+        초안 1개에 SKU 1개(1차)라 상품의 첫 SKU 만 옮긴다.
+        역할: 설정 `pmart.product.edit-role`(LAN·운영 MD — 사용자 결정 2026-11-17, 판매 상태 변경과 같음)만. 아니면 403, 설정이 비면 CONFIG_REQUIRED.
+      operationId: createProductEditDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: productId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '201':
+          description: 수정 초안 생성(검증 결과 포함 — 현재 값이 지금 규칙에 맞지 않으면 INVALID 로 저장된다)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDraft' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: EDIT_DRAFT_EXISTS (열린 수정 초안 — details[0].reason 이 그 draftId) / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /product-import-batches:
+    post:
+      tags: [registration]
+      summary: 상품 일괄 등록 — seed-v1 묶음(zip) 업로드
+      description: |
+        수집 저장소(code-and-pick/product-data) 형식 seed-v1 을 받는다. products/*/product.json 의 product·skus 블록만 읽고(이미지·content 는
+        product-content-service 가 같은 묶음을 따로 받는다), (sourceSystem, seedProductId) 로 초안을 갱신(upsert)한다.
+        카테고리는 product.json 의 B마트 경로 이름을 현재 발효 트리의 경로 이름과 맞춰 자동 매핑하고, 맞는 노드가 없으면 그 상품을 INVALID(CATEGORY_NOT_MAPPED)로 둔다.
+      operationId: uploadProductImportBatch
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: seed-v1.zip }
+      responses:
+        '201':
+          description: 업로드·검증 완료
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportBatch' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '422':
+          description: CATEGORY_TREE_NOT_EFFECTIVE (발효된 카테고리 트리 없음) / BUNDLE_INVALID
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /product-import-batches/{batchId}:
+    get:
+      tags: [registration]
+      summary: 배치 상태·행별 결과
+      operationId: getProductImportBatch
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportBatch' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /product-import-batches/{batchId}/submissions:
+    post:
+      tags: [registration]
+      summary: 배치의 VALID 초안을 잠그고 승인 요청 본문(행 N개)을 돌려준다
+      operationId: submitProductImportBatch
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 잠금 완료 (INVALID 행은 빠지고 excludedDraftIds 에 나열)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubmissionResult' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: NOTHING_TO_SUBMIT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /product-import-batches/{batchId}/id-map:
+    get:
+      tags: [registration]
+      summary: id-map.json (seedProductId → productId·sku) — 수집 저장소 회신용
+      operationId: getProductImportIdMap
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: batchId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK (아직 발급 전인 상품은 productId·sku 가 null)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IdMap' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /barcodes/{barcode}:
+    get:
+      tags: [barcodes]
+      summary: 바코드 해석 (barcode → SKU·상품)
+      operationId: resolveBarcode
+      x-pmart-user-types: [OPERATOR]
+      x-pmart-user-types-note: "추정 — 코드에 종류 검사 없음, 백오피스 상품 목록·현장 스캔용"
+      parameters:
+        - { name: barcode, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BarcodeResolution' }
+        '404':
+          description: BARCODE_NOT_MAPPED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  # ---------- internal (서비스 토큰) ----------
+components:
+  schemas:
+    SaleState:
+      type: string
+      description: 전사 판매 상태. 센터별 취급 여부와 별개.
+      enum: [ON_SALE, TEMPORARILY_SOLD_OUT, SALE_STOPPED]
+    SaleUnitType:
+      type: string
+      description: E=낱개 판매 단위, B=밀봉 묶음
+      enum: [E, B]
+    LogisticsSpec:
+      type: object
+      description: 물류 규격. BOX/PLT 환산과 Ti/Hi는 승인 버전으로만 변경.
+      properties:
+        unitsPerBox: { type: integer, minimum: 1 }
+        boxesPerPallet: { type: integer, minimum: 1 }
+        ti: { type: integer, minimum: 1 }
+        hi: { type: integer, minimum: 1 }
+        storageType: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
+    ShelfLifeGuarantee:
+      type: object
+      description: |
+        상품별 소비기한 보장(ADR-0041). 상품 고시 "소비기한 또는 품질유지기한" 의 고객 약속을 구조화한 값이다. 둘 다 선택이고 둘 다 있을 수 있다.
+        없으면(또는 빈 객체) 보장 문구가 없는 상품 — MFC 재고는 보관 유형 기본 최소 잔여일을 쓴다. 0 으로 채우지 않는다.
+      properties:
+        minRemainingDays: { type: integer, minimum: 0, maximum: 3650, description: '주문일 기준 소비기한이 이만큼 이상 남은 상품("주문일 기준 N일 이상 남은 상품")' }
+        maxDaysSinceManufacture: { type: integer, minimum: 0, maximum: 3650, description: '주문일 기준 이 일수 이내에 제조된 상품("주문일 기준 N일 이내 제조된 상품")' }
+    SkuDimensions:
+      type: object
+      required: [widthMm, depthMm, heightMm]
+      description: |
+        SKU 실물 치수(2026-11-16, mm). 판매 단위(E 낱개 / B 묶음 전체) 하나의 외곽 크기 — 가로·세로·높이는 놓는 방향과 무관한 세 변이다.
+        셋 다 있거나 셋 다 없다(일부만이면 DIMENSIONS_INVALID). 없으면 치수 미등록 — 0·기본값으로 채우지 않는다.
+      properties:
+        widthMm: { type: integer, minimum: 1, maximum: 5000, description: 가로(mm) }
+        depthMm: { type: integer, minimum: 1, maximum: 5000, description: 세로(mm) }
+        heightMm: { type: integer, minimum: 1, maximum: 5000, description: 높이(mm) }
+      additionalProperties: false
+    DimensionsSource:
+      type: string
+      description: 치수 출처(2026-11-16). ESTIMATED = 추정값(먼저 일괄 적재), MEASURED = 실측값(나중에 승인으로 바꾼다). dimensions 없이 주면 DIMENSIONS_INVALID
+      enum: [MEASURED, ESTIMATED]
+    SkuDetail:
+      type: object
+      required: [sku, productId, baseProductId, unitType, unitsPerSku, saleState, version]
+      properties:
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        productId: { type: string }
+        baseProductId: { type: string, description: 구매 상한 합산 단위 }
+        unitType: { $ref: '#/components/schemas/SaleUnitType' }
+        unitsPerSku: { type: integer, minimum: 1, description: 구성 낱개 수 }
+        weightG: { type: integer, minimum: 0 }
+        volumeMl: { type: [integer, 'null'], minimum: 0, description: 용량(mL). 없으면 null(2026-11-07 조회에 추가 — 수정 초안이 값을 잃지 않게) }
+        saleState: { $ref: '#/components/schemas/SaleState' }
+        alcohol: { type: boolean, description: 주류 여부(PG 인증 결과 확인 대상) }
+        shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
+        dimensions: { $ref: '#/components/schemas/SkuDimensions' }
+        dimensionsSource: { $ref: '#/components/schemas/DimensionsSource' }
+        barcodes: { type: array, items: { type: string } }
+        logistics: { $ref: '#/components/schemas/LogisticsSpec' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        publishedAt: { type: string, format: date-time }
+    ProductSummary:
+      type: object
+      properties:
+        productId: { type: string }
+        baseProductId: { type: string }
+        internalName: { type: string, description: 관리용 명칭. 고객용 상품명은 product-content }
+        primaryCategoryId: { type: string, description: 대표 노출 경로 1개 }
+        saleState: { $ref: '#/components/schemas/SaleState' }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+    Product:
+      allOf:
+        - $ref: '#/components/schemas/ProductSummary'
+        - type: object
+          properties:
+            categoryIds: { type: array, items: { type: string }, description: 노출 경로 전체 }
+            skus: { type: array, items: { $ref: '#/components/schemas/SkuDetail' } }
+            approvalId: { type: string, description: 이 버전을 확정한 approval 승인 ID }
+            publishedAt: { type: string, format: date-time }
+    CategoryLevel:
+      type: string
+      description: 상위 > 하위 > 칩1 > 칩2 (ADR-0015)
+      enum: [TOP, SUB, CHIP1, CHIP2]
+    CategoryNode:
+      type: object
+      required: [categoryId, level, name]
+      properties:
+        categoryId: { type: string, description: 구조 id (p03, p03-c01, p08-c01-l01-s01) }
+        parentId: { type: [string, 'null'] }
+        level: { $ref: '#/components/schemas/CategoryLevel' }
+        section: { type: [string, 'null'], description: TOP 만 (맛있는것/편리한것) }
+        name: { type: string }
+        path: { type: string, description: '이름 경로 (예: 국·탕·찌개 > 국·국밥)' }
+        sortOrder: { type: integer }
+        exposed: { type: boolean }
+    FilterGroup:
+      type: object
+      required: [filterGroupId, name, selectionMode, options]
+      properties:
+        filterGroupId: { type: string }
+        name: { type: string }
+        selectionMode: { type: string, enum: [MULTIPLE, TOGGLE, MIXED] }
+        common: { type: boolean, description: 상위 카테고리 2곳 이상에서 같은 그룹 }
+        options: { type: array, items: { type: string }, description: 화면 순서 }
+    CategoryTreeDraftRequest:
+      type: object
+      required: [categories, filters]
+      description: 참고 자료 형식 그대로. categories = categories.json 의 categories 배열(재귀 children), filters = filters.json 의 definitions 배열
+      properties:
+        sourceNote: { type: string, maxLength: 500 }
+        categories:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/CategorySourceNode' }
+        filters:
+          type: array
+          items:
+            type: object
+            required: [id, group, selectionMode, options]
+            properties:
+              id: { type: string }
+              group: { type: string }
+              selectionMode: { type: string, enum: [multiple, toggle, mixed] }
+              common: { type: boolean }
+              options: { type: array, items: { type: string } }
+    CategorySourceNode:
+      type: object
+      required: [id, name, level]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        level: { type: string, enum: [top, sub, chip1, chip2] }
+        section: { type: string }
+        filters: { type: array, items: { type: string } }
+        children: { type: array, items: { $ref: '#/components/schemas/CategorySourceNode' } }
+    CategoryTreeVersion:
+      type: object
+      required: [version, state, nodeCount, filterGroupCount]
+      properties:
+        version: { type: integer }
+        state: { type: string, enum: [DRAFT, SUBMITTED, EFFECTIVE, SUPERSEDED, REJECTED] }
+        nodeCount: { type: integer }
+        filterGroupCount: { type: integer }
+        countsByLevel: { type: object, additionalProperties: { type: integer } }
+        approvalId: { type: [string, 'null'] }
+        effectiveFrom: { type: [string, 'null'], format: date-time }
+        approvalRequest: { $ref: '#/components/schemas/ApprovalRequestBody' }
+        baseVersion: { type: [integer, 'null'], description: 추가 초안이 복사한 발효 버전(/category-tree-additions 응답만) }
+        addedCategoryIds: { type: array, items: { type: string }, description: 추가 초안에서 새로 더한 노드(/category-tree-additions 응답만) }
+        skippedPaths: { type: array, items: { type: string }, description: id 가 없어 건너뛴 이름 경로(/category-tree-additions 응답만) }
+    CategoryAdditionRequest:
+      type: object
+      required: [categories]
+      description: seed-v1 categories.json 모양. 다른 필드(format·rule·products·reason 등)는 무시한다
+      properties:
+        sourceNote: { type: string, maxLength: 500 }
+        categories:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            type: object
+            required: [bmartPath]
+            properties:
+              pmartCategoryIdLevels: { type: [array, 'null'], maxItems: 4, items: { type: string, maxLength: 64 }, description: '단계별 id, 상위부터 (p09, p09-c01, p09-c01-l01). null(묶음에서 매핑 못 한 경로)이면 그 항목은 건너뛴다' }
+              bmartPath: { type: array, minItems: 1, maxItems: 4, items: { type: string, maxLength: 100 }, description: 단계별 이름, 상위부터. 길이는 pmartCategoryIdLevels 와 같아야 한다 }
+              pmartCategoryId: { type: [string, 'null'], description: 참고(마지막 단계 id 와 같아야 함) }
+    ApprovalRequestBody:
+      type: object
+      description: approval-service ChangeRequestBody 와 같은 모양. 그대로 POST /change-requests 본문으로 쓴다.
+      required: [type, targetService, targetRef, allowedActions, summary]
+      properties:
+        type: { type: string, enum: [PRODUCT] }
+        targetService: { type: string, enum: [product-service] }
+        targetRef: { type: string, description: 'productDraft:{draftId} / productImportBatch:{batchId} / categoryTreeVersion:{version}' }
+        allowedActions: { type: array, items: { type: string } }
+        summary: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [lineKey]
+            properties:
+              lineKey: { type: string, description: draftId (카테고리 트리는 version) }
+              targetRef: { type: string }
+              attributes: { type: object, additionalProperties: true, description: 'draftId·draftHash·sourceKey 등 잠근 값' }
+    ProductDraftInput:
+      type: object
+      required: [product, skus]
+      description: seed-v1 product.json 의 product·skus 블록. skus 는 1차에 1개만(sku 는 항상 null — 승인 후 발급)
+      properties:
+        sourceSystem: { type: string, description: '외부 원천 (예: bmart-capture). 개별 입력은 생략' }
+        sourceKey: { type: string, description: '원천 키 (seedProductId). sourceSystem 과 함께 upsert 기준' }
+        targetProductId:
+          type: string
+          description: |
+            기존 상품 속성 변경(2026-11-07). 원천 키 없이 등록된 상품도 승인으로 새 버전을 만들 수 있게 갱신 대상을 직접 지정한다.
+            있으면 registration=UPDATE(그 상품), SKU 유지(판매 단위·구성 수가 다르면 반영 때 SKU_IDENTITY_CHANGED). 없는 상품이면
+            TARGET_PRODUCT_NOT_FOUND, 원천 키가 다른 상품에 연결돼 있으면 TARGET_CONFLICT. 판매 상태는 product.saleState 를 주지 않으면 유지.
+        product:
+          type: object
+          required: [internalName]
+          properties:
+            baseProductKey: { type: string, description: 같은 기초상품을 묶는 키. 없으면 상품마다 새 기초상품 }
+            baseProductId: { type: string, description: 기존 기초상품에 붙일 때 }
+            internalName: { type: string, maxLength: 200 }
+            primaryCategoryId: { type: string, description: 대표 카테고리 노드 id }
+            categoryIds: { type: array, items: { type: string } }
+            categoryPaths: { type: array, items: { type: string }, description: '이름 경로 ("국·탕·찌개 > 국·국밥"). categoryIds 가 없을 때 이름으로 자동 매핑' }
+            saleState: { $ref: '#/components/schemas/SaleState' }
+        skus:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: object
+            required: [unitType, unitsPerSku]
+            properties:
+              unitType: { $ref: '#/components/schemas/SaleUnitType' }
+              unitsPerSku: { type: integer, minimum: 1 }
+              weightG: { type: integer, minimum: 0, description: 필수(비면 WEIGHT_REQUIRED). 0 으로 채우지 않는다 }
+              volumeMl: { type: integer, minimum: 0 }
+              storageType: { type: string, enum: [AMBIENT, CHILLED, FROZEN], description: 필수(비면 STORAGE_TYPE_REQUIRED) }
+              alcohol: { type: boolean }
+              shelfLifeGuarantee: { $ref: '#/components/schemas/ShelfLifeGuarantee' }
+              dimensions: { $ref: '#/components/schemas/SkuDimensions' }
+              dimensionsSource: { $ref: '#/components/schemas/DimensionsSource' }
+              barcodes: { type: array, items: { type: string, maxLength: 64 }, description: '선택. 선행 0 보존. 숫자만 8·12·13·14자리면 GS1 검사 숫자를 확인한다(틀리면 BARCODE_CHECK_DIGIT_INVALID). 다른 상품 SKU 에 활성으로 연결돼 있으면 BARCODE_CONFLICT. 수정 초안에서 빼면 승인 때 그 바코드는 퇴역한다' }
+              logistics: { $ref: '#/components/schemas/LogisticsSpec' }
+        filterOptions:
+          type: array
+          description: 선택. 상품이 걸리는 필터 옵션
+          items:
+            type: object
+            required: [filterGroupId, option]
+            properties:
+              filterGroupId: { type: string }
+              option: { type: string }
+        derivedFields: { type: array, items: { type: string }, description: 원천에서 추정한 필드 이름(검토 표시용) }
+    DraftProblem:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, description: 'WEIGHT_REQUIRED / STORAGE_TYPE_REQUIRED / CATEGORY_NOT_MAPPED / CATEGORY_NOT_FOUND / BARCODE_CONFLICT / BARCODE_DUPLICATED_IN_DRAFT / BASE_PRODUCT_NOT_FOUND / FILTER_OPTION_NOT_FOUND / SHELF_LIFE_INVALID / DIMENSIONS_INVALID / TARGET_PRODUCT_NOT_FOUND / TARGET_CONFLICT / BARCODE_CHECK_DIGIT_INVALID (숫자만 8·12·13·14자리인데 GS1 검사 숫자가 틀림, 2026-11-17)' }
+        field: { type: string }
+        detail: { type: string }
+    ProductDraft:
+      type: object
+      required: [draftId, state, validationState, version]
+      properties:
+        draftId: { type: string }
+        batchId: { type: [string, 'null'] }
+        sourceSystem: { type: [string, 'null'] }
+        sourceKey: { type: [string, 'null'] }
+        state: { type: string, enum: [DRAFT, SUBMITTED, APPLIED, REJECTED] }
+        validationState: { type: string, enum: [VALID, INVALID] }
+        problems: { type: array, items: { $ref: '#/components/schemas/DraftProblem' } }
+        input: { $ref: '#/components/schemas/ProductDraftInput' }
+        resolvedCategoryIds: { type: array, items: { type: string } }
+        draftHash: { type: [string, 'null'] }
+        approvalId: { type: [string, 'null'] }
+        resultProductId: { type: [string, 'null'] }
+        resultSkus: { type: array, items: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        registration:
+          type: [string, 'null']
+          enum: [NEW, UPDATE, null]
+          description: |
+            심사 전 초안(DRAFT·SUBMITTED)만. 이 원천 키(sourceSystem, sourceKey)가 이미 상품으로 등록돼 있으면 UPDATE —
+            승인하면 새 상품이 아니라 그 상품의 새 버전이 된다(이름·카테고리·중량·보관 온도·바코드 갱신, SKU 유지,
+            판매 단위·구성 낱개 수가 다르면 SKU_IDENTITY_CHANGED 로 반영 거절). 원천 키가 없거나 아직 등록 전이면 NEW.
+            반영·반려된 초안은 null(결과는 resultProductId·resultSkus). (BR-39, 2026-11-03)
+        existingProductId: { type: [string, 'null'], description: registration=UPDATE 일 때 갱신될 상품 }
+        existingSkus: { type: array, items: { $ref: '_common.yaml#/components/schemas/Sku' }, description: registration=UPDATE 일 때 그 상품의 SKU(유지된다) }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        updatedAt: { type: string, format: date-time }
+    ImportBatch:
+      type: object
+      required: [batchId, state, productCount, validCount, invalidCount]
+      properties:
+        batchId: { type: string }
+        format: { type: string, enum: [SEED_V1] }
+        sourceSystem: { type: string }
+        state: { type: string, enum: [VALIDATED, SUBMITTED, APPLIED, PARTIALLY_APPLIED, REJECTED] }
+        productCount: { type: integer, description: 묶음의 상품 수(업로드 때) }
+        validCount: { type: integer, description: '이 배치 행들의 현재 검증 결과 VALID 수 — 조회할 때 행에서 센다(행을 고치면 바로 반영, BR-38 2026-11-03)' }
+        invalidCount: { type: integer, description: 이 배치 행들의 현재 검증 결과 INVALID 수(조회 때 계산) }
+        drafts: { type: array, items: { $ref: '#/components/schemas/ProductDraft' } }
+        pendingSubmission:
+          description: '제출 뒤 승인 대기(SUBMITTED) 동안만. 제출 응답과 같은 본문을 잠긴 행으로 다시 만든다 — 화면을 떠났다 와도 승인 요청을 이어서 올릴 수 있게(BR-41, 2026-11-03). 승인 ID 는 approval-service GET /approvals?targetRef=… (targetRef productImportBatch:{batchId})'
+          allOf: [{ $ref: '#/components/schemas/SubmissionResult' }]
+        createdAt: { type: string, format: date-time }
+    SubmissionResult:
+      type: object
+      required: [submittedDraftIds, approvalRequest]
+      properties:
+        submittedDraftIds: { type: array, items: { type: string } }
+        excludedDraftIds: { type: array, items: { type: string } }
+        approvalRequest: { $ref: '#/components/schemas/ApprovalRequestBody' }
+    IdMap:
+      type: object
+      description: seed-v1 묶음의 id-map.json 과 같은 모양(format·sourceSystem·entries·note). 그대로 id-map.json 으로 저장해 수집 저장소에 돌려준다.
+      properties:
+        format: { type: string, enum: [seed-v1] }
+        batchId: { type: string }
+        sourceSystem: { type: string }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/IdMapEntry' }
+        products:
+          type: array
+          deprecated: true
+          description: entries 와 같은 목록(2026-11-02 이전 응답 호환). entries 를 쓴다
+          items: { $ref: '#/components/schemas/IdMapEntry' }
+        note: { type: string }
+    IdMapEntry:
+      type: object
+      properties:
+        seedProductId: { type: string }
+        identityKey: { type: [string, 'null'], description: 묶음 product.baseProductKey (= seed-v1 identityKey) }
+        pmartProductId: { type: [string, 'null'] }
+        sku: { type: [string, 'null'] }
+        state: { type: string, description: 'DRAFT / SUBMITTED / APPLIED / REJECTED' }
+    BarcodeResolution:
+      type: object
+      properties:
+        barcode: { type: string }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        productId: { type: string }
+        unitType: { $ref: '#/components/schemas/SaleUnitType' }
+        unitsPerSku: { type: integer }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+    SkuIssuanceRequest:
+      type: object
+      required: [approvalId, baseProductId, unitType, unitsPerSku]
+      properties:
+        approvalId: { type: string }
+        changeRequestId: { type: string }
+        baseProductId: { type: string }
+        productId: { type: string, description: 기존 상품에 SKU 추가 시. 없으면 신규 상품 생성 }
+        unitType: { $ref: '#/components/schemas/SaleUnitType' }
+        unitsPerSku: { type: integer, minimum: 1 }
+        weightG: { type: integer, minimum: 0 }
+        barcodes: { type: array, items: { type: string } }
+        logistics: { $ref: '#/components/schemas/LogisticsSpec' }
+    PurchaseLimitCheckRequest:
+      type: object
+      required: [items]
+      properties:
+        accountId: { type: string, description: 로그 용도. 상한은 요청 품목만으로 계산 }
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, quantity]
+            properties:
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              quantity: { $ref: '_common.yaml#/components/schemas/Quantity' }
+    PurchaseLimitCheckResult:
+      type: object
+      required: [passed, violations]
+      properties:
+        passed: { type: boolean }
+        limitPerBaseProduct: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              baseProductId: { type: string }
+              totalUnits: { type: integer, description: Σ 수량×구성 낱개 수 }
+              limitUnits: { type: integer }
+              skus: { type: array, items: { type: string } }
+        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'
+

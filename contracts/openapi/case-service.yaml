@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -86,6 +86,27 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/CaseSummary' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cases/metrics:
+    get:
+      tags: [cases]
+      summary: 접수 건 현황 건수 (본사 관리자 — BO-28 1단계, 0.18.0)
+      x-added-in: '2026-11-17'
+      description: |
+        2026-11-17 사용자 "우리 데이터 건수부터"(업무 원문 BO-28 — BackOffice 는 운영 판단용 현황을 보여 주고 BI 를 대신 확정하지 않는다).
+        이 서비스 표만 센 지금 시각 스냅샷: 사건함 종류별 열린·아무도 안 집은·처리 기한 지난 건, 후속 처리 담당 팀별 열린·기한 지난 것,
+        수락 전 교대 인계서, 답변 기다리는 문의(고객·라이더 — 상담원 접수 STAFF_INTAKE 제외)와 가장 오래 기다린 접수 시각.
+        비율·목표·SLA 달성률은 승인된 정의가 없어 내지 않는다(화면이 "N건 중 M건"으로 보여 준다). 직원 개인별로 나누지 않는다.
+        종류·팀이 0건이면 줄이 없다. OPERATOR_ADMIN 만(그 밖 403). 문의 만족도는 GET /inquiries/satisfaction-summary.
+      operationId: getCaseMetrics
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseMetrics' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cases/{caseId}:
@@ -1598,6 +1619,41 @@ components:
           type: object
           description: '점수(1~5)별 건수 — 키 "1"~"5"'
           additionalProperties: { type: integer, format: int64 }
+    CaseMetrics:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [asOf, cases, obligations, pendingHandovers, inquiries]
+      properties:
+        asOf: { type: string, format: date-time, description: 센 시각 }
+        cases:
+          type: array
+          items:
+            type: object
+            required: [kind, open, unassigned, overdue]
+            properties:
+              kind: { $ref: '#/components/schemas/CaseKind' }
+              open: { type: integer, format: int64, description: 처리 끝나지 않은 건 }
+              unassigned: { type: integer, format: int64, description: 그중 아무도 안 집은 건 }
+              overdue: { type: integer, format: int64, description: 그중 처리 기한(표시용 SLA)이 지난 건 }
+        obligations:
+          type: array
+          items:
+            type: object
+            required: [owner, open, overdue]
+            properties:
+              owner: { type: string, description: 담당 팀 }
+              open: { type: integer, format: int64, description: 'OPEN·PARTIALLY_RESOLVED' }
+              overdue: { type: integer, format: int64, description: 그중 기한이 지난 것 }
+        pendingHandovers: { type: integer, format: int64, description: 수락 전 교대 인계서 }
+        inquiries:
+          type: array
+          items:
+            type: object
+            required: [requesterType, awaitingAnswer]
+            properties:
+              requesterType: { $ref: '#/components/schemas/InquiryRequesterType' }
+              awaitingAnswer: { type: integer, format: int64, description: '답변 전(RECEIVED) — 상담원 접수 제외' }
+              oldestReceivedAt: { type: [string, 'null'], format: date-time }
     Intake:
       type: object
       properties:

@@ -47,6 +47,7 @@ GET /api/v1/carts/{cartId} CUSTOMER,GUEST
 GET /api/v1/carts/{cartId}/change-requests/{requestId} CUSTOMER,GUEST
 GET /api/v1/carts/{cartId}/merges/{mergeId} CUSTOMER
 GET /api/v1/cases OPERATOR
+GET /api/v1/cases/metrics OPERATOR
 GET /api/v1/cases/{caseId} OPERATOR
 GET /api/v1/cases/{caseId}/action-requests/{actionRequestId} OPERATOR
 GET /api/v1/cases/{caseId}/notes OPERATOR

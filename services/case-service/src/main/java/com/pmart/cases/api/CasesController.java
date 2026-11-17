@@ -6,6 +6,10 @@ import com.pmart.cases.api.generated.model.AssigneeGroup;
 import com.pmart.cases.api.generated.model.CaseAllOfClosure;
 import com.pmart.cases.api.generated.model.CaseAllOfHistory;
 import com.pmart.cases.api.generated.model.CaseKind;
+import com.pmart.cases.api.generated.model.CaseMetrics;
+import com.pmart.cases.api.generated.model.CaseMetricsCasesInner;
+import com.pmart.cases.api.generated.model.CaseMetricsInquiriesInner;
+import com.pmart.cases.api.generated.model.CaseMetricsObligationsInner;
 import com.pmart.cases.api.generated.model.CaseNote;
 import com.pmart.cases.api.generated.model.CaseState;
 import com.pmart.cases.api.generated.model.CaseSummary;
@@ -14,6 +18,7 @@ import com.pmart.cases.api.generated.model.CloseCaseRequest;
 import com.pmart.cases.api.generated.model.CreateCaseNoteRequest;
 import com.pmart.cases.api.generated.model.CreateCaseRequest;
 import com.pmart.cases.api.generated.model.EvidenceReference;
+import com.pmart.cases.api.generated.model.InquiryRequesterType;
 import com.pmart.cases.api.generated.model.ListCaseNotes200Response;
 import com.pmart.cases.api.generated.model.ListCases200Response;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
@@ -25,6 +30,7 @@ import com.pmart.cases.api.generated.model.ReopenCaseRequest;
 import com.pmart.cases.api.generated.model.TransferCaseRequest;
 import com.pmart.cases.application.ActionRequestService;
 import com.pmart.cases.application.CaseInboxService;
+import com.pmart.cases.application.CaseMetricsService;
 import com.pmart.cases.application.CaseNoteService;
 import com.pmart.cases.application.ObligationService;
 import com.pmart.cases.domain.CaseRules;
@@ -53,16 +59,64 @@ public class CasesController implements CasesApi {
   private final ObligationService obligations;
   private final CaseNoteService notes;
   private final ActionRequestService actions;
+  private final CaseMetricsService metrics;
 
   public CasesController(
       CaseInboxService cases,
       ObligationService obligations,
       CaseNoteService notes,
-      ActionRequestService actions) {
+      ActionRequestService actions,
+      CaseMetricsService metrics) {
     this.cases = cases;
     this.obligations = obligations;
     this.notes = notes;
     this.actions = actions;
+    this.metrics = metrics;
+  }
+
+  /** 접수 건 현황 건수(BO-28 1단계, 0.18.0 — 관리자만). */
+  @Override
+  public ResponseEntity<CaseMetrics> getCaseMetrics() {
+    var v = metrics.snapshot();
+    var s = v.snapshot();
+    var out = new CaseMetrics();
+    out.setAsOf(odt(v.asOf()));
+    out.setCases(
+        s.kinds().stream()
+            .map(
+                k -> {
+                  var x = new CaseMetricsCasesInner();
+                  x.setKind(CaseKind.fromValue(k.kind()));
+                  x.setOpen(k.open());
+                  x.setUnassigned(k.unassigned());
+                  x.setOverdue(k.overdue());
+                  return x;
+                })
+            .toList());
+    out.setObligations(
+        s.obligations().stream()
+            .map(
+                o -> {
+                  var x = new CaseMetricsObligationsInner();
+                  x.setOwner(o.owner());
+                  x.setOpen(o.open());
+                  x.setOverdue(o.overdue());
+                  return x;
+                })
+            .toList());
+    out.setPendingHandovers(s.pendingHandovers());
+    out.setInquiries(
+        s.inquiries().stream()
+            .map(
+                q -> {
+                  var x = new CaseMetricsInquiriesInner();
+                  x.setRequesterType(InquiryRequesterType.fromValue(q.requesterType()));
+                  x.setAwaitingAnswer(q.awaitingAnswer());
+                  x.setOldestReceivedAt(odt(q.oldest()));
+                  return x;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
   }
 
   @Override

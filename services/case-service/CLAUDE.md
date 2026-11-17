@@ -88,6 +88,8 @@
   - 남기기 `POST /cases/{id}/action-requests`: 그 건을 다룰 수 있는 사람(`CaseRules.canWork`), 처리 끝난 건 409, 보상 실행은 approvalRef 필수(422 APPROVAL_REQUIRED), 명령 이름에 force·overwrite·override 면 422 UNSUPPORTED_ACTION. REQUESTED 로 시작, 이력 ACTION_REQUESTED.
   - 결과 `…/{arId}/results`: SENT·ACCEPTED·APPLIED·REJECTED·UNKNOWN_RESULT + 결과 ID(resultSystem·resultRef 같이), APPLIED·REJECTED 뒤 409(새 요청으로). 이력 ACTION_RESULT_RECORDED. 접수 건 상세 `actionRequests`. 이벤트·알림 없음, 메모 로그 금지.
 
+- **접수 건 현황 건수(2026-11-17, 계약 0.18.0 — 사용자 "우리 데이터 건수부터", 업무 원문 BO-28 1단계)**: `CaseMetricsService`·`CaseMetricsStore`, `CasesController.getCaseMetrics`. `GET /cases/metrics`(OPERATOR_ADMIN 만) — 이 서비스 표만 센 지금 스냅샷: 사건함 종류별 열린·안 집은·기한 지난 건, 후속 처리 팀별 열린·기한 지난 것, 수락 전 교대 인계, 답변 기다리는 문의(고객·라이더, STAFF_INTAKE 제외)·가장 오래된 접수 시각. **비율·목표·SLA 달성률 없음**(승인된 정의 없음), 직원 개인별로 나누지 않는다. 다른 서비스 지표(bff `views/metrics` 정시 배송률 등)는 아직 501.
+
 ## 다른 서비스의 요청
 - MFC·주문 이행: `docs/architecture/service-requests/case-service.md`(R-1 결품 CS 이관 — ADR-0049 로 취소됨; R-2 진행 중 주문의 고객센터 취소, 2026-11-08). 구현 때 그 문서의 "보충 목록" 도 같이.
 - **오배송 귀책·고객 선택(2026-11-16, 계약 0.11.0 — ADR-0065, 작성 PC 5 — 백오피스 영역 PC 2 검토)**: `POST /cases` MISDELIVERY 에 `misdelivery`(fault CUSTOMER·RIDER·SYSTEM, resolution — RIDER·SYSTEM: RESHIP 기본·REFUND, CUSTOMER: REDELIVER 기본·REFUND, redeliveryDestinationId — CUSTOMER·REDELIVER 필수: order 에 기록한 실제 주소 ID). 검사 `CaseInboxService.misdeliveryDecision`(422 INVALID_MISDELIVERY_RESOLUTION·REDELIVERY_DESTINATION_REQUIRED). 사건 refs(fault·resolution·redeliveryDestinationId)와 `MisdeliveryConfirmed` 에 싣는다. 보내지 않으면 예전 처리(회수 + 재발송, 라이더 배달료 지급) — 백오피스 오배송 기록 화면이 귀책·선택·실제 주소를 받게 바뀌어야 한다(클라이언트 handoff).

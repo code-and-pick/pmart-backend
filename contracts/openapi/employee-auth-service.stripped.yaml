@@ -1,0 +1,492 @@
+openapi: 3.1.0
+info:
+  title: employee-auth-service
+  version: 0.10.0
+  description: |
+    직원 로그인·PMart 직원 토큰 발급자(ADR-0056). Keycloak(Realm pmart-staff)은 직원 신원 확인만 하고, 이 서비스가 Keycloak 의 유일한 로그인 클라이언트
+    (기밀, 인가 코드 + PKCE)로 코드를 바꾸고 ID 토큰을 검증한 뒤 PMart 직원 토큰(typ=OPERATOR)을 발급한다. Keycloak 토큰은 이 서비스 밖으로 나가지 않는다.
+    정본: Keycloak 사용자(sub) ↔ 운영자 ID(OP-…) 연결, 직원 로그인 상태(ACTIVE·DISABLED·LEFT), **직원 역할·권한 센터**(ADR-0056 결정 4),
+    로그인 티켓·세션·refresh token, 직원 토큰 서명키(JWKS).
+    비정본: 직원 계정·비밀번호·잠금(Keycloak), 인사 정보(hr-service), 권한 요청 심사(approval-service).
+
+    로그인 흐름(앱·백오피스 공통 — 앱은 OAuth 클라이언트가 아니다):
+    1. 앱이 code_verifier 를 만들고, 시스템 브라우저(Custom Tabs — WebView 금지)로 GET /employee-auth/logins?app=…&deviceId=…&codeChallenge=… 를 연다.
+    2. 이 서비스가 Keycloak 로그인 화면으로 보낸다(PDA 등은 prompt=login — 공용 PDA 에서 앞사람 세션으로 들어가지 않게. SSO 앱은 남은 Keycloak 세션을 쓴다).
+    3. Keycloak 이 콜백(GET /employee-auth/logins/callback)으로 돌려보내면 코드 교환·ID 토큰 검증·직원 상태 확인 뒤 — PDA 등은 Keycloak 세션을 바로 끝내고(ADR-0056 결정 14 ①),
+       SSO 앱(backoffice)은 남겨 두고(같은 브라우저의 다음 로그인은 비밀번호 없이, 로그아웃 응답의 idpLogoutUri 로 끝낸다) —
+       설정의 복귀 주소로 60초·1회용 로그인 티켓을 붙여 보낸다(예 pmart-mfc://login?ticket=…). 실패면 ?error=코드.
+    4. 앱이 POST /employee-auth/tokens {ticket, codeVerifier} + X-Device-Id 로 직원 토큰을 받는다. 티켓은 시작한 기기·code_verifier 로만 바뀐다
+       (딥링크를 가로챈 다른 앱은 쓸 수 없다 — RFC 8252 §8.1 과 같은 방식).
+
+    웹 앱 refresh 쿠키(0.3.0, ADR-0059 — 설정 refresh-cookie 가 켜진 앱: backoffice·hr-backoffice):
+    - 티켓 교환·갱신 응답의 tokens.refreshToken 은 null 이고 refreshTransport = COOKIE. 대신 두 쿠키를 심는다(세션 쿠키 — Max-Age 없음):
+      `__Secure-pmart_ea_rt`(refresh token. HttpOnly·Secure·SameSite=Strict·Path=/api/v1/employee-auth/tokens/refresh/{sessionId}) 와
+      `__Secure-pmart_ea_csrf_{sessionId}`(CSRF 값. JS 가 읽는다·Secure·SameSite=Strict·Path=/ — 세션 동안 바뀌지 않는다).
+    - 갱신은 POST /employee-auth/tokens/refresh/{sessionId} + 헤더 X-CSRF-Token(= 그 CSRF 쿠키 값) + X-Device-Id, 브라우저는 credentials: include.
+    - 교차 출처(화면 443·8444 → 게이트웨이 8443) 호출이라 티켓 교환·갱신·로그아웃은 credentials: include 로 불러야 쿠키가 저장·전송·삭제된다.
+    - 결과를 모르는 갱신(응답 유실)은 다시 보내지 않는다(재사용 → 세션 종료). 세션 끝남·CSRF 쿠키 유실이면 silent 로그인으로 새 세션.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - { name: logins, description: 직원 로그인 시작·Keycloak 콜백(브라우저가 연다) }
+  - { name: tokens, description: 티켓 교환·갱신·로그아웃·현재 세션 }
+  - { name: employees, description: 직원 로그인 상태·역할·권한 센터(관리자 보정·이전용 — hr·approval 연동 전까지) }
+  - { name: roles, description: "(0.5.0) 직원 역할 목록 — 화면의 역할 고르기용(BR-57)" }
+  - { name: keys, description: "JWKS 공개키 — 직원 토큰 검증용 (클러스터 내부 전용)" }
+  - { name: dev, description: "LAN 시험 전용(설정으로만 켬, 운영 없음)" }
+  - { name: dev-local, description: "로컬(local 프로필) 개발 전용 — Keycloak 없이 직원 토큰(설정으로만 켬, LAN·운영 없음)" }
+
+paths:
+  /employee-auth/logins:
+    get:
+      tags: [logins]
+      summary: 직원 로그인 시작 (시스템 브라우저가 연다 → Keycloak 로그인 화면으로 302)
+      description: |
+        app 은 설정의 앱 목록(mfc, backoffice …)에 있어야 하고, returnUri 를 주면 그 앱의 허용 복귀 주소 중 하나와 정확히 같아야 한다(열린 리디렉션 방지).
+        codeChallenge = BASE64URL(SHA-256(code_verifier)), code_verifier 는 앱만 갖는다(43~128자).
+        로그인 시도는 10분 안에 끝내야 한다.
+        (0.2.0) silent=true — SSO 앱(backoffice·hr-backoffice)만: Keycloak 에 prompt=none 으로 보내 화면 없이 남은 Keycloak 세션만 확인한다.
+        세션이 있으면 평소처럼 ?ticket=, 없으면 ?error=LOGIN_REQUIRED(앱은 오류가 아니라 로그인 버튼을 보인다). 앱이 열릴 때 토큰이 없으면 한 번 쓴다
+        (같은 브라우저에서 다른 백오피스에 이미 로그인했으면 버튼 없이 들어간다 — 2026-11-13). PDA 등 SSO 가 아닌 앱은 400 SILENT_NOT_ALLOWED(공용 기기 — 늘 비밀번호).
+      operationId: startEmployeeLogin
+      security: []
+      parameters:
+        - { name: app, in: query, required: true, schema: { type: string, maxLength: 32 } }
+        - { name: deviceId, in: query, required: true, schema: { type: string, maxLength: 128 } }
+        - { name: codeChallenge, in: query, required: true, schema: { type: string, minLength: 43, maxLength: 128 } }
+        - { name: codeChallengeMethod, in: query, required: false, schema: { type: string, enum: [S256], default: S256 } }
+        - { name: returnUri, in: query, required: false, schema: { type: string, maxLength: 512 } }
+        - { name: silent, in: query, required: false, schema: { type: boolean, default: false }, description: '(0.2.0) 화면 없이 Keycloak 세션만 확인(SSO 앱만)' }
+      responses:
+        '302': { description: Keycloak 로그인 화면으로(silent 면 화면 없이 Keycloak 이 바로 콜백으로) }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /employee-auth/logins/callback:
+    get:
+      tags: [logins]
+      summary: Keycloak 콜백 (인가 코드 교환 → 앱 복귀 주소로 ?ticket= 또는 ?error=)
+      description: |
+        Keycloak 에 등록한 redirect URI. 앱 복귀 주소로 302 하며 붙는 error 코드:
+        IDP_ERROR(Keycloak 이 오류를 돌려줌·취소), LOGIN_REQUIRED(0.2.0 — silent 로그인인데 Keycloak 세션이 없음: 오류가 아니라 로그인 버튼을 보일 때), IDP_REJECTED(ID 토큰 검증 실패), IDP_UNAVAILABLE(Keycloak 응답 없음),
+        EMPLOYEE_NOT_REGISTERED(PMart 직원으로 등록되지 않음), ACCOUNT_NOT_AVAILABLE(정지·퇴사).
+        state 를 알 수 없거나 만료면 복귀 주소를 모르므로 400.
+      operationId: completeEmployeeLogin
+      security: []
+      parameters:
+        - { name: state, in: query, required: false, schema: { type: string, maxLength: 256 } }
+        - { name: code, in: query, required: false, schema: { type: string, maxLength: 4096 } }
+        - { name: error, in: query, required: false, schema: { type: string, maxLength: 256 } }
+      responses:
+        '302': { description: 앱 복귀 주소로(ticket 또는 error) }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /employee-auth/tokens:
+    post:
+      tags: [tokens]
+      summary: 로그인 티켓 → 직원 토큰 (티켓 60초·1회, 시작한 기기·code_verifier 만)
+      operationId: exchangeLoginTicket
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket, codeVerifier]
+              properties:
+                ticket: { type: string, maxLength: 128, description: 로그 금지 }
+                codeVerifier: { type: string, minLength: 43, maxLength: 128, description: 로그 금지 }
+      responses:
+        '200':
+          description: |
+            OK. refresh 쿠키 앱(ADR-0059)이면 tokens.refreshToken = null, refreshTransport = COOKIE 이고 Set-Cookie 로
+            `__Secure-pmart_ea_rt`(Path=/api/v1/employee-auth/tokens/refresh/{sessionId})·`__Secure-pmart_ea_csrf_{sessionId}`(Path=/) 를 심는다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeLoginResult' }
+        '401':
+          description: TICKET_INVALID (없음·만료·사용됨·다른 기기·verifier 불일치 — 이유를 나누어 알리지 않는다)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: ACCOUNT_NOT_AVAILABLE (티켓 발급 뒤 정지·퇴사)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /employee-auth/tokens/refresh:
+    post:
+      tags: [tokens]
+      summary: 토큰 갱신 — 본문 refresh token (PDA 등. 회전, 재사용 감지 시 세션 폐기)
+      description: |
+        refresh 쿠키 앱(backoffice·hr-backoffice — ADR-0059)의 세션은 이 경로로 갱신할 수 없다(401 TOKEN_INVALID, 토큰은 쓰지 않은 채로 둔다) —
+        POST /employee-auth/tokens/refresh/{sessionId}.
+        refresh token 은 한 번만 쓴다. 이미 쓴 토큰이 다시 오면 세션을 끝내고 TOKEN_REUSED. 로그인한 기기(X-Device-Id)에서만.
+        세션은 앱별 무활동 한도(mfc 30분 — ADR-0056 결정 14 ③)와 최대 길이(근무 12시간) 안에서만 이어진다. 직원 상태를 매번 다시 본다.
+      operationId: refreshEmployeeTokens
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: TOKEN_INVALID / TOKEN_REUSED (세션 폐기됨, 재로그인)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /employee-auth/tokens/refresh/{sessionId}:
+    post:
+      tags: [tokens]
+      summary: 토큰 갱신 — refresh 쿠키 + Signed Double-Submit CSRF (웹 백오피스, ADR-0059)
+      description: |
+        브라우저가 credentials: include 로 부른다. 요청 쿠키 `__Secure-pmart_ea_rt`(이 주소 Path 라 이 세션 것만 실린다)와
+        `__Secure-pmart_ea_csrf_{sessionId}`, 헤더 X-CSRF-Token(= CSRF 쿠키 값)·X-Device-Id 를 본다.
+        확인 순서: ① CSRF — 헤더 = 쿠키, 서명이 맞고 서명에 묶인 세션 = 주소의 sessionId. 틀리면 403 CSRF_INVALID(세션은 끊지 않는다).
+        ② 소유권 — refresh token 이 주소의 세션 것, 세션의 기기·앱(refresh 쿠키 앱)이 맞고 살아 있음. 틀리면 401 TOKEN_INVALID(토큰을 쓰지 않음).
+        ③ 회전 — 이미 쓴 토큰이면 세션 종료 401 TOKEN_REUSED. 성공하면 새 refresh 쿠키(같은 Path), CSRF 쿠키는 그대로.
+        결과를 모르는 요청(응답 유실)은 다시 보내지 않는다 — silent 로그인으로 새 세션.
+      operationId: refreshEmployeeTokensWithCookie
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: sessionId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: X-Device-Id, in: header, required: true, schema: { type: string, maxLength: 128 } }
+        - { name: X-CSRF-Token, in: header, required: true, schema: { type: string, maxLength: 256 }, description: "CSRF 쿠키 값 그대로. 로그 금지" }
+      responses:
+        '200':
+          description: OK — refreshToken = null(refreshTransport = COOKIE), Set-Cookie 로 새 refresh 쿠키
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: TOKEN_INVALID / TOKEN_REUSED (세션 끝남 — silent 로그인으로 새 세션)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403':
+          description: CSRF_INVALID (CSRF 쿠키 없음·헤더 불일치·서명 틀림 — 세션은 그대로. 이 탭에서는 silent 로그인으로 새 세션)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /employee-auth/logouts:
+    post:
+      tags: [tokens]
+      summary: 로그아웃 (이 세션 또는 이 직원의 모든 세션 종료)
+      description: |
+        PDA(mfc 등 SSO 를 쓰지 않는 앱)는 Keycloak 세션을 로그인 때 이미 끝냈다 — idpLogoutUri 가 없다.
+        SSO 앱(backoffice — 2026-11-12 사용자 결정)은 Keycloak 세션이 남아 있으므로 응답의 idpLogoutUri 로 **브라우저를 이동**시켜야
+        Keycloak 세션까지 끝난다(확인 화면 없이 바로 끝나고 그 앱의 로그인 화면으로 돌아온다). 이동하지 않으면 같은 브라우저의 새 로그인이
+        비밀번호 없이 된다. 이미 끝난 세션이면 idpLogoutUri 없이 200.
+        refresh 쿠키 앱(ADR-0059)이면 이 세션의 쿠키 둘을 Max-Age=0 으로 지운다(credentials: include 로 불러야 브라우저가 지운다).
+        allDevices 면 서버 세션은 모두 끝나지만 쿠키는 이 탭 세션 것만 지워진다(다른 탭 쿠키는 세션이 없어 쓸 수 없다).
+        (0.4.0, ADR-0061) SSO 앱 세션이면 **같은 Keycloak 세션(같은 브라우저 로그인)으로 열린 이 직원의 다른 SSO 앱 세션도 함께** 끝낸다
+        (예 백오피스에서 로그아웃 → 같은 브라우저의 인사팀 백오피스 세션도). 다른 PC·PDA 세션은 그대로. 끝낸 세션의 access token 은 게이트웨이가 바로 401.
+      operationId: employeeLogout
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allDevices: { type: boolean, default: false }
+      responses:
+        '200':
+          description: 종료됨 (이미 종료여도 멱등 성공)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeLogoutResult' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /employee-auth/sessions/current:
+    get:
+      tags: [tokens]
+      summary: 현재 세션 조회 (이 서비스가 발급한 직원 토큰만)
+      description: |
+        (0.6.0, 2026-11-15) 응답에 지금 기준 역할·권한 센터(`roles`·`centers` — 계정 값 ∪ 지금 유효한 승인 권한, 토큰을 만들 때와 같은 계산)를 싣는다.
+        화면은 메뉴·센터 고르기를 access token 을 풀지 않고 이 응답으로 정한다(앱을 띄울 때·새로고침·갱신 뒤·탭이 다시 보일 때). 권한이 승인·회수된 직후에는
+        토큰(갱신 전)과 다를 수 있다 — API 판정은 토큰 기준이므로, 다르면 갱신하면 같아진다.
+      operationId: getCurrentEmployeeSession
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeSession' }
+        '401':
+          description: SESSION_EXPIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /employee-auth/employees/{operatorId}:
+    parameters:
+      - { name: operatorId, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+    get:
+      tags: [employees]
+      summary: 직원 로그인 상태·역할·권한 센터 조회 (OPERATOR_ADMIN, HR_ADMIN — 0.7.0 2026-11-15 인사팀 권한 관리 메뉴)
+      operationId: getEmployee
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [employees]
+      summary: 직원 등록·보정 (OPERATOR_ADMIN — 운영자 이전과 관리자 보정용)
+      description: |
+        ADR-0056 5단계(hr-service 의 EmployeeRegistered·approval 권한 승인 연동) 전까지 쓰는 관리 경로다. 없으면 만들고 있으면 바꾼다(멱등).
+        역할은 설정의 역할 목록에 있어야 한다. 이미 있는 자기 계정은 바꿀 수 없다. 상태를 ACTIVE 가 아닌 값으로 바꾸면 모든 세션을 끝낸다
+        (이미 나간 access token 의 즉시 차단(SubjectBlocked)은 5단계에서 함께 — 그 전까지는 남은 수명 최대 15분).
+        바꾼 사람·이유·전후 값은 이 서비스 변경 기록에 남는다.
+      operationId: putEmployee
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmployeeChange' }
+      responses:
+        '200':
+          description: 반영됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /employee-auth/employees/{operatorId}/grant-revocations:
+    parameters:
+      - { name: operatorId, in: path, required: true, schema: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+    post:
+      tags: [employees]
+      summary: 권한 회수 — 승인 없이 즉시 (OPERATOR_ADMIN·HR_ADMIN, BO-01 0.8.0)
+      description: |
+        2026-11-15 사용자 결정: 회수(줄이기)는 승인을 거치지 않고 바로 적용한다. 사유 필수, 누가·언제·왜는 grant 에 남는다(행은 지우지 않음).
+        효력 끝 = 지금. 그 직원의 모든 세션을 끊고 SubjectBlocked(SESSIONS_REVOKED) — 이미 나간 access token 도 바로 401, 다시 로그인하면 남은 권한으로.
+        거절: 자기 권한 403, OPERATOR_ADMIN·HR_ADMIN 역할 grant 를 HR_ADMIN 이 회수 403(운영 관리자만), 그 직원 grant 가 아님 404 GRANT_NOT_FOUND,
+        이미 기한이 끝난 grant 409 INVALID_STATE. 이미 회수한 grant 는 지금 상태로 200(멱등).
+        계정에 직접 둔 역할(roles — 관리 경로 값)은 여기서 회수하지 않는다(PUT, OPERATOR_ADMIN).
+      operationId: revokeEmployeeGrant
+      x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-15'
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grantId, reason]
+              properties:
+                grantId: { type: string, maxLength: 128 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 회수됨(또는 이미 회수됨) — 회수 뒤 직원 조회 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Employee' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+  /employee-auth/roles:
+    get:
+      tags: [roles]
+      summary: 직원 역할 목록 (0.5.0, BR-57 — 직원이면 누구나)
+      description: |
+        이 서비스가 아는 직원 역할 전부 — 권한 요청·관리 경로·승인 반영(GrantApplied)이 받는 역할은 이 목록 안에서만이다(밖이면 UNKNOWN_ROLE·400).
+        인사팀 백오피스(hr-backoffice)의 직원 등록 "요청 권한 역할" 고르기가 화면에 고정해 두던 목록 대신 쓴다(클라이언트 BR-57, 2026-11-15).
+        비밀이 아니므로 역할과 상관없이 OPERATOR 토큰이면 부를 수 있다(발급자 표가 인정하는 직원 토큰 — 고객·라이더·서비스 토큰은 403).
+        정본은 설정 `pmart.employee-auth.roles`(순서)와 `role-info`(표시 이름·센터 지정) — 역할이 늘면 설정만 바꾸고 재시작하면 화면도 따라온다.
+        items 는 order 오름차순. name 이 설정에 없으면 code 를 그대로 준다.
+        centerScoped = 그 역할은 권한 센터를 함께 골라야 의미가 있다(센터별 업무 — 지금 MFC_SUPERVISOR·MFC_WORKER). 화면 안내용이며 이 서비스가 센터 없는
+        요청을 거절하지는 않는다(판정은 approval-service).
+      operationId: listEmployeeRoles
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EmployeeRoleList' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  # ---------- keys (JWKS). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+components:
+  schemas:
+    JwkSet:
+      type: object
+      required: [keys]
+      description: RFC 7517 JWK Set. 공개키만(RSA n/e, kid, alg=RS256, use=sig).
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    TokenPair:
+      type: object
+      required: [accessToken, accessTokenExpiresAt, refreshTokenExpiresAt, sessionId, refreshTransport]
+      properties:
+        accessToken:
+          type: string
+          description: "PMart 직원 토큰(RS256, iss = employee-auth-service, sub = 운영자 ID, typ = OPERATOR, aud = pmart-api, roles, centers, sid). 15분"
+        refreshToken: { type: string, description: "refreshTransport = BODY 일 때만. COOKIE 면 null(HttpOnly 쿠키 — ADR-0059)" }
+        refreshTransport:
+          type: string
+          enum: [BODY, COOKIE]
+          description: "BODY = 본문 refreshToken 으로 POST /employee-auth/tokens/refresh(PDA 등). COOKIE = 쿠키로 POST /employee-auth/tokens/refresh/{sessionId}"
+        accessTokenExpiresAt: { type: string, format: date-time }
+        refreshTokenExpiresAt: { type: string, format: date-time }
+        sessionId: { type: string }
+    EmployeeLoginResult:
+      type: object
+      required: [operatorId, roles, centers, tokens]
+      properties:
+        operatorId: { type: string }
+        roles: { type: array, items: { type: string }, description: 비어 있으면 권한 승인 대기(업무 API 403) }
+        centers: { type: array, items: { type: string } }
+        tokens: { $ref: '#/components/schemas/TokenPair' }
+    EmployeeLogoutResult:
+      type: object
+      properties:
+        idpLogoutUri:
+          type: string
+          description: "SSO 앱만 — 브라우저를 이 주소로 이동시킨다(Keycloak 로그아웃 → 앱 로그인 화면). 토큰 값이 들어 있으니 로그에 남기지 않는다"
+    EmployeeSession:
+      type: object
+      required: [sessionId, operatorId, app, issuedAt, expiresAt, roles, centers]
+      properties:
+        sessionId: { type: string }
+        operatorId: { type: string }
+        app: { type: string }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: 이 access token 의 만료 }
+        roles: { type: array, items: { type: string }, description: '(0.6.0) 지금 기준 역할 — 비어 있으면 권한 승인 대기' }
+        centers: { type: array, items: { type: string }, description: '(0.6.0) 지금 기준 권한 센터(mfcId 등)' }
+        centerDetails:
+          type: array
+          x-added-in: '2026-11-16'
+          description: |
+            (0.9.0) centers 와 같은 순서로 센터 표시 이름 — center-master-service 의 이름(10분 캐시). 못 읽으면 name 이 null(화면은 코드를 보여 준다).
+            세션 응답을 실패시키지 않는다.
+          items:
+            type: object
+            required: [centerId]
+            properties:
+              centerId: { type: string }
+              name: { type: [string, 'null'] }
+    EmployeeState:
+      type: string
+      enum: [ACTIVE, DISABLED, LEFT]
+    Employee:
+      type: object
+      required: [operatorId, state, roles, centers, version, updatedAt]
+      properties:
+        operatorId: { type: string }
+        state: { $ref: '#/components/schemas/EmployeeState' }
+        roles: { type: array, items: { type: string } }
+        centers: { type: array, items: { type: string } }
+        keycloakLinked: { type: boolean, description: Keycloak 사용자와 한 번이라도 로그인으로 연결됨 }
+        lastLoginAt: { type: string, format: date-time }
+        version: { type: integer, format: int64 }
+        updatedAt: { type: string, format: date-time }
+        effectiveRoles: { type: array, items: { type: string }, description: '지금 유효한 역할 = roles(계정 값) ∪ 지금 유효한 grants — 토큰과 같은 계산(0.7.0, 조회 응답만)', x-added-in: '2026-11-15' }
+        effectiveCenters: { type: array, items: { type: string }, description: '지금 유효한 권한 센터(같은 계산, 0.7.0)', x-added-in: '2026-11-15' }
+        grants:
+          type: array
+          description: 승인된 권한(지난 것 포함, 최근 시작 순, 최대 100 — 0.7.0, 조회 응답만)
+          x-added-in: '2026-11-15'
+          items: { $ref: '#/components/schemas/EmployeeGrant' }
+    EmployeeGrant:
+      type: object
+      required: [grantId, role, centers, validFrom, approvalId, approverId, appliedAt]
+      properties:
+        grantId: { type: string, description: '<approvalId>:<lineId>' }
+        role: { type: string }
+        centers: { type: array, items: { type: string } }
+        validFrom: { type: string, format: date-time }
+        validUntil: { type: [string, 'null'], format: date-time, description: 이 시각부터 무효. null = 기한 없음(근무 기간) }
+        approvalId: { type: string }
+        approverId: { type: string, description: '승인한 운영자 ID 또는 RULE:<id>@v<버전>(자동 승인)' }
+        approverName:
+          type: [string, 'null']
+          x-added-in: '2026-11-17'
+          description: |
+            (0.10.0) 승인한 직원 이름 — hr-service 이름(GET /internal/employee-names, 응답마다 한 번에). 자동 승인(RULE:…)·인사 기록이 없는 운영자·
+            hr-service 를 못 읽으면 null(화면은 approverId 를 보여 준다, 자동 승인은 "자동 승인"). 조회 응답을 실패시키지 않는다.
+        appliedAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time, description: 회수 시각(0.8.0) — 있으면 회수됨(validUntil 도 이 시각) }
+        revokedBy: { type: [string, 'null'], description: 회수한 운영자 ID(0.8.0) }
+        revokedByName: { type: [string, 'null'], x-added-in: '2026-11-17', description: '(0.10.0) 회수한 직원 이름 — approverName 과 같은 방식(못 읽으면 null)' }
+        revokeReason: { type: [string, 'null'], description: 회수 사유(0.8.0) }
+    EmployeeChange:
+      type: object
+      required: [state, roles, centers, reason]
+      properties:
+        state: { $ref: '#/components/schemas/EmployeeState' }
+        roles: { type: array, maxItems: 32, items: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$' } }
+        centers: { type: array, maxItems: 64, items: { type: string, pattern: '^[A-Za-z0-9_.-]{1,64}$' } }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    EmployeeRoleList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: order 오름차순
+          items: { $ref: '#/components/schemas/EmployeeRole' }
+    EmployeeRole:
+      type: object
+      required: [code, name, centerScoped, order]
+      properties:
+        code: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,63}$', description: 역할 코드(토큰 roles·권한 요청에 쓰는 값) }
+        name: { type: string, description: 화면 표시 이름(한국어). 설정에 없으면 code }
+        centerScoped: { type: boolean, description: 권한 센터를 함께 골라야 하는 역할(MFC_SUPERVISOR·MFC_WORKER) }
+        order: { type: integer, format: int32, minimum: 1, description: 표시 순서(1부터) }
+  securitySchemes:
+    bearerAuth:
+      $ref: '_common.yaml#/components/securitySchemes/bearerAuth'
+

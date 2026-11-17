@@ -1561,6 +1561,51 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 접수 건 현황 건수(BO-28 1단계, 0.18.0 — 2026-11-17 사용자 "우리 데이터 건수부터"): 관리자만, 종류별 열린·안 집은·기한 지난 건, 비율 없음.
+   */
+  @Test
+  void caseMetricsCountOpenUnassignedAndOverdueForAdminOnly() {
+    dispatch.stubFor(
+        get(urlPathMatching("/api/v1/internal/deliveries/.+/assignment"))
+            .willReturn(aResponse().withStatus(404)));
+    assertThat(send("GET", ops, "/cases/metrics", null).status()).isEqualTo(403);
+    assertThat(send("GET", cs, "/cases/metrics", null).status()).isEqualTo(403);
+
+    JsonNode before = send("GET", admin, "/cases/metrics", null).body();
+    String a = misdeliveryCase("DLV-MA");
+    String b = misdeliveryCase("DLV-MB");
+    claim(ops, b, "op-ops-1");
+    jdbc.update(
+        "UPDATE case_record SET sla_due_at = now() - interval '1 minute' WHERE case_id = ?", a);
+
+    Res res = send("GET", admin, "/cases/metrics", null);
+    assertThat(res.status()).as(res.body().toString()).isEqualTo(200);
+    JsonNode after = res.body();
+    assertThat(after.path("asOf").asString()).isNotBlank();
+    assertThat(metric(after, "MISDELIVERY", "open") - metric(before, "MISDELIVERY", "open"))
+        .isEqualTo(2);
+    assertThat(
+            metric(after, "MISDELIVERY", "unassigned")
+                - metric(before, "MISDELIVERY", "unassigned"))
+        .as("b 는 집음")
+        .isEqualTo(1);
+    assertThat(metric(after, "MISDELIVERY", "overdue")).isGreaterThanOrEqualTo(1);
+    assertThat(after.has("ratio")).as("비율은 내지 않음").isFalse();
+    assertThat(after.path("pendingHandovers").isNumber()).isTrue();
+    assertThat(after.path("obligations").isArray()).isTrue();
+    assertThat(after.path("inquiries").isArray()).isTrue();
+  }
+
+  static long metric(JsonNode m, String kind, String field) {
+    for (JsonNode k : m.path("cases")) {
+      if (kind.equals(k.path("kind").asString())) {
+        return k.path(field).asLong();
+      }
+    }
+    return 0;
+  }
+
+  /**
    * 접수 건 메모(0.10.0 — 2026-11-16 사용자 "고친 안"): 볼 수 있는 본사 직원(상담원 포함)이 덧붙이기만, 처리 끝난 건에도(상태 그대로), 관리자
    * 가림(사유 필수 — 글은 지우고 누가·언제·왜는 남김), 못 보는 직원 404.
    */
