@@ -7,6 +7,10 @@
   C. 라이더 알림함(#78)      관리자가 시험 라이더 배차 제한(기한) → 풀기 → 라이더 GET /me/notifications 에 두 건(사유 없음)
   D. 도착 예정·구독(#75·#81)  --delivery 가 있으면 관리자 GET /deliveries/{id}/eta·/stream 첫 이벤트, (--customer-token-file) 고객 본인 조회
   E. 전달 증빙(#80)          --delivery 가 완료 배송이고 --customer-token-file 이 있으면 GET /deliveries/{id}/delivery-proof·사진 한 장
+  F. 운행시간(#115)          라이더 GET /riders/me/operating-time — 새 라이더는 0초, 기간 31일 넘으면 400
+  G. 수행료 조정 대기(#119)  관리자 GET /rider-earnings/adjustment-queue 200, 라이더 403, 없는 수행료 조정 404
+  H. 탈퇴(#118)              새 시험 라이더 가입 → POST /riders/me/withdrawals 202 APPLIED → 결과 COMPLETED → /riders/me 404
+                             → (rider-auth SubjectBlocked 뒤) 같은 토큰 401
 
 실행: uv run --no-project --with cryptography python -I deploy/lan/checks/rider_app_features_e2e.py
         [--delivery DLV-…] [--customer-token-file 파일] [--ops 직원계정]
@@ -104,6 +108,51 @@ def rider_notices(rider, token, admin):
     check("C 사유 문구 없음", "민감한 사유 문구" not in str(items))
 
 
+def operating_time(token):
+    s, b = http("GET", "/riders/me/operating-time", token)
+    if not_deployed("F 운행시간", s):
+        return
+    check("F 운행시간 — 새 라이더 0초", s == 200 and b.get("totalSeconds") == 0 and len(b.get("days", [])) == 1,
+          f"HTTP {s} {b.get('totalSeconds')}")
+    s, b = http("GET", "/riders/me/operating-time?from=2026-01-01&to=2026-11-17", token)
+    check("F 기간 31일 넘으면 400", s == 400, f"HTTP {s}")
+
+
+def adjustment_queue(token, admin):
+    s, b = http("GET", "/rider-earnings/adjustment-queue?size=5", admin)
+    if not_deployed("G 수행료 조정 대기", s):
+        return
+    check("G 조정 대기 — 관리자 200", s == 200 and "items" in b, f"HTTP {s} {len(b.get('items', []))}건")
+    s, b = http("GET", "/rider-earnings/adjustment-queue", token)
+    check("G 라이더 403", s == 403, f"HTTP {s}")
+    s, b = http("POST", "/rider-earnings/ERN-none/adjustments", admin, {"fault": "CUSTOMER", "reason": "LAN 시험"})
+    check("G 없는 수행료 조정 404", s == 404, f"HTTP {s} {b.get('code', '')}")
+
+
+def withdrawal():
+    rider = "RD-claude-wd-" + uuid.uuid4().hex[:10]
+    token = rider_token(rider)
+    signup(token)
+    s, b = http("POST", "/riders/me/withdrawals", token, {"reason": "LAN 시험 탈퇴(자동)"})
+    if not_deployed("H 탈퇴", s):
+        return
+    ok = check("H 탈퇴 — 202 APPLIED", s == 202 and b.get("status") == "APPLIED", f"HTTP {s} {b.get('code', '')}")
+    if not ok:
+        return
+    rid = b.get("requestId")
+    s, b = http("GET", f"/riders/me/withdrawals/{rid}", token)
+    check("H 결과 COMPLETED", s == 200 and b.get("state") == "COMPLETED", f"HTTP {s} {b.get('state')}")
+    s, b = http("GET", "/riders/me", token)
+    check("H 탈퇴 뒤 /riders/me 404(또는 이미 401)", s in (404, 401), f"HTTP {s}")
+    status, deadline = None, time.time() + 30
+    while time.time() < deadline:
+        status, _ = http("GET", "/me/notifications?size=1", token)
+        if status == 401:
+            break
+        time.sleep(3)
+    check("H 세션 끊김 — 같은 토큰 401(SubjectBlocked)", status == 401, f"HTTP {status}")
+
+
 def eta(delivery, admin, customer):
     s, b = http("GET", f"/deliveries/{delivery}/eta", admin)
     if not_deployed("D 도착 예정 조회", s):
@@ -167,6 +216,9 @@ def main():
     pickup_points(token)
     rider_inquiry(rider, token, admin, ops)
     rider_notices(rider, token, admin)
+    operating_time(token)
+    adjustment_queue(token, admin)
+    withdrawal()
     if delivery:
         eta(delivery, admin, customer)
         if customer:
