@@ -21,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
@@ -71,13 +70,42 @@ class EtaStreams {
       Clock clock,
       @Value("${pmart.tracking.stream-heartbeat:PT15S}") Duration heartbeat,
       @Value("${pmart.tracking.stream-max-duration:PT30M}") Duration maxDuration,
-      @Value("${pmart.tracking.stream-max-connections:1000}") int maxConnections) {
+      @Value("${pmart.tracking.stream-max-connections:1000}") int maxConnections,
+      @Value("${pmart.tracking.stream-poll-interval:PT3S}") Duration pollInterval) {
     this.progress = progress;
     this.mapper = mapper;
     this.clock = clock;
     this.heartbeat = heartbeat;
     this.maxDuration = maxDuration;
     this.maxConnections = maxConnections;
+    // 전용 스레드(PC 1 #75 검토 후속): 공용 @Scheduled 스레드 하나를 ETA 계산·위치 끊김 감시와 나눠 쓰면, 멈춘 클라이언트에 쓰다가
+    // 막혔을 때 그 작업들까지 늦어진다
+    this.poller =
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              Thread t = new Thread(r, "eta-stream-poll");
+              t.setDaemon(true);
+              return t;
+            });
+    long ms = Math.max(100, pollInterval.toMillis());
+    this.poller.scheduleWithFixedDelay(
+        () -> {
+          try {
+            poll();
+          } catch (RuntimeException e) {
+            log.warn("실시간 구독 갱신 실패: {}", e.toString());
+          }
+        },
+        ms,
+        ms,
+        java.util.concurrent.TimeUnit.MILLISECONDS);
+  }
+
+  private final java.util.concurrent.ScheduledExecutorService poller;
+
+  @jakarta.annotation.PreDestroy
+  void stop() {
+    poller.shutdownNow();
   }
 
   /** 접속 — 권한 판정이 끝난 View 로. 지금 상태를 바로 보내고(Last-Event-ID 가 같으면 건너뜀), DONE 이면 바로 닫는다. */
@@ -139,9 +167,6 @@ class EtaStreams {
     subs.add(s);
   }
 
-  @Scheduled(
-      initialDelayString = "${pmart.tracking.stream-poll-interval:PT3S}",
-      fixedDelayString = "${pmart.tracking.stream-poll-interval:PT3S}")
   void poll() {
     Instant now = clock.instant();
     // 한 번 돌 때 같은 배송·같은 보기 범위는 한 번만 읽는다(같은 배송을 여럿이 볼 때 DB 조회가 겹치지 않게)
