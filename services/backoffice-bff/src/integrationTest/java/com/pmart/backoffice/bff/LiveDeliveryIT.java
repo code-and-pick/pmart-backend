@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -207,6 +208,49 @@ class LiveDeliveryIT {
         0,
         getRequestedFor(urlPathEqualTo("/api/v1/deliveries"))
             .withQueryParam("state", equalTo("COMPLETED")));
+  }
+
+  /** 0.9.2: 열린 사건을 커서로 다음 쪽까지 읽고, 도착 예정 원천이 한 번 실패하면 남은 배송은 부르지 않고 UNKNOWN, 배차 404 는 DIRECT(없음). */
+  @Test
+  void openCasesFollowCursorAndFailingSourceIsCalledOnce() {
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .willReturn(json(200, "{\"items\":[],\"page\":{\"nextCursor\":\"c2\"}}")));
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .withQueryParam("cursor", equalTo("c2"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"caseId":"CASE-9","kind":"DISPATCH_FAILED","priority":"P2",
+                               "subjectType":"DELIVERY","subjectRef":"DLV-B"}],
+                     "page":{"nextCursor":null}}""")));
+    tracking.stubFor(
+        WireMock.get(urlPathMatching("/api/v1/deliveries/.+/eta"))
+            .willReturn(json(503, "{\"code\":\"DEPENDENCY_UNAVAILABLE\"}")));
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-B/dispatch"))
+            .willReturn(json(404, "{\"code\":\"NOT_FOUND\"}")));
+
+    Res r = live(CS, "mfcId=MFC-1&size=20");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode items = r.body().path("items");
+    assertThat(items.get(1).path("openCases").findValuesAsString("caseId"))
+        .as("두 번째 쪽 사건도 이어짐")
+        .containsExactly("CASE-9");
+    assertThat(items.get(0).path("openCases")).as("다 읽었으니 없음은 []").isEmpty();
+    assertThat(r.body().path("casesTruncated").asBoolean()).isFalse();
+    assertThat(items.get(0).path("etaSource").path("confidence").asString()).isEqualTo("UNKNOWN");
+    assertThat(items.get(1).path("etaSource").path("confidence").asString()).isEqualTo("UNKNOWN");
+    // 첫 배송(DLV-A)에서 실패하면 다음 배송(DLV-B)은 부르지 않는다(HTTP 클라이언트의 503 재전송은 같은 호출)
+    tracking.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/deliveries/DLV-B/eta")));
+    assertThat(items.get(1).path("dispatch").path("source").path("confidence").asString())
+        .as("배차 기록 없음(404)은 원천의 답")
+        .isEqualTo("DIRECT");
+    assertThat(r.body().path("unavailableSources").toString())
+        .contains("delivery-tracking-service")
+        .doesNotContain("delivery-dispatch-service");
   }
 
   @Test

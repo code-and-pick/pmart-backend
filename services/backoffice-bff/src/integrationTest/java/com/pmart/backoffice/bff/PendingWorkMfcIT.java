@@ -171,6 +171,23 @@ class PendingWorkMfcIT {
     assertThat(r.body().path("unavailableSources").toString()).contains("mfc-fulfillment-service");
   }
 
+  /** 0.9.2: MFC 재시도 결과 모름(5xx·시간 초과)은 오류가 아니라 202 UNKNOWN_RESULT. */
+  @Test
+  void mfcRetryUnknownResultIsAcceptedNotError() {
+    mfc.stubFor(
+        WireMock.post(urlPathEqualTo("/api/v1/internal/stop-requests/STP-9/retries"))
+            .willReturn(json(500, "{}")));
+    Res r =
+        call(
+            "POST",
+            "/commands/mfc-fulfillment-service/stop-retry",
+            ADMIN,
+            Map.of("targetRef", "STP-9", "reason", "다시 시도", "payload", Map.of()));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(202);
+    assertThat(r.body().path("status").asString()).isEqualTo("UNKNOWN_RESULT");
+    assertThat(r.body().path("nextAction").asString()).isEqualTo("QUERY_RESULT");
+  }
+
   /** 0.9.1: MFC 목록을 커서로 다음 쪽까지 읽고, 5쪽을 넘으면 truncated. */
   @Test
   void mfcListsFollowCursorAndFlagTruncation() {

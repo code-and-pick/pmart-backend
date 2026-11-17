@@ -87,7 +87,7 @@ public class PendingWorkView {
       }
       sources.add(stamp(ORCHESTRATION, now, "CURRENT", "DIRECT"));
     } catch (PmartException | HttpClientErrorException e) {
-      log.warn("처리 대기: 멈춘 사가 조회 실패 — {}", e.getMessage());
+      log.warn("처리 대기: 멈춘 사가 조회 실패 — {}", e.getClass().getSimpleName());
       unavailable.add(ORCHESTRATION);
       sources.add(stamp(ORCHESTRATION, now, "UNAVAILABLE", "UNKNOWN"));
     }
@@ -116,7 +116,7 @@ public class PendingWorkView {
       }
       sources.add(stamp(ORDER, now, "CURRENT", "DIRECT"));
     } catch (PmartException | HttpClientErrorException e) {
-      log.warn("처리 대기: 이행 확인 필요 조회 실패 — {}", e.getMessage());
+      log.warn("처리 대기: 이행 확인 필요 조회 실패 — {}", e.getClass().getSimpleName());
       unavailable.add(ORDER);
       sources.add(stamp(ORDER, now, "UNAVAILABLE", "UNKNOWN"));
     }
@@ -231,6 +231,13 @@ public class PendingWorkView {
       JsonNode r = clients.retryHandover(id, idempotencyKey, operatorId, memo);
       return commandResponse(
           r.path("status").asString("UNKNOWN_RESULT"), idempotencyKey, id, text(r, "nextAction"));
+    } catch (PmartException e) {
+      // 0.9.2: MFC 응답 시간 초과·5xx = 결과 모름 — 오류 대신 202 UNKNOWN_RESULT(같은 Idempotency-Key 로 다시 보내거나
+      // 목록으로 확인)
+      if (ErrorCode.UNKNOWN_RESULT.name().equals(e.code())) {
+        return commandResponse("UNKNOWN_RESULT", idempotencyKey, id, "QUERY_RESULT");
+      }
+      throw e;
     } catch (HttpClientErrorException e) {
       JsonNode problem = readProblem(e);
       throw new PmartException(

@@ -79,6 +79,15 @@ public class LookupClients {
                     .header("X-Source-System", "backoffice-bff")
                     .retrieve()
                     .body(String.class));
-    return mapper.readTree(raw == null ? "{}" : raw);
+    return parse(raw);
+  }
+
+  /** 원천 본문 읽기 — JSON 이 아니면(프록시 HTML 등) 원천 장애로(0.9.2, 화면 전체 500 이 아니라 그 원천만 불명). */
+  private JsonNode parse(@org.jspecify.annotations.Nullable String raw) {
+    try {
+      return mapper.readTree(raw == null ? "{}" : raw);
+    } catch (tools.jackson.core.JacksonException e) {
+      throw com.pmart.common.web.PmartException.dependencyUnavailable("원천 응답을 읽을 수 없습니다.", e);
+    }
   }
 }

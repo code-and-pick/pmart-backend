@@ -139,12 +139,34 @@ public class LiveDeliveryView {
 
     // 2) 열린 사건 — 한 번에 읽어 배송 번호로 잇는다
     Map<String, List<Map<String, Object>>> casesByDelivery = null;
+    boolean casesTruncated = false;
     if (!deliveries.isEmpty()) {
       used.add(Source.CASE);
-      JsonNode page = call(token, Source.CASE, "/cases", Map.of(), Map.of("size", 200), failed);
-      if (page != null) {
+      // 0.9.2: 커서로 최대 CASE_MAX_PAGES 쪽(전에는 200건 한 쪽만 — 뒤쪽 사건이 걸린 배송이 "없음"으로 보였다)
+      List<JsonNode> caseItems = new ArrayList<>();
+      boolean caseRead = true;
+      String caseCursor = null;
+      for (int pg = 0; pg < CASE_MAX_PAGES; pg++) {
+        Map<String, Object> q = new LinkedHashMap<>();
+        q.put("size", 200);
+        if (caseCursor != null) {
+          q.put("cursor", caseCursor);
+        }
+        JsonNode page = call(token, Source.CASE, "/cases", Map.of(), q, failed);
+        if (page == null) {
+          caseRead = !failed.contains(Source.CASE);
+          break;
+        }
+        page.path("items").forEach(caseItems::add);
+        caseCursor = text(page.path("page"), "nextCursor");
+        if (caseCursor == null) {
+          break;
+        }
+      }
+      casesTruncated = caseRead && caseCursor != null;
+      if (caseRead) {
         casesByDelivery = new HashMap<>();
-        for (JsonNode c : page.path("items")) {
+        for (JsonNode c : caseItems) {
           Map<String, Object> brief = new LinkedHashMap<>();
           brief.put("caseId", text(c, "caseId"));
           brief.put("kind", text(c, "kind"));
@@ -166,14 +188,19 @@ public class LiveDeliveryView {
         continue;
       }
       used.add(Source.DISPATCH);
+      // 0.9.2: 이 요청에서 배차가 한 번 실패하면 남은 배송은 부르지 않고 UNKNOWN(멈춘 원천 × 배송 수만큼 기다리지 않게)
+      boolean dispatchOk = !failed.contains(Source.DISPATCH);
       JsonNode dispatch =
-          call(
-              token,
-              Source.DISPATCH,
-              "/deliveries/{id}/dispatch",
-              Map.of("id", deliveryId),
-              Map.of(),
-              failed);
+          dispatchOk
+              ? call(
+                  token,
+                  Source.DISPATCH,
+                  "/deliveries/{id}/dispatch",
+                  Map.of("id", deliveryId),
+                  Map.of(),
+                  failed)
+              : null;
+      dispatchOk = dispatchOk && !failed.contains(Source.DISPATCH); // 404(배차 없음)는 원천의 답 — DIRECT
       Map<String, Object> i = new LinkedHashMap<>();
       i.put("deliveryId", deliveryId);
       i.put("orderId", text(d, "orderId"));
@@ -187,7 +214,7 @@ public class LiveDeliveryView {
               dispatch == null ? null : dispatch.path("version"),
               Source.DISPATCH,
               now,
-              dispatch != null));
+              dispatchOk));
       String rider = text(d, "riderId");
       if (rider == null && dispatch != null) {
         rider = text(dispatch.path("assignment"), "riderId");
@@ -202,18 +229,24 @@ public class LiveDeliveryView {
       i.put("promisedAt", hasWindow ? promisedAt(window) : null);
       // 0.7.0(TR-3): tracking 도착 예정 — 고객 도착(dropEta)이 산출됐을 때만 latestEta, 그 밖 상태는 etaStatus 로 그대로
       used.add(Source.TRACKING);
-      boolean etaOk = true;
+      boolean etaOk = !failed.contains(Source.TRACKING); // 0.9.2: 한 번 실패하면 남은 배송은 부르지 않음
       JsonNode eta = null;
-      try {
-        eta =
-            clients.get(
-                Source.TRACKING, token, "/deliveries/{id}/eta", Map.of("id", deliveryId), Map.of());
-      } catch (HttpClientErrorException.NotFound e) {
-        eta = null; // tracking 배포 전 배송 — 없음(원천의 답)
-      } catch (HttpClientErrorException | PmartException e) {
-        log.warn("실시간 배송 현황: 도착 예정 실패 — {}", e.getClass().getSimpleName());
-        failed.add(Source.TRACKING);
-        etaOk = false;
+      if (etaOk) {
+        try {
+          eta =
+              clients.get(
+                  Source.TRACKING,
+                  token,
+                  "/deliveries/{id}/eta",
+                  Map.of("id", deliveryId),
+                  Map.of());
+        } catch (HttpClientErrorException.NotFound e) {
+          eta = null; // tracking 배포 전 배송 — 없음(원천의 답)
+        } catch (HttpClientErrorException | PmartException e) {
+          log.warn("실시간 배송 현황: 도착 예정 실패 — {}", e.getClass().getSimpleName());
+          failed.add(Source.TRACKING);
+          etaOk = false;
+        }
       }
       JsonNode drop = eta == null ? null : eta.path("dropEta");
       String dropStatus = drop == null ? null : text(drop, "status");
@@ -233,7 +266,11 @@ public class LiveDeliveryView {
               etaOk ? "DIRECT" : "UNKNOWN"));
       i.put(
           "openCases",
-          casesByDelivery == null ? null : casesByDelivery.getOrDefault(deliveryId, List.of()));
+          casesByDelivery == null
+              ? null
+              : casesByDelivery.containsKey(deliveryId)
+                  ? casesByDelivery.get(deliveryId)
+                  : casesTruncated ? null : List.of()); // 다 못 읽었으면 "없음" 대신 모름(null)
       items.add(i);
     }
 
@@ -256,9 +293,13 @@ public class LiveDeliveryView {
     out.put("unavailableSources", unavailable);
     out.put("items", items);
     out.put("truncated", truncated);
+    out.put("casesTruncated", casesTruncated);
     out.put("page", page);
     return out;
   }
+
+  /** 열린 사건 목록 최대 쪽 수(200 × 5) — 넘으면 casesTruncated(0.9.2). */
+  static final int CASE_MAX_PAGES = 5;
 
   static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
 

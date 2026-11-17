@@ -48,5 +48,11 @@
 - 사건마다 연결 배송(subjectType DELIVERY·refs deliveryId·**recoveryDeliveryId(오배송 회수 배송, 0.5.1)·reshipmentDeliveryId(오배송 재발송 배송, 0.5.2)** → execution `/deliveries/{id}` 의 state)·주문(subjectType ORDER·refs orderId → order `/orders/lookups/{id}` 의 status)을 `linked` 에 — 같은 ID 는 한 번만, 합치거나 해석하지 않음. 연결 원천 실패·403 은 그 칸만 state null·UNKNOWN + unavailableSources, 404 는 state null·DIRECT(없음).
 - **도움요청 대화(0.6.0, 2026-11-17 — PC 5 DE-2 반영)**: 라이더 도움요청 사건(kind RIDER_HELP, refs deliveryId·requestId)은 execution `GET /deliveries/{id}/help-requests/{requestId}` 를 직원 토큰으로 읽어 `linked` 에 kind HELP_REQUEST(state·`lastRiderMessageAt`·`lastSupportMessageAt`). "새 메시지" 판단(두 시각 비교·직원별 읽음)은 화면이 한다. 실패·403·404 규칙은 배송·주문과 같다.
 
+## 검토 후속 (2026-11-17, 0.9.2 — 검토자 결과 중 확인한 것)
+- 실시간 배송: 배차·도착 예정은 이 요청에서 한 번 실패하면 남은 배송은 부르지 않고 UNKNOWN(멈춘 원천 × 배송 수만큼 기다리지 않게). 배차 404 는 DIRECT(없음). 열린 사건은 커서로 최대 5쪽(`CASE_MAX_PAGES`), 넘으면 `casesTruncated` 이고 안 붙은 배송 openCases 는 null(모름).
+- MFC 재시도의 결과 모름(5xx·시간 초과 → `UNKNOWN_RESULT`)은 오류가 아니라 202 `status UNKNOWN_RESULT`·`nextAction QUERY_RESULT`.
+- 원천 본문이 JSON 이 아니면 그 원천 장애(`dependencyUnavailable`) — 화면 전체 500 아님. 처리 대기 실패 로그는 예외 이름만(원천 본문 안 남김).
+- `PendingWorkItem.orderId` nullable(MFC 거절 인계는 주문 ID 가 없을 수 있음).
+
 ## 상태
 3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황·사건함(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.
