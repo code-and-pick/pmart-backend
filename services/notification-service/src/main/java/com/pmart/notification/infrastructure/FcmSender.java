@@ -44,6 +44,13 @@ public class FcmSender {
 
   private record Account(String projectId, String clientEmail, PrivateKey key, String tokenUri) {}
 
+  /**
+   * 안드로이드 발송 선택(2026-11-17 라이더 앱 요청 — 서버가 정함). channelId = 앱이 만드는 알림 채널 ID, high = 배차 제안만,
+   * ttlSeconds = 그 뒤 도착하면 버림(배차 제안 만료), tag = 같은 tag 의 앞 알림을 덮음.
+   */
+  public record Options(
+      String channelId, boolean high, @Nullable Long ttlSeconds, @Nullable String tag) {}
+
   private final @Nullable Account account;
   private final RestClient http;
   private final ObjectMapper mapper;
@@ -71,7 +78,8 @@ public class FcmSender {
   }
 
   /** 단말 하나에 보낸다. 실패는 결과로만(알림 실패로 업무를 다시 하지 않는다). */
-  public Result send(String deviceToken, String title, String body, Map<String, String> data) {
+  public Result send(
+      String deviceToken, String title, String body, Map<String, String> data, Options o) {
     Account a = account;
     if (a == null) {
       return Result.FAILED;
@@ -80,7 +88,18 @@ public class FcmSender {
     message.put("token", deviceToken);
     message.put("notification", Map.of("title", title, "body", body));
     message.put("data", data);
-    message.put("android", Map.of("priority", "HIGH"));
+    Map<String, Object> androidNotice = new LinkedHashMap<>();
+    androidNotice.put("channel_id", o.channelId());
+    if (o.tag() != null) {
+      androidNotice.put("tag", o.tag());
+    }
+    Map<String, Object> android = new LinkedHashMap<>();
+    android.put("priority", o.high() ? "HIGH" : "NORMAL");
+    if (o.ttlSeconds() != null) {
+      android.put("ttl", o.ttlSeconds() + "s");
+    }
+    android.put("notification", androidNotice);
+    message.put("android", android);
     try {
       http.post()
           .uri(sendBaseUrl + "/v1/projects/{p}/messages:send", a.projectId())
