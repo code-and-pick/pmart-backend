@@ -98,7 +98,29 @@ public class ExecutionController implements ExecutionApi {
                 body.getEvidenceRefs(),
                 body.getGoodsLocation() == null ? null : body.getGoodsLocation().getValue(),
                 contacts));
-    // 등록 = 접수(운영자 확정 전) — ACCEPTED
+    // 등록 = 접수(운영자 확정 전) — ACCEPTED. resultId = 함께 열린 지원센터 대화(도움요청) ID(2026-11-17 §13)
+    return ResponseEntity.ok(
+        ExecutionViews.applied(applied)
+            .status(ReportStoreArrival200Response.StatusEnum.ACCEPTED)
+            .resultId(idempotencyKey)
+            .nextAction("WAIT_OPERATOR_DECISION"));
+  }
+
+  /** 전달 재개 요청(2026-11-17 라이더 앱 요청 §13-3). */
+  @Override
+  public ResponseEntity<ReportStoreArrival200Response> requestFailureResume(
+      String deliveryId,
+      String idempotencyKey,
+      String xSourceSystem,
+      @Nullable Integer xExpectedVersion,
+      com.pmart.delivery.execution.api.generated.model.@Nullable RequestFailureResumeRequest body) {
+    var applied =
+        service.requestResume(
+            deliveryId,
+            idempotencyKey,
+            xSourceSystem,
+            xExpectedVersion,
+            body == null ? null : body.getNote());
     return ResponseEntity.ok(
         ExecutionViews.applied(applied)
             .status(ReportStoreArrival200Response.StatusEnum.ACCEPTED)

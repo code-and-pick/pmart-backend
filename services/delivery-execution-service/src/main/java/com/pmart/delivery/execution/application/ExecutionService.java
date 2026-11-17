@@ -451,7 +451,62 @@ public class ExecutionService {
                   null,
                   null,
                   null);
+          // 전달 불가 = 지원센터 대화(2026-11-17 라이더 앱 요청 §13 — 사용자 "실패 등록이 대화도 열기"): 같은 ID 의 도움요청을 만든다.
+          // 앱은 도움요청을 따로 보내지 않고 이 ID(응답 resultId)로 대화한다. 사건함에는 한 건(DeliveryIncidentRaised 하나)
+          store.insertHelp(incident);
           events.helpRequested(d, incident, f.photoRefs(), store.bumpVersion(deliveryId, now));
+          return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
+        });
+  }
+
+  /**
+   * 전달 재개 요청(2026-11-17 라이더 앱 요청 §13-3): 전달 불가를 알린 뒤 고객과 다시 연락돼 전달할 수 있을 때. 라이더가 직접 되돌리지는 않는다 —
+   * 지원센터가 반려(failure-decisions REJECT)해야 돌아간다. 요청 시각을 실패 기록에 남기고(운영자 대기 목록·배송 조회에 표시), 연결된 대화에 라이더
+   * 메시지를 남긴다. 이미 요청했으면 그대로(처음 시각).
+   */
+  public Applied requestResume(
+      String deliveryId,
+      String requestId,
+      String source,
+      @Nullable Integer expectedVersion,
+      @Nullable String note) {
+    String text = note == null ? "" : note.strip();
+    if (text.length() > 300) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "메모는 300자까지입니다.");
+    }
+    return transition(
+        "requestFailureResume",
+        deliveryId,
+        requestId,
+        source,
+        expectedVersion,
+        Map.of("note", text),
+        (d, rider, now) -> {
+          if (!"FAILURE_REPORTED".equals(d.state()) || d.failureJson() == null) {
+            throw PmartException.invalidState(
+                "전달 불가를 알린 배송만 재개를 요청할 수 있습니다(지금 " + d.state() + ").");
+          }
+          tools.jackson.databind.JsonNode reported = mapper.readTree(d.failureJson());
+          if (reported.path("resumeRequestedAt").isString()) {
+            return d.version(); // 이미 요청함
+          }
+          Map<String, Object> failure = new LinkedHashMap<>();
+          reported.properties().forEach(en -> failure.put(en.getKey(), en.getValue()));
+          failure.put("resumeRequestedAt", now.toString());
+          store.failure(deliveryId, "FAILURE_REPORTED", mapper.writeValueAsString(failure), now);
+          String helpId = reported.path("requestId").asString(null);
+          if (helpId != null && store.help(deliveryId, helpId).isPresent()) {
+            store.insertHelpMessage(
+                "HM-" + UUID.randomUUID(),
+                deliveryId,
+                helpId,
+                "RIDER",
+                rider,
+                "[전달 재개 요청] 고객과 다시 연락이 됐어요. 전달할 수 있어요 — 전달 불가를 반려해 주세요."
+                    + (text.isEmpty() ? "" : "\n" + text),
+                "[]",
+                now);
+          }
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });
   }

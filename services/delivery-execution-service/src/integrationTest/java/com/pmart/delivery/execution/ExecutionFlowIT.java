@@ -1640,6 +1640,68 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .toEntity(String.class);
   }
 
+  /**
+   * 전달 불가 = 지원센터 대화(2026-11-17 라이더 앱 요청 §13 — 사용자 "실패 등록이 대화도 열기"): 실패 등록이 같은 ID 의 도움요청을 열고(응답
+   * resultId), 라이더 전달 재개 요청은 실패 기록·대화·직원 목록에 남는다. 반려하면 원래 단계로.
+   */
+  @Test
+  void failureOpensHelpChatAndRiderCanAskToResume() throws Exception {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    ResponseEntity<String> reported =
+        post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of(photo), 2));
+    assertThat(reported.getStatusCode().value()).isEqualTo(200);
+    String helpId = body(reported).path("resultId").asString();
+    assertThat(helpId).isNotBlank();
+
+    // 같은 ID 의 도움요청(대화) — 라이더가 바로 메시지를 쓸 수 있다, 사건함 사건은 하나
+    JsonNode help = body(riderGet("/deliveries/{id}/help-requests/" + helpId, id, rider));
+    assertThat(help.path("category").asString()).isEqualTo("DELIVERY_FAILURE");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
+                    + " 'DeliveryIncidentRaised'",
+                Integer.class,
+                id))
+        .isEqualTo(1);
+    // 도움요청으로 DELIVERY_FAILURE 를 만들 수는 없다
+    assertThat(
+            post(id, "help-requests", rider, Map.of("category", "DELIVERY_FAILURE", "detail", "x"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+
+    // 전달 재개 요청 → 실패 기록·대화·직원 목록
+    assertThat(
+            post(id, "failures/resume-requests", rider, Map.of("note", "고객이 집에 왔어요"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(post(id, "failures/resume-requests", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200); // 이미 요청 — 그대로
+    JsonNode v = view(id, rider);
+    assertThat(v.path("failure").path("helpRequestId").asString()).isEqualTo(helpId);
+    assertThat(v.path("failure").path("resumeRequestedAt").asString()).isNotBlank();
+    JsonNode thread =
+        body(riderGet("/deliveries/{id}/help-requests/" + helpId + "/messages", id, rider));
+    assertThat(thread.path("items").get(0).path("body").asString())
+        .startsWith("[전달 재개 요청]")
+        .contains("고객이 집에 왔어요");
+    assertThat(thread.path("items")).hasSize(1);
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode queue = body(staffGet("/deliveries?state=FAILURE_REPORTED&riderId=" + rider, ops));
+    assertThat(queue.path("items").get(0).path("resumeRequestedAt").asString()).isNotBlank();
+
+    // 지원센터가 반려 → 원래 단계, 재개 요청은 실패 등록 중에만
+    assertThat(decide(id, "OP-1", List.of("MFC-1"), "REJECT").getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(state(id)).isEqualTo("PICKED_UP");
+    assertThat(post(id, "failures/resume-requests", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(409);
+  }
+
   List<String> blockers(String rider) {
     JsonNode b =
         body(

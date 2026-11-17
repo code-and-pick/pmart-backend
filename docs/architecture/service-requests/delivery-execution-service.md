@@ -30,3 +30,7 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **받는 쪽(backoffice)**: 2 가 나오면 bff 사건함(`case-inbox`) 목록에 RIDER_HELP 건의 `lastRiderMessageAt` 을 붙인다. 웹 화면은 #60 병합 뒤.
 - 급한 순서: 1(권한 — 넘긴 건·상담원 답장이 지금 열려 있음) → 4 → 2 → 3.
 - **회신(PC 5, 2026-11-17 — execution 0.8.0, V10, 브랜치 `delivery/de-2-help-chat`)**: 넷 다 구현. 1 답장 = RIDER_OPS·OPERATOR_ADMIN(넘긴 건 관리자만 — `CaseTransferred.toGroup` 구독) · 4 처리 중 = `CaseAssigned`(열림·다시 열림·이관은 OPEN) · 2 직원 도움요청 조회 `lastRiderMessageAt`·`lastSupportMessageAt` · 3 `POST …/messages/{messageId}/maskings`(OPERATOR_ADMIN, 사유 필수 — 응답·목록 `masked`·`maskedAt`, 직원에게만 `maskedBy`·`maskReason`, body null). 설정 바인딩 변경 없음(caseEvents 그대로).
+
+## DE-3. 전달 불가 등록과 지원센터 대화 묶기 (2026-11-17, 라이더 앱 요청 §13 — PC 5 구현, 브랜치 `delivery/failure-help-chat`)
+- 사용자 결정(2026-11-17) "실패 등록이 대화도 열기": 실패 등록이 같은 ID 의 도움요청(DELIVERY_FAILURE)을 열고(응답 resultId), 라이더 전달 재개 요청(`POST …/failures/resume-requests`)은 실패 기록·대화·직원 배송 목록(`resumeRequestedAt`)에 남는다. execution 0.14.0.
+- 백오피스(PC 2): 전달 실패 대기 목록에 `resumeRequestedAt` 표시(반려 판단), 사건함 RIDER_HELP 건이 실패 대화와 같은 건임 — 화면 문구만.

@@ -26,3 +26,8 @@
 
 ## §18 배달료 기준
 - 사용자 결정 **"앱 표 그대로"** — 서버 요율표 조회 API·동의 종류(FEE_SCHEDULE)는 만들지 않는다. 앱의 원문 §7.1 표·"실제 금액은 배차 요청마다 표시" 안내 그대로.
+
+## §13 전달 불가 ↔ 지원센터 대화(사용자 결정 "실패 등록이 대화도 열기" — execution 0.14.0, 브랜치 `delivery/failure-help-chat`)
+- `POST …/failures` 가 **같은 ID 의 도움요청(대화)을 함께 연다** — 응답 `resultId` = 도움요청 ID(= 보낸 Idempotency-Key). 대화는 `GET/POST …/help-requests/{resultId}/messages`. **앱은 도움요청을 따로 보내지 않는다**(보내면 운영자 쪽에 두 건). 도움요청 category 는 `DELIVERY_FAILURE`(도움요청 만들기로는 400).
+- **전달 재개 요청**: `POST /deliveries/{id}/failures/resume-requests`(Idempotency-Key·X-Source-System, 본문 `{note?}` 300자) — 실패 등록 중(FAILURE_REPORTED)만, 아니면 409. 대화에 "[전달 재개 요청] …" 메시지가 남고 운영자 대기 목록에 표시된다. 다시 눌러도 그대로. 되돌리는 것은 지원센터 반려 — 결과는 `GET /deliveries/{id}` 상태(PICKED_UP·ARRIVED_AT_CUSTOMER 로 돌아감).
+- 배송 조회 `failure.helpRequestId`·`failure.resumeRequestedAt`. 이 배포 전에 등록한 실패에는 대화가 없다.

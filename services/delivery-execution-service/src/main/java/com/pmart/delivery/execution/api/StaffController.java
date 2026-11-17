@@ -84,7 +84,7 @@ public class StaffController implements StaffApi {
     List<DeliveryRow> page = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(
         new SearchDeliveriesForStaff200Response()
-            .items(page.stream().map(StaffController::delivery).toList())
+            .items(page.stream().map(this::delivery).toList())
             .page(page(more, offset, size, page.size())));
   }
 
@@ -189,8 +189,14 @@ public class StaffController implements StaffApi {
         .resolvedAt(ExecutionViews.time(h.resolvedAt()));
   }
 
-  private static StaffDeliverySummary delivery(DeliveryRow d) {
+  private StaffDeliverySummary delivery(DeliveryRow d) {
+    tools.jackson.databind.JsonNode f =
+        d.failureJson() == null ? null : mapper.readTree(d.failureJson());
     return new StaffDeliverySummary()
+        .resumeRequestedAt(
+            f == null || !f.path("resumeRequestedAt").isString()
+                ? null
+                : java.time.OffsetDateTime.parse(f.path("resumeRequestedAt").asString()))
         .deliveryId(d.deliveryId())
         .version(d.version())
         .type(StaffDeliverySummary.TypeEnum.fromValue(d.type()))

@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
     0.3.0(2026-11-13, 사용자 결정): 전달 실패 = 라이더 등록(FAILURE_REPORTED — 아직 진행 중) → 운영자 확정(FAILED, DeliveryFailed — 배송 종료, 이어지는 회수 배차는 새 배송) 또는 반려(원래 상태로). 도움요청 = 이 서비스에 기록 + DeliveryIncidentRaised(case-service 가 받아 지원센터 사건으로 — 구현 전, caseId 는 그때부터). 수행료 = 수락 당시 금액(dispatch DeliveryAssigned.fee) → 완료 5시간 뒤 확정·지급 예정일 3영업일, 실패·취소는 산정 불가(calculable false). 회수·정정은 아직 501.
     0.4.0(2026-11-15, 백오피스 고객센터·라이더 운영 — 요청서 service-requests/delivery-backoffice-staff-apis.md BOD-1·4·5): 직원 배송 찾기(GET /deliveries — 주문 ID·라이더·상태, 전달 실패 대기는 state=FAILURE_REPORTED), 도움요청 대기 목록(GET /delivery-help-requests), 도움요청 처리함 닫기(…/resolutions — 지원센터 사건함(case R-4)이 생기면 그 사건이 정본). 역할 RIDER_OPS 를 운영자 조회·결정에 더함.
+    0.14.0(2026-11-17, 라이더 앱 요청 §13 — 사용자 "실패 등록이 대화도 열기"): 전달 실패 등록이 같은 ID 의 도움요청(DELIVERY_FAILURE 대화)을 함께 연다(응답 resultId). 라이더 전달 재개 요청 `POST …/failures/resume-requests` — 실패 기록 resumeRequestedAt·대화 메시지, 직원 배송 목록·조회에 표시.
     0.13.0(2026-11-17, 산정 불가 수행료 조정 — 사용자 결정 "라이더 운영·관리자", "귀책에 따라 지급/미지급, 지급이면 거리별 금액", "바로 확정·조정일 + 3영업일"): `GET /rider-earnings/adjustment-queue`·`POST /rider-earnings/{earningId}/adjustments`. RiderEarningRecorded 에 `adjustment`(결과만). 라이더 탈퇴의 EARNING_ADJUSTMENT_PENDING 은 조정 전 산정 불가 전부.
     0.11.0(2026-11-17, 라이더 앱 기록 화면 — 원문 §8.1): **내 운행시간** `GET /riders/me/operating-time`(사용자 결정 "배차 수락하고 전달완료까지", 겹치면 한 번, 날짜별). 배송 조회·내 배달 내역에 `orderNumber`·`mfcName`(배정 때 dispatch 가 실어 줌). 고객 연락 방법에 PHONE_CALL·SMS(고객 전화번호 그대로 — 안심번호 없음).
     0.10.1(2026-11-17, DD-3 맞춤): 배송 조회에 `claimId`·`returnLines`(받을 줄·수량 — 라이더에게 회수 품목). ReturnPickedUp·ReturnDelivered lines 에 claim 이 실은 claimLineId·sku 를 그대로.
@@ -229,6 +230,8 @@ paths:
       summary: 전달 실패 (고객 부재·주소 오류·연락 두절 등; 자동 환불 없음)
       description: |
         실패 후 처리(고객 연락·보관·회수)는 case-service 판단. 재배송은 교환 승인 건만.
+        **지원센터 대화(0.14.0, 2026-11-17 라이더 앱 요청 §13 — 사용자 "실패 등록이 대화도 열기")**: 등록하면 같은 ID(= Idempotency-Key)의 도움요청(category DELIVERY_FAILURE)이 함께 열린다 —
+        응답 `resultId` 가 그 도움요청 ID, 대화는 `…/help-requests/{resultId}/messages`. 앱은 도움요청을 따로 보내지 않는다(사건함에도 한 건). 고객과 다시 연락되면 `…/failures/resume-requests`.
         **고객 반품 회수(CLAIM_RETURN, 0.10.0 — 2026-11-17 사용자 "실패마다 알림, 다시 시도는 반품 쪽")**: 고객에게서 받기 전(ASSIGNED)에만 — 같은 증빙 규칙(사진 + 고객 사유면 연락 2회).
         지원센터·관리자가 확정(`failure-decisions` CONFIRM)하면 FAILED + `ReturnPickupFailed`(DeliveryFailed 아님 — 상품은 고객에게 그대로). 수행료: 고객 사유(부재·연락 두절·주소 오류·거부)면 수락 당시 금액(사용자 "수락 당시 금액 지급"), 그 밖은 산정 불가(지원센터 조정). 받은 뒤 문제는 도움요청.
       operationId: reportFailure
@@ -271,6 +274,37 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /deliveries/{deliveryId}/failures/resume-requests:
+    post:
+      tags: [execution]
+      summary: 전달 재개 요청 — 전달 불가를 알린 뒤 고객과 다시 연락됨 (0.14.0)
+      x-added-in: '2026-11-17'
+      description: |
+        라이더 앱 요청 §13-3(사용자 결정 2026-11-17 "실패 등록이 대화도 열기" — 재개 요청을 구조화된 값으로). 배정 라이더 본인, FAILURE_REPORTED 일 때만(아니면 409).
+        라이더가 직접 되돌리지 않는다 — 지원센터가 `failure-decisions` REJECT 해야 원래 단계로 돌아간다. 요청 시각을 실패 기록(`failure.resumeRequestedAt`)에 남겨
+        운영자 전달 실패 대기 목록(`GET /deliveries?state=FAILURE_REPORTED` 의 `resumeRequestedAt`)·배송 조회에 보이고, 연결된 대화에 라이더 메시지("[전달 재개 요청] …" + note)를 남긴다.
+        이미 요청했으면 그대로(처음 시각). 결과는 `GET /deliveries/{id}` 상태로 확인.
+      operationId: requestFailureResume
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 300, description: 라이더 메모(선택 — 대화에 함께 남는다) }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /deliveries/{deliveryId}/failure-decisions:
     post:
@@ -987,8 +1021,8 @@ components:
         lng: { type: [number, 'null'] }
     HelpCategory:
       type: string
-      description: 원문 §5.4 도움요청 버튼(점포 대기 STORE_WAITING·상태 정정 STATUS_CORRECTION 은 0.3.0 에 더함). 배차취소는 dispatch 배차 취소 API
-      enum: [CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, GOODS_ISSUE, PHOTO_UPLOAD_FAILED, ACCIDENT, APP_ERROR, STORE_WAITING, STATUS_CORRECTION, OTHER]
+      description: 원문 §5.4 도움요청 버튼(점포 대기 STORE_WAITING·상태 정정 STATUS_CORRECTION 은 0.3.0 에 더함). 배차취소는 dispatch 배차 취소 API. DELIVERY_FAILURE(0.14.0)는 실패 등록이 여는 대화 — 도움요청 만들기로는 400
+      enum: [CUSTOMER_UNREACHABLE, ADDRESS_ISSUE, GOODS_ISSUE, PHOTO_UPLOAD_FAILED, ACCIDENT, APP_ERROR, STORE_WAITING, STATUS_CORRECTION, OTHER, DELIVERY_FAILURE]
     HelpResolution:
       type: object
       x-added-in: '2026-11-15'
@@ -1060,6 +1094,7 @@ components:
         pickedUpAt: { type: [string, 'null'], format: date-time }
         completedAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
+        resumeRequestedAt: { type: [string, 'null'], format: date-time, description: '전달 실패 대기 중 라이더가 전달 재개를 요청한 시각(0.14.0) — 반려 판단', x-added-in: '2026-11-17' }
     ExecutionState:
       type: string
       description: |
@@ -1167,6 +1202,8 @@ components:
             decidedBy: { type: string }
             decidedAt: { type: string, format: date-time }
             custody: { type: string, enum: [RIDER, STORE] }
+            helpRequestId: { type: string, description: '함께 열린 지원센터 대화(도움요청) ID(0.14.0) — 이 배포 전 실패 등록은 없음', x-added-in: '2026-11-17' }
+            resumeRequestedAt: { type: string, format: date-time, description: '라이더 전달 재개 요청 시각(0.14.0)', x-added-in: '2026-11-17' }
         incidents:
           type: array
           description: 이 배송의 도움요청(0.3.0)

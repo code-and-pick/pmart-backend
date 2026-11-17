@@ -69,6 +69,12 @@ public class HelpRequestService {
         PmartPrincipal.current()
             .filter(x -> x.type() == PmartPrincipal.PrincipalType.RIDER)
             .orElseThrow(() -> ExecutionService.forbidden("라이더만 도움요청할 수 있습니다."));
+    if ("DELIVERY_FAILURE".equals(category)) {
+      // 전달 불가 대화는 실패 등록이 연다(2026-11-17 §13) — 도움요청으로는 만들지 않는다
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "전달 불가는 실패 등록(POST …/failures)으로 알려 주세요 — 대화도 함께 열립니다.");
+    }
     return idempotency
         .execute(
             new RequestKey(source, requestId, "createHelpRequest", p.subject()),
