@@ -166,7 +166,15 @@ public class ExecutionController implements ExecutionApi {
 
   @Override
   public ResponseEntity<HelpRequest> getHelpRequest(String deliveryId, String requestId) {
-    return ResponseEntity.ok(StaffController.helpRequest(helps.get(deliveryId, requestId), mapper));
+    HelpRequestService.HelpView v = helps.get(deliveryId, requestId);
+    HelpRequest out = StaffController.helpRequest(v, mapper);
+    if (v.staff()) {
+      // DE-2: 직원에게 대화의 마지막 메시지 시각(직원별 읽음은 화면이 기억)
+      var t = helps.messageTimes(deliveryId, requestId);
+      out.lastRiderMessageAt(ExecutionViews.time(t.lastRider()))
+          .lastSupportMessageAt(ExecutionViews.time(t.lastSupport()));
+    }
+    return ResponseEntity.ok(out);
   }
 
   /** 도움요청 대화(0.6.0, 라이더 앱 요청 §11-3). 라이더에게는 상담원 ID 를 보이지 않는다. */
@@ -176,7 +184,7 @@ public class ExecutionController implements ExecutionApi {
     HelpRequestService.Thread t = helps.messages(deliveryId, requestId, after == null ? 0 : after);
     return ResponseEntity.ok(
         new ListHelpRequestMessages200Response()
-            .items(t.messages().stream().map(m -> message(m, t.staff())).toList())
+            .items(t.messages().stream().map(m -> message(m, t.staff(), mapper)).toList())
             .helpState(
                 ListHelpRequestMessages200Response.HelpStateEnum.fromValue(t.help().state())));
   }
@@ -197,11 +205,15 @@ public class ExecutionController implements ExecutionApi {
             req.getBody(),
             req.getPhotoRefs() == null ? List.of() : req.getPhotoRefs());
     return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
-        .body(message(t.messages().get(0), t.staff()));
+        .body(message(t.messages().get(0), t.staff(), mapper));
   }
 
-  private HelpMessage message(ExecutionStore.HelpMessageRow m, boolean staff) {
+  static HelpMessage message(ExecutionStore.HelpMessageRow m, boolean staff, ObjectMapper mapper) {
     return new HelpMessage()
+        .masked(m.maskedAt() != null)
+        .maskedAt(ExecutionViews.time(m.maskedAt()))
+        .maskedBy(staff ? m.maskedBy() : null)
+        .maskReason(staff ? m.maskReason() : null)
         .messageId(m.messageId())
         .seq(m.seq())
         .senderType(HelpMessage.SenderTypeEnum.fromValue(m.senderType()))

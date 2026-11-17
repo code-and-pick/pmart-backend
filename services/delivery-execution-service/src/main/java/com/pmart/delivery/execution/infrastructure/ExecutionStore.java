@@ -605,10 +605,10 @@ public class ExecutionStore {
 
   /** 사건함이 이 도움요청으로 사건을 열었다(DE-CASE) — 사건 번호, 열림이면 처리 중. 다른 사건이 이미 붙어 있으면 바꾸지 않는다. */
   public int linkHelpCase(String deliveryId, String requestId, String caseId) {
+    // DE-2(2026-11-16): 열릴 때는 사건 번호만 — 처리 중은 상담원이 집을 때(CaseAssigned)
     return jdbc.update(
-        "UPDATE help_request SET case_id = ?, state = CASE WHEN state = 'OPEN' THEN 'IN_PROGRESS'"
-            + " ELSE state END WHERE delivery_id = ? AND request_id = ? AND (case_id IS NULL OR"
-            + " case_id = ?)",
+        "UPDATE help_request SET case_id = ? WHERE delivery_id = ? AND request_id = ? AND (case_id"
+            + " IS NULL OR case_id = ?)",
         caseId,
         deliveryId,
         requestId,
@@ -626,13 +626,81 @@ public class ExecutionStore {
         caseId);
   }
 
-  /** 사건함이 닫았던 사건을 다시 열었다(DE-CASE) — 사건함이 닫은 도움요청만 다시 처리 중으로. */
+  /** 사건함이 닫았던 사건을 다시 열었다(DE-CASE) — 사건함이 닫은 도움요청만 다시 접수됨(담당 없음 — DE-2: 집으면 처리 중). */
   public int reopenHelpByCase(String caseId) {
     return jdbc.update(
-        "UPDATE help_request SET state = 'IN_PROGRESS', resolved_at = NULL, resolved_by = NULL,"
+        "UPDATE help_request SET state = 'OPEN', resolved_at = NULL, resolved_by = NULL,"
             + " resolution_note = NULL WHERE case_id = ? AND state = 'RESOLVED' AND resolved_by = ?",
         caseId,
         "case:" + caseId);
+  }
+
+  /** 상담원이 접수 건을 집었다(DE-2) — 접수됨 → 처리 중. */
+  public int assignHelpByCase(String caseId) {
+    return jdbc.update(
+        "UPDATE help_request SET state = 'IN_PROGRESS' WHERE case_id = ? AND state = 'OPEN'",
+        caseId);
+  }
+
+  /** 접수 건이 다른 팀으로 넘어갔다(DE-2) — 지금 팀 기록, 담당이 비므로 처리 중 → 접수됨. */
+  public int transferHelpByCase(String caseId, String toGroup) {
+    return jdbc.update(
+        "UPDATE help_request SET case_group = ?, state = CASE WHEN state = 'IN_PROGRESS' THEN 'OPEN'"
+            + " ELSE state END WHERE case_id = ?",
+        toGroup,
+        caseId);
+  }
+
+  /** 도움요청의 지금 팀(DE-2). 없으면 null(= 지원센터). */
+  public @Nullable String helpGroup(String deliveryId, String requestId) {
+    List<String> r =
+        jdbc.queryForList(
+            "SELECT case_group FROM help_request WHERE delivery_id = ? AND request_id = ?",
+            String.class,
+            deliveryId,
+            requestId);
+    return r.isEmpty() ? null : r.get(0);
+  }
+
+  public boolean helpMessageBelongs(String messageId, String deliveryId, String requestId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM help_message WHERE message_id = ? AND delivery_id = ? AND"
+                + " request_id = ?",
+            Integer.class,
+            messageId,
+            deliveryId,
+            requestId);
+    return n != null && n > 0;
+  }
+
+  /** 대화의 마지막 메시지 시각(DE-2) — 라이더·지원센터 따로. */
+  public record MessageTimes(@Nullable Instant lastRider, @Nullable Instant lastSupport) {}
+
+  public MessageTimes messageTimes(String deliveryId, String requestId) {
+    return jdbc.query(
+        "SELECT max(created_at) FILTER (WHERE sender_type = 'RIDER'), max(created_at) FILTER (WHERE"
+            + " sender_type = 'SUPPORT') FROM help_message WHERE delivery_id = ? AND request_id = ?",
+        rs -> {
+          rs.next();
+          Timestamp a = rs.getTimestamp(1);
+          Timestamp b = rs.getTimestamp(2);
+          return new MessageTimes(
+              a == null ? null : a.toInstant(), b == null ? null : b.toInstant());
+        },
+        deliveryId,
+        requestId);
+  }
+
+  /** 메시지 가림(DE-2) — 글을 지우고 누가·언제·왜를 남긴다. 이미 가렸으면 그대로(0). */
+  public int maskHelpMessage(String messageId, String by, String reason, Instant at) {
+    return jdbc.update(
+        "UPDATE help_message SET body = NULL, masked_at = ?, masked_by = ?, mask_reason = ? WHERE"
+            + " message_id = ? AND masked_at IS NULL",
+        ts(at),
+        by,
+        reason,
+        messageId);
   }
 
   /** 도움요청 대화 한 줄(0.6.0). */
@@ -641,9 +709,12 @@ public class ExecutionStore {
       String messageId,
       String senderType,
       String senderId,
-      String body,
+      @Nullable String body,
       String photoRefsJson,
-      Instant createdAt) {}
+      Instant createdAt,
+      @Nullable Instant maskedAt,
+      @Nullable String maskedBy,
+      @Nullable String maskReason) {}
 
   public HelpMessageRow insertHelpMessage(
       String messageId,
@@ -668,12 +739,22 @@ public class ExecutionStore {
             photoRefsJson,
             ts(now));
     return new HelpMessageRow(
-        seq == null ? 0 : seq, messageId, senderType, senderId, body, photoRefsJson, now);
+        seq == null ? 0 : seq,
+        messageId,
+        senderType,
+        senderId,
+        body,
+        photoRefsJson,
+        now,
+        null,
+        null,
+        null);
   }
 
   public List<HelpMessageRow> helpMessages(String deliveryId, String requestId, long after) {
     return jdbc.query(
-        "SELECT seq, message_id, sender_type, sender_id, body, photo_refs::text, created_at FROM"
+        "SELECT seq, message_id, sender_type, sender_id, body, photo_refs::text, created_at,"
+            + " masked_at, masked_by, mask_reason FROM"
             + " help_message WHERE delivery_id = ? AND request_id = ? AND seq > ? ORDER BY seq LIMIT"
             + " 200",
         (rs, n) ->
@@ -684,7 +765,10 @@ public class ExecutionStore {
                 rs.getString(4),
                 rs.getString(5),
                 rs.getString(6),
-                rs.getTimestamp(7).toInstant()),
+                rs.getTimestamp(7).toInstant(),
+                rs.getTimestamp(8) == null ? null : rs.getTimestamp(8).toInstant(),
+                rs.getString(9),
+                rs.getString(10)),
         deliveryId,
         requestId,
         after);
@@ -693,7 +777,8 @@ public class ExecutionStore {
   public Optional<HelpMessageRow> helpMessage(String messageId) {
     return jdbc
         .query(
-            "SELECT seq, message_id, sender_type, sender_id, body, photo_refs::text, created_at FROM"
+            "SELECT seq, message_id, sender_type, sender_id, body, photo_refs::text, created_at,"
+                + " masked_at, masked_by, mask_reason FROM"
                 + " help_message WHERE message_id = ?",
             (rs, n) ->
                 new HelpMessageRow(
@@ -703,7 +788,10 @@ public class ExecutionStore {
                     rs.getString(4),
                     rs.getString(5),
                     rs.getString(6),
-                    rs.getTimestamp(7).toInstant()),
+                    rs.getTimestamp(7).toInstant(),
+                    rs.getTimestamp(8) == null ? null : rs.getTimestamp(8).toInstant(),
+                    rs.getString(9),
+                    rs.getString(10)),
             messageId)
         .stream()
         .findFirst();

@@ -131,6 +131,20 @@ public class StaffController implements StaffApi {
             mapper));
   }
 
+  /** 대화 메시지 가림(DE-2, 관리자). */
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.HelpMessage>
+      maskHelpRequestMessage(
+          String deliveryId,
+          String requestId,
+          String messageId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.execution.api.generated.model.MaskHelpRequestMessageRequest body) {
+    HelpRequestService.Thread t = helps.mask(deliveryId, requestId, messageId, body.getReason());
+    return ResponseEntity.ok(ExecutionController.message(t.messages().get(0), true, mapper));
+  }
+
   /** 도움요청 단건 응답 — 라이더에게는 처리한 직원·메모를 숨긴다. */
   static HelpRequest helpRequest(HelpRequestService.HelpView v, ObjectMapper mapper) {
     ExecutionStore.HelpRow h = v.help();

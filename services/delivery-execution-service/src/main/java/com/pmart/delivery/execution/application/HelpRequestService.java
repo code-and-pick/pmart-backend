@@ -220,8 +220,11 @@ public class HelpRequestService {
                     if (!Access.operatorCanSee(p, mfcId)) {
                       throw PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다.");
                     }
-                    if (!Access.operatorCanDecide(p, mfcId)) {
-                      throw ExecutionService.forbidden("도움요청 대화에 답할 권한이 없습니다(센터 관리자·고객센터·라이더 운영).");
+                    // DE-2(2026-11-16): 답장은 접수 건 규칙 — 지원센터(RIDER_OPS)·관리자, 관리자 팀으로 넘긴 건은 관리자만.
+                    // 상담원(CS_AGENT)은 보기만, 센터 관리자는 답장 없음
+                    if (!canReply(p, store.helpGroup(deliveryId, requestId))) {
+                      throw ExecutionService.forbidden(
+                          "도움요청 답장은 지원센터(RIDER_OPS)·관리자만 할 수 있습니다(관리자 팀으로 넘긴 건은 관리자만).");
                     }
                     if (!photoRefs.isEmpty()) {
                       throw new PmartException(
@@ -268,6 +271,48 @@ public class HelpRequestService {
         v.help(),
         store.helpMessage(messageId).map(List::of).orElse(List.of()),
         p.type() != PmartPrincipal.PrincipalType.RIDER);
+  }
+
+  /** 답장 권한(DE-2). 관리자는 늘, 지원센터는 관리자 팀(ORDER_OPS)으로 넘기지 않은 건만. */
+  static boolean canReply(PmartPrincipal p, @org.jspecify.annotations.Nullable String group) {
+    if (p.type() != PmartPrincipal.PrincipalType.OPERATOR) {
+      return false;
+    }
+    if (p.hasRole("OPERATOR_ADMIN")) {
+      return true;
+    }
+    return p.hasRole("RIDER_OPS") && !"ORDER_OPS".equals(group);
+  }
+
+  /** 직원용 마지막 메시지 시각(DE-2). 권한은 {@link #get} 이 이미 판정. */
+  public ExecutionStore.MessageTimes messageTimes(String deliveryId, String requestId) {
+    return store.messageTimes(deliveryId, requestId);
+  }
+
+  /** 메시지 가림(DE-2 — 관리자만, 사유 2~500자). 글을 지우고 누가·언제·왜를 남긴다(라이더에게도 가려진다). 이미 가렸으면 그대로. 사유는 로그 금지. */
+  public Thread mask(String deliveryId, String requestId, String messageId, String reason) {
+    PmartPrincipal p =
+        PmartPrincipal.current().orElseThrow(() -> ExecutionService.forbidden("인증이 필요합니다."));
+    if (p.type() != PmartPrincipal.PrincipalType.OPERATOR || !p.hasRole("OPERATOR_ADMIN")) {
+      throw ExecutionService.forbidden("메시지 가림은 관리자(OPERATOR_ADMIN)만 할 수 있습니다.");
+    }
+    String why = reason == null ? "" : reason.strip();
+    if (why.length() < 2 || why.length() > 500) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "가리는 사유를 2~500자로 적어 주세요.");
+    }
+    get(deliveryId, requestId); // 볼 수 있는 도움요청인지
+    ExecutionStore.HelpMessageRow m =
+        store
+            .helpMessage(messageId)
+            .filter(x -> store.helpMessageBelongs(messageId, deliveryId, requestId))
+            .orElseThrow(() -> PmartException.notFound("HELP_MESSAGE_NOT_FOUND", "메시지가 없습니다."));
+    int n = store.maskHelpMessage(m.messageId(), p.subject(), why, clock.instant());
+    log.info("배송 {} 도움요청 {} 메시지 가림 {}건", deliveryId, requestId, n);
+    return new Thread(
+        get(deliveryId, requestId).help(),
+        store.helpMessage(messageId).map(List::of).orElse(List.of()),
+        true);
   }
 
   /**

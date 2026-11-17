@@ -319,6 +319,7 @@ POST /api/v1/deliveries/{deliveryId}/failure-decisions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/failures RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages OPERATOR,RIDER
+POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/messages/{messageId}/maskings OPERATOR
 POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/resolutions OPERATOR
 POST /api/v1/deliveries/{deliveryId}/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER

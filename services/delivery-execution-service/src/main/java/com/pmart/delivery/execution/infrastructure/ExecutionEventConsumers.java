@@ -32,7 +32,13 @@ class ExecutionEventConsumers {
   }
 
   private static final java.util.Set<String> CASE_TYPES =
-      java.util.Set.of("MisdeliveryConfirmed", "CaseOpened", "CaseClosed", "CaseReopened");
+      java.util.Set.of(
+          "MisdeliveryConfirmed",
+          "CaseOpened",
+          "CaseClosed",
+          "CaseReopened",
+          "CaseAssigned",
+          "CaseTransferred");
 
   @Bean
   PmartEventConsumer fulfillmentEvents(EventConsumers consumers, ExecutionEventHandler handler) {

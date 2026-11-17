@@ -658,6 +658,21 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .getStatusCode()
                 .value())
         .isEqualTo(403);
+    // DE-2: 상담원은 보기만, 센터 관리자는 답장 없음
+    String cs = TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of());
+    String sup = TestJwt.operator("OP-SV", List.of("MFC_SUPERVISOR"), List.of("MFC-1"));
+    assertThat(
+            staffPost("/deliveries/" + id + "/" + thread, cs, Map.of("body", "?"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(
+            staffPost("/deliveries/" + id + "/" + thread, sup, Map.of("body", "?"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(staffGet("/deliveries/" + id + "/" + thread, cs).getStatusCode().value())
+        .isEqualTo(200);
     ResponseEntity<String> reply =
         staffPost("/deliveries/" + id + "/" + thread, ops, Map.of("body", "정문 왼쪽 계단으로 가세요"));
     assertThat(reply.getStatusCode().value()).isEqualTo(201);
@@ -686,6 +701,30 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(fresh.path("items").get(0).path("body").asString()).isEqualTo("정문 왼쪽 계단으로 가세요");
     assertThat(fresh.path("items").get(0).path("senderId").isNull()).isTrue();
     assertThat(fresh.path("helpState").asString()).isEqualTo("OPEN");
+    // DE-2: 직원에게 마지막 메시지 시각, 라이더에게는 없음
+    JsonNode staffHelp = body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, ops));
+    assertThat(staffHelp.path("lastRiderMessageAt").isString()).isTrue();
+    assertThat(staffHelp.path("lastSupportMessageAt").isString()).isTrue();
+    JsonNode riderHelp =
+        body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, TestJwt.rider(rider)));
+    assertThat(riderHelp.path("lastRiderMessageAt").isString()).isFalse();
+    // DE-2: 관리자 가림 — 지원센터 403, 사유 없으면 400, 라이더에게도 가려 보임
+    String firstId = body(first).path("messageId").asString();
+    String maskUri = "/deliveries/" + id + "/" + thread + "/" + firstId + "/maskings";
+    String admin = TestJwt.operator("OP-AD", List.of("OPERATOR_ADMIN"), List.of());
+    assertThat(staffPost(maskUri, ops, Map.of("reason", "전화번호")).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(staffPost(maskUri, admin, Map.of("reason", "x")).getStatusCode().value())
+        .isEqualTo(400);
+    JsonNode masked = body(staffPost(maskUri, admin, Map.of("reason", "고객 전화번호가 적힘")));
+    assertThat(masked.path("masked").asBoolean()).isTrue();
+    assertThat(masked.path("body").isNull()).isTrue();
+    assertThat(masked.path("maskedBy").asString()).isEqualTo("OP-AD");
+    JsonNode riderThread = body(staffGet("/deliveries/" + id + "/" + thread, TestJwt.rider(rider)));
+    assertThat(riderThread.path("items").get(0).path("masked").asBoolean()).isTrue();
+    assertThat(riderThread.path("items").get(0).path("body").isNull()).isTrue();
+    assertThat(riderThread.path("items").get(0).path("maskReason").isNull()).isTrue();
+    assertThat(riderThread.toString()).doesNotContain("건물 입구를 못 찾겠어요");
     assertThat(
             staffGet("/deliveries/" + id + "/" + thread, TestJwt.rider("RDR-OTHER"))
                 .getStatusCode()
@@ -784,7 +823,39 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
       Thread.sleep(200);
     }
     assertThat(help.path("caseId").asString()).isEqualTo(caseId);
+    // DE-2: 열리기만 하면 접수됨 — 상담원이 집을 때 처리 중
+    assertThat(help.path("state").asString()).isEqualTo("OPEN");
+    caseEvent(
+        "CaseAssigned",
+        caseId,
+        2,
+        Map.of("caseId", caseId, "type", "RIDER_HELP", "assignee", "OP-RO"));
+    help = awaitHelpState(id, requestId, ops, "IN_PROGRESS");
     assertThat(help.path("state").asString()).isEqualTo("IN_PROGRESS");
+    // 관리자 팀으로 넘기면 담당이 비어 접수됨, 답장은 관리자만
+    caseEvent(
+        "CaseTransferred",
+        caseId,
+        3,
+        Map.of(
+            "caseId",
+            caseId,
+            "type",
+            "RIDER_HELP",
+            "fromGroup",
+            "DELIVERY_OPS",
+            "toGroup",
+            "ORDER_OPS",
+            "reason",
+            "x"));
+    help = awaitHelpState(id, requestId, ops, "OPEN");
+    assertThat(help.path("state").asString()).isEqualTo("OPEN");
+    String thread = "/deliveries/" + id + "/help-requests/" + requestId + "/messages";
+    assertThat(staffPost(thread, ops, Map.of("body", "지원센터 답장")).getStatusCode().value())
+        .isEqualTo(403);
+    String admin = TestJwt.operator("OP-AD", List.of("OPERATOR_ADMIN"), List.of());
+    assertThat(staffPost(thread, admin, Map.of("body", "관리자 답장")).getStatusCode().value())
+        .isEqualTo(201);
     ResponseEntity<String> blocked = resolve(id, requestId, ops, "K-" + UUID.randomUUID());
     assertThat(blocked.getStatusCode().value()).isEqualTo(409);
     assertThat(body(blocked).path("code").asString()).isEqualTo("HELP_REQUEST_HAS_CASE");
@@ -836,14 +907,35 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                         Instant.now().toString()))
                 .buildJson())
         .join();
+    // DE-2: 다시 열리면 담당이 없으니 접수됨
+    help = awaitHelpState(id, requestId, ops, "OPEN");
+    assertThat(help.path("state").asString()).isEqualTo("OPEN");
+  }
+
+  void caseEvent(String type, String caseId, int version, Map<String, Object> payload) {
+    kafka
+        .send(
+            "platform.case.v1",
+            caseId,
+            EventEnvelopeFixtures.envelope(type)
+                .from("case-service")
+                .aggregate("Case", caseId, version)
+                .payload(payload)
+                .buildJson())
+        .join();
+  }
+
+  JsonNode awaitHelpState(String id, String requestId, String token, String state)
+      throws InterruptedException {
+    JsonNode help = null;
     for (int i = 0; i < 100; i++) {
-      help = body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, ops));
-      if ("IN_PROGRESS".equals(help.path("state").asString())) {
-        break;
+      help = body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, token));
+      if (state.equals(help.path("state").asString())) {
+        return help;
       }
       Thread.sleep(200);
     }
-    assertThat(help.path("state").asString()).isEqualTo("IN_PROGRESS");
+    return help;
   }
 
   ResponseEntity<String> resolve(String id, String requestId, String token, String key) {

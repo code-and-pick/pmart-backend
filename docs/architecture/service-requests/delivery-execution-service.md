@@ -29,3 +29,4 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
   4. **"처리 중(IN_PROGRESS)" 시점**: 지금(DE-CASE)은 접수 건이 **열리는 순간**. → **상담원이 집을 때**(`CaseAssigned`)로 — 열렸지만 아무도 보지 않은 상태를 라이더에게 "처리 중"이라 하지 않는다(라이더 앱 요청서 표와도 맞음). 열림 ~ 집기 사이는 지금의 OPEN 그대로, 사건 번호는 열릴 때 붙인다.
 - **받는 쪽(backoffice)**: 2 가 나오면 bff 사건함(`case-inbox`) 목록에 RIDER_HELP 건의 `lastRiderMessageAt` 을 붙인다. 웹 화면은 #60 병합 뒤.
 - 급한 순서: 1(권한 — 넘긴 건·상담원 답장이 지금 열려 있음) → 4 → 2 → 3.
+- **회신(PC 5, 2026-11-17 — execution 0.8.0, V10, 브랜치 `delivery/de-2-help-chat`)**: 넷 다 구현. 1 답장 = RIDER_OPS·OPERATOR_ADMIN(넘긴 건 관리자만 — `CaseTransferred.toGroup` 구독) · 4 처리 중 = `CaseAssigned`(열림·다시 열림·이관은 OPEN) · 2 직원 도움요청 조회 `lastRiderMessageAt`·`lastSupportMessageAt` · 3 `POST …/messages/{messageId}/maskings`(OPERATOR_ADMIN, 사유 필수 — 응답·목록 `masked`·`maskedAt`, 직원에게만 `maskedBy`·`maskReason`, body null). 설정 바인딩 변경 없음(caseEvents 그대로).

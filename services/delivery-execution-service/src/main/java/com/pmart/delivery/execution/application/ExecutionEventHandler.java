@@ -72,7 +72,8 @@ public class ExecutionEventHandler {
   public void onCaseEvent(EventEnvelope e) {
     switch (e.eventType()) {
       case "MisdeliveryConfirmed" -> onCase(e);
-      case "CaseOpened", "CaseClosed", "CaseReopened" -> onHelpCase(e);
+      case "CaseOpened", "CaseClosed", "CaseReopened", "CaseAssigned", "CaseTransferred" ->
+          onHelpCase(e);
       default -> {}
     }
   }
@@ -91,7 +92,20 @@ public class ExecutionEventHandler {
       return;
     }
     if ("CaseReopened".equals(e.eventType())) {
-      log.info("사건 {} 다시 열림 → 도움요청 {}건 처리 중", caseId, store.reopenHelpByCase(caseId));
+      log.info("사건 {} 다시 열림 → 도움요청 {}건 접수됨", caseId, store.reopenHelpByCase(caseId));
+      return;
+    }
+    if ("CaseAssigned".equals(e.eventType())) {
+      // DE-2: 상담원이 집을 때 처리 중
+      log.info("사건 {} 담당 지정 → 도움요청 {}건 처리 중", caseId, store.assignHelpByCase(caseId));
+      return;
+    }
+    if ("CaseTransferred".equals(e.eventType())) {
+      String toGroup = p.path("toGroup").asString("");
+      if (!toGroup.isBlank()) {
+        log.info(
+            "사건 {} 이관 {} → 도움요청 {}건", caseId, toGroup, store.transferHelpByCase(caseId, toGroup));
+      }
       return;
     }
     if ("CaseClosed".equals(e.eventType())) {
