@@ -150,6 +150,23 @@ public class NotificationService {
     }
     switch (e.eventType()) {
       case "PickupCompleted" -> notify(e, null, orderId, Notices.pickedUp(orderId), "");
+      // 고객 반품 회수(2026-11-17 — 사용자 "추가하면 좋은 기능": 회수 배정·회수함·회수 못 함). 오배송 회수 등 다른 목적은 알리지 않는다
+      case "DeliveryCreated" -> {
+        if ("CLAIM_RETURN".equals(text(e.payload(), "purpose"))) {
+          notify(e, null, orderId, Notices.returnPickupDispatching(orderId), "");
+        }
+      }
+      case "ReturnPickedUp" -> {
+        if ("CLAIM_RETURN".equals(text(e.payload(), "purpose"))) {
+          notify(e, null, orderId, Notices.returnPickedUp(orderId), "");
+        }
+      }
+      case "ReturnPickupFailed" -> {
+        // 고객 사정(부재·연락 두절 등)으로 못 받은 때만 — 전달 전 거절(ORIGIN_NOT_DELIVERED) 같은 시스템 사유는 고객센터가 안내
+        if (e.payload().path("customerReason").asBoolean(false)) {
+          notify(e, null, orderId, Notices.returnPickupMissed(orderId), "");
+        }
+      }
       case "DeliveryCompleted" -> notify(e, null, orderId, Notices.delivered(orderId), "");
       case "RedeliveryPaymentRequired" ->
           notify(

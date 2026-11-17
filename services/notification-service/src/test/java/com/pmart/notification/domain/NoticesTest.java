@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Test;
 class NoticesTest {
 
   @Test
+  void returnPickupNoticesPointToOrderWithoutPromisingRefundTime() {
+    assertThat(Notices.returnPickedUp("ORD-1").destinationRef()).isEqualTo("ORD-1");
+    assertThat(Notices.returnPickedUp("ORD-1").body()).contains("확인한 뒤 환불");
+    assertThat(Notices.returnPickupMissed("ORD-1").title()).isEqualTo("반품 상품을 회수하지 못했어요");
+    assertThat(Notices.returnPickupDispatching("ORD-1").destinationType()).isEqualTo("ORDER");
+  }
+
+  @Test
   void earningAdjustedShowsAmountAndDateOnlyWhenPaid() {
     var paid = Notices.earningAdjusted("DLV-1", true, 3900L, "2026-11-20");
     assertThat(paid.body()).contains("3,900원").contains("11월 20일");

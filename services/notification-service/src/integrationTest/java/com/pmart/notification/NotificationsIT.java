@@ -327,6 +327,141 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
   }
 
   /** N-3(ADR-0065): 오배송 다시 배송비 결제 필요 → 주문 소유자 알림함(결제 분류, 주문 상세로). */
+  /** 고객 반품 회수(2026-11-17): 배정 중·회수함·고객 사정 회수 실패만 알린다 — 시스템 거절·오배송 회수·일반 배송 생성은 알리지 않는다. */
+  @Test
+  void claimReturnPickupNotifiesCustomer() throws Exception {
+    String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(orderId, me);
+    String token = TestJwt.customer(me);
+    String now = Instant.now().toString();
+    String rd = "DLV-CR-" + orderId;
+    // 알리지 않는 것: 일반 배송 생성, 오배송 회수 받음, 시스템 거절
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryCreated",
+        "Delivery",
+        "DLV-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-" + orderId,
+            "orderId",
+            orderId,
+            "shipmentId",
+            "SHP-1",
+            "type",
+            "FORWARD",
+            "mfcId",
+            "MFC-1",
+            "dropAddressRef",
+            "order:" + orderId));
+    publish(
+        "delivery.delivery.v1",
+        "ReturnPickedUp",
+        "Delivery",
+        "DLV-RCV-" + orderId,
+        m(
+            "returnPickupId",
+            "DLV-RCV-" + orderId,
+            "deliveryId",
+            "DLV-RCV-" + orderId,
+            "orderId",
+            orderId,
+            "purpose",
+            "MISDELIVERY_RECOVERY",
+            "pickedUpAt",
+            now,
+            "lines",
+            List.of(m("orderLineId", "L-1", "qty", 1))));
+    publish(
+        "delivery.delivery.v1",
+        "ReturnPickupFailed",
+        "Delivery",
+        rd + "-x",
+        m(
+            "deliveryId",
+            rd + "-x",
+            "claimId",
+            "CLM-1",
+            "orderId",
+            orderId,
+            "reason",
+            "ORIGIN_NOT_DELIVERED",
+            "customerReason",
+            false,
+            "failedAt",
+            now));
+    // 알리는 것
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryCreated",
+        "Delivery",
+        rd,
+        m(
+            "deliveryId",
+            rd,
+            "orderId",
+            orderId,
+            "shipmentId",
+            "CLR-1",
+            "type",
+            "RETURN",
+            "purpose",
+            "CLAIM_RETURN",
+            "claimId",
+            "CLM-1",
+            "mfcId",
+            "MFC-1",
+            "dropAddressRef",
+            "mfc:MFC-1"));
+    publish(
+        "delivery.delivery.v1",
+        "ReturnPickupFailed",
+        "Delivery",
+        rd,
+        m(
+            "deliveryId",
+            rd,
+            "claimId",
+            "CLM-1",
+            "orderId",
+            orderId,
+            "reason",
+            "CUSTOMER_ABSENT",
+            "customerReason",
+            true,
+            "failedAt",
+            now));
+    publish(
+        "delivery.delivery.v1",
+        "ReturnPickedUp",
+        "Delivery",
+        rd + "-2",
+        m(
+            "returnPickupId",
+            rd + "-2",
+            "deliveryId",
+            rd + "-2",
+            "orderId",
+            orderId,
+            "claimId",
+            "CLM-1",
+            "purpose",
+            "CLAIM_RETURN",
+            "pickedUpAt",
+            now,
+            "lines",
+            List.of(m("orderLineId", "L-1", "qty", 1))));
+    Res inbox =
+        await(
+            () -> send("GET", token, "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 3);
+    List<String> titles =
+        inbox.body().path("items").valueStream().map(n -> n.path("title").asString()).toList();
+    assertThat(titles)
+        .containsExactlyInAnyOrder("반품 회수 기사를 배정하고 있어요", "반품 상품을 회수하지 못했어요", "반품 상품을 회수했어요");
+  }
+
   @Test
   void redeliveryPaymentRequiredNotifiesOrderOwner() throws Exception {
     String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);

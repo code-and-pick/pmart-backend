@@ -73,6 +73,39 @@ public final class Notices {
         orderId);
   }
 
+  /** 고객 반품 회수 배송이 생김(2026-11-17) — 근처 기사를 찾는 중. */
+  public static Notice returnPickupDispatching(String orderId) {
+    return new Notice(
+        "RETURN_PICKUP_DISPATCHING",
+        DELIVERY,
+        "반품 회수 기사를 배정하고 있어요",
+        "반품 상품을 받으러 갈 기사를 찾고 있어요. 상품을 문 앞 등 약속한 곳에 준비해 주세요.",
+        "ORDER",
+        orderId);
+  }
+
+  /** 고객 반품 상품을 기사가 받음(2026-11-17). 환불은 MFC 검수 뒤. */
+  public static Notice returnPickedUp(String orderId) {
+    return new Notice(
+        "RETURN_PICKED_UP",
+        DELIVERY,
+        "반품 상품을 회수했어요",
+        "기사가 반품 상품을 받았어요. 매장에서 상품을 확인한 뒤 환불을 진행해요.",
+        "ORDER",
+        orderId);
+  }
+
+  /** 고객 사정으로 회수하지 못함(2026-11-17). 다시 방문·연락은 반품 처리 쪽이 정한다 — 약속하지 않는다. */
+  public static Notice returnPickupMissed(String orderId) {
+    return new Notice(
+        "RETURN_PICKUP_MISSED",
+        DELIVERY,
+        "반품 상품을 회수하지 못했어요",
+        "기사가 방문했지만 상품을 받지 못했어요. 다시 방문할지 곧 안내해 드릴게요.",
+        "ORDER",
+        orderId);
+  }
+
   public static Notice delivered(String orderId) {
     return new Notice(
         "DELIVERY_COMPLETED",
