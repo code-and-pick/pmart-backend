@@ -4,6 +4,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
@@ -204,5 +205,36 @@ class CaseInboxViewIT {
     assertThat(r.status()).isEqualTo(200);
     assertThat(r.body().path("items")).isEmpty();
     assertThat(r.body().path("unavailableSources").toString()).contains("case-service");
+  }
+
+  /** 0.9.3: 토큰 만료(401)는 401 로, 장애 난 연결 원천은 남은 건에서 부르지 않음. */
+  @Test
+  void expiredTokenIs401AndBrokenLinkedSourceIsCalledOnce() {
+    cases.stubFor(WireMock.get(urlPathEqualTo("/api/v1/cases/x")).willReturn(json(200, "{}")));
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .withQueryParam("state", equalTo("EXPIRED"))
+            .willReturn(json(401, "{\"code\":\"UNAUTHENTICATED\"}")));
+    assertThat(inbox("state=EXPIRED").status()).as("다시 로그인 안내가 되게").isEqualTo(401);
+
+    execution.stubFor(
+        WireMock.get(urlPathMatching("/api/v1/deliveries/.+"))
+            .willReturn(json(503, "{\"code\":\"DEPENDENCY_UNAVAILABLE\"}")));
+    Res r = inbox("");
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().path("unavailableSources").toString())
+        .contains("delivery-execution-service");
+    execution.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/deliveries/DLV-R")));
+    execution.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/deliveries/DLV-S")));
+    assertThat(
+            r.body()
+                .path("items")
+                .get(1)
+                .path("linked")
+                .get(1)
+                .path("source")
+                .path("confidence")
+                .asString())
+        .isEqualTo("UNKNOWN");
   }
 }

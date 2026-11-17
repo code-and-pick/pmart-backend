@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.9.1
+  version: 0.9.3
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -169,6 +169,7 @@ paths:
         - **0.6.0(2026-11-17 — PC 5 DE-2 반영)**: 라이더 도움요청 사건(kind RIDER_HELP, refs deliveryId·requestId)은 execution `GET /deliveries/{deliveryId}/help-requests/{requestId}` 를 읽어
           `linked` 에 kind HELP_REQUEST(state = 도움요청 상태, lastRiderMessageAt·lastSupportMessageAt)를 더한다. "새 메시지"(라이더가 지원센터 뒤에 썼는지·직원별 읽음)는 화면이 두 시각으로 판단한다(bff 는 해석하지 않음).
         - 역할: 직원이면 누구나 부를 수 있고 case 의 판정(403·보이는 범위)을 그대로 따른다. case 가 응답하지 않으면 200 + 빈 items + unavailableSources.
+        - **0.9.3**: case 401(토큰 만료)은 401 UNAUTHENTICATED(다시 로그인), 400 만 조건 오류, 그 밖 4xx 는 상태 그대로. 연결 원천(배송·주문·도움요청)이 장애(연결 실패·결과 모름)면 이 요청의 남은 건에서는 부르지 않고 그 칸 UNKNOWN(4xx 는 건마다 따로).
         - 연결 원천 실패·403(예: 그 직원이 주문을 못 보는 역할)은 그 칸만 state null·confidence UNKNOWN 이고 unavailableSources 에 원천 이름. 404 는 state null·freshness CURRENT(없음).
         - size 는 최대 50(연결 조회가 사건 수만큼 늘어서). 개인정보 없음 — 사건 summary 는 case 가 원문 없이 만든 한 줄.
       operationId: getCaseInboxView

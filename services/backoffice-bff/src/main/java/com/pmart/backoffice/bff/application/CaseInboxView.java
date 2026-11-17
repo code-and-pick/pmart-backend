@@ -17,6 +17,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import tools.jackson.databind.JsonNode;
@@ -67,6 +68,8 @@ public class CaseInboxView {
     Instant now = clock.instant();
     Set<Source> used = EnumSet.of(Source.CASE);
     Set<Source> failed = EnumSet.noneOf(Source.class);
+    // 0.9.3: 장애(연결 실패·결과 모름)가 난 원천 — 남은 건에서 부르지 않는다. 4xx(권한 등)는 건마다 다를 수 있어 넣지 않음
+    Set<Source> broken = EnumSet.noneOf(Source.class);
 
     Map<String, Object> q = new LinkedHashMap<>();
     put(q, "state", f.state());
@@ -84,10 +87,20 @@ public class CaseInboxView {
     try {
       page = clients.get(Source.CASE, token, "/cases", Map.of(), q);
     } catch (HttpClientErrorException e) {
-      // 사건함의 주 원천 — 권한·입력 거절은 그대로 돌려준다(빈 목록으로 바꾸지 않음)
+      // 사건함의 주 원천 — 권한·입력 거절은 그대로 돌려준다(빈 목록으로 바꾸지 않음). 0.9.3: 401 은 401(다시 로그인), 400 만 조건 오류
+      int sc = e.getStatusCode().value();
+      if (sc == 401) {
+        throw new PmartException(
+            "UNAUTHENTICATED", HttpStatus.UNAUTHORIZED, "다시 로그인하세요.", false, List.of());
+      }
+      if (sc == 403) {
+        throw new PmartException(ErrorCode.FORBIDDEN, "사건함을 볼 권한이 없습니다.");
+      }
+      if (sc == 400) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "사건함 조건이 올바르지 않습니다.");
+      }
       throw new PmartException(
-          e.getStatusCode().value() == 403 ? ErrorCode.FORBIDDEN : ErrorCode.VALIDATION_FAILED,
-          e.getStatusCode().value() == 403 ? "사건함을 볼 권한이 없습니다." : "사건함 조건이 올바르지 않습니다.");
+          "CASE_SOURCE_REJECTED", HttpStatus.valueOf(sc), "사건함 원천이 거절했습니다.", false, List.of());
     } catch (PmartException e) {
       log.warn("사건함: case-service 실패 — {}", e.getClass().getSimpleName());
       failed.add(Source.CASE);
@@ -129,7 +142,8 @@ public class CaseInboxView {
           ids(c, "DELIVERY", Set.of("deliveryId", "recoveryDeliveryId", "reshipmentDeliveryId"))) {
         used.add(Source.EXECUTION);
         if (!deliveryOk.containsKey(d)) {
-          JsonNode n = fetch(token, Source.EXECUTION, "/deliveries/{id}", d, failed, deliveryOk, d);
+          JsonNode n =
+              fetch(token, Source.EXECUTION, "/deliveries/{id}", d, failed, broken, deliveryOk, d);
           if (n != null) {
             deliveries.put(d, n);
           }
@@ -147,7 +161,8 @@ public class CaseInboxView {
       for (String o : ids(c, "ORDER", Set.of("orderId"))) {
         used.add(Source.ORDER);
         if (!orderOk.containsKey(o)) {
-          JsonNode n = fetch(token, Source.ORDER, "/orders/lookups/{id}", o, failed, orderOk, o);
+          JsonNode n =
+              fetch(token, Source.ORDER, "/orders/lookups/{id}", o, failed, broken, orderOk, o);
           if (n != null) {
             orders.put(o, n);
           }
@@ -161,7 +176,7 @@ public class CaseInboxView {
       if ("RIDER_HELP".equals(text(c, "kind")) && helpDelivery != null && helpRequest != null) {
         used.add(Source.EXECUTION);
         Map<String, Boolean> ok = new HashMap<>();
-        JsonNode h = fetchHelp(token, helpDelivery, helpRequest, failed, ok);
+        JsonNode h = fetchHelp(token, helpDelivery, helpRequest, failed, broken, ok);
         Map<String, Object> e =
             linkedEntry(
                 "HELP_REQUEST", helpRequest, h, "state", Source.EXECUTION, ok.get("h"), now);
@@ -204,8 +219,14 @@ public class CaseInboxView {
       String path,
       String id,
       Set<Source> failed,
+      Set<Source> broken,
       Map<String, Boolean> ok,
       String key) {
+    if (broken.contains(source)) {
+      // 0.9.3: 이 요청에서 한 번 실패한 원천은 남은 건에서 부르지 않는다(멈춘 원천 × 건 수만큼 기다리지 않게)
+      ok.put(key, false);
+      return null;
+    }
     try {
       JsonNode n = clients.get(source, token, path, Map.of("id", id), Map.of());
       ok.put(key, true);
@@ -216,6 +237,9 @@ public class CaseInboxView {
     } catch (HttpClientErrorException | PmartException e) {
       log.warn("사건함: {} 연결 조회 실패 — {}", source.system, e.getClass().getSimpleName());
       failed.add(source);
+      if (e instanceof PmartException) {
+        broken.add(source);
+      }
       ok.put(key, false);
       return null;
     }
@@ -227,7 +251,12 @@ public class CaseInboxView {
       String deliveryId,
       String requestId,
       Set<Source> failed,
+      Set<Source> broken,
       Map<String, Boolean> ok) {
+    if (broken.contains(Source.EXECUTION)) {
+      ok.put("h", false);
+      return null;
+    }
     try {
       JsonNode n =
           clients.get(
@@ -244,6 +273,9 @@ public class CaseInboxView {
     } catch (HttpClientErrorException | PmartException e) {
       log.warn("사건함: 도움요청 조회 실패 — {}", e.getClass().getSimpleName());
       failed.add(Source.EXECUTION);
+      if (e instanceof PmartException) {
+        broken.add(Source.EXECUTION);
+      }
       ok.put("h", false);
       return null;
     }
