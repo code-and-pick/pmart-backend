@@ -42,16 +42,60 @@ public class InquiriesController implements InquiriesApi {
   private final InquiryPhotoService photos;
   private final InquirySatisfactionService satisfaction;
   private final InquiryCloseService closes;
+  private final com.pmart.cases.application.InquiryChatService chat;
 
   public InquiriesController(
       InquiryService service,
       InquiryPhotoService photos,
       InquirySatisfactionService satisfaction,
-      InquiryCloseService closes) {
+      InquiryCloseService closes,
+      com.pmart.cases.application.InquiryChatService chat) {
     this.service = service;
     this.photos = photos;
     this.satisfaction = satisfaction;
     this.closes = closes;
+    this.chat = chat;
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cases.api.generated.model.ListInquiryMessages200Response>
+      listInquiryMessages(String inquiryId, @Nullable Long after) {
+    var page = chat.list(inquiryId, after);
+    boolean staff =
+        com.pmart.common.security.PmartPrincipal.current()
+            .map(p -> p.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .orElse(false);
+    var out = new com.pmart.cases.api.generated.model.ListInquiryMessages200Response();
+    out.setItems(page.items().stream().map(m -> message(m, staff)).toList());
+    out.setStatus(InquiryStatus.fromValue(page.status()));
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cases.api.generated.model.InquiryMessage> postInquiryMessage(
+      String inquiryId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cases.api.generated.model.PostInquiryMessageRequest req) {
+    return ResponseEntity.status(201)
+        .body(message(chat.post(idempotencyKey, xSourceSystem, inquiryId, req.getBody()), false));
+  }
+
+  /** 답변 표 한 줄 → 대화 메시지. 상담원 ID 는 직원에게만. */
+  private static com.pmart.cases.api.generated.model.InquiryMessage message(
+      com.pmart.cases.infrastructure.InquiryStore.MessageRow m, boolean staff) {
+    boolean rider = "RIDER".equals(m.authorType());
+    var o = new com.pmart.cases.api.generated.model.InquiryMessage();
+    o.setMessageId(m.messageId());
+    o.setSeq(m.seq());
+    o.setSenderType(
+        rider
+            ? com.pmart.cases.api.generated.model.InquiryMessage.SenderTypeEnum.RIDER
+            : com.pmart.cases.api.generated.model.InquiryMessage.SenderTypeEnum.SUPPORT);
+    o.setSenderId(rider || staff ? m.authorId() : null);
+    o.setBody(m.body());
+    o.setCreatedAt(m.createdAt().atOffset(ZoneOffset.UTC));
+    return o;
   }
 
   @Override

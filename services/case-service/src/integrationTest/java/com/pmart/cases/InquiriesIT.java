@@ -363,6 +363,45 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
     Res seen = send("GET", riderTok, "/inquiries/" + id, null, null);
     assertThat(seen.body().path("replies").path(0).path("body").asString())
         .isEqualTo("다음 정산에 넣었습니다");
+
+    // 대화(0.21.0 — §19): 라이더가 이어 쓰면 RECEIVED 로 돌아가고, 지원센터가 다시 답한다
+    Res list = send("GET", riderTok, "/inquiries/" + id + "/messages", null, null);
+    assertThat(list.status()).as(list.body().toString()).isEqualTo(200);
+    assertThat(list.body().path("items").size()).isEqualTo(1);
+    assertThat(list.body().path("items").path(0).path("senderType").asString())
+        .isEqualTo("SUPPORT");
+    assertThat(list.body().path("items").path(0).path("senderId").isNull()).isTrue();
+    long first = list.body().path("items").path(0).path("seq").asLong();
+    Res mine =
+        send("POST", riderTok, "/inquiries/" + id + "/messages", Map.of("body", "언제 들어오나요?"), null);
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(201);
+    assertThat(mine.body().path("senderType").asString()).isEqualTo("RIDER");
+    assertThat(mine.body().path("seq").asLong()).isGreaterThan(first);
+    assertThat(
+            send("GET", riderTok, "/inquiries/" + id, null, null).body().path("status").asString())
+        .isEqualTo("RECEIVED");
+    // 남의 라이더·직원·고객은 이어 쓸 수 없다
+    assertThat(
+            send("POST", otherRider, "/inquiries/" + id + "/messages", Map.of("body", "x"), null)
+                .status())
+        .isEqualTo(404);
+    assertThat(
+            send("POST", ops, "/inquiries/" + id + "/messages", Map.of("body", "x"), null).status())
+        .isEqualTo(403);
+    assertThat(send("GET", otherRider, "/inquiries/" + id + "/messages", null, null).status())
+        .isEqualTo(404);
+    assertThat(send("GET", agent, "/inquiries/" + id + "/messages", null, null).status())
+        .isEqualTo(404);
+    Res opsView = send("GET", ops, "/inquiries/" + id + "/messages?after=" + first, null, null);
+    assertThat(opsView.body().path("items").size()).isEqualTo(1);
+    assertThat(opsView.body().path("items").path(0).path("body").asString()).isEqualTo("언제 들어오나요?");
+    assertThat(opsView.body().path("status").asString()).isEqualTo("RECEIVED");
+    Res again =
+        send("POST", ops, "/inquiries/" + id + "/replies", Map.of("body", "이번 주 금요일입니다"), null);
+    assertThat(again.body().path("status").asString()).isEqualTo("ANSWERED");
+    Res all = send("GET", admin, "/inquiries/" + id + "/messages", null, null);
+    assertThat(all.body().path("items").size()).isEqualTo(3);
+    assertThat(all.body().path("items").path(0).path("senderId").asString()).isEqualTo("ro-1");
   }
 
   @Test

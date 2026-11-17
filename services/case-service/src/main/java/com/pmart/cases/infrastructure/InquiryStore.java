@@ -140,7 +140,7 @@ public class InquiryStore {
   public List<ReplyRow> replies(String inquiryId) {
     return jdbc.query(
         "SELECT reply_id, author_type, author_id, body, created_at FROM cs_inquiry_reply"
-            + " WHERE inquiry_id = ? ORDER BY created_at, reply_id",
+            + " WHERE inquiry_id = ? ORDER BY seq",
         (rs, i) ->
             new ReplyRow(
                 rs.getString(1),
@@ -148,6 +148,66 @@ public class InquiryStore {
                 rs.getString(3),
                 rs.getString(4),
                 rs.getTimestamp(5).toInstant()),
+        inquiryId);
+  }
+
+  /** 대화 메시지 한 줄(0.21.0) — 답변 표 그대로, seq 순. */
+  public record MessageRow(
+      String messageId,
+      long seq,
+      String authorType,
+      String authorId,
+      String body,
+      Instant createdAt) {}
+
+  public List<MessageRow> messages(String inquiryId, long after, int limit) {
+    return jdbc.query(
+        "SELECT reply_id, seq, author_type, author_id, body, created_at FROM cs_inquiry_reply"
+            + " WHERE inquiry_id = ? AND seq > ? ORDER BY seq LIMIT ?",
+        (rs, i) ->
+            new MessageRow(
+                rs.getString(1),
+                rs.getLong(2),
+                rs.getString(3),
+                rs.getString(4),
+                rs.getString(5),
+                rs.getTimestamp(6).toInstant()),
+        inquiryId,
+        after,
+        limit);
+  }
+
+  public java.util.Optional<MessageRow> message(String messageId) {
+    return jdbc
+        .query(
+            "SELECT reply_id, seq, author_type, author_id, body, created_at FROM cs_inquiry_reply"
+                + " WHERE reply_id = ?",
+            (rs, i) ->
+                new MessageRow(
+                    rs.getString(1),
+                    rs.getLong(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getString(5),
+                    rs.getTimestamp(6).toInstant()),
+            messageId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 라이더가 이어 쓴 메시지(0.21.0) — 상태는 RECEIVED(지원센터 답 기다림)로. 닫힘 확인은 호출 쪽(행을 잠근 뒤). */
+  public void addRequesterMessage(
+      String inquiryId, String messageId, String authorId, String body, Instant at) {
+    jdbc.update(
+        "INSERT INTO cs_inquiry_reply (reply_id, inquiry_id, author_type, author_id, body,"
+            + " created_at) VALUES (?,?, 'RIDER', ?,?,?)",
+        messageId,
+        inquiryId,
+        authorId,
+        body,
+        Timestamp.from(at));
+    jdbc.update(
+        "UPDATE cs_inquiry SET status = 'RECEIVED', version = version + 1 WHERE inquiry_id = ?",
         inquiryId);
   }
 

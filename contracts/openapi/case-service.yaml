@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -1047,6 +1047,64 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
+  /inquiries/{inquiryId}/messages:
+    get:
+      tags: [inquiries]
+      summary: (0.21.0) 라이더 문의 대화 — 메시지 목록 (라이더 본인 · RIDER_OPS · OPERATOR_ADMIN)
+      description: |
+        2026-11-17 라이더 앱 요청 §19(사용자 "문의에 대화 붙이기"): 배송 밖 문의(라이더 문의)를 채팅처럼 이어 쓴다. 도움요청 대화와 같은 모양.
+        처음 문의 내용은 `GET /inquiries/{id}` 의 `body`, 이 목록은 그 뒤 주고받은 것 — 지원센터 답변(`/replies`, senderType SUPPORT)과 라이더 추가 메시지(RIDER).
+        오래된 것부터. `after` = 마지막으로 받은 seq — 그보다 뒤 메시지만(앱 몇 초마다 확인용). 한 번에 200개까지.
+        고객 문의·남의 문의는 404. 볼 권한은 `GET /inquiries/{id}` 와 같다.
+      operationId: listInquiryMessages
+      x-pmart-user-types: [RIDER, OPERATOR]
+      parameters:
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - { name: after, in: query, required: false, schema: { type: integer, format: int64, minimum: 0 }, description: 이 seq 뒤 메시지만 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, status]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/InquiryMessage' } }
+                  status: { $ref: '#/components/schemas/InquiryStatus' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    post:
+      tags: [inquiries]
+      summary: (0.21.0) 라이더 문의 대화 — 라이더가 이어 쓰기 (남긴 라이더 본인)
+      description: |
+        라이더가 자기 문의에 메시지를 더한다. 문의 상태는 **RECEIVED**(지원센터 답 기다림)로 돌아가 지원센터 목록(`status=RECEIVED`)에 다시 뜬다 — 지원센터는 `POST /inquiries/{id}/replies` 로 답한다(ANSWERED + 라이더 알림 RiderInquiryAnswered).
+        닫힌 문의는 409 INQUIRY_CLOSED(새 문의를 남긴다). 고객·직원은 403. 같은 멱등 키 재전송은 같은 메시지.
+      operationId: postInquiryMessage
+      x-pmart-user-types: [RIDER]
+      parameters:
+        - { name: inquiryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 1000 }
+      responses:
+        '201':
+          description: 더함
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InquiryMessage' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /inquiries/{inquiryId}/replies:
     post:
       tags: [inquiries]
@@ -1627,6 +1685,18 @@ components:
         createdAt: { type: string, format: date-time }
         answeredAt: { type: string, format: date-time, nullable: true }
         version: { type: integer }
+    InquiryMessage:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [messageId, seq, senderType, body, createdAt]
+      properties:
+        messageId: { type: string }
+        seq: { type: integer, format: int64, description: 대화 안 순번(오름차순) — 다음 조회의 after }
+        senderType: { type: string, enum: [RIDER, SUPPORT] }
+        senderId: { type: [string, 'null'], description: 보낸 사람 ID — 직원에게만(라이더에게 상담원 ID 는 null) }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+
     Inquiry:
       allOf:
         - $ref: '#/components/schemas/InquirySummary'
@@ -1643,7 +1713,7 @@ components:
                 type: object
                 properties:
                   replyId: { type: string }
-                  authorType: { type: string, enum: [AGENT] }
+                  authorType: { type: string, enum: [AGENT, RIDER], description: '(0.21.0) RIDER = 라이더가 대화로 이어 쓴 메시지' }
                   body: { type: string }
                   createdAt: { type: string, format: date-time }
             closedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.19.0) 닫힌 시각' }
