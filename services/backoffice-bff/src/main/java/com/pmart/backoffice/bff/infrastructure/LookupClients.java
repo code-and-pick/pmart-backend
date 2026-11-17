@@ -72,7 +72,14 @@ public class LookupClients {
                     .uri(
                         u -> {
                           var b = u.path("/api/v1" + path);
-                          query.forEach((k, v) -> b.queryParam(k, v));
+                          query.forEach(
+                              (k, v) -> {
+                                if (v instanceof java.util.Collection<?> c) {
+                                  b.queryParam(k, c.toArray()); // 반복 파라미터(state=A&state=B)
+                                } else {
+                                  b.queryParam(k, v);
+                                }
+                              });
                           return b.build(uriVariables);
                         })
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)

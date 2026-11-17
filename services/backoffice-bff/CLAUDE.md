@@ -54,5 +54,12 @@
 - 원천 본문이 JSON 이 아니면 그 원천 장애(`dependencyUnavailable`) — 화면 전체 500 아님. 처리 대기 실패 로그는 예외 이름만(원천 본문 안 남김).
 - `PendingWorkItem.orderId` nullable(MFC 거절 인계는 주문 ID 가 없을 수 있음).
 
+## 포장 인계 현황 (2026-11-17, 배송 원문 §10.1·§3.1·§3.4·§3.7 — 계약 0.11.0)
+- `GET /views/packing-handover?mfcId=&state=&size=&cursor=`(`application/PackingHandoverView`): 원천 mfc-fulfillment `GET /shipments`(0.15.0, PC 3 F-9 — 직원 토큰, `Source.FULFILLMENT`) 한 번 + 출고마다 delivery-execution `GET /deliveries?orderId=&mfcId=&type=&sort=NEWEST&size=1`(재발송 출고는 RESHIPMENT, 그 밖 FORWARD).
+- 역할: 본사 셋(mfcId 필수 — 비우면 400) + MFC_SUPERVISOR(`LiveDeliveryView.centerFor` 로 자기 센터 고정 — 사용자 2026-11-17 "그래 넣고"). 작업자만 가진 직원 403(PDA).
+- **단계 `stage`**(사용자 2026-11-17 "BFF로 단계표시" — `PackingHandoverView.stage`, 계약에 규칙): 출고 HANDED_OVER·PARTIALLY_HANDED_OVER·READY(→ READY_FOR_HANDOVER) 그대로, PREPARING 이면 PACK IN_PROGRESS → PACKING, PICK IN_PROGRESS·BLOCKED → PICKING, 둘 다 시작 전(없음·WAITING·READY·ASSIGNED) → REQUESTED. 그 밖 조합 null(추정하지 않음 — 원천 값 shipment·pick·pack 이 같이 나간다).
+- 수량: `handedOverQty` = 원천 packageCounts.handedOver(포장 수), `remainingPackages` = total − handedOver(같은 원천·기준시각). MFC asOf 를 그 칸 source asOf 로.
+- 원천 실패: MFC 실패면 빈 items + unavailableSources(400 은 조건 오류 400), 배송은 한 번 실패하면 남은 출고는 부르지 않고 UNKNOWN. `LookupClients.get` 은 0.11.0 부터 Collection 값을 반복 파라미터로 보낸다(state=A&state=B).
+
 ## 상태
-3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황·사건함(2026-11-16). 그 밖의 `/views/*`·명령 결과 조회는 501.
+3단계 스캐폴딩(2026-10-23). 승인함 구현(2026-11-03), 처리 대기·명령 전달 일부·통합 조회·실시간 배송 현황·사건함(2026-11-16), 포장 인계 현황(2026-11-17). 그 밖의 `/views/*`·명령 결과 조회는 501.

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.10.0
+  version: 0.11.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -388,13 +388,36 @@ paths:
   /views/packing-handover:
     get:
       tags: [views]
-      summary: 포장 인계 현황 (MFC 포장 완료·인계 펜스·라이더 인계 — mfc-*/delivery 읽기)
+      summary: 포장 인계 현황 (센터 출고마다 단계·피킹/포장 작업·포장별 인계·배송 — mfc-fulfillment·delivery-execution 읽기)
       operationId: getPackingHandoverView
       x-pmart-user-types: [OPERATOR]
+      x-added-in: '2026-11-17'
+      description: |
+        0.11.0(2026-11-17 사용자 "포장 인계 현황 진행하자" — 배송 업무 원문 §10.1 "포장 인계 현황", §3.1 출고대기·인계 구역 화면(출고요청·피킹중·패킹중·출고대기를 주문번호로,
+        MFC 관리자가 모니터에 띄움), §3.4 포장마다 인계 시각·라이더, §3.7 일부 인계면 가져간 포장과 남은 포장). 원천 mfc-fulfillment `GET /shipments`(0.15.0, PC 3 F-9).
+        역할 OPERATOR_ADMIN·CS_AGENT·RIDER_OPS(모든 센터 — mfcId 필수, 비우면 400) 또는 MFC_SUPERVISOR(사용자 2026-11-17 "그래 넣고" — **자기 센터로 고정**: 비우면 하나뿐인
+        자기 센터(여럿이면 400), 다른 센터 403). 작업자(MFC_WORKER)만 가진 직원은 403(작업자는 PDA). 원천은 호출한 직원 토큰으로 다시 판정.
+        state(ShipmentState, 반복 가능)를 비우면 끝나지 않은 출고(PREPARING·READY·PARTIALLY_HANDED_OVER). 만든 순(오래된 것부터), cursor·page.nextCursor 는 원천 커서 그대로. size 최대 50.
+        **stage(단계 — 사용자 2026-11-17 "BFF로 단계표시")**: 원천 값에서 아래 규칙으로만 정한다. 규칙에 없는 조합은 null(추정하지 않음 — 원천 값 shipment·pick·pack 을 보면 된다).
+          HANDED_OVER(인계 완료) = 출고 HANDED_OVER · PARTIALLY_HANDED_OVER(일부 인계) = 출고 PARTIALLY_HANDED_OVER · READY_FOR_HANDOVER(출고대기) = 출고 READY ·
+          출고 PREPARING 이면: PACKING(패킹중) = PACK IN_PROGRESS, 아니면 PICKING(피킹중) = PICK IN_PROGRESS 또는 BLOCKED, 아니면 REQUESTED(출고요청) = PICK 이 없거나
+          WAITING·READY·ASSIGNED 이고 PACK 이 없거나 WAITING·READY·ASSIGNED. 그 밖(피킹 끝·패킹 시작 전, PACK BLOCKED, 취소·부분 종료 등)은 null.
+        배송: 출고마다 delivery-execution `GET /deliveries?orderId=&mfcId=`(직원 토큰) — 원천 출고 종류가 RESHIPMENT 면 type RESHIPMENT, 그 밖 FORWARD 중 가장 최근 것.
+        riderId 는 그 배송의 배정 라이더(인계 전), packages[].riderId 는 인계 받은 라이더(원천 값). 배송이 없으면 delivery null(DIRECT — 원천의 답).
+        원천 실패·403 은 unavailableSources: MFC 가 실패하면 items 빈 목록, 배송이 이 요청에서 한 번 실패하면 남은 출고는 부르지 않고 delivery 칸 UNKNOWN.
+        handedOverQty = 원천 packageCounts.handedOver(포장 수, 상품 수량 아님), remainingPackages = total − handedOver(같은 원천·같은 기준시각이라 뺄셈 가능).
+        개인정보(고객 이름·연락처·주소)·QR 없음. 0.11.0 이전 이 경로는 501 이었고, 그때 계약의 packing·handoverFence 칸은 shipment·packages[].fenceState 로 바뀌었다.
       parameters:
-        - { name: mfcId, in: query, required: true, schema: { type: string } }
-        - { name: state, in: query, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - { name: mfcId, in: query, required: false, schema: { type: string, maxLength: 64 }, description: '센터 — 본사 역할은 필수, 센터 관리자는 비우면 자기 센터(0.11.0)' }
+        - name: state
+          in: query
+          description: 'ShipmentState(PREPARING·READY·PARTIALLY_HANDED_OVER·HANDED_OVER·CANCELLED·CLOSED_PARTIAL) — 반복 가능, 비우면 끝나지 않은 출고(0.11.0)'
+          style: form
+          explode: true
+          schema: { type: array, maxItems: 6, items: { type: string, maxLength: 32 } }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 30 }
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
         '200':
@@ -413,11 +436,41 @@ paths:
                           properties:
                             shipmentId: { type: string }
                             orderId: { type: string }
-                            packing: { $ref: '#/components/schemas/StampedState' }
-                            handoverFence: { $ref: '#/components/schemas/StampedState' }
+                            orderNumber: { type: [string, 'null'], description: 화면용 주문번호(8자리, F-5) — 번호 전 주문은 null }
+                            fulfillmentId: { type: [string, 'null'] }
+                            mfcId: { type: [string, 'null'] }
+                            workOrderKind: { type: [string, 'null'], description: 'ORIGINAL·RESHIPMENT(오배송 재발송) — 원천 값' }
+                            stage:
+                              type: [string, 'null']
+                              enum: [REQUESTED, PICKING, PACKING, READY_FOR_HANDOVER, PARTIALLY_HANDED_OVER, HANDED_OVER, null]
+                              description: '단계(위 규칙) — 화면 이름 출고요청·피킹중·패킹중·출고대기·일부 인계·인계 완료. null = 규칙에 없는 조합'
+                            shipment: { $ref: '#/components/schemas/StampedState' }
+                            createdAt: { type: [string, 'null'], format: date-time }
+                            readyAt: { type: [string, 'null'], format: date-time, description: 출하 대기(READY)가 된 시각 }
+                            dispatchRequestedAt: { type: [string, 'null'], format: date-time, description: 점원 배차 요청 시각 }
+                            pick: { $ref: '#/components/schemas/PackingTask' }
+                            pack: { $ref: '#/components/schemas/PackingTask' }
+                            packageCount: { type: [integer, 'null'], description: 살아 있는 포장 수(원천 packageCounts.total) }
+                            sealedPackages: { type: [integer, 'null'], description: 밀봉(인계 대기) 포장 수 }
                             handedOverQty: { $ref: '#/components/schemas/StampedQty' }
-                            riderId: { type: [string, 'null'] }
+                            remainingPackages: { type: [integer, 'null'], description: '아직 인계 안 된 포장 수 = total − handedOver(§3.7)' }
+                            packages:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  packageId: { type: string }
+                                  state: { type: [string, 'null'], description: 'PackageState 원천 값(OPEN·SEALED·HANDED_OVER)' }
+                                  fenceState: { type: [string, 'null'], description: '인계 허가 상태 원천 값(NONE·HANDOVER_IN_PROGRESS·COMMITTED·EXPIRED)' }
+                                  handoverAuthorizedAt: { type: [string, 'null'], format: date-time }
+                                  handedOverAt: { type: [string, 'null'], format: date-time }
+                                  riderId: { type: [string, 'null'], description: 인계 받은 라이더 }
+                            deliveryId: { type: [string, 'null'] }
+                            delivery: { $ref: '#/components/schemas/StampedState' }
+                            riderId: { type: [string, 'null'], description: 배송의 배정 라이더(delivery-execution) }
                       page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /views/metrics:
     get:
@@ -556,6 +609,14 @@ components:
         version: { type: [integer, 'null'] }
         at: { type: [string, 'null'], format: date-time }
         source: { $ref: '#/components/schemas/SourceStamp' }
+    PackingTask:
+      type: [object, 'null']
+      x-added-in: '2026-11-17'
+      description: '(0.11.0) MFC 작업(PICK·PACK) 지금 상태 — 원천 값 그대로, 작업이 없으면 null'
+      properties:
+        state: { type: [string, 'null'], description: TaskState 원천 값 }
+        blockReason: { type: [string, 'null'] }
+        startedAt: { type: [string, 'null'], format: date-time }
     PendingWorkItem:
       type: object
       x-added-in: '2026-11-16'

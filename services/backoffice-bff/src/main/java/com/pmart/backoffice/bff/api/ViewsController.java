@@ -4,13 +4,16 @@ import com.pmart.backoffice.bff.api.generated.ViewsApi;
 import com.pmart.backoffice.bff.api.generated.model.GetApprovalInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetCaseInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetLiveDeliveryView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetPackingHandoverView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetPendingWorkView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetUnifiedLookupView200Response;
 import com.pmart.backoffice.bff.application.ApprovalInboxView;
 import com.pmart.backoffice.bff.application.CaseInboxView;
 import com.pmart.backoffice.bff.application.LiveDeliveryView;
+import com.pmart.backoffice.bff.application.PackingHandoverView;
 import com.pmart.backoffice.bff.application.PendingWorkView;
 import com.pmart.backoffice.bff.application.UnifiedLookupView;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,6 +32,7 @@ public class ViewsController implements ViewsApi {
   private final UnifiedLookupView unifiedLookup;
   private final LiveDeliveryView liveDelivery;
   private final CaseInboxView caseInbox;
+  private final PackingHandoverView packingHandover;
   private final ObjectMapper mapper;
 
   public ViewsController(
@@ -37,12 +41,14 @@ public class ViewsController implements ViewsApi {
       UnifiedLookupView unifiedLookup,
       LiveDeliveryView liveDelivery,
       CaseInboxView caseInbox,
+      PackingHandoverView packingHandover,
       ObjectMapper mapper) {
     this.approvalInbox = approvalInbox;
     this.pendingWork = pendingWork;
     this.unifiedLookup = unifiedLookup;
     this.liveDelivery = liveDelivery;
     this.caseInbox = caseInbox;
+    this.packingHandover = packingHandover;
     this.mapper = mapper;
   }
 
@@ -89,6 +95,15 @@ public class ViewsController implements ViewsApi {
         mapper.convertValue(
             liveDelivery.view(mfcId, state, size == null ? 50 : size, cursor),
             GetLiveDeliveryView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetPackingHandoverView200Response> getPackingHandoverView(
+      @Nullable String mfcId, @Nullable List<String> state, Integer size, @Nullable String cursor) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            packingHandover.view(mfcId, state, size == null ? 30 : size, cursor),
+            GetPackingHandoverView200Response.class));
   }
 
   @Override
