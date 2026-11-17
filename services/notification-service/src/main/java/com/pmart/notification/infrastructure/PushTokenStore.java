@@ -128,4 +128,21 @@ public class PushTokenStore {
         rs.getTimestamp("registered_at").toInstant(),
         rs.getTimestamp("updated_at").toInstant());
   }
+
+  /** 발송용 토큰(원문) — 라이더 푸시(2026-11-17). 로그에 남기지 않는다. */
+  public record TokenRow(String deviceId, String token) {
+    @Override
+    public String toString() {
+      return "TokenRow[" + deviceId + ", 가림]";
+    }
+  }
+
+  public List<TokenRow> tokens(String ownerType, String ownerId) {
+    return jdbc.query(
+        "SELECT device_id, token FROM push_token WHERE owner_type = ? AND owner_id = ? ORDER BY"
+            + " updated_at DESC",
+        (rs, i) -> new TokenRow(rs.getString(1), rs.getString(2)),
+        ownerType,
+        ownerId);
+  }
 }

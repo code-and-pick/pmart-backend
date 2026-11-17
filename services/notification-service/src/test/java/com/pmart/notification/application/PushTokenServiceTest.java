@@ -33,7 +33,8 @@ class PushTokenServiceTest {
     loginAsCustomer();
     PushTokenStore store = mock(PushTokenStore.class);
     var service =
-        new PushTokenService(store, new NotificationProperties(null, null), Clock.systemUTC());
+        new PushTokenService(
+            store, new NotificationProperties(null, null, null), Clock.systemUTC());
     assertThatThrownBy(() -> service.register("dev-1", "fcm-x", "ANDROID", null))
         .isInstanceOfSatisfying(
             PmartException.class,
@@ -50,7 +51,7 @@ class PushTokenServiceTest {
     var service =
         new PushTokenService(
             store,
-            new NotificationProperties(null, new NotificationProperties.PushToken(0)),
+            new NotificationProperties(null, new NotificationProperties.PushToken(0), null),
             Clock.systemUTC());
     assertThatThrownBy(() -> service.register("dev-1", "fcm-x", "ANDROID", null))
         .isInstanceOf(PmartException.class)

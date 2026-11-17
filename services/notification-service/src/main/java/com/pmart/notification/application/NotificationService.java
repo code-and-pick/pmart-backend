@@ -48,7 +48,11 @@ public class NotificationService {
   private final OrderClient orders;
   private final Clock clock;
 
-  public NotificationService(NotificationStore store, OrderClient orders, Clock clock) {
+  private final RiderPush riderPush;
+
+  public NotificationService(
+      NotificationStore store, OrderClient orders, Clock clock, RiderPush riderPush) {
+    this.riderPush = riderPush;
     this.store = store;
     this.orders = orders;
     this.clock = clock;
@@ -371,10 +375,11 @@ public class NotificationService {
       @Nullable Instant occurredAt,
       String dedupeKey) {
     Instant now = now();
+    String notificationId = "NTF-" + UUID.randomUUID();
     boolean created =
         store.insert(
             new NotificationRow(
-                "NTF-" + UUID.randomUUID(),
+                notificationId,
                 recipientType,
                 accountId,
                 n.category(),
@@ -392,6 +397,9 @@ public class NotificationService {
             dedupeKey);
     if (created) {
       log.info("알림 {} ← {}", n.templateKey(), sourceEventType);
+      if (RIDER.equals(recipientType)) {
+        riderPush.afterCommit(accountId, notificationId, n); // 휴대폰 푸시(2026-11-17, 키가 있을 때만)
+      }
     }
   }
 
