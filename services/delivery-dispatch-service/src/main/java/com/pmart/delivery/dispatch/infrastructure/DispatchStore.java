@@ -74,7 +74,8 @@ public class DispatchStore {
       boolean paymentRequired,
       @Nullable Instant releasedAt,
       @Nullable String claimId,
-      @Nullable String returnLinesJson) {
+      @Nullable String returnLinesJson,
+      @Nullable String pickupRequestId) {
 
     /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 실제 집으로. */
     public boolean redelivery() {
@@ -318,20 +319,22 @@ public class DispatchStore {
       String claimId,
       @Nullable String originDeliveryId,
       String linesJson,
-      String requestEventId,
+      String requestKey,
+      @Nullable String pickupRequestId,
       Instant now) {
     return jdbc.update(
             "INSERT INTO delivery (delivery_id, version, type, purpose, order_id, shipment_id, mfc_id,"
-                + " state, claim_id, origin_delivery_id, return_lines, request_trigger, created_at,"
-                + " updated_at) VALUES (?, 1, 'RETURN', 'CLAIM_RETURN', ?, ?, ?, 'DISPATCHING', ?, ?,"
-                + " ?::jsonb, 'CLAIM', ?, ?) ON CONFLICT DO NOTHING",
+                + " state, claim_id, origin_delivery_id, return_lines, pickup_request_id,"
+                + " request_trigger, created_at, updated_at) VALUES (?, 1, 'RETURN', 'CLAIM_RETURN', ?,"
+                + " ?, ?, 'DISPATCHING', ?, ?, ?::jsonb, ?, 'CLAIM', ?, ?) ON CONFLICT DO NOTHING",
             deliveryId,
             orderId,
-            "CLR-" + requestEventId,
+            "CLR-" + requestKey,
             mfcId,
             claimId,
             originDeliveryId,
             linesJson,
+            pickupRequestId,
             ts(now),
             ts(now))
         == 1;
@@ -1270,7 +1273,8 @@ public class DispatchStore {
         rs.getBoolean("payment_required"),
         instant(rs, "released_at"),
         rs.getString("claim_id"),
-        rs.getString("return_lines"));
+        rs.getString("return_lines"),
+        rs.getString("pickup_request_id"));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {

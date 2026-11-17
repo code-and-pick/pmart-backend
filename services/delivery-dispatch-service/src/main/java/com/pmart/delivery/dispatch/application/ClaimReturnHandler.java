@@ -23,6 +23,9 @@ import tools.jackson.databind.ObjectMapper;
  * purpose CLAIM_RETURN, 배송 ID 는 사건 ID 로 정해 같은 사건은 하나) + 배차 시도(제외 라이더 없음 — 원래 기사도 근처면 받을 수 있다) +
  * DeliveryCreated. 회수지(고객 집) 좌표·고객 집 → MFC 도로 거리는 판단 주기의 좌표 준비({@link DispatchEngine})가 채운다.
  *
+ * <p>원래 배송이 아직 전달 완료 전이면(배달 중·실패) 만들지 않는다 — 사용자 2026-11-17 "배달 중이나 전달 완료 전에는 반품 불가"(claim 이 접수 때 막는
+ * 것이 정본, 여기서는 경고만). 배송 하나 = 회수 요청 하나(pickupRequestId — 없으면 사건 ID).
+ *
  * <p>같은 클레임에 아직 끝나지 않은 회수 배송이 있으면 새로 만들지 않고 경고만 — 한 번 실패하면 배송이 {@code ReturnPickupFailed} 로 끝나고, 다시
  * 보낼지는 반품 쪽이 새 회수 요청으로 정한다(2번 실패하면 상담원 재연락 — claim 결정 2026-11-17).
  */
@@ -64,6 +67,16 @@ public class ClaimReturnHandler {
       return;
     }
     DeliveryRow origin = originId.isBlank() ? null : store.delivery(originId).orElse(null);
+    if (origin != null && origin.completedAt() == null) {
+      // 사용자 2026-11-17 "배달 중이나 전달 완료 전에는 반품 불가"
+      log.warn(
+          "반품 회수 요청 {} — 클레임 {} 의 원래 배송 {} 이 전달 완료 전({}), 반품 불가 — 회수 배차 안 함",
+          e.eventId(),
+          claimId,
+          originId,
+          origin.state());
+      return;
+    }
     String mfcId = p.path("mfcId").asString("");
     if (mfcId.isBlank() && origin != null) {
       mfcId = origin.mfcId();
@@ -76,8 +89,9 @@ public class ClaimReturnHandler {
       return;
     }
     Instant now = clock.instant();
-    String requestId = String.valueOf(e.eventId());
-    String deliveryId = deliveryId(requestId);
+    String pickupRequestId = p.path("pickupRequestId").asString("");
+    String requestKey = pickupRequestId.isBlank() ? String.valueOf(e.eventId()) : pickupRequestId;
+    String deliveryId = deliveryId(requestKey);
     if (!store.insertClaimReturn(
         deliveryId,
         orderId,
@@ -85,9 +99,10 @@ public class ClaimReturnHandler {
         claimId,
         originId.isBlank() ? null : originId,
         mapper.writeValueAsString(lines),
-        requestId,
+        requestKey,
+        pickupRequestId.isBlank() ? null : pickupRequestId,
         now)) {
-      log.info("반품 회수 요청 {} — 회수 배송 {} 이미 있음", requestId, deliveryId);
+      log.info("반품 회수 요청 {} — 회수 배송 {} 이미 있음", requestKey, deliveryId);
       return;
     }
     store.insertAttempt("ATT-" + UUID.randomUUID(), deliveryId, "AUTO", now);
@@ -95,10 +110,9 @@ public class ClaimReturnHandler {
     log.info("클레임 {} → 반품 회수 배송 {} 배차 시작(주문 {}, MFC {})", claimId, deliveryId, orderId, mfcId);
   }
 
-  /** 같은 회수 요청 사건은 같은 배송 ID — 다시 받아도 하나. */
-  static String deliveryId(String requestEventId) {
+  /** 같은 회수 요청(pickupRequestId, 없으면 사건 ID)은 같은 배송 ID — 다시 받아도 하나. */
+  static String deliveryId(String requestKey) {
     return "DLV-"
-        + UUID.nameUUIDFromBytes(
-            ("claim-return:" + requestEventId).getBytes(StandardCharsets.UTF_8));
+        + UUID.nameUUIDFromBytes(("claim-return:" + requestKey).getBytes(StandardCharsets.UTF_8));
   }
 }

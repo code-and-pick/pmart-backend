@@ -96,6 +96,10 @@
                 "additionalProperties": true
               }
             },
+            "pickupRequestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "CLAIM_RETURN(2026-11-17 DD-3) — claim 회수 요청 번호(<claimId>-P<n>, 시도마다 하나). 배송 하나 = 요청 하나"
+            },
             "pickupAddressRef": {
               "$ref": "_defs.v1.json#/$defs/Ref",
               "description": "CLAIM_RETURN(2026-11-17) — 회수지(고객 집) 주소 참조 order:<orderId>. 주소 원문 없음"

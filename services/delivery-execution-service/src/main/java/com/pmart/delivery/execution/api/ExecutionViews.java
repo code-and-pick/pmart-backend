@@ -64,7 +64,21 @@ class ExecutionViews {
             .purpose(
                 d.purpose() == null ? null : DeliveryExecution.PurposeEnum.fromValue(d.purpose()))
             .caseId(d.caseId())
+            .claimId(d.claimId())
             .originDeliveryId(d.originDeliveryId());
+    if (d.claimReturn() && d.returnLinesJson() != null) {
+      // 고객 반품 회수(DD-3) — 받을 상품·수량(라이더가 고객에게 받을 것). 이름은 orderSummary.items 의 같은 orderLineId
+      List<com.pmart.delivery.execution.api.generated.model.ReturnLine> rl = new ArrayList<>();
+      for (JsonNode n : mapper.readTree(d.returnLinesJson())) {
+        rl.add(
+            new com.pmart.delivery.execution.api.generated.model.ReturnLine()
+                .orderLineId(n.path("orderLineId").asString())
+                .qty(n.path("qty").asInt())
+                .claimLineId(n.path("claimLineId").asString(null))
+                .sku(n.path("sku").asString(null)));
+      }
+      out.returnLines(rl);
+    }
     if (v.origin() != null && v.origin().evidenceJson() != null) {
       // 오배송 회수(DD-2) — 원래 배송의 완료 증빙(놓은 곳·사진 참조)
       JsonNode e = mapper.readTree(v.origin().evidenceJson());

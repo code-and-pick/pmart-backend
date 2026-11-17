@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.10.0
+  version: 0.10.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
     0.3.0(2026-11-13, 사용자 결정): 전달 실패 = 라이더 등록(FAILURE_REPORTED — 아직 진행 중) → 운영자 확정(FAILED, DeliveryFailed — 배송 종료, 이어지는 회수 배차는 새 배송) 또는 반려(원래 상태로). 도움요청 = 이 서비스에 기록 + DeliveryIncidentRaised(case-service 가 받아 지원센터 사건으로 — 구현 전, caseId 는 그때부터). 수행료 = 수락 당시 금액(dispatch DeliveryAssigned.fee) → 완료 5시간 뒤 확정·지급 예정일 3영업일, 실패·취소는 산정 불가(calculable false). 회수·정정은 아직 501.
     0.4.0(2026-11-15, 백오피스 고객센터·라이더 운영 — 요청서 service-requests/delivery-backoffice-staff-apis.md BOD-1·4·5): 직원 배송 찾기(GET /deliveries — 주문 ID·라이더·상태, 전달 실패 대기는 state=FAILURE_REPORTED), 도움요청 대기 목록(GET /delivery-help-requests), 도움요청 처리함 닫기(…/resolutions — 지원센터 사건함(case R-4)이 생기면 그 사건이 정본). 역할 RIDER_OPS 를 운영자 조회·결정에 더함.
+    0.10.1(2026-11-17, DD-3 맞춤): 배송 조회에 `claimId`·`returnLines`(받을 줄·수량 — 라이더에게 회수 품목). ReturnPickedUp·ReturnDelivered lines 에 claim 이 실은 claimLineId·sku 를 그대로.
     0.10.0(2026-11-17, CL-1 배송 쪽 — 사용자 결정 "바로 배차·일반 표(고객 집 → MFC)·실패마다 알림, 다시 시도는 반품 쪽·고객 사정 실패도 수락 당시 금액"): **고객 반품 회수 수행**. 회수 배송(type RETURN, purpose CLAIM_RETURN — DeliveryCreated claimId·returnLines): 배정 → 전달지(= 회수지, 고객 집 — 받기 전에도) → 사진·받음(`returns/pickups`, lines = claim 요청 줄) → MFC 반납(`returns/store-deliveries`, ReturnDelivered claimId, 수행료 수락 당시 금액). 받기 전 실패 등록 → 확정이면 FAILED + `ReturnPickupFailed`(customerReason·contactAttempts 횟수 — 다시 보낼지는 claim). 일반 배송 단계는 409.
     0.5.0(2026-11-16, DD-2 오배송 회수 — 사용자 "추천대로"): 회수 배송(type RETURN, purpose MISDELIVERY_RECOVERY — dispatch 가 case MisdeliveryConfirmed 로 만든다)의 수행.
       배정(ASSIGNED) → 회수지에서 회수품 사진 올리기 → 회수(`returns/pickups` → RETURN_PICKED_UP, ReturnPickedUp) → MFC 도착 = 반납(`returns/store-deliveries` → RETURNED_TO_STORE, ReturnDelivered, 수행료).
@@ -1065,6 +1066,12 @@ components:
         completedAt: { type: string, format: date-time }
         purpose: { type: string, enum: [DELIVERY, CLAIM_RETURN, MISDELIVERY_RECOVERY, MISDELIVERY_RESHIPMENT, MISDELIVERY_REDELIVERY], description: '0.5.0 — RETURN 의 목적. MISDELIVERY_RESHIPMENT(2026-11-16) = 오배송 재발송 배송(type RESHIPMENT — 수행은 일반 배송과 같다). MISDELIVERY_REDELIVERY(ADR-0065) = 고객 잘못 다시 배송 — 배정 → 잘못 둔 곳에서 사진·받음(returns/pickups → PICKED_UP) → 고객 도착 → 전달 완료(가게 도착·MFC 픽업 409, 전달지 = 실제 집 + 주문 당시 수령인·연락처)' }
         caseId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송 확인 사건' }
+        claimId: { type: string, description: 'CLAIM_RETURN(0.10.1, 2026-11-17) — 고객 반품 클레임', x-added-in: '2026-11-17' }
+        returnLines:
+          type: array
+          x-added-in: '2026-11-17'
+          description: 'CLAIM_RETURN(0.10.1 — DD-3 "회수 라이더에게 회수 품목이 보여야") — 고객에게 받을 줄·수량. 상품 이름은 orderSummary.items 의 같은 orderLineId'
+          items: { $ref: '#/components/schemas/ReturnLine' }
         originDeliveryId: { type: string, description: 'MISDELIVERY_RECOVERY — 오배송된 원래 배송' }
         recoveryOrigin:
           type: object
@@ -1075,6 +1082,16 @@ components:
             photoRefs: { type: array, items: { type: string } }
             takenAt: { type: string, format: date-time }
             completedAt: { type: string, format: date-time }
+    ReturnLine:
+      type: object
+      x-added-in: '2026-11-17'
+      description: 고객 반품 회수 줄(0.10.1)
+      required: [orderLineId, qty]
+      properties:
+        orderLineId: { type: string }
+        qty: { type: integer, minimum: 1 }
+        claimLineId: { type: [string, 'null'] }
+        sku: { type: [string, 'null'] }
     Earning:
       type: object
       properties:

@@ -1913,12 +1913,17 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     locations(Map.of(r1, new double[] {37.5008, 127.0362}));
 
     String claimId = "CLM-" + UUID.randomUUID();
-    String request = claimReturnRequested(claimId, order, origin, mfc);
+    String request = claimReturnRequested(claimId, order, origin, mfc, claimId + "-P1", 1);
     kafka.send("order.claim.v1", claimId, request).join();
     kafka.send("order.claim.v1", claimId, request).join(); // 같은 사건을 다시 받아도 하나
     awaitSql("SELECT count(*) FROM delivery WHERE claim_id = '" + claimId + "'");
     // 진행 중인데 같은 클레임의 새 요청 — 만들지 않는다
-    kafka.send("order.claim.v1", claimId, claimReturnRequested(claimId, order, origin, mfc)).join();
+    kafka
+        .send(
+            "order.claim.v1",
+            claimId,
+            claimReturnRequested(claimId, order, origin, mfc, claimId + "-P2", 2))
+        .join();
     String pickup =
         jdbc.queryForObject(
             "SELECT delivery_id FROM delivery WHERE claim_id = ?", String.class, claimId);
@@ -1929,6 +1934,10 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(created.path("originDeliveryId").asString()).isEqualTo(origin);
     assertThat(created.path("dropAddressRef").asString()).isEqualTo("mfc:" + mfc);
     assertThat(created.path("returnLines").get(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(created.path("returnLines").get(0).path("claimLineId").asString())
+        .isEqualTo("CL-1"); // claim 이 실은 칸은 그대로
+    assertThat(created.path("pickupRequestId").asString()).isEqualTo(claimId + "-P1");
+    assertThat(created.path("shipmentId").asString()).isEqualTo("CLR-" + claimId + "-P1");
 
     engine.tick();
     Map<String, Object> row =
@@ -1974,17 +1983,50 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             Instant.now().toString()));
     awaitSql(
         "SELECT count(*) FROM delivery WHERE delivery_id = '" + pickup + "' AND state = 'CLOSED'");
-    kafka.send("order.claim.v1", claimId, claimReturnRequested(claimId, order, origin, mfc)).join();
+    kafka
+        .send(
+            "order.claim.v1",
+            claimId,
+            claimReturnRequested(claimId, order, origin, mfc, claimId + "-P2", 2))
+        .join();
     awaitSql(
-        "SELECT CASE WHEN count(*) = 2 THEN 1 ELSE 0 END FROM delivery WHERE claim_id = '"
+        "SELECT count(*) FROM delivery WHERE claim_id = '"
             + claimId
+            + "' AND pickup_request_id = '"
+            + claimId
+            + "-P2'");
+
+    // 원래 배송이 전달 완료 전(배차 중)이면 반품 불가(사용자 2026-11-17) — 처리는 하되 만들지 않는다
+    String inTransit =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-cr-" + UUID.randomUUID());
+    String earlyClaim = "CLM-" + UUID.randomUUID();
+    kafka
+        .send(
+            "order.claim.v1",
+            earlyClaim,
+            claimReturnRequested(earlyClaim, order, inTransit, mfc, earlyClaim + "-P1", 1))
+        .join();
+    awaitSql(
+        "SELECT count(*) FROM inbox_event WHERE event_type = 'ReturnPickupRequested' AND"
+            + " aggregate_id = '"
+            + earlyClaim
             + "'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE claim_id = ?", Integer.class, earlyClaim))
+        .isZero();
   }
 
-  String claimReturnRequested(String claimId, String orderId, String deliveryId, String mfcId) {
+  String claimReturnRequested(
+      String claimId,
+      String orderId,
+      String deliveryId,
+      String mfcId,
+      String pickupRequestId,
+      int attempt) {
     return EventEnvelopeFixtures.envelope("ReturnPickupRequested")
         .from("claim-service")
-        .aggregate("Claim", claimId, 2)
+        .aggregate("Claim", claimId, 1 + attempt)
         .payload(
             Map.of(
                 "claimId",
@@ -1995,8 +2037,14 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 deliveryId,
                 "mfcId",
                 mfcId,
+                "pickupRequestId",
+                pickupRequestId,
+                "attempt",
+                attempt,
+                "purpose",
+                "CLAIM_RETURN",
                 "lines",
-                List.of(Map.of("orderLineId", "L-1", "qty", 2)),
+                List.of(Map.of("orderLineId", "L-1", "qty", 2, "claimLineId", "CL-1")),
                 "pickupAddressRef",
                 "order:" + orderId,
                 "requestedAt",

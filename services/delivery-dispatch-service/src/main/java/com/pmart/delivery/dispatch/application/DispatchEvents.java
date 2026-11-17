@@ -45,6 +45,9 @@ public class DispatchEvents {
       p.put("dropAddressRef", "mfc:" + d.mfcId());
       p.put("purpose", d.purpose());
       p.put("claimId", d.claimId());
+      if (d.pickupRequestId() != null) {
+        p.put("pickupRequestId", d.pickupRequestId()); // claim 이 배송 번호를 잇는다(DD-3)
+      }
       if (d.originDeliveryId() != null) {
         p.put("originDeliveryId", d.originDeliveryId());
       }

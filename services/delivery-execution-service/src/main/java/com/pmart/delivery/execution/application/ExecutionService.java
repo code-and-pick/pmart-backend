@@ -661,8 +661,12 @@ public class ExecutionService {
     List<Map<String, Object>> lines = new ArrayList<>();
     if (d.returnLinesJson() != null) {
       for (var n : mapper.readTree(d.returnLinesJson())) {
+        // claimLineId·sku 등 claim 이 실은 칸은 그대로(claim 이 줄을 잇는다 — DD-3)
         Map<String, Object> l = new LinkedHashMap<>();
-        l.put("orderLineId", n.path("orderLineId").asString());
+        for (var f : n.properties()) {
+          tools.jackson.databind.JsonNode v = f.getValue();
+          l.put(f.getKey(), v.isIntegralNumber() ? (Object) v.asLong() : v.asString());
+        }
         l.put("qty", n.path("qty").asInt());
         lines.add(l);
       }

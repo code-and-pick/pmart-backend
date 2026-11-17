@@ -76,7 +76,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [x] TR-1 `DeliveryEtaUpdated`(2026-11-16 구현 — 설정 있을 때만 켜짐)
   - [x] DE-2 도움요청 대화(#60)(2026-11-17 PC 5 구현 — 브랜치 `delivery/de-2-help-chat`) — 답장 권한을 접수 건 규칙에(CS 보기만·넘긴 건 관리자만), 새 메시지 값 `lastRiderMessageAt`, 관리자 가림, 처리 중 = 집을 때(PC 2 요청, `delivery-execution-service.md` DE-2)
   - [x] RS-2(rider-auth) — 표 참고(구현 2026-11-13, 표 "구현"). RS-3 컴플레인 검토 목록도 LAN 배포 확인(2026-11-17 PC 5 — 관리자 `GET /riders/restriction-reviews` 200)
-  - [ ] **DD-3 고객 반품 회수 배송**(2026-11-17 PC 1 — CL-1, 사용자 "추천대로"): `ReturnPickupRequested`(order.claim.v1, purpose CLAIM_RETURN·pickupRequestId·attempt) 구독 → dispatch 회수 배송(원주문 배송지 → MFC)·execution 회수 수행(`ReturnPickedUp`·`ReturnDelivered` 에 claimId), 회수 실패는 `DeliveryFailed`(claimId 도 실어서). `DeliveryCreated` 에 claimId·pickupRequestId. 요청서 `delivery-dispatch-service.md` DD-3. claim 은 구현됨(미배포)
+  - [x] **DD-3 고객 반품 회수 배송**(2026-11-17 PC 5 — #104 구현·배포, 맞춤(pickupRequestId·회수 품목·전달 전 반품 불가) 브랜치 `delivery/dd-3-align`. 회수 실패는 DeliveryFailed 대신 `ReturnPickupFailed` — claim 구독함)(2026-11-17 PC 1 — CL-1, 사용자 "추천대로"): `ReturnPickupRequested`(order.claim.v1, purpose CLAIM_RETURN·pickupRequestId·attempt) 구독 → dispatch 회수 배송(원주문 배송지 → MFC)·execution 회수 수행(`ReturnPickedUp`·`ReturnDelivered` 에 claimId), 회수 실패는 `DeliveryFailed`(claimId 도 실어서). `DeliveryCreated` 에 claimId·pickupRequestId. 요청서 `delivery-dispatch-service.md` DD-3. claim 은 구현됨(미배포)
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
 

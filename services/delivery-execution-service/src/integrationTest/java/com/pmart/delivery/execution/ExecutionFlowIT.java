@@ -1338,6 +1338,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(drop).path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 1");
     assertThat(post(ok, "store-arrivals", rider, Map.of()).getStatusCode().value())
         .isEqualTo(409); // 일반 배송 단계 없음
+    JsonNode cv = view(ok, rider); // 회수 라이더에게 받을 품목(DD-3)
+    assertThat(cv.path("claimId").asString()).isEqualTo(claimId);
+    assertThat(cv.path("returnLines").get(0).path("orderLineId").asString()).isEqualTo("L-7");
+    assertThat(cv.path("returnLines").get(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(cv.path("returnLines").get(0).path("claimLineId").asString()).isEqualTo("CL-7");
     String photo = body(upload(ok, rider, JPEG)).path("photoRef").asString();
     assertThat(
             post(
@@ -1354,6 +1359,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(picked.path("claimId").asString()).isEqualTo(claimId);
     assertThat(picked.path("lines").get(0).path("orderLineId").asString()).isEqualTo("L-7");
     assertThat(picked.path("lines").get(0).path("qty").asInt()).isEqualTo(2);
+    assertThat(picked.path("lines").get(0).path("claimLineId").asString()).isEqualTo("CL-7");
     assertThat(dropInfo(ok, rider).getStatusCode().value()).isEqualTo(409); // 받은 뒤에는 닫힘
     assertThat(post(ok, "returns/store-deliveries", rider, Map.of()).getStatusCode().value())
         .isEqualTo(200);
@@ -1434,7 +1440,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     created.put("claimId", claimId);
     created.put("mfcId", "MFC-1");
     created.put("dropAddressRef", "mfc:MFC-1");
-    created.put("returnLines", List.of(Map.of("orderLineId", "L-7", "qty", 2)));
+    created.put(
+        "returnLines", List.of(Map.of("orderLineId", "L-7", "qty", 2, "claimLineId", "CL-7")));
     send("delivery.delivery.v1", "DeliveryCreated", "Delivery", id, created);
     assigned(id, order, rider, 1);
     awaitState(id, "ASSIGNED");
