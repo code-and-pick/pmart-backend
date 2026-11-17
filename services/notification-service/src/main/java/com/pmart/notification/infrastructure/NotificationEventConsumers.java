@@ -22,7 +22,15 @@ class NotificationEventConsumers {
           "OrderLineQuantityChanged",
           "ReservationTimeChanged");
   private static final Set<String> DELIVERY =
-      Set.of("PickupCompleted", "DeliveryCompleted", "RedeliveryPaymentRequired");
+      Set.of(
+          "PickupCompleted",
+          "DeliveryCompleted",
+          "RedeliveryPaymentRequired",
+          "HelpRequestReplied");
+
+  /** platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5). */
+  private static final Set<String> CASE =
+      Set.of("InquiryAnswered", "RiderInquiryAnswered", "CaseClosed");
 
   @Bean
   PmartEventConsumer orderEvents(EventConsumers consumers, NotificationService n) {
@@ -52,6 +60,12 @@ class NotificationEventConsumers {
 
   @Bean
   PmartEventConsumer caseEvents(EventConsumers consumers, NotificationService n) {
-    return consumers.of(e -> "InquiryAnswered".equals(e.eventType()), n::onCaseEvent);
+    return consumers.of(e -> CASE.contains(e.eventType()), n::onCaseEvent);
+  }
+
+  /** delivery.rider.v1 — 계정 제한·해제(라이더 알림함, 2026-11-16 §11-5). */
+  @Bean
+  PmartEventConsumer riderEvents(EventConsumers consumers, NotificationService n) {
+    return consumers.of(e -> "RiderRestricted".equals(e.eventType()), n::onRiderEvent);
   }
 }

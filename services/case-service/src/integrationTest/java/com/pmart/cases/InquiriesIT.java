@@ -310,6 +310,13 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
             Integer.class,
             "%" + id + "%");
     assertThat(events).isZero();
+    // 대신 라이더 알림용 RiderInquiryAnswered(답변 내용 없음)
+    String riderEvent =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'RiderInquiryAnswered' AND payload::text LIKE ?",
+            String.class,
+            "%" + id + "%");
+    assertThat(riderEvent).contains(rider).doesNotContain("다음 정산에 넣었습니다");
     Res seen = send("GET", riderTok, "/inquiries/" + id, null, null);
     assertThat(seen.body().path("replies").path(0).path("body").asString())
         .isEqualTo("다음 정산에 넣었습니다");

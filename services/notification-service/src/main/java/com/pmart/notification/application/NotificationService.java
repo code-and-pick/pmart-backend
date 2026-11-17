@@ -36,6 +36,10 @@ public class NotificationService {
 
   private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
   public static final String CUSTOMER = "CUSTOMER";
+
+  /** 라이더 알림함(2026-11-16 — 라이더 앱 요청 §11-5, 사용자 "라이더 알림함 먼저"). */
+  public static final String RIDER = "RIDER";
+
   public static final String UNREAD = "NOTICE_UNREAD";
 
   public record Page(List<NotificationRow> items, int unreadCount, @Nullable String nextCursor) {}
@@ -113,6 +117,16 @@ public class NotificationService {
 
   /** delivery.delivery.v1 — 출발·완료, 오배송 다시 배송비 결제 필요(N-3, 2026-11-16). */
   public void onDeliveryEvent(EventEnvelope e) {
+    if ("HelpRequestReplied".equals(e.eventType())) {
+      JsonNode h = e.payload();
+      String riderId = text(h, "riderId");
+      String deliveryId = text(h, "deliveryId");
+      String requestId = text(h, "requestId");
+      if (riderId != null && deliveryId != null && requestId != null) {
+        saveFor(e, RIDER, riderId, Notices.helpRequestReplied(deliveryId, requestId));
+      }
+      return;
+    }
     String orderId = text(e.payload(), "orderId");
     if (orderId == null) {
       return;
@@ -205,18 +219,66 @@ public class NotificationService {
     notifyRefund(link.get(), e.eventId().toString(), result, amount, at, e);
   }
 
-  /** platform.case.v1 — 고객센터 답변. */
+  /** platform.case.v1 — 고객센터 답변(고객), 라이더 문의 답변·도움요청 처리 끝(라이더). */
   public void onCaseEvent(EventEnvelope e) {
+    JsonNode p = e.payload();
+    if ("RiderInquiryAnswered".equals(e.eventType())) {
+      String inquiryId = text(p, "inquiryId");
+      String riderId = text(p, "riderId");
+      if (inquiryId != null && riderId != null) {
+        saveFor(e, RIDER, riderId, Notices.riderInquiryAnswered(inquiryId));
+      }
+      return;
+    }
+    if ("CaseClosed".equals(e.eventType())) {
+      // 도움요청 접수 건(RIDER_HELP)만 — 요청한 라이더에게. 처리 결과·메모는 싣지 않는다
+      if (!"RIDER_HELP".equals(text(p, "type"))) {
+        return;
+      }
+      String riderId = ref(p, "riderId");
+      if (riderId == null) {
+        return;
+      }
+      saveFor(
+          e, RIDER, riderId, Notices.helpRequestClosed(ref(p, "deliveryId"), ref(p, "requestId")));
+      return;
+    }
     if (!"InquiryAnswered".equals(e.eventType())) {
       return;
     }
-    JsonNode p = e.payload();
     String inquiryId = text(p, "inquiryId");
     String customerId = text(p, "customerId");
     if (inquiryId == null || customerId == null) {
       return;
     }
     save(e, customerId, Notices.inquiryAnswered(inquiryId), "");
+  }
+
+  /** delivery.rider.v1 — 계정 제한·해제(사유·근거는 싣지 않는다). */
+  public void onRiderEvent(EventEnvelope e) {
+    if (!"RiderRestricted".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String riderId = text(p, "riderId");
+    String restriction = text(p, "restriction");
+    if (riderId == null || restriction == null) {
+      return;
+    }
+    Notice n = Notices.riderRestriction(restriction, instant(text(p, "to")));
+    if (n != null) {
+      saveFor(e, RIDER, riderId, n);
+    }
+  }
+
+  /** 사건 refs[{refType, refId}] 에서 값 하나. */
+  private static @Nullable String ref(JsonNode p, String type) {
+    for (JsonNode r : p.path("refs")) {
+      if (type.equals(r.path("refType").asString(""))) {
+        return text(r, "refId");
+      }
+    }
+    return null;
   }
 
   private void notifyRefund(
@@ -236,6 +298,7 @@ public class NotificationService {
       return;
     }
     insert(
+        CUSTOMER,
         info.accountId(),
         n,
         resultEventId,
@@ -259,8 +322,21 @@ public class NotificationService {
     save(e, account, n, suffix);
   }
 
+  /** 라이더 등 고객이 아닌 받는 사람(같은 사건은 한 번). */
+  private void saveFor(EventEnvelope e, String recipientType, String recipientId, Notice n) {
+    insert(
+        recipientType,
+        recipientId,
+        n,
+        e.eventId().toString(),
+        e.eventType(),
+        e.occurredAt(),
+        e.eventType() + ":" + e.eventId());
+  }
+
   private void save(EventEnvelope e, String accountId, Notice n, String suffix) {
     insert(
+        CUSTOMER,
         accountId,
         n,
         e.eventId().toString(),
@@ -270,6 +346,7 @@ public class NotificationService {
   }
 
   private void insert(
+      String recipientType,
       String accountId,
       Notice n,
       String sourceEventId,
@@ -281,7 +358,7 @@ public class NotificationService {
         store.insert(
             new NotificationRow(
                 "NTF-" + UUID.randomUUID(),
-                CUSTOMER,
+                recipientType,
                 accountId,
                 n.category(),
                 n.templateKey(),
@@ -372,7 +449,7 @@ public class NotificationService {
 
   // ---------------------------------------------------------------- 공통
 
-  /** 알림함 주인: 고객(라이더도 받을 수 있게 열어 두지만 지금은 쌓이는 알림이 없다). 운영자 403. */
+  /** 알림함 주인: 고객·라이더(라이더 알림 2026-11-16 — 도움요청 답장·처리 끝, 문의 답변, 계정 제한). 운영자 403. */
   private static PmartPrincipal recipient() {
     return PmartPrincipal.current()
         .filter(

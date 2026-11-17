@@ -199,7 +199,8 @@ public class HelpRequestService {
                           .orElseThrow(
                               () ->
                                   PmartException.notFound("HELP_REQUEST_NOT_FOUND", "도움요청이 없습니다."));
-                  String mfcId = store.delivery(deliveryId).map(DeliveryRow::mfcId).orElse(null);
+                  DeliveryRow delivery = store.delivery(deliveryId).orElse(null);
+                  String mfcId = delivery == null ? null : delivery.mfcId();
                   String senderType;
                   if (p.type() == PmartPrincipal.PrincipalType.RIDER) {
                     if (!p.subject().equals(h.riderId())) {
@@ -237,15 +238,27 @@ public class HelpRequestService {
                         List.of());
                   }
                   String id = "HM-" + java.util.UUID.randomUUID();
-                  store.insertHelpMessage(
-                      id,
-                      deliveryId,
-                      requestId,
-                      senderType,
-                      p.subject(),
-                      text,
-                      mapper.writeValueAsString(photoRefs),
-                      clock.instant());
+                  var saved =
+                      store.insertHelpMessage(
+                          id,
+                          deliveryId,
+                          requestId,
+                          senderType,
+                          p.subject(),
+                          text,
+                          mapper.writeValueAsString(photoRefs),
+                          clock.instant());
+                  if ("SUPPORT".equals(senderType)) {
+                    // 라이더 알림함(§11-5) — 같은 트랜잭션의 outbox
+                    events.helpReplied(
+                        deliveryId,
+                        requestId,
+                        h.riderId(),
+                        saved.seq(),
+                        saved.createdAt(),
+                        delivery == null ? 0 : delivery.version(),
+                        p.subject());
+                  }
                   log.info("배송 {} 도움요청 {} 대화 — {}", deliveryId, requestId, senderType);
                   return id;
                 })

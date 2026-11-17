@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
     비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
@@ -11,7 +11,9 @@ info:
     0.2.0(2026-11-16, 1차 구현 — 사용자 결정 "앱 알림함만 먼저", "이번엔 고객만"): 고객 앱 알림함(IN_APP)만. 휴대폰 푸시(APP_PUSH)·알림톡·문자는 아직 없다(CHANNEL_NOT_APPROVED).
     고객에게 쌓는 알림: 주문 확정(OrderConfirmed)·상품 준비 시작(OrderPreparationStarted)·배송 출발(PickupCompleted)·배송 완료(DeliveryCompleted, 리뷰 안내 포함)·
     주문 취소(OrderCancelled)·품절 부분 취소(OrderLineQuantityChanged SHORTAGE)·환불 결과(RefundResult SUCCESS·FAILED — RefundIntentCreated 로 주문과 잇는다, 결과 모름은 알리지 않음)·
-    고객센터 답변(InquiryAnswered). 라이더·운영자 알림함, 수신 설정 변경 결과 조회, 내부 범용 요청·발송 이력·배차 알림 기록은 아직 501.
+    고객센터 답변(InquiryAnswered).
+    0.3.0(2026-11-16 — 라이더 앱 요청 §11-5, 사용자 "라이더 알림함 먼저"): **라이더 알림함**(같은 /me/notifications, 라이더 토큰) — 도움요청 지원센터 답장(HelpRequestReplied)·도움요청 처리 끝(CaseClosed RIDER_HELP)·
+    라이더 문의 답변(RiderInquiryAnswered)·계정 제한·해제(RiderRestricted). 휴대폰 푸시는 여전히 없음 — 앱이 알림함을 확인한다. 운영자 알림함, 수신 설정 변경 결과 조회, 내부 범용 요청·발송 이력·배차 알림 기록은 아직 501.
 servers:
   - url: /api/v1
 security:
@@ -28,7 +30,7 @@ paths:
       summary: 알림함 목록 (본인만. 발송 문구는 당시 사실 보존, 최신 상태는 목적지에서 조회)
       operationId: listMyNotifications
       x-pmart-user-types: [CUSTOMER, RIDER]
-      x-pmart-user-types-note: "추정 — 서비스 지도는 고객 알림함, Recipient.principalType 에 RIDER 도 있어 포함(운영자 제외), 구현 없음"
+      x-pmart-user-types-note: "고객·라이더 본인 알림함(라이더 0.3.0, 2026-11-16)"
       parameters:
         - { name: unreadOnly, in: query, schema: { type: boolean, default: false } }
         - { name: category, in: query, schema: { $ref: '#/components/schemas/Category' } }
@@ -271,13 +273,14 @@ components:
       type: object
       description: 알림을 열 때 이동할 최신 목적지 (원사건 참조)
       properties:
-        type: { type: string, enum: [ORDER, DELIVERY, CLAIM, REFUND, DISPATCH_OFFER, CASE, INQUIRY, NOTICE, NONE] }
+        type: { type: string, enum: [ORDER, DELIVERY, CLAIM, REFUND, DISPATCH_OFFER, CASE, INQUIRY, NOTICE, NONE, HELP_REQUEST] }
         ref:
           type: string
           description: |
             type 별 식별자. ORDER = orderId, DELIVERY = deliveryId, CLAIM = claimId,
             **REFUND = claimId**(환불은 클레임 아래에서 조회한다 — claim-service `GET /claims/{claimId}/refunds`. 주문 취소 환불도 취소 클레임으로 만들어진다).
-            INQUIRY = inquiryId(고객센터 문의 — case-service `GET /inquiries/{inquiryId}`, 0.2.0).
+            INQUIRY = inquiryId(고객센터 문의 — case-service `GET /inquiries/{inquiryId}`, 0.2.0. 라이더 문의도 같은 경로).
+            **HELP_REQUEST = `<deliveryId>:<requestId>`**(라이더 도움요청 — delivery-execution `GET /deliveries/{deliveryId}/help-requests/{requestId}`·대화, 0.3.0).
             NONE 이면 비어 있다. (2026-11-05 명시)
     Notification:
       type: object
