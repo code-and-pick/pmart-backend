@@ -37,3 +37,4 @@
 - **고객 반품 회수 실패(2026-11-17, CL-1)**: `ReturnPickupFailed` 도 진행 끝(DONE·FAILED, `ProgressRules`)·위치 감시 끝(`RiderWatch`).
 - **라이더 본인 도착 예정(2026-11-17, 0.7.0 — 라이더 앱 요청 §16-4 "앱을 다시 켜면 예정 시각이 없다")**: `/eta`·`/stream` 에 RIDER — 지금 배정된 라이더(`delivery_progress.rider_id` = 토큰 sub)만 직원과 같은 범위(픽업 예정·도착 예정·자기 위치), 남의·배정 풀린 배송 404. 구독은 `ProgressService.refresh(…, viewerRider)` 가 배정이 바뀌면 null → 닫힘(남의 위치를 보지 않게).
 - **라이더 관제(2026-11-17, 계약 0.8.0 — ADR-0068)**: `GET /rider-locations?mfcId=`(`RiderControlService`·`ControlController`·`RiderClient`) — RIDER_OPS·OPERATOR_ADMIN 만(그 밖 403). 라이더는 매 요청 rider `/internal/riders/on-duty`(설정 `pmart.tracking.rider-base-url`, 기본 `http://rider-service:8403`)가 정함 → 운행 중만, 위치 없는 라이더도 나옴(stale). 마지막 위치·끊김 초(`stale-after` 기준)·감시 중 배정(`LocationStore.activeOf` — 단계·ETA). 이력 없음, no-store, 좌표 로그 금지.
+- **상태 정정 반영(2026-11-17)**: `DeliveryStatusCorrected` → `ProgressRules.stageOfState(to)` 로 진행 단계를 맞춘다(뒤로도, DONE 이면 그대로).

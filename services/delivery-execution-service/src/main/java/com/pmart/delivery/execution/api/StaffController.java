@@ -42,6 +42,7 @@ public class StaffController implements StaffApi {
   private final com.pmart.delivery.execution.application.EarningAdjustments adjustments;
   private final com.pmart.delivery.execution.application.EarningService earnings;
   private final com.pmart.delivery.execution.application.OperatingTimeService operating;
+  private final com.pmart.delivery.execution.application.StatusCorrectionService corrections;
 
   public StaffController(
       StaffQueries queries,
@@ -49,13 +50,38 @@ public class StaffController implements StaffApi {
       ObjectMapper mapper,
       com.pmart.delivery.execution.application.EarningAdjustments adjustments,
       com.pmart.delivery.execution.application.EarningService earnings,
-      com.pmart.delivery.execution.application.OperatingTimeService operating) {
+      com.pmart.delivery.execution.application.OperatingTimeService operating,
+      com.pmart.delivery.execution.application.StatusCorrectionService corrections) {
+    this.corrections = corrections;
     this.adjustments = adjustments;
     this.earnings = earnings;
     this.operating = operating;
     this.queries = queries;
     this.helps = helps;
     this.mapper = mapper;
+  }
+
+  /** 운영자 상태 정정(2026-11-17, 0.17.0). */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.ReportStoreArrival200Response>
+      correctDeliveryStatus(
+          String deliveryId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.execution.api.generated.model.CorrectDeliveryStatusRequest body,
+          @Nullable Integer xExpectedVersion) {
+    return ResponseEntity.ok(
+        ExecutionViews.applied(
+            corrections.correct(
+                deliveryId,
+                idempotencyKey,
+                xSourceSystem,
+                xExpectedVersion,
+                new com.pmart.delivery.execution.application.StatusCorrectionService.Command(
+                    body.getTargetState().getValue(),
+                    body.getReason(),
+                    body.getEvidenceRefs() == null ? List.of() : body.getEvidenceRefs()))));
   }
 
   /** 직원용 라이더 수행료(2026-11-17 라이더 백오피스) — 라이더 앱 내역과 같은 값. */

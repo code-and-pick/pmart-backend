@@ -348,6 +348,7 @@ POST /api/v1/deliveries/{deliveryId}/help-requests/{requestId}/resolutions OPERA
 POST /api/v1/deliveries/{deliveryId}/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/pickups RIDER
 POST /api/v1/deliveries/{deliveryId}/returns/store-deliveries RIDER
+POST /api/v1/deliveries/{deliveryId}/status-corrections OPERATOR
 POST /api/v1/deliveries/{deliveryId}/store-arrivals RIDER
 POST /api/v1/delivery-list/{deliveryId}/acceptances RIDER
 POST /api/v1/dispatch-requests OPERATOR

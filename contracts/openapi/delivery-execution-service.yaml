@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -911,11 +911,53 @@ paths:
                 properties:
                   riderId: { type: string }
                   blockers: { type: array, items: { type: string, enum: [ACTIVE_DELIVERY, UNCONFIRMED_EARNING, EARNING_ADJUSTMENT_PENDING, OPEN_HELP_REQUEST] } }
+  /deliveries/{deliveryId}/status-corrections:
+    post:
+      tags: [staff]
+      summary: (0.17.0) 운영자 상태 정정 — 라이더가 단계를 잘못 눌렀을 때 (RIDER_OPS·OPERATOR_ADMIN)
+      x-added-in: '2026-11-17'
+      description: |
+        원문 §9.3 "배달 상태 잘못 변경 → 실제 수행 확인 → 관리자 정정", §6.4 "관리자 정정 시 확인 근거·처리자·시각 기록". 사용자 2026-11-17 **"라이더 운영 관리자가 승인"** —
+        정정하는 라이더 운영(RIDER_OPS)·관리자(OPERATOR_ADMIN)가 곧 승인자(따로 승인 번호 없음, 그 밖 403). 사유 2~500자 필수, 근거 사진(evidenceRefs)은 선택.
+        **바꿀 수 있는 것만**(그 밖 422 CORRECTION_NOT_ALLOWED): 픽업 전 ASSIGNED ↔ ARRIVED_AT_STORE, 픽업 뒤 PICKED_UP ↔ ARRIVED_AT_CUSTOMER. 픽업 자체·완료·실패·취소는
+        정정으로 바꾸지 않는다(픽업은 포장 인계 사실, 완료는 증빙·자동 완료, 실패는 failure-decisions). 일반·재발송 배송만.
+        정정은 새 사실 기록 — 이력에 OPERATOR 로 남고(이전 이력은 그대로), `DeliveryStatusCorrected`(from·to·operatorId·basis) → tracking 진행 단계도 맞춘다.
+      operationId: correctDeliveryStatus
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetState, reason]
+              properties:
+                targetState: { type: string, enum: [ASSIGNED, ARRIVED_AT_STORE, PICKED_UP, ARRIVED_AT_CUSTOMER] }
+                reason: { type: string, minLength: 2, maxLength: 500 }
+                evidenceRefs: { type: array, maxItems: 10, items: { type: string, maxLength: 128 } }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: CORRECTION_NOT_ALLOWED(바꿀 수 없는 단계)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /internal/deliveries/{deliveryId}/status-corrections:
     post:
       tags: [internal]
-      summary: "[bo→execution] 운영자 상태 정정 (처리자·근거·approvalRef 필수)"
+      deprecated: true
+      summary: "[사용 안 함] 운영자 상태 정정 — 0.17.0 `/deliveries/{id}/status-corrections`(직원 토큰)로"
       description: |
+        2026-11-17: 만들지 않는다 — 직원 토큰 경로(`POST /deliveries/{deliveryId}/status-corrections`)가 대신한다(승인은 정정하는 라이더 운영 관리자 — 사용자). 계속 501.
         정정은 새 사실 기록이며 기존 이력을 삭제하지 않는다. COMPLETED를 되돌리는 정정은 허용하지 않고 사고 사건(DeliveryIncidentRaised)으로 처리한다.
         픽업 정정은 handoverIds 근거가 있어야 한다.
       operationId: createStatusCorrection

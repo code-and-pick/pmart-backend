@@ -124,4 +124,17 @@ public final class ExecutionRules {
     }
     return Optional.empty();
   }
+
+  /**
+   * 운영자 상태 정정(2026-11-17) — 픽업 전 ASSIGNED ↔ ARRIVED_AT_STORE, 픽업 뒤 PICKED_UP ↔ ARRIVED_AT_CUSTOMER
+   * 만. 픽업(인계 사실)·완료·실패·취소는 정정으로 넘지 않는다.
+   */
+  public static boolean correctionAllowed(String from, String to) {
+    return (Set.of("ASSIGNED", "ARRIVED_AT_STORE").contains(from)
+            && Set.of("ASSIGNED", "ARRIVED_AT_STORE").contains(to)
+            && !from.equals(to))
+        || (Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER").contains(from)
+            && Set.of("PICKED_UP", "ARRIVED_AT_CUSTOMER").contains(to)
+            && !from.equals(to));
+  }
 }

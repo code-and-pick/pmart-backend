@@ -406,6 +406,29 @@ public class ExecutionStore {
 
   // ---- 이력
 
+  /** 운영자 상태 정정 기록(V16, 2026-11-17). */
+  public void insertCorrection(
+      String correctionId,
+      String deliveryId,
+      String from,
+      String to,
+      String reason,
+      String evidenceJson,
+      String by,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO delivery_status_correction (correction_id, delivery_id, from_state, to_state,"
+            + " reason, evidence_refs, corrected_by, corrected_at) VALUES (?,?,?,?,?,?::jsonb,?,?)",
+        correctionId,
+        deliveryId,
+        from,
+        to,
+        reason,
+        evidenceJson,
+        by,
+        ts(at));
+  }
+
   public void history(
       String deliveryId,
       String state,

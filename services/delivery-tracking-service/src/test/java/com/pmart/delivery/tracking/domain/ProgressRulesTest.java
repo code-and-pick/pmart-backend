@@ -41,4 +41,14 @@ class ProgressRulesTest {
     assertThat(returnFailed.outcome()).isEqualTo("FAILED");
     assertThat(ProgressRules.shouldMove("TO_STORE", returnFailed)).isTrue();
   }
+
+  /** 운영자 상태 정정(2026-11-17) — 정정한 수행 상태를 단계로(뒤로도). 정정할 수 없는 상태는 null. */
+  @org.junit.jupiter.api.Test
+  void correctedStateMapsToStage() {
+    assertThat(ProgressRules.stageOfState("ARRIVED_AT_CUSTOMER")).isEqualTo("AT_CUSTOMER");
+    assertThat(ProgressRules.stageOfState("PICKED_UP")).isEqualTo("TO_CUSTOMER");
+    assertThat(ProgressRules.stageOfState("ARRIVED_AT_STORE")).isEqualTo("AT_STORE");
+    assertThat(ProgressRules.stageOfState("ASSIGNED")).isEqualTo("TO_STORE");
+    assertThat(ProgressRules.stageOfState("COMPLETED")).isNull();
+  }
 }

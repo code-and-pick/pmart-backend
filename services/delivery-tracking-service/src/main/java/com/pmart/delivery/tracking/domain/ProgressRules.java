@@ -47,6 +47,20 @@ public final class ProgressRules {
     };
   }
 
+  /** 운영자 상태 정정(2026-11-17)의 수행 상태 → 진행 단계. 정정할 수 없는 상태면 null. */
+  public static @Nullable String stageOfState(@Nullable String state) {
+    if (state == null) {
+      return null;
+    }
+    return switch (state) {
+      case "ASSIGNED" -> TO_STORE;
+      case "ARRIVED_AT_STORE" -> AT_STORE;
+      case "PICKED_UP" -> TO_CUSTOMER;
+      case "ARRIVED_AT_CUSTOMER" -> AT_CUSTOMER;
+      default -> null;
+    };
+  }
+
   /** 지금 단계(없으면 null)에서 target 으로 바꿀지. */
   public static boolean shouldMove(@Nullable String current, Target target) {
     if (current == null) {

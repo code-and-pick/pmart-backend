@@ -41,6 +41,7 @@ public class ProgressService {
           "PickupCompleted",
           "ReturnPickedUp",
           "RiderArrivedAtCustomer",
+          "DeliveryStatusCorrected", // 운영자 상태 정정(2026-11-17) — 뒤로도 맞춘다
           "DeliveryCompleted",
           "ReturnDelivered",
           "DeliveryFailed",
@@ -102,6 +103,14 @@ public class ProgressService {
           text(w, "start"),
           text(w, "end"),
           now);
+      return;
+    }
+    if ("DeliveryStatusCorrected".equals(e.eventType())) {
+      String stage = ProgressRules.stageOfState(text(p, "to"));
+      String current = store.lockStage(deliveryId).orElse(null);
+      if (stage != null && current != null && !ProgressRules.DONE.equals(current)) {
+        store.setStage(deliveryId, stage, null, text(p, "mfcId"), now);
+      }
       return;
     }
     boolean released =

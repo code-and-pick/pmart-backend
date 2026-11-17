@@ -308,6 +308,32 @@ public class ExecutionEvents {
         p);
   }
 
+  /** 운영자 상태 정정(2026-11-17). basis = 사유(직원이 적은 글 — 개인정보를 적지 않게 화면 안내). */
+  public void statusCorrected(
+      DeliveryRow before,
+      String from,
+      String to,
+      String operatorId,
+      String basis,
+      java.util.List<String> evidenceRefs,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", before.deliveryId());
+    p.put("from", from);
+    p.put("to", to);
+    p.put("operatorId", operatorId);
+    p.put("basis", basis);
+    p.put(
+        "evidenceRefs",
+        evidenceRefs.stream().map(r -> Map.of("evidenceId", r, "kind", "PHOTO")).toList());
+    p.put("correctedAt", at.toString());
+    publish(
+        "DeliveryStatusCorrected",
+        before,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, operatorId),
+        p);
+  }
+
   private void publish(
       String type, DeliveryRow before, EventEnvelope.Actor actor, Map<String, Object> payload) {
     events.publish(type, 1, "Delivery", before.deliveryId(), before.version() + 1L, actor, payload);

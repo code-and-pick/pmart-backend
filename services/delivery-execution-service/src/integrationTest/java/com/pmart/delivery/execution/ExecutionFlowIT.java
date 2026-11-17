@@ -1204,6 +1204,62 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     }
   }
 
+  /** 운영자 상태 정정(2026-11-17 — 사용자 "라이더 운영 관리자가 승인"): 픽업 뒤 고객 도착 ↔ 픽업만, 이력·사건·기록. */
+  @Test
+  void riderOpsCorrectsMistakenArrival() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    Map<String, Object> back =
+        Map.of("targetState", "PICKED_UP", "reason", "라이더가 도착을 일찍 누름 — 통화 확인");
+    String cs = TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of());
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    assertThat(correct(id, cs, back).getStatusCode().value()).isEqualTo(403);
+    ResponseEntity<String> ok = correct(id, ops, back);
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(state(id)).isEqualTo("PICKED_UP");
+    JsonNode ev = outbox(id, "DeliveryStatusCorrected").path("payload");
+    assertThat(ev.path("from").asString()).isEqualTo("ARRIVED_AT_CUSTOMER");
+    assertThat(ev.path("to").asString()).isEqualTo("PICKED_UP");
+    assertThat(ev.path("operatorId").asString()).isEqualTo("OP-RO");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM execution_history WHERE delivery_id = ? AND actor = 'OPERATOR'"
+                    + " AND state = 'PICKED_UP'",
+                Integer.class,
+                id))
+        .isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT corrected_by FROM delivery_status_correction WHERE delivery_id = ?",
+                String.class,
+                id))
+        .isEqualTo("OP-RO");
+    // 픽업 뒤 → 픽업 전, 같은 상태는 정정할 수 없다
+    ResponseEntity<String> bad =
+        correct(id, ops, Map.of("targetState", "ASSIGNED", "reason", "되돌리기"));
+    assertThat(bad.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(bad).path("code").asString()).isEqualTo("CORRECTION_NOT_ALLOWED");
+    assertThat(correct(id, ops, back).getStatusCode().value()).isEqualTo(422);
+    // 라이더는 다시 고객 도착을 누를 수 있다
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+  }
+
+  ResponseEntity<String> correct(String id, String token, Map<String, Object> body) {
+    return http.post()
+        .uri("/deliveries/{id}/status-corrections", id)
+        .header("Authorization", "Bearer " + token)
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .header("X-Source-System", "rider-backoffice-web")
+        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   @Test
   void misdeliveryRecoveryPicksUpAtSpotAndReturnsToStore() {
     String origin = "DLV-" + UUID.randomUUID();
