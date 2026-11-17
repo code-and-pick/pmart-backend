@@ -7,6 +7,16 @@ import org.junit.jupiter.api.Test;
 class NoticesTest {
 
   @Test
+  void riderRestrictionLiftedOnlyWhenSomethingWasRestricted() {
+    assertThat(Notices.riderRestriction("NORMAL", "DISPATCH_RESTRICTED", null).title())
+        .isEqualTo("계정 제한이 풀렸어요");
+    assertThat(Notices.riderRestriction("NORMAL", null, null)).isNotNull(); // previous 없는 옛 사건은 그대로
+    assertThat(Notices.riderRestriction("NORMAL", "NORMAL", null)).isNull();
+    assertThat(Notices.riderRestriction("DISPATCH_RESTRICTED", "NORMAL", null).body())
+        .doesNotContain("사유");
+  }
+
+  @Test
   void orderConfirmedShowsAmountAndArrivalWindow() {
     var n = Notices.orderConfirmed("ORD-1", 32100L, "2026-11-17", "13:00", "14:00");
     assertThat(n.body()).contains("32,100원").contains("11월 17일 13:00~14:00");

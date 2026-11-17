@@ -265,7 +265,7 @@ public class NotificationService {
     if (riderId == null || restriction == null) {
       return;
     }
-    Notice n = Notices.riderRestriction(restriction, instant(text(p, "to")));
+    Notice n = Notices.riderRestriction(restriction, text(p, "previous"), instant(text(p, "to")));
     if (n != null) {
       saveFor(e, RIDER, riderId, n);
     }

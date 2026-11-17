@@ -45,7 +45,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 5 — delivery 영역
 - [x] **TR-3 고객·직원 ETA 조회·실시간 구독**(2026-11-17 PC 5 구현 — 브랜치 `delivery/tr-3-eta` PR)(2026-11-17 사용자 "PC 5에 요청" — 요청서 `docs/architecture/service-requests/delivery-tracking-service.md` TR-3): `GET /deliveries/{id}/eta`·`/stream`(SSE) 구현 — 고객 본인 배송 dropEta 만, 직원은 execution `Access` 범위, ETA 계산 꺼짐이면 ETA_PENDING. 고객앱은 이미 부른다. **main 에서 새 브랜치로**(예 `delivery/tr-3-eta-api`)
-- [ ] **PR #71 다시 맞추기**(2026-11-16 PC 1): #68(PC 2 CS 접수)과 case V10·0.12.0·문의 코드 4곳이 겹침 → main 위로 rebase, `V11__rider_inquiry.sql`·case 0.13.0, 허용 목록 다시 생성. PR 댓글 참고. case-service 는 PC 2 검토도
+- [x] **PR #71 다시 맞추기**(2026-11-16 PC 1 — 2026-11-17 V11·0.13.0 으로 맞춰 병합·배포 09115c80): #68(PC 2 CS 접수)과 case V10·0.12.0·문의 코드 4곳이 겹침 → main 위로 rebase, `V11__rider_inquiry.sql`·case 0.13.0, 허용 목록 다시 생성. PR 댓글 참고. case-service 는 PC 2 검토도
 
 - [x] 공통 절 전부(gh·포크·`./gradlew --stop`) — 2026-11-13: 저장소 형제(`pmart-backend`·`pmart-clients`, 시뮬레이터는 delivery 에 불필요), gh `piaa1004` 로그인·포크 `piaa1004/pmart-backend`·`fork` remote, 비밀번호 파일 4개 `deploy/lan/.secrets/`(루트 `.secrets/` 없음), Gradle 제한 파일 있음·`--stop`, 루트 CA 설치 확인. 주의: gh 는 설치돼 있지만 PATH 에 없는 터미널이 있음(`C:\Program Files\GitHub CLI\gh.exe`)
 - [x] `docs/delivery/HANDOVER.md` 읽기 — 2026-11-13. 남은 결정 중 AI 엔진(ADR-0058)·배달 시간 08~24시·카카오 키는 사용자가 정함(kickoff §6). 남은 것: 라이더 앱 기반·CP-1·오배송 확인 기록 주체
@@ -73,7 +73,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [x] DE-CASE `CaseOpened`·`CaseClosed` 구독(2026-11-16 구현 — Reopened 도, 사건 붙은 도움요청은 처리함 닫기 409) → 도움요청에 사건 번호·상태(`delivery-execution-service.md`)
   - [x] TR-1 `DeliveryEtaUpdated`(2026-11-16 구현 — 설정 있을 때만 켜짐)
   - [x] DE-2 도움요청 대화(#60)(2026-11-17 PC 5 구현 — 브랜치 `delivery/de-2-help-chat`) — 답장 권한을 접수 건 규칙에(CS 보기만·넘긴 건 관리자만), 새 메시지 값 `lastRiderMessageAt`, 관리자 가림, 처리 중 = 집을 때(PC 2 요청, `delivery-execution-service.md` DE-2)
-  - [ ] RS-2(rider-auth) — 표 참고
+  - [x] RS-2(rider-auth) — 표 참고(구현 2026-11-13, 표 "구현"). RS-3 컴플레인 검토 목록도 LAN 배포 확인(2026-11-17 PC 5 — 관리자 `GET /riders/restriction-reviews` 200)
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
 

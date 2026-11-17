@@ -248,8 +248,15 @@ public final class Notices {
         inquiryId);
   }
 
-  /** 계정 제한·해제. 사유·근거는 싣지 않는다(지원센터에 문의). 모르는 제한 종류는 알리지 않는다(null). */
-  public static @Nullable Notice riderRestriction(String restriction, @Nullable Instant until) {
+  /**
+   * 계정 제한·해제. 사유·근거는 싣지 않는다(지원센터에 문의). 모르는 제한 종류는 알리지 않는다(null). 정상 → 정상(제한이 없었는데 "풀렸어요")도 알리지 않는다
+   * — rider-service 는 이 변경을 거절하지만 받는 쪽에서도 막는다(PC 1 #73 검토 후속, 2026-11-17).
+   */
+  public static @Nullable Notice riderRestriction(
+      String restriction, @Nullable String previous, @Nullable Instant until) {
+    if ("NORMAL".equals(restriction) && "NORMAL".equals(previous)) {
+      return null;
+    }
     String untilText =
         until == null
             ? ""

@@ -242,7 +242,6 @@ public class ExecutionController implements ExecutionApi {
     return ResponseEntity.ok(out);
   }
 
-  /** 증빙 사진 보기(2026-11-16) — 앱·브라우저가 남기지 않게 no-store·private. */
   /** 고객용 전달 완료 증빙(2026-11-17). */
   @Override
   public ResponseEntity<
@@ -261,6 +260,7 @@ public class ExecutionController implements ExecutionApi {
                 .photoRefs(d.photoRefs()));
   }
 
+  /** 증빙 사진 보기(2026-11-16) — 앱·브라우저가 남기지 않게 no-store·private. */
   @Override
   public ResponseEntity<org.springframework.core.io.Resource> getEvidencePhoto(
       String deliveryId, String photoRef) {
