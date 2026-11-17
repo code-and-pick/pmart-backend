@@ -27,13 +27,16 @@ class PackingHandoverStageTest {
     assertThat(stage("PREPARING", "IN_PROGRESS", "WAITING")).isEqualTo("PICKING");
     assertThat(stage("PREPARING", "BLOCKED", null)).isEqualTo("PICKING");
     assertThat(stage("PREPARING", "COMPLETED", "IN_PROGRESS")).isEqualTo("PACKING");
+    // 사용자 2026-11-17 "(가)": 피킹 끝·패킹 시작 전, 패킹 막힘도 패킹중
+    assertThat(stage("PREPARING", "COMPLETED", "WAITING")).as("피킹 끝·패킹 시작 전").isEqualTo("PACKING");
+    assertThat(stage("PREPARING", "COMPLETED", null)).isEqualTo("PACKING");
+    assertThat(stage("PREPARING", "COMPLETED", "BLOCKED")).as("패킹 막힘").isEqualTo("PACKING");
   }
 
   @Test
   void combinationsOutsideTheRuleAreNull() {
-    assertThat(stage("PREPARING", "COMPLETED", "WAITING")).as("피킹 끝·패킹 시작 전").isNull();
-    assertThat(stage("PREPARING", "COMPLETED", "BLOCKED")).as("패킹 막힘").isNull();
-    assertThat(stage("PREPARING", "COMPLETED", null)).isNull();
+    assertThat(stage("PREPARING", "COMPLETED", "COMPLETED")).as("패킹 끝인데 출고 PREPARING").isNull();
+    assertThat(stage("PREPARING", "FAILED", null)).isNull();
     assertThat(stage("CANCELLED", null, null)).isNull();
     assertThat(stage("CLOSED_PARTIAL", "COMPLETED", "COMPLETED")).isNull();
     assertThat(stage(null, null, null)).isNull();

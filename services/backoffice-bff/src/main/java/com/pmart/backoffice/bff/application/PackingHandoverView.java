@@ -265,14 +265,19 @@ public class PackingHandoverView {
       default:
         return null;
     }
-    if ("IN_PROGRESS".equals(pack)) {
+    boolean packNotStarted = pack == null || NOT_STARTED.contains(pack);
+    // 패킹 진행·막힘 → 패킹중(막힌 사유는 pack.blockReason) — 사용자 2026-11-17 "(가)"
+    if ("IN_PROGRESS".equals(pack) || "BLOCKED".equals(pack)) {
       return "PACKING";
     }
     if ("IN_PROGRESS".equals(pick) || "BLOCKED".equals(pick)) {
       return "PICKING";
     }
+    // 피킹 끝·패킹 시작 전 → 패킹중(원문 네 단계 안에서 묶음 — 사용자 2026-11-17 "(가)", 실제 시작 여부는 pack.state)
+    if ("COMPLETED".equals(pick) && packNotStarted) {
+      return "PACKING";
+    }
     boolean pickNotStarted = pick == null || NOT_STARTED.contains(pick);
-    boolean packNotStarted = pack == null || NOT_STARTED.contains(pack);
     return pickNotStarted && packNotStarted ? "REQUESTED" : null;
   }
 
