@@ -253,13 +253,15 @@ public class LocationStore {
   }
 
   /** 새 도착 예정을 적고 사건 버전을 올려 돌려준다(아직 감시 중일 때만 — 아니면 null). */
-  public @Nullable Integer etaPublished(String deliveryId, Instant etaDrop, Instant now) {
+  public @Nullable Integer etaPublished(
+      String deliveryId, @Nullable Instant etaPickup, Instant etaDrop, Instant now) {
     List<Integer> v =
         jdbc.queryForList(
-            "UPDATE rider_active_delivery SET eta_drop = ?, eta_checked_at = ?, eta_version ="
-                + " eta_version + 1 WHERE delivery_id = ? AND state = 'ACTIVE' RETURNING"
-                + " eta_version",
+            "UPDATE rider_active_delivery SET eta_pickup = ?, eta_drop = ?, eta_checked_at = ?,"
+                + " eta_version = eta_version + 1 WHERE delivery_id = ? AND state = 'ACTIVE'"
+                + " RETURNING eta_version",
             Integer.class,
+            etaPickup == null ? null : Timestamp.from(etaPickup),
             Timestamp.from(etaDrop),
             Timestamp.from(now),
             deliveryId);

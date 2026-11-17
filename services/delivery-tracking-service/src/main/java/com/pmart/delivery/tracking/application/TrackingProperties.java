@@ -35,7 +35,8 @@ public record TrackingProperties(
     @Nullable Duration watchMaxAge,
     @Nullable Duration locationAtWindow,
     @Nullable Eta eta,
-    @Nullable String dispatchBaseUrl) {
+    @Nullable String dispatchBaseUrl,
+    @Nullable String orderBaseUrl) {
 
   public TrackingProperties {
     lowAccuracyM = lowAccuracyM == null ? 100.0 : lowAccuracyM;
@@ -53,6 +54,9 @@ public record TrackingProperties(
         dispatchBaseUrl == null || dispatchBaseUrl.isBlank()
             ? "http://delivery-dispatch-service:8404"
             : dispatchBaseUrl;
+    // 고객 소유 확인(TR-3) — order 내부 주문 조회
+    orderBaseUrl =
+        orderBaseUrl == null || orderBaseUrl.isBlank() ? "http://order-service:8201" : orderBaseUrl;
   }
 
   /**

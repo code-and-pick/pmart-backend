@@ -23,5 +23,5 @@ delivery-tracking-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
   - `GET /deliveries/{deliveryId}/stream`(SSE) — 같은 범위로 ETA 갱신·진행 단계, 끝나면 서버가 닫음, `Last-Event-ID` 재개.
   - 고객 소유 확인: 배송 → 주문 → 고객. 조회 방법(execution·order 내부 API 또는 배송 사건 사본)은 PC 5 가 정한다.
 - **PC 1 쪽(같이 할 일)**: ETA 계산 켜기 — `pmart.tracking.eta.interval`·`min-change` 값(카카오 길찾기 사용량)은 사용자 결정 뒤 pmart-config 에 넣는다. 게이트웨이 경로 `/api/v1/deliveries/**` 가 tracking 의 `/eta`·`/stream` 으로 가는지(SSE 버퍼링 끄기 포함) 병합 때 PC 1 이 확인한다.
-- **상태**: 요청함(2026-11-17).
+- **상태**: **구현(PC 5, 2026-11-17 — tracking 0.5.0, V5, 브랜치 `delivery/tr-3-eta`)**. 고객 소유 = order 내부 `GET /internal/orders/{id}` accountId(배송 사본의 주문으로 — 사본은 tracking 이 배송 사건으로 만든다, 배포 전 배송은 404). 스트림은 SSE 만(WebSocket 없음) — 3초마다 사본을 읽어 바뀐 것만, 15초 HEARTBEAT, 끝나면 STREAM_END 뒤 닫힘, 30분 넘으면 닫힘(다시 접속). ETA 값은 PC 1 이 `pmart.tracking.eta.*` 를 넣어야 나온다(그 전 ETA_PENDING). 게이트웨이는 이미 `/api/v1/deliveries/*/eta`·`/stream` → tracking — SSE 버퍼링은 PC 1 확인.
 

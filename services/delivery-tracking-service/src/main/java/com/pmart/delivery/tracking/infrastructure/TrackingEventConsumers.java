@@ -15,7 +15,24 @@ import org.springframework.context.annotation.Configuration;
 class TrackingEventConsumers {
 
   @Bean
-  PmartEventConsumer deliveryEvents(EventConsumers consumers, RiderWatch watch) {
-    return consumers.of(e -> RiderWatch.TYPES.contains(e.eventType()), watch::on);
+  PmartEventConsumer deliveryEvents(
+      EventConsumers consumers,
+      RiderWatch watch,
+      com.pmart.delivery.tracking.application.ProgressService progress) {
+    // 같은 inbox 트랜잭션 — 라이더 감시(TR-2·TR-1)와 배송 진행 사본(TR-3)
+    return consumers.of(
+        e ->
+            RiderWatch.TYPES.contains(e.eventType())
+                || com.pmart.delivery.tracking.application.ProgressService.TYPES.contains(
+                    e.eventType()),
+        e -> {
+          if (RiderWatch.TYPES.contains(e.eventType())) {
+            watch.on(e);
+          }
+          if (com.pmart.delivery.tracking.application.ProgressService.TYPES.contains(
+              e.eventType())) {
+            progress.on(e);
+          }
+        });
   }
 }

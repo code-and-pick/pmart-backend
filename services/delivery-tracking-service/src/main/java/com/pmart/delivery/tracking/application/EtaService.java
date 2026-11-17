@@ -182,7 +182,7 @@ public class EtaService {
       EtaRow r, @Nullable Instant etaPickup, Instant etaDrop, long staleness, Instant now) {
     tx.executeWithoutResult(
         s -> {
-          Integer version = store.etaPublished(r.deliveryId(), etaDrop, now);
+          Integer version = store.etaPublished(r.deliveryId(), etaPickup, etaDrop, now);
           if (version == null) {
             return; // 그 사이 끝난 배송
           }

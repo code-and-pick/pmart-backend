@@ -54,12 +54,14 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.tracking.purge-interval=PT1H",
       "pmart.tracking.eta-check-interval=PT1H", // 시험이 직접 부른다(TR-1)
       "pmart.tracking.eta.interval=PT0S",
-      "pmart.tracking.eta.min-change=PT1M"
+      "pmart.tracking.eta.min-change=PT1M",
+      "pmart.tracking.stream-poll-interval=PT0.3S"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({
   @ConfigureWireMock(name = "kakao", baseUrlProperties = "pmart.tracking.kakao-mobility.base-url"),
-  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.tracking.dispatch-base-url")
+  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.tracking.dispatch-base-url"),
+  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.tracking.order-base-url")
 })
 class TrackingFlowIT extends PostgresKafkaContainerSupport {
 
@@ -80,6 +82,9 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("dispatch")
   WireMockServer dispatchApi;
+
+  @InjectWireMock("order")
+  WireMockServer orderApi;
 
   @Autowired com.pmart.delivery.tracking.application.EtaService eta;
 
@@ -655,6 +660,202 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         1,
         com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
             urlPathEqualTo("/api/v1/internal/deliveries/" + delivery + "/route-points")));
+  }
+
+  /**
+   * TR-3(2026-11-17): 고객 본인 배송만 dropEta, 직원은 pickupEta 도, 라이더 403·남 404. 단계는 배송 사건으로 앞으로만, SSE 는 지금
+   * 상태 → 단계 바뀜 → 끝(STREAM_END) 뒤 닫힘.
+   */
+  @Test
+  void etaAndStreamForOwnerAndStaff() throws Exception {
+    String rider = "RD-tr3-" + UUID.randomUUID();
+    String delivery = "DLV-tr3-" + UUID.randomUUID();
+    String orderId = "ORD-tr3-" + UUID.randomUUID();
+    String me = "ACC-tr3-" + UUID.randomUUID().toString().substring(0, 8);
+    String customer = TestJwt.customer(me);
+    String staff = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String otherCenter = TestJwt.operator("OP-W", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER"));
+    String sameCenter = TestJwt.operator("OP-S", List.of("MFC_SUPERVISOR"), List.of("MFC-TR3"));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                urlPathEqualTo("/api/v1/internal/orders/" + orderId))
+            .willReturn(json(Map.of("orderId", orderId, "accountId", me))));
+    deliveryEvent(
+        "DeliveryCreated",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "orderId",
+            orderId,
+            "mfcId",
+            "MFC-TR3",
+            "type",
+            "FORWARD",
+            "arrivalWindow",
+            Map.of("date", "2026-11-17", "start", "18:00", "end", "19:00"),
+            "createdAt",
+            Instant.now().toString()));
+    awaitCount("SELECT count(*) FROM delivery_progress WHERE delivery_id = '" + delivery + "'");
+
+    JsonNode first = json(etaGet(customer, delivery).getBody());
+    assertThat(first.path("stage").asString()).isEqualTo("UNASSIGNED");
+    assertThat(first.path("dropEta").path("status").asString()).isEqualTo("ETA_PENDING");
+    assertThat(first.path("pickupEta").isObject()).isFalse(); // 고객에게 픽업 예정 없음(null)
+    assertThat(first.path("arrivalWindow").path("end").asString()).isEqualTo("19:00");
+    assertThat(etaGet(TestJwt.customer("ACC-someone-else"), delivery).getStatusCode().value())
+        .isEqualTo(404);
+    assertThat(etaGet(TestJwt.rider(rider), delivery).getStatusCode().value()).isEqualTo(403);
+    assertThat(etaGet(otherCenter, delivery).getStatusCode().value()).isEqualTo(404);
+    assertThat(etaGet(sameCenter, delivery).getStatusCode().value()).isEqualTo(200);
+    assertThat(etaGet(customer, "DLV-none").getStatusCode().value()).isEqualTo(404);
+
+    // 배정 + 위치 + ETA 계산 -> 고객은 도착 예정만, 직원은 픽업 예정도
+    upload(
+        rider, "k-" + rider, List.of(point(37.5000, 127.0300, 10, Instant.now().minusSeconds(5))));
+    deliveryEvent(
+        "DeliveryAssigned",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM delivery_progress WHERE delivery_id = '"
+            + delivery
+            + "' AND stage = 'TO_STORE'");
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND state = 'ACTIVE'");
+    dispatchApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                urlPathEqualTo("/api/v1/internal/deliveries/" + delivery + "/route-points"))
+            .willReturn(
+                json(
+                    Map.of(
+                        "deliveryId",
+                        delivery,
+                        "pickup",
+                        Map.of("lat", 37.5010, "lng", 127.0310),
+                        "drop",
+                        Map.of("lat", 37.5100, "lng", 127.0400),
+                        "pickupToDropS",
+                        600))));
+    kakao.stubFor(
+        post(urlPathEqualTo("/v1/destinations/directions"))
+            .willReturn(json(Map.of("routes", List.of(route("0", 0, 300, 120))))));
+    eta.tick();
+    JsonNode mine = json(etaGet(customer, delivery).getBody());
+    assertThat(mine.path("dropEta").path("status").asString()).isEqualTo("AVAILABLE");
+    assertThat(mine.path("dropEta").path("remainingSeconds").asInt()).isBetween(600, 721);
+    assertThat(mine.path("pickupEta").isObject()).isFalse();
+    assertThat(mine.toString()).doesNotContain("37.50");
+    JsonNode staffView = json(etaGet(staff, delivery).getBody());
+    assertThat(staffView.path("pickupEta").path("status").asString()).isEqualTo("AVAILABLE");
+
+    // SSE: 지금 상태 -> 픽업(STAGE_CHANGED) -> 늦게 온 가게 도착은 무시 -> 완료(STREAM_END) 뒤 닫힘
+    java.util.concurrent.BlockingQueue<String> lines = sse(customer, delivery);
+    assertThat(awaitLine(lines, "event: ")).isEqualTo("event: ETA_UPDATED");
+    deliveryEvent(
+        "PickupCompleted",
+        delivery,
+        Map.of("deliveryId", delivery, "riderId", rider, "pickedUpAt", Instant.now().toString()));
+    assertThat(nextEvent(lines)).isEqualTo("event: STAGE_CHANGED");
+    assertThat(awaitLine(lines, "data: ")).contains("\"stage\":\"TO_CUSTOMER\"");
+    deliveryEvent(
+        "RiderArrivedAtStore",
+        delivery,
+        Map.of("deliveryId", delivery, "riderId", rider, "arrivedAt", Instant.now().toString()));
+    deliveryEvent(
+        "DeliveryCompleted",
+        delivery,
+        Map.of("deliveryId", delivery, "riderId", rider, "completedAt", Instant.now().toString()));
+    assertThat(nextEvent(lines)).isEqualTo("event: STAGE_CHANGED");
+    assertThat(nextEvent(lines)).isEqualTo("event: STREAM_END");
+    assertThat(awaitLine(lines, "<<EOF>>")).isEqualTo("<<EOF>>");
+    JsonNode done = json(etaGet(customer, delivery).getBody());
+    assertThat(done.path("stage").asString()).isEqualTo("DONE");
+    assertThat(done.path("outcome").asString()).isEqualTo("COMPLETED");
+    assertThat(done.path("dropEta").path("status").asString()).isEqualTo("FINAL");
+    // 남의 구독은 스트림을 열기 전에 보통 응답(404)
+    assertThat(sseStatus(TestJwt.customer("ACC-someone-else"), delivery)).isEqualTo(404);
+  }
+
+  private ResponseEntity<String> etaGet(String token, String delivery) {
+    return http.get()
+        .uri("/deliveries/" + delivery + "/eta")
+        .header("Authorization", "Bearer " + token)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  private java.net.http.HttpResponse<java.util.stream.Stream<String>> sseOpen(
+      String token, String delivery) throws Exception {
+    return java.net.http.HttpClient.newHttpClient()
+        .send(
+            java.net.http.HttpRequest.newBuilder(
+                    java.net.URI.create(
+                        "http://localhost:" + port + "/api/v1/deliveries/" + delivery + "/stream"))
+                .header("Authorization", "Bearer " + token)
+                .header("Accept", "text/event-stream")
+                .build(),
+            java.net.http.HttpResponse.BodyHandlers.ofLines());
+  }
+
+  private int sseStatus(String token, String delivery) throws Exception {
+    var res = sseOpen(token, delivery);
+    res.body().close();
+    return res.statusCode();
+  }
+
+  private java.util.concurrent.BlockingQueue<String> sse(String token, String delivery)
+      throws Exception {
+    var res = sseOpen(token, delivery);
+    assertThat(res.statusCode()).isEqualTo(200);
+    assertThat(res.headers().firstValue("Content-Type").orElse("")).startsWith("text/event-stream");
+    var q = new java.util.concurrent.LinkedBlockingQueue<String>();
+    Thread t =
+        new Thread(
+            () -> {
+              try {
+                res.body().forEach(q::add);
+              } catch (RuntimeException ignored) {
+                // 끊김
+              }
+              q.add("<<EOF>>");
+            });
+    t.setDaemon(true);
+    t.start();
+    return q;
+  }
+
+  /** 다음 이벤트 종류(HEARTBEAT 는 건너뜀). */
+  private static String nextEvent(java.util.concurrent.BlockingQueue<String> q)
+      throws InterruptedException {
+    while (true) {
+      String line = awaitLine(q, "event: ");
+      if (!line.equals("event: HEARTBEAT")) {
+        return line;
+      }
+    }
+  }
+
+  private static String awaitLine(java.util.concurrent.BlockingQueue<String> q, String prefix)
+      throws InterruptedException {
+    long until = System.currentTimeMillis() + 20_000;
+    while (System.currentTimeMillis() < until) {
+      String line = q.poll(500, java.util.concurrent.TimeUnit.MILLISECONDS);
+      if (line != null && (line.startsWith(prefix) || "<<EOF>>".equals(line))) {
+        return line;
+      }
+    }
+    throw new AssertionError("SSE 줄이 오지 않음: " + prefix);
   }
 
   private List<Map<String, Object>> etaEvents(String delivery) {
