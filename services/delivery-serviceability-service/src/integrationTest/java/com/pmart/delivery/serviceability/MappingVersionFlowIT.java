@@ -203,6 +203,15 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
     kafka.send("platform.approval.v1", approvalId, json).join();
   }
 
+  /** 그 매핑 버전의 반영 회신 payload(승인 회신 토픽). */
+  String receipt(int version) {
+    return jdbc.queryForObject(
+        "SELECT payload::text FROM outbox_event WHERE type = 'ApplicationReceiptRecorded' AND topic"
+            + " = 'platform.approval-receipt.v1' AND payload::text LIKE ?",
+        String.class,
+        "%mapping-version:" + version + "\"%");
+  }
+
   String awaitState(int version, String expected) throws InterruptedException {
     Instant until = Instant.now().plus(Duration.ofSeconds(30));
     String s = null;
@@ -303,10 +312,19 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
     int otherVersion = other.body().path("version").path("version").asInt();
     decide(other.body().path("approvalRequest"), "APPROVED", "deadbeef");
     assertThat(awaitState(otherVersion, "REJECTED")).isEqualTo("REJECTED");
+    // RC-1: 반영 회신 — 발효하지 않았으면 REJECTED(사유 = 승인 범위 불일치)
+    assertThat(receipt(otherVersion))
+        .contains("\"result\": \"REJECTED\"")
+        .contains("APPROVAL_SCOPE_MISMATCH")
+        .contains("\"lineKey\": \"l1\"");
 
     // 승인 → 시험 주소 통과 → 발효
     decide(approval, "APPROVED", null);
     assertThat(awaitState(version, "ACTIVE")).isEqualTo("ACTIVE");
+    // RC-1: 반영 회신 APPLIED(같은 트랜잭션, 승인 회신 토픽)
+    assertThat(receipt(version))
+        .contains("\"result\": \"APPLIED\"")
+        .contains("\"receiverService\": \"delivery-serviceability-service\"");
     assertThat(
             jdbc.queryForObject(
                 "SELECT COUNT(*) FROM outbox_event WHERE type = 'ServiceabilityVersionApplied'"

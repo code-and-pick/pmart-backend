@@ -237,7 +237,57 @@ public class ServiceabilityService {
       }
     }
     store.recordApplication(approvalId, targetId, result, now);
+    if ("APPROVED".equals(p.path("decision").asString())
+        || "PARTIALLY_APPROVED".equals(p.path("decision").asString())) {
+      publishReceipt(approvalId, version, result, p.path("lines"));
+    }
     log.info("권역 매핑 버전 {} 승인 {} → {}", version, approvalId, result);
+  }
+
+  /** 승인 반영 회신 토픽(ADR-0039 — 승인 토픽과 분리). */
+  public static final String RECEIPT_TOPIC = "platform.approval-receipt.v1";
+
+  /**
+   * 승인 반영 회신(RC-1, ADR-0039 — 2026-11-17): 승인(APPROVED)을 반영한 같은 트랜잭션에서 {@code
+   * ApplicationReceiptRecorded}. 발효했으면 APPLIED(domainRef = 매핑 버전), 초안이 아니거나·승인 범위가 다르거나·시험 주소가 맞지
+   * 않아 발효하지 않았으면 REJECTED(사유 = 그 결과). 한 번에 끝나는 반영이라 순번 1.
+   */
+  private void publishReceipt(String approvalId, int version, String outcome, JsonNode lines) {
+    boolean applied = "ACTIVATED".equals(outcome);
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (JsonNode l : lines) {
+      Map<String, Object> rl = new LinkedHashMap<>();
+      rl.put("lineKey", l.path("lineId").asString("mapping-version:" + version));
+      rl.put("result", applied ? "APPLIED" : "REJECTED");
+      if (!applied) {
+        rl.put("reasonCode", outcome);
+      }
+      rl.put("domainRef", "mapping-version:" + version);
+      rl.put("domainVersion", version);
+      out.add(rl);
+    }
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("approvalId", approvalId);
+    payload.put("receiverService", "delivery-serviceability-service");
+    payload.put("receiptSeq", 1);
+    payload.put("result", applied ? "APPLIED" : "REJECTED");
+    payload.put("domainRef", "mapping-version:" + version);
+    if (!applied) {
+      payload.put("reason", outcome);
+    }
+    payload.put("lines", out);
+    events.publish(
+        codec.create(
+            events.sourceSystem(),
+            "ApplicationReceiptRecorded",
+            1,
+            "ApplicationReceipt",
+            approvalId,
+            1,
+            new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+            EventEnvelope.EventSource.REAL,
+            payload),
+        RECEIPT_TOPIC);
   }
 
   // ---------- 판정 ----------

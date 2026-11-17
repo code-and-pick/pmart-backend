@@ -58,7 +58,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 클라이언트 rider-app 영역도 PC 5(2026-11-13) — 라이더 앱 handoff `docs/handoff/clients/rider-app/`, 클라이언트 BR-23(포장 QR 원문)·BR-24(라이더 전달지 경로)는 배송·인계 쪽 열린 요청
 - [x] **2026-11-15 결정 다섯(사용자 "추천대로")** — 정지 라이더 로그인 끊기(rider-auth 구현, 브랜치 `delivery/rider-session-cut`), 위치 끊김 = 지원센터 알림만(case R-6 요청), 검토 알림 나중, 오배송 확인 = 상담원·지원센터(case R-7 요청), CP-1 = 주문 유지 + 지연 안내(구현 대기). `docs/delivery/HANDOVER.md` §4
 - [x] DD-2 오배송 회수 배차(2026-11-16 PC 5 — 브랜치 `delivery/dd-2-misdelivery-recovery`, 사용자 "추천대로" a~d). PC 1: pmart-config `delivery-dispatch-service.yml` 에 `caseEvents` 바인딩(platform.case.v1, 소비 그룹 시작 위치 latest), 마이그레이션 dispatch V8·execution V7, 배포 순서 tracking → execution → dispatch
-- [ ] CP-1 구현(`CapacityReduced` 구독 → 주문 유지 + 지연 가능 안내, 고객 선택)
+- [x] CP-1 구현(`CapacityReduced` 구독 → 주문 유지 + 지연 가능 안내, 고객 선택) — 1부 #59·2부 S4 #61·#64·#65 병합·배포(2026-11-17 정리)
 - [x] **오배송 재발송(2026-11-16 사용자 "새상품 재배차 서비스 넣어" → "전부 PR로")** — 영역별 PR 셋: `mfc/misdelivery-reshipment-work`(fulfillment 재발송 작업 지시 — PC 3 검토), `platform/misdelivery-reshipment-saga`(order RESHIPMENT 원장·orchestration 재발송 사가 — PC 1 검토), `delivery/misdelivery-reshipment`(dispatch 재발송 배송 표시·약속, 내부 배정 조회 orderId + #36 에 빠진 원래 고객 전화·사진 보기). 배포 순서 mfc-fulfillment·order·dispatch·execution → orchestration 마지막. 흐름 `docs/business/flows/misdelivery-recovery-reshipment.md`
 - [x] 사진 보기·원래 고객 전화(2026-11-16 사용자 — execution, 같은 브랜치)
 - [ ] 라이더 앱 회수 화면(handoff 2026-11-16)
