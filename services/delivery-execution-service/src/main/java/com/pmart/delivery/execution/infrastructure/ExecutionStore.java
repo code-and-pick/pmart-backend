@@ -1214,7 +1214,7 @@ public class ExecutionStore {
             + " (SELECT count(*) FROM rider_earning WHERE rider_id = ? AND calculable AND"
             + " settlement_state IN ('ESTIMATED', 'PENDING_CONFIRMATION')),"
             + " (SELECT count(*) FROM rider_earning WHERE rider_id = ? AND NOT calculable AND"
-            + " settlement_state = 'ESTIMATED'),"
+            + " settlement_state NOT IN ('ADJUSTED', 'PAYING', 'PAID')),"
             + " (SELECT count(*) FROM help_request WHERE rider_id = ? AND state IN ('OPEN',"
             + " 'IN_PROGRESS'))",
         (rs, i) -> new OpenItems(rs.getInt(1), rs.getInt(2), rs.getInt(3), rs.getInt(4)),
@@ -1222,5 +1222,81 @@ public class ExecutionStore {
         riderId,
         riderId,
         riderId);
+  }
+
+  // ---------- 산정 불가 수행료 조정(2026-11-17) ----------
+
+  /** 조정할 수 있는 산정 불가 수행료 — 조정 전(ADJUSTED·지급 중·지급 아님). */
+  static final String NEEDS_ADJUSTMENT =
+      " NOT calculable AND settlement_state NOT IN ('ADJUSTED', 'PAYING', 'PAID')";
+
+  public List<EarningRow> earningsNeedingAdjustment(
+      @Nullable String riderId, int limit, int offset) {
+    List<Object> args = new java.util.ArrayList<>();
+    StringBuilder sql = new StringBuilder(EARNING_SELECT + " WHERE" + NEEDS_ADJUSTMENT);
+    if (riderId != null) {
+      sql.append(" AND rider_id = ?");
+      args.add(riderId);
+    }
+    sql.append(" ORDER BY recorded_at, earning_id LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(sql.toString(), this::mapEarning, args.toArray());
+  }
+
+  public Optional<EarningRow> lockEarning(String earningId) {
+    return jdbc
+        .query(EARNING_SELECT + " WHERE earning_id = ? FOR UPDATE", this::mapEarning, earningId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 조정 반영(조건 — 아직 조정 전일 때만). 바뀐 줄 수. */
+  public int applyAdjustment(
+      String earningId,
+      boolean calculable,
+      @Nullable Integer fee,
+      String state,
+      @Nullable Instant confirmAt,
+      java.time.@Nullable LocalDate payoutDate,
+      String note,
+      Instant at) {
+    return jdbc.update(
+        "UPDATE rider_earning SET calculable = ?, base_fee = ?, total = ?, settlement_state = ?,"
+            + " confirm_at = ?, payout_date = ?, note = ?, updated_at = ? WHERE earning_id = ? AND"
+            + NEEDS_ADJUSTMENT,
+        calculable,
+        fee,
+        fee,
+        state,
+        confirmAt == null ? null : ts(confirmAt),
+        payoutDate == null ? null : java.sql.Date.valueOf(payoutDate),
+        note,
+        ts(at),
+        earningId);
+  }
+
+  public void insertAdjustment(
+      String adjustmentId,
+      EarningRow e,
+      String fault,
+      String decision,
+      int amount,
+      String reason,
+      String adjustedBy,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO earning_adjustment (adjustment_id, earning_id, delivery_id, rider_id, fault,"
+            + " decision, amount, reason, adjusted_by, adjusted_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        adjustmentId,
+        e.earningId(),
+        e.deliveryId(),
+        e.riderId(),
+        fault,
+        decision,
+        amount,
+        reason,
+        adjustedBy,
+        ts(at));
   }
 }

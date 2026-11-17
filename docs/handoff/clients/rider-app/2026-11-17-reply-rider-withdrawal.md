@@ -23,3 +23,4 @@
 
 ## 참고
 - 산정 불가 수행료를 지원센터가 조정하는 API 는 아직 없다 — 산정 불가가 있는 라이더는 그때까지 `EARNING_ADJUSTMENT_PENDING` 으로 막힌다.
+- 2026-11-17 추가: 산정 불가 수행료 조정 기능을 만들었다(execution 0.13.0 — 지원센터가 귀책으로 지급/미지급). 조정되면 `EARNING_ADJUSTMENT_PENDING` 이 풀리고, 라이더 알림함에 "수행료가 조정되었어요"(`RIDER_EARNING_ADJUSTED`, 지급이면 금액·지급 예정일)가 온다.

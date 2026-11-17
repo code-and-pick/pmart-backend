@@ -1543,6 +1543,103 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(blockers("RDR-none-" + UUID.randomUUID())).isEmpty();
   }
 
+  /**
+   * 산정 불가 수행료 조정(2026-11-17 — 사용자: 라이더 운영·관리자, 귀책에 따라 지급/미지급·지급이면 거리별(수락) 금액, 바로 확정·조정일 + 3영업일).
+   */
+  @Test
+  void supportAdjustsNotCalculableEarningByFault() {
+    String rider = "RDR-" + UUID.randomUUID();
+    String paid = failedDelivery(rider);
+    String withheld = failedDelivery(rider);
+    assertThat(blockers(rider)).contains("EARNING_ADJUSTMENT_PENDING");
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String cs = TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of());
+
+    JsonNode queue = body(staffGet("/rider-earnings/adjustment-queue?riderId=" + rider, cs));
+    assertThat(queue.path("items")).hasSize(2); // 상담원은 보기만
+    String e1 = earningId(paid);
+    String e2 = earningId(withheld);
+    assertThat(adjust(e1, cs, "CUSTOMER", "고객 부재 확인", "a-cs").getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(
+            adjust(
+                    e1,
+                    TestJwt.operator("OP-M", List.of("MFC_SUPERVISOR"), List.of("MFC-1")),
+                    "CUSTOMER",
+                    "확인",
+                    "a-m")
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(adjust(e1, ops, "CUSTOMER", " ", "a-0").getStatusCode().value()).isEqualTo(400);
+
+    // 고객 귀책 → 수락 당시 금액 바로 확정, 지급 예정일 = 오늘 + 3영업일
+    ResponseEntity<String> ok = adjust(e1, ops, "CUSTOMER", "고객 부재 — 연락 기록 확인", "a-1");
+    assertThat(ok.getStatusCode().value()).isEqualTo(200);
+    JsonNode r = body(ok);
+    assertThat(r.path("decision").asString()).isEqualTo("PAY");
+    assertThat(r.path("earning").path("settlementState").asString()).isEqualTo("CONFIRMED");
+    assertThat(r.path("earning").path("calculable").asBoolean()).isTrue();
+    assertThat(r.path("earning").path("total").asLong()).isEqualTo(3900);
+    assertThat(r.path("earning").path("payoutDate").asString()).isNotBlank();
+    assertThat(adjust(e1, ops, "CUSTOMER", "고객 부재 — 연락 기록 확인", "a-1").getStatusCode().value())
+        .isEqualTo(200); // 같은 키 재전송
+    ResponseEntity<String> twice = adjust(e1, ops, "RIDER", "다시", "a-2");
+    assertThat(twice.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(twice).path("code").asString()).isEqualTo("NOT_ADJUSTABLE");
+    JsonNode rec = outbox(paid, "RiderEarningRecorded").path("payload");
+    assertThat(rec.path("adjustment").path("decision").asString()).isEqualTo("PAY");
+    assertThat(rec.toString()).doesNotContain("연락 기록 확인"); // 사유는 사건에 없다
+
+    // 라이더 귀책 → 미지급(ADJUSTED)
+    JsonNode no = body(adjust(e2, ops, "RIDER", "라이더 연락 없이 이탈", "a-3"));
+    assertThat(no.path("decision").asString()).isEqualTo("NO_PAY");
+    assertThat(no.path("earning").path("settlementState").asString()).isEqualTo("ADJUSTED");
+    assertThat(
+            body(staffGet("/rider-earnings/adjustment-queue?riderId=" + rider, ops)).path("items"))
+        .isEmpty();
+    assertThat(blockers(rider)).doesNotContain("EARNING_ADJUSTMENT_PENDING");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT reason FROM earning_adjustment WHERE earning_id = ?", String.class, e2))
+        .isEqualTo("라이더 연락 없이 이탈");
+  }
+
+  /** 픽업 → 고객 도착 → 실패 등록 → 확정(산정 불가 수행료). */
+  String failedDelivery(String rider) {
+    String id = "DLV-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of(photo), 2))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(decide(id, "OP-1", List.of("MFC-1"), "CONFIRM").getStatusCode().value())
+        .isEqualTo(200);
+    return id;
+  }
+
+  String earningId(String deliveryId) {
+    return jdbc.queryForObject(
+        "SELECT earning_id FROM rider_earning WHERE delivery_id = ?", String.class, deliveryId);
+  }
+
+  ResponseEntity<String> adjust(
+      String earningId, String token, String fault, String reason, String key) {
+    return http.post()
+        .uri("/rider-earnings/{id}/adjustments", earningId)
+        .headers(
+            h -> {
+              h.setBearerAuth(token);
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "backoffice");
+            })
+        .body(Map.of("fault", fault, "reason", reason))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   List<String> blockers(String rider) {
     JsonNode b =
         body(

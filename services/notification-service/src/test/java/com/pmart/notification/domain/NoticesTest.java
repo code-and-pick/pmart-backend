@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Test;
 class NoticesTest {
 
   @Test
+  void earningAdjustedShowsAmountAndDateOnlyWhenPaid() {
+    var paid = Notices.earningAdjusted("DLV-1", true, 3900L, "2026-11-20");
+    assertThat(paid.body()).contains("3,900원").contains("11월 20일");
+    var none = Notices.earningAdjusted("DLV-1", false, null, null);
+    assertThat(none.body()).contains("지급되지 않아요").doesNotContain("원이");
+  }
+
+  @Test
   void riderRestrictionLiftedOnlyWhenSomethingWasRestricted() {
     assertThat(Notices.riderRestriction("NORMAL", "DISPATCH_RESTRICTED", null).title())
         .isEqualTo("계정 제한이 풀렸어요");

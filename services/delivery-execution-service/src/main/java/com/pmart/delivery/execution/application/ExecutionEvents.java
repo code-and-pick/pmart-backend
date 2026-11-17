@@ -261,6 +261,15 @@ public class ExecutionEvents {
 
   /** 수행료 근거(환불과 독립). version = 이 사건의 수행 버전(bumpVersion). */
   public void earningRecorded(ExecutionStore.EarningRow e, int version, Instant at) {
+    earningRecorded(e, version, at, null);
+  }
+
+  /** adjustment = 지원센터 조정(2026-11-17 — adjustmentId·decision·fault, 사유 없음). 있으면 라이더 알림함이 알린다. */
+  public void earningRecorded(
+      ExecutionStore.EarningRow e,
+      int version,
+      Instant at,
+      @org.jspecify.annotations.Nullable Map<String, Object> adjustment) {
     Map<String, Object> basis = new LinkedHashMap<>();
     if (e.baseFee() != null) {
       basis.put("baseFee", e.baseFee());
@@ -286,6 +295,9 @@ public class ExecutionEvents {
       p.put("payoutDate", e.payoutDate().toString());
     }
     p.put("recordedAt", at.toString());
+    if (adjustment != null) {
+      p.put("adjustment", adjustment);
+    }
     events.publish(
         "RiderEarningRecorded",
         1,

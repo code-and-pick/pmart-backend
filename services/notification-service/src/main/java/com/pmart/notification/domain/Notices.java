@@ -238,6 +238,39 @@ public final class Notices {
         ref);
   }
 
+  /**
+   * 지원센터 수행료 조정(2026-11-17 — 산정 불가였던 배송). 지급이면 금액·지급 예정일, 미지급이면 그 사실만(사유는 지원센터 문의). 목적지는 정산 화면이 따로
+   * 없어 NONE.
+   */
+  public static Notice earningAdjusted(
+      @Nullable String deliveryId,
+      boolean pay,
+      @Nullable Long amount,
+      @Nullable String payoutDate) {
+    if (!pay) {
+      return new Notice(
+          "RIDER_EARNING_ADJUSTED",
+          SYSTEM,
+          "수행료가 조정되었어요",
+          "지원센터 확인 결과 이 배송의 수행료는 지급되지 않아요. 자세한 내용은 지원센터에 문의해 주세요.",
+          "NONE",
+          null);
+    }
+    String when = "";
+    if (payoutDate != null) {
+      java.time.LocalDate d = java.time.LocalDate.parse(payoutDate);
+      when = " " + d.getMonthValue() + "월 " + d.getDayOfMonth() + "일에 지급될 예정이에요.";
+    }
+    String money = amount == null ? "수행료가" : String.format(Locale.KOREAN, "%,d원이", amount);
+    return new Notice(
+        "RIDER_EARNING_ADJUSTED",
+        SYSTEM,
+        "수행료가 조정되었어요",
+        "지원센터 확인 결과 " + money + " 지급으로 확정되었어요." + when,
+        "NONE",
+        null);
+  }
+
   public static Notice riderInquiryAnswered(String inquiryId) {
     return new Notice(
         "RIDER_INQUIRY_ANSWERED",

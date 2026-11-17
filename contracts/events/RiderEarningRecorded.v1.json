@@ -64,6 +64,32 @@
             },
             "recordedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"
+            },
+            "adjustment": {
+              "type": "object",
+              "description": "지원센터 조정(2026-11-17) — 있을 때만. 사유는 싣지 않는다. 구독 notification(라이더 알림함)",
+              "properties": {
+                "adjustmentId": {
+                  "type": "string"
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": [
+                    "PAY",
+                    "NO_PAY"
+                  ]
+                },
+                "fault": {
+                  "type": "string",
+                  "enum": [
+                    "RIDER",
+                    "CUSTOMER",
+                    "STORE",
+                    "PMART"
+                  ]
+                }
+              },
+              "additionalProperties": true
             }
           },
           "additionalProperties": true

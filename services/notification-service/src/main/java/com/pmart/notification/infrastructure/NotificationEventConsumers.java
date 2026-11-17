@@ -26,7 +26,8 @@ class NotificationEventConsumers {
           "PickupCompleted",
           "DeliveryCompleted",
           "RedeliveryPaymentRequired",
-          "HelpRequestReplied");
+          "HelpRequestReplied",
+          "RiderEarningRecorded"); // 지원센터 수행료 조정(2026-11-17) — adjustment 있을 때만 알림
 
   /** platform.case.v1 — 고객 문의 답변, 라이더 문의 답변·도움요청 처리 끝(라이더 알림함 §11-5). */
   private static final Set<String> CASE =

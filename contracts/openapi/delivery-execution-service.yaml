@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
     0.3.0(2026-11-13, 사용자 결정): 전달 실패 = 라이더 등록(FAILURE_REPORTED — 아직 진행 중) → 운영자 확정(FAILED, DeliveryFailed — 배송 종료, 이어지는 회수 배차는 새 배송) 또는 반려(원래 상태로). 도움요청 = 이 서비스에 기록 + DeliveryIncidentRaised(case-service 가 받아 지원센터 사건으로 — 구현 전, caseId 는 그때부터). 수행료 = 수락 당시 금액(dispatch DeliveryAssigned.fee) → 완료 5시간 뒤 확정·지급 예정일 3영업일, 실패·취소는 산정 불가(calculable false). 회수·정정은 아직 501.
     0.4.0(2026-11-15, 백오피스 고객센터·라이더 운영 — 요청서 service-requests/delivery-backoffice-staff-apis.md BOD-1·4·5): 직원 배송 찾기(GET /deliveries — 주문 ID·라이더·상태, 전달 실패 대기는 state=FAILURE_REPORTED), 도움요청 대기 목록(GET /delivery-help-requests), 도움요청 처리함 닫기(…/resolutions — 지원센터 사건함(case R-4)이 생기면 그 사건이 정본). 역할 RIDER_OPS 를 운영자 조회·결정에 더함.
+    0.13.0(2026-11-17, 산정 불가 수행료 조정 — 사용자 결정 "라이더 운영·관리자", "귀책에 따라 지급/미지급, 지급이면 거리별 금액", "바로 확정·조정일 + 3영업일"): `GET /rider-earnings/adjustment-queue`·`POST /rider-earnings/{earningId}/adjustments`. RiderEarningRecorded 에 `adjustment`(결과만). 라이더 탈퇴의 EARNING_ADJUSTMENT_PENDING 은 조정 전 산정 불가 전부.
     0.11.0(2026-11-17, 라이더 앱 기록 화면 — 원문 §8.1): **내 운행시간** `GET /riders/me/operating-time`(사용자 결정 "배차 수락하고 전달완료까지", 겹치면 한 번, 날짜별). 배송 조회·내 배달 내역에 `orderNumber`·`mfcName`(배정 때 dispatch 가 실어 줌). 고객 연락 방법에 PHONE_CALL·SMS(고객 전화번호 그대로 — 안심번호 없음).
     0.10.1(2026-11-17, DD-3 맞춤): 배송 조회에 `claimId`·`returnLines`(받을 줄·수량 — 라이더에게 회수 품목). ReturnPickedUp·ReturnDelivered lines 에 claim 이 실은 claimLineId·sku 를 그대로.
     0.10.0(2026-11-17, CL-1 배송 쪽 — 사용자 결정 "바로 배차·일반 표(고객 집 → MFC)·실패마다 알림, 다시 시도는 반품 쪽·고객 사정 실패도 수락 당시 금액"): **고객 반품 회수 수행**. 회수 배송(type RETURN, purpose CLAIM_RETURN — DeliveryCreated claimId·returnLines): 배정 → 전달지(= 회수지, 고객 집 — 받기 전에도) → 사진·받음(`returns/pickups`, lines = claim 요청 줄) → MFC 반납(`returns/store-deliveries`, ReturnDelivered claimId, 수행료 수락 당시 금액). 받기 전 실패 등록 → 확정이면 FAILED + `ReturnPickupFailed`(customerReason·contactAttempts 횟수 — 다시 보낼지는 claim). 일반 배송 단계는 409.
@@ -697,6 +698,69 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /rider-earnings/adjustment-queue:
+    get:
+      tags: [staff]
+      summary: 산정 불가 수행료 조정 대기 (0.13.0 — 오래된 것 먼저)
+      x-added-in: '2026-11-17'
+      description: |
+        실패 확정·운영자 배차 취소·수락 금액 모름 등으로 "지원센터 조정"이 필요한 수행료(산정 불가, 아직 조정·지급 전). 라이더 운영(RIDER_OPS)·관리자(OPERATOR_ADMIN)·상담원(CS_AGENT, 보기만). 그 밖 403.
+        riderId 로 한 라이더만. cursor = 건너뛸 수.
+      operationId: listEarningAdjustmentQueue
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Earning' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /rider-earnings/{earningId}/adjustments:
+    post:
+      tags: [staff]
+      summary: 산정 불가 수행료 조정 — 귀책으로 지급/미지급 (0.13.0)
+      x-added-in: '2026-11-17'
+      description: |
+        사용자 결정(2026-11-17): **라이더 운영·관리자**가 **귀책**(RIDER·CUSTOMER·STORE·PMART)과 사유(2~300자)만 고른다.
+        **라이더 귀책 → 미지급**(ADJUSTED), **그 밖 → 거리별로 측정된 금액 = 수락 당시 금액**(dispatch 가 수락 때 일반 표로 매긴 값)을 **바로 확정**(CONFIRMED),
+        지급 예정일 = 조정한 날(Asia/Seoul) + 3영업일. 수락 금액을 모르면 409 FEE_UNKNOWN. 이미 조정·산정된 수행료는 409 NOT_ADJUSTABLE(조정은 한 번).
+        사유는 직원만 본다 — 라이더에게는 결과만(RiderEarningRecorded `adjustment` → 라이더 알림함, 수행료 `note`).
+      operationId: adjustRiderEarning
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: earningId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fault, reason]
+              properties:
+                fault: { $ref: '#/components/schemas/EarningFault' }
+                reason: { type: string, minLength: 2, maxLength: 300 }
+      responses:
+        '200':
+          description: 조정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EarningAdjustmentResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /delivery-help-requests:
     get:
       tags: [staff]
@@ -1160,6 +1224,20 @@ components:
       properties:
         date: { type: string, format: date, description: Asia/Seoul 날짜 }
         seconds: { type: integer, format: int64 }
+    EarningFault:
+      type: string
+      x-added-in: '2026-11-17'
+      description: 산정 불가 수행료 조정의 귀책(0.13.0) — RIDER 면 미지급, 그 밖은 수락 당시 금액 지급
+      enum: [RIDER, CUSTOMER, STORE, PMART]
+    EarningAdjustmentResult:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [adjustmentId, decision, fault, earning]
+      properties:
+        adjustmentId: { type: string }
+        decision: { type: string, enum: [PAY, NO_PAY] }
+        fault: { $ref: '#/components/schemas/EarningFault' }
+        earning: { $ref: '#/components/schemas/Earning' }
     Earning:
       type: object
       properties:

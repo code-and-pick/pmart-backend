@@ -75,3 +75,9 @@ PC 1 이 할 것(병합·배포 때):
 - pmart-config `rider-service-local.yml`(필요하면 `-lan`) — `pmart.rider.audit-base-url`(코드 기본값 `http://audit-service:8503` — order 와 같은 값, local 은 `http://localhost:8503`).
 - 마이그레이션: rider V5(색인만), execution V6(help_request 닫기 칸 + 색인). 배포 순서 rider·delivery-execution·delivery-dispatch → api-gateway(허용 목록 6줄).
 - 화면 요청서(`docs/handoff/clients/backoffice/`)를 위 경로·필드로 맞춤 — 특히 라이더 찾기에 이름 칸 없음, 상세 전화는 "보기"(사유 입력) → pii-reveals.
+
+## BOD-7. 산정 불가 수행료 조정 (2026-11-17, PC 5 — 사용자 "산정 불가 수행료 조정하는 기능 만들자", 브랜치 `delivery/earning-adjustments`)
+- 실패 확정·운영자 배차 취소·수락 금액 모름은 수행료가 "산정 불가(지원센터 조정)"로 남는데 조정 방법이 없었다 — 라이더 탈퇴도 막혔다(RS-4).
+- 사용자 결정: 라이더 운영·관리자가, **귀책에 따라 지급/미지급**(라이더 귀책 미지급), **지급이면 거리별로 측정된 금액**(수락 당시 금액), **바로 확정·조정일 + 3영업일 지급**. 상담원은 목록 보기만.
+- execution 0.13.0: `GET /rider-earnings/adjustment-queue`(riderId·size·cursor), `POST /rider-earnings/{earningId}/adjustments`(`{fault, reason}` → `{adjustmentId, decision, fault, earning}`). 라이더 알림함에 결과(사유 없음).
+- **PC 1**: 게이트웨이 경로 `/api/v1/rider-earnings/**` → delivery-execution(pmart-config `api-gateway.yml`) + 허용 목록 다시 생성. **PC 2(백오피스)**: 라이더 운영 화면에 조정 대기·조정 — handoff `docs/handoff/clients/backoffice/2026-11-17-request-earning-adjustments.md`.

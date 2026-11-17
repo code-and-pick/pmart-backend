@@ -39,7 +39,14 @@ public class StaffController implements StaffApi {
   private final HelpRequestService helps;
   private final ObjectMapper mapper;
 
-  public StaffController(StaffQueries queries, HelpRequestService helps, ObjectMapper mapper) {
+  private final com.pmart.delivery.execution.application.EarningAdjustments adjustments;
+
+  public StaffController(
+      StaffQueries queries,
+      HelpRequestService helps,
+      ObjectMapper mapper,
+      com.pmart.delivery.execution.application.EarningAdjustments adjustments) {
+    this.adjustments = adjustments;
     this.queries = queries;
     this.helps = helps;
     this.mapper = mapper;
@@ -222,5 +229,42 @@ public class StaffController implements StaffApi {
 
   private static @Nullable String blankToNull(@Nullable String s) {
     return s == null || s.isBlank() ? null : s.strip();
+  }
+
+  // ---- 산정 불가 수행료 조정(2026-11-17)
+
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.ListEarningAdjustmentQueue200Response>
+      listEarningAdjustmentQueue(@Nullable String riderId, Integer size, @Nullable String cursor) {
+    int offset = offset(cursor);
+    var rows = adjustments.queue(blankToNull(riderId), size + 1, offset);
+    boolean more = rows.size() > size;
+    var page = more ? rows.subList(0, size) : rows;
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.ListEarningAdjustmentQueue200Response()
+            .items(page.stream().map(ExecutionViews::earning).toList())
+            .page(page(more, offset, size, page.size())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.delivery.execution.api.generated.model.EarningAdjustmentResult>
+      adjustRiderEarning(
+          String earningId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.execution.api.generated.model.AdjustRiderEarningRequest body) {
+    var a =
+        adjustments.adjust(
+            earningId, idempotencyKey, xSourceSystem, body.getFault().getValue(), body.getReason());
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.EarningAdjustmentResult()
+            .adjustmentId(a.adjustmentId())
+            .decision(
+                com.pmart.delivery.execution.api.generated.model.EarningAdjustmentResult
+                    .DecisionEnum.fromValue(a.decision()))
+            .fault(
+                com.pmart.delivery.execution.api.generated.model.EarningFault.fromValue(a.fault()))
+            .earning(ExecutionViews.earning(a.earning())));
   }
 }
