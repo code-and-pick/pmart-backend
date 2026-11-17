@@ -46,7 +46,9 @@ public class InquiryService {
       @Nullable String title,
       String body,
       @Nullable String origin,
-      @Nullable List<String> photoIds) {}
+      @Nullable List<String> photoIds,
+      @Nullable String deliveryId,
+      @Nullable String deliveryIssue) {}
 
   public record View(InquiryRow inquiry, List<ReplyRow> replies, List<PhotoRow> photos) {}
 
@@ -103,6 +105,14 @@ public class InquiryService {
             m -> {
               throw new PmartException(ErrorCode.VALIDATION_FAILED, m);
             });
+    // 배송 신고(2026-11-17): 고객의 배송 분류·주문 문의에서만
+    if ((cmd.deliveryIssue() != null || blankToNull(cmd.deliveryId()) != null)
+        && (!InquiryRules.CUSTOMER.equals(requesterType)
+            || !"DELIVERY".equals(cmd.category())
+            || blankToNull(cmd.orderId()) == null)) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "배송 신고는 배송(DELIVERY) 분류와 주문이 있는 고객 문의에만 붙일 수 있습니다.");
+    }
     if (InquiryRules.RIDER.equals(requesterType)
         && cmd.orderId() != null
         && !cmd.orderId().isBlank()) {
@@ -147,7 +157,9 @@ public class InquiryService {
                           0,
                           null,
                           null,
-                          requesterType));
+                          requesterType,
+                          blankToNull(cmd.deliveryId()),
+                          cmd.deliveryIssue()));
                   attach(id, customerId, cmd.photoIds(), 0);
                   log.info(
                       "inquiry received id={} requester={} category={}",

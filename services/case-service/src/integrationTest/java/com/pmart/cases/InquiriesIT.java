@@ -208,6 +208,49 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
             null);
     assertThat(notMine.status()).isEqualTo(422);
     assertThat(notMine.body().path("code").asString()).isEqualTo("ORDER_NOT_FOUND");
+
+    // 배송 신고(2026-11-17 사용자 "기존 문의로, 배송 연결"): 배송 분류·주문과 함께
+    Res issue =
+        send(
+            "POST",
+            meTok,
+            "/inquiries",
+            Map.of(
+                "category", "DELIVERY",
+                "orderId", "ORD-MINE",
+                "deliveryId", "DLV-1",
+                "deliveryIssue", "MISDELIVERED",
+                "body", "다른 집에 놓였어요"),
+            null);
+    assertThat(issue.status()).as(issue.body().toString()).isEqualTo(201);
+    assertThat(issue.body().path("deliveryIssue").asString()).isEqualTo("MISDELIVERED");
+    assertThat(issue.body().path("deliveryId").asString()).isEqualTo("DLV-1");
+    Res listed = send("GET", agent, "/inquiries?orderId=ORD-MINE", null, null);
+    assertThat(listed.body().path("items").findValuesAsString("deliveryIssue"))
+        .contains("MISDELIVERED");
+    // 주문 없이·다른 분류면 400
+    assertThat(
+            send(
+                    "POST",
+                    meTok,
+                    "/inquiries",
+                    Map.of("category", "DELIVERY", "deliveryIssue", "DELAYED", "body", "늦어요"),
+                    null)
+                .status())
+        .isEqualTo(400);
+    assertThat(
+            send(
+                    "POST",
+                    meTok,
+                    "/inquiries",
+                    Map.of(
+                        "category", "ORDER",
+                        "orderId", "ORD-MINE",
+                        "deliveryIssue", "DELAYED",
+                        "body", "늦어요"),
+                    null)
+                .status())
+        .isEqualTo(400);
   }
 
   /** 라이더 문의(0.13.0 — 라이더 앱 요청 §11-4, 사용자 "추천대로"): 지원센터(RIDER_OPS)가 답하고 상담원과 나뉜다. */

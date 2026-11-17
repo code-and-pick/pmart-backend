@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -665,6 +665,8 @@ paths:
       summary: 고객센터 문의 남기기 (고객 — 0.2.0, 라이더 — 0.13.0)
       description: |
         2026-11-09 사용자 결정(C4): 고객앱 "고객센터 문의" 페이지 + 고객 RAG 가 답하지 못할 때 연결할 곳. 회원(고객 토큰)만 — 비회원 불가(C2).
+        **배송 신고(0.16.0, 2026-11-17 — 사용자 결정 "기존 문의로, 배송 연결", 고객앱 빠진 기능 B 배달 지연 제보·오배송 확인)**: 고객이 category DELIVERY·orderId 와 함께
+        `deliveryIssue`(DELAYED 늦음·NOT_RECEIVED 못 받음·MISDELIVERED 다른 곳에 옴)·`deliveryId`(선택)를 보낸다. 그 밖(분류·주문 없음·라이더)이면 400. 상담원(CS_AGENT)이 받는다.
         **라이더(0.13.0, 2026-11-16 — 라이더 앱 요청 §11-4, 사용자 "추천대로")**: 배송과 상관없는 문의(정산·계정·앱 오류·기타)를 라이더 토큰으로 남긴다.
         분류는 SETTLEMENT·ACCOUNT·APP_ERROR·OTHER 만(그 밖 400), orderId 는 받지 않는다(400 — 배송 건은 배송 화면 도움요청).
         사건 종류 RIDER_INQUIRY, 답은 지원센터(RIDER_OPS)가 한다. 고객 분류에 SETTLEMENT·APP_ERROR 는 쓰지 않는다(400).
@@ -690,6 +692,8 @@ paths:
                 body: { type: string, minLength: 1, maxLength: 2000 }
                 origin: { type: string, enum: [INQUIRY_PAGE, ASSISTANT_HANDOFF], description: '문의 페이지에서 직접 / 고객 RAG 가 답하지 못해 넘어옴(기본 INQUIRY_PAGE)' }
                 photoIds: { type: array, maxItems: 5, items: { type: string }, x-added-in: '2026-11-17', description: '(0.14.0) 먼저 POST /inquiry-photos 로 올린 내 사진 — 문의 하나에 5장. 남의·이미 붙은 사진이면 422 PHOTO_NOT_FOUND(문의도 남지 않음)' }
+                deliveryId: { type: string, maxLength: 64, description: '배송 신고의 배송 ID(0.16.0 — 참고값, 주문 소유만 확인)', x-added-in: '2026-11-17' }
+                deliveryIssue: { $ref: '#/components/schemas/InquiryDeliveryIssue' }
       responses:
         '201':
           description: 접수
@@ -1450,6 +1454,11 @@ components:
       type: string
       enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, OTHER, SETTLEMENT, APP_ERROR]
       description: '주문·배송·결제·환불·상품·회원·기타 + 라이더 정산·앱 오류(0.13.0). 고객 = ORDER~OTHER, 라이더 = SETTLEMENT·ACCOUNT·APP_ERROR·OTHER'
+    InquiryDeliveryIssue:
+      type: string
+      enum: [DELAYED, NOT_RECEIVED, MISDELIVERED]
+      description: '배송 신고 종류(0.16.0) — 늦음·완료인데 못 받음·다른 곳에 옴'
+      x-added-in: '2026-11-17'
     InquiryRequesterType:
       type: string
       enum: [CUSTOMER, RIDER]
@@ -1471,6 +1480,10 @@ components:
         channel: { type: [string, 'null'], x-added-in: '2026-11-16', description: '(0.12.0) STAFF_INTAKE 의 연락 경로 PHONE·CHAT·EMAIL' }
         callerRelation: { type: [string, 'null'], x-added-in: '2026-11-16', description: '(0.12.0) STAFF_INTAKE 의 본인/대리 — PROXY 면 화면 경고' }
         requesterType: { $ref: '#/components/schemas/InquiryRequesterType' }
+        deliveryId: { type: [string, 'null'], description: '배송 신고의 배송 ID(0.16.0)', x-added-in: '2026-11-17' }
+        deliveryIssue:
+          oneOf: [{ $ref: '#/components/schemas/InquiryDeliveryIssue' }, { type: 'null' }]
+          x-added-in: '2026-11-17'
         createdAt: { type: string, format: date-time }
         answeredAt: { type: string, format: date-time, nullable: true }
         version: { type: integer }

@@ -31,19 +31,22 @@ public class InquiryStore {
       int version,
       @Nullable String channel,
       @Nullable String callerRelation,
-      String requesterType) {}
+      String requesterType,
+      @Nullable String deliveryId,
+      @Nullable String deliveryIssue) {}
 
   public record ReplyRow(
       String replyId, String authorType, String authorId, String body, Instant createdAt) {}
 
   private static final String COLS =
       "inquiry_id, case_id, customer_id, category, order_id, title, body, origin, status,"
-          + " created_at, answered_at, version, requester_type";
+          + " created_at, answered_at, version, requester_type, delivery_id, delivery_issue";
 
   /** 상담원 접수(0.12.0)면 연락 경로·본인/대리를 같이 — cs_intake 는 이 서비스 표. */
   private static final String SELECT =
       "SELECT q.inquiry_id, q.case_id, q.customer_id, q.category, q.order_id, q.title, q.body,"
-          + " q.origin, q.status, q.created_at, q.answered_at, q.version, q.requester_type, i.channel,"
+          + " q.origin, q.status, q.created_at, q.answered_at, q.version, q.requester_type,"
+          + " q.delivery_id, q.delivery_issue, i.channel,"
           + " i.caller_relation FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
           + " q.inquiry_id";
 
@@ -62,7 +65,7 @@ public class InquiryStore {
         r.orderId(),
         Timestamp.from(r.createdAt()));
     jdbc.update(
-        "INSERT INTO cs_inquiry (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO cs_inquiry (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         r.inquiryId(),
         r.caseId(),
         r.customerId(),
@@ -75,7 +78,9 @@ public class InquiryStore {
         Timestamp.from(r.createdAt()),
         null,
         0,
-        r.requesterType());
+        r.requesterType(),
+        r.deliveryId(),
+        r.deliveryIssue());
   }
 
   public Optional<InquiryRow> find(String inquiryId) {
@@ -186,6 +191,8 @@ public class InquiryStore {
         rs.getInt("version"),
         rs.getString("channel"),
         rs.getString("caller_relation"),
-        rs.getString("requester_type"));
+        rs.getString("requester_type"),
+        rs.getString("delivery_id"),
+        rs.getString("delivery_issue"));
   }
 }

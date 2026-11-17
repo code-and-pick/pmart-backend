@@ -6,6 +6,7 @@ import com.pmart.cases.api.generated.model.CreateInquiryRequest;
 import com.pmart.cases.api.generated.model.Inquiry;
 import com.pmart.cases.api.generated.model.InquiryAllOfReplies;
 import com.pmart.cases.api.generated.model.InquiryCategory;
+import com.pmart.cases.api.generated.model.InquiryDeliveryIssue;
 import com.pmart.cases.api.generated.model.InquiryRequesterType;
 import com.pmart.cases.api.generated.model.InquirySatisfaction;
 import com.pmart.cases.api.generated.model.InquirySatisfactionSummary;
@@ -66,7 +67,9 @@ public class InquiriesController implements InquiriesApi {
                 req.getTitle(),
                 req.getBody(),
                 req.getOrigin() == null ? null : req.getOrigin().getValue(),
-                req.getPhotoIds()));
+                req.getPhotoIds(),
+                req.getDeliveryId(),
+                req.getDeliveryIssue() == null ? null : req.getDeliveryIssue().getValue()));
     return ResponseEntity.status(HttpStatus.CREATED).body(out(view));
   }
 
@@ -169,6 +172,9 @@ public class InquiriesController implements InquiriesApi {
     s.setChannel(r.channel());
     s.setCallerRelation(r.callerRelation());
     s.setRequesterType(InquiryRequesterType.fromValue(r.requesterType()));
+    s.setDeliveryId(r.deliveryId());
+    s.setDeliveryIssue(
+        r.deliveryIssue() == null ? null : InquiryDeliveryIssue.fromValue(r.deliveryIssue()));
     s.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     s.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     s.setVersion(r.version());
@@ -186,6 +192,9 @@ public class InquiriesController implements InquiriesApi {
       d.setCustomerId(r.customerId());
     }
     d.setRequesterType(InquiryRequesterType.fromValue(r.requesterType()));
+    d.setDeliveryId(r.deliveryId());
+    d.setDeliveryIssue(
+        r.deliveryIssue() == null ? null : InquiryDeliveryIssue.fromValue(r.deliveryIssue()));
     d.setCategory(InquiryCategory.fromValue(r.category()));
     d.setOrderId(r.orderId());
     d.setTitle(r.title());
