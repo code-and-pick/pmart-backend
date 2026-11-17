@@ -7,16 +7,25 @@ import com.pmart.cases.api.generated.model.Inquiry;
 import com.pmart.cases.api.generated.model.InquiryAllOfReplies;
 import com.pmart.cases.api.generated.model.InquiryCategory;
 import com.pmart.cases.api.generated.model.InquiryRequesterType;
+import com.pmart.cases.api.generated.model.InquirySatisfaction;
+import com.pmart.cases.api.generated.model.InquirySatisfactionSummary;
 import com.pmart.cases.api.generated.model.InquiryStatus;
 import com.pmart.cases.api.generated.model.InquirySummary;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ListInquiries200Response;
+import com.pmart.cases.api.generated.model.RateInquiryRequest;
 import com.pmart.cases.api.generated.model.ReplyInquiryRequest;
 import com.pmart.cases.application.InquiryPhotoService;
+import com.pmart.cases.application.InquirySatisfactionService;
 import com.pmart.cases.application.InquiryService;
 import com.pmart.cases.domain.InquiryRules;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,17 +37,20 @@ public class InquiriesController implements InquiriesApi {
 
   private final InquiryService service;
   private final InquiryPhotoService photos;
+  private final InquirySatisfactionService satisfaction;
 
-  public InquiriesController(InquiryService service, InquiryPhotoService photos) {
+  public InquiriesController(
+      InquiryService service, InquiryPhotoService photos, InquirySatisfactionService satisfaction) {
     this.service = service;
     this.photos = photos;
+    this.satisfaction = satisfaction;
   }
 
   @Override
   public ResponseEntity<Inquiry> addInquiryPhotos(
       String inquiryId, String idempotencyKey, String xSourceSystem, AddInquiryPhotosRequest req) {
     return ResponseEntity.ok(
-        detail(photos.add(idempotencyKey, xSourceSystem, inquiryId, req.getPhotoIds())));
+        out(photos.add(idempotencyKey, xSourceSystem, inquiryId, req.getPhotoIds())));
   }
 
   @Override
@@ -55,7 +67,7 @@ public class InquiriesController implements InquiriesApi {
                 req.getBody(),
                 req.getOrigin() == null ? null : req.getOrigin().getValue(),
                 req.getPhotoIds()));
-    return ResponseEntity.status(HttpStatus.CREATED).body(detail(view));
+    return ResponseEntity.status(HttpStatus.CREATED).body(out(view));
   }
 
   @Override
@@ -83,7 +95,7 @@ public class InquiriesController implements InquiriesApi {
 
   @Override
   public ResponseEntity<Inquiry> getInquiry(String inquiryId) {
-    return ResponseEntity.ok(detail(service.get(inquiryId)));
+    return ResponseEntity.ok(out(service.get(inquiryId)));
   }
 
   @Override
@@ -94,9 +106,56 @@ public class InquiriesController implements InquiriesApi {
       ReplyInquiryRequest req,
       @Nullable Integer xExpectedVersion) {
     return ResponseEntity.ok(
-        detail(
+        out(
             service.reply(
                 idempotencyKey, xSourceSystem, inquiryId, req.getBody(), xExpectedVersion)));
+  }
+
+  @Override
+  public ResponseEntity<Inquiry> rateInquiry(
+      String inquiryId, String idempotencyKey, String xSourceSystem, RateInquiryRequest req) {
+    return ResponseEntity.ok(
+        out(
+            satisfaction.rate(
+                idempotencyKey, xSourceSystem, inquiryId, req.getScore(), req.getComment())));
+  }
+
+  @Override
+  public ResponseEntity<InquirySatisfactionSummary> getInquirySatisfactionSummary(
+      OffsetDateTime answeredFrom, OffsetDateTime answeredTo) {
+    var v = satisfaction.summary(answeredFrom.toInstant(), answeredTo.toInstant());
+    var s = v.summary();
+    var out = new InquirySatisfactionSummary();
+    out.setAnsweredFrom(v.from().atOffset(ZoneOffset.UTC));
+    out.setAnsweredTo(v.to().atOffset(ZoneOffset.UTC));
+    out.setAnsweredCount(s.answered());
+    out.setRatedCount(s.rated());
+    out.setScoreSum(s.scoreSum());
+    out.setAverageScore(
+        s.rated() == 0
+            ? null
+            : BigDecimal.valueOf(s.scoreSum())
+                .divide(BigDecimal.valueOf(s.rated()), 2, RoundingMode.HALF_UP));
+    Map<String, Long> by = new LinkedHashMap<>();
+    s.byScore().forEach((k, n) -> by.put(String.valueOf(k), n));
+    out.setByScore(by);
+    return ResponseEntity.ok(out);
+  }
+
+  /** 상세 + 만족도(본인·관리자에게만 — 0.15.0). */
+  private Inquiry out(InquiryService.View v) {
+    Inquiry d = detail(v);
+    satisfaction
+        .forViewer(v.inquiry().inquiryId())
+        .ifPresent(
+            r -> {
+              var x = new InquirySatisfaction();
+              x.setScore(r.score());
+              x.setComment(r.comment());
+              x.setRatedAt(r.ratedAt().atOffset(ZoneOffset.UTC));
+              d.setSatisfaction(x);
+            });
+    return d;
   }
 
   private static InquirySummary summary(InquiryRow r) {
