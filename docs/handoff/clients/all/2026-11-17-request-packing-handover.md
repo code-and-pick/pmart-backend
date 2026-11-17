@@ -24,7 +24,7 @@
 | 칸 | 화면 |
 |---|---|
 | `orderNumber`(8자리, 없으면 null) | 주문번호 — null 이면 `orderId` |
-| `stage` | 단계: REQUESTED 출고요청 · PICKING 피킹중 · PACKING 패킹중 · READY_FOR_HANDOVER 출고대기 · PARTIALLY_HANDED_OVER 일부 인계 · HANDED_OVER 인계 완료. **null 이면 "—"** 에 원천 값(`shipment.state`·`pick.state`·`pack.state`)을 작게(예: 피킹 끝·패킹 시작 전, 패킹 막힘, 취소) |
+| `stage` | 단계: REQUESTED 출고요청 · PICKING 피킹중 · PACKING 패킹중 · READY_FOR_HANDOVER 출고대기 · PARTIALLY_HANDED_OVER 일부 인계 · HANDED_OVER 인계 완료. **null 이면 "—"** 에 원천 값(`shipment.state`·`pick.state`·`pack.state`)을 작게(예: 취소·부분 종료). 패킹중에는 피킹 끝·패킹 시작 전과 패킹 막힘도 들어 있다(사용자 "(가)") — `pack.state` 가 대기면 "패킹 대기", 막힘이면 `pack.blockReason` 을 작게 같이 |
 | `pick`·`pack` | 작업 상태·`blockReason`(막힘이면 강조)·`startedAt` |
 | `workOrderKind` = RESHIPMENT | "재발송" 표시 |
 | `packageCount`·`handedOverQty.qty`·`remainingPackages` | "포장 3 · 인계 1 · 남음 2"(§3.7) |
