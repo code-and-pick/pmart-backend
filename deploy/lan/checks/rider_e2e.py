@@ -4,13 +4,15 @@
 → 가게 도착 → 포장 QR 인계(허가·확정 → PackageHandedOver) → 픽업 완료(PICKED_UP) → 전달지 조회(BR-24) → [선택] 위치 끊김 3분 →
 RiderLocationStale → 고객 도착 → 증빙 사진 → 전달 완료(DeliveryCompleted) → 수행료 → 운행 종료.
 
-실행: uv run --no-project --with cryptography python -I deploy/lan/checks/rider_e2e.py <deliveryId> [--stale] [--rider RD-…]
+실행: uv run --no-project --with cryptography python -I deploy/lan/checks/rider_e2e.py <deliveryId> [--stale] [--fail] [--rider RD-…]
 필요:
 - deploy/lan/.secrets/rider-auth-signing-key.pem·rider-auth-signing-kid — LAN rider-auth-service 서명키(PC 1 init-secrets.sh 가 만듦, git 제외).
   라이더 앱·Google 로그인 없이 시험 라이더 토큰(typ=RIDER, 주체 RD-claude-…, 15분)을 만든다(kickoff §6 시험 라이더 토큰 결정 — LAN 전용, 운영 금지).
 - deploy/lan/.secrets/keycloak-claude-dev-password — 멈춘 배송 다시 배차(OPERATOR_ADMIN, staff_auth.py).
 - 배송은 점원 배차 요청이 끝난(출고 READY·포장 밀봉) 실제 주문이어야 한다. 배차 가능 시간 08~24시(Asia/Seoul).
 - --rider RD-…: 이미 그 라이더에게 배정된 배송을 이어서(가입·배차·수락 건너뜀).
+- --fail(2026-11-17): 전달 완료 대신 전달 불가 → 지원센터 확정(custody RIDER) → 같은 라이더에게 반납 배송(FAILED_DELIVERY_RETURN) 바로 배정
+  → 받음 없이 MFC 반납 → 두 배송 수행료(고객 사유 — 실패 배송 수락 금액 + 반납 일반 표, 둘 다 산정 가능). 주문은 환불되지 않는다(자동 환불 없음).
 - --stale: 픽업 뒤 위치를 3분 30초 멈춰 RiderLocationStale 을 확인 — outbox 행은 CDC 가 읽은 뒤 남지 않으므로(늘 0건) 사건과 같은
   트랜잭션에서 올라가는 tracking `rider_signal.alert_count` 를 본다. PC 5 postgres 를 docker 로 읽기만 한다.
 - 포장 ID 는 실제로는 포장 QR 에서 읽는다. 응답 packageIds 는 이미 인계된 포장뿐이라 execution `shipment_package` 를 읽기만 해서 대신한다.
@@ -123,6 +125,7 @@ def main():
         sys.exit(2)
     delivery = sys.argv[1]
     stale = "--stale" in sys.argv
+    fail = "--fail" in sys.argv
     resume = sys.argv[sys.argv.index("--rider") + 1] if "--rider" in sys.argv else None
     rider = resume or "RD-claude-" + uuid.uuid4().hex[:12]
     token = rider_token(rider)
@@ -152,7 +155,7 @@ def main():
         s, b = http("POST", f"/deliveries/{delivery}/store-arrivals", token, {}, version=v.get("version"))
         check("가게 도착", s in (200, 202), f"HTTP {s} {b.get('code', '')} {str(b.get('detail', ''))[:80]}")
 
-    rest(delivery, rider, token, admin, locate, stale)
+    rest(delivery, rider, token, admin, locate, stale, fail)
 
 
 def assign(delivery, rider, token, admin, locate):
@@ -199,7 +202,7 @@ def assign(delivery, rider, token, admin, locate):
          f"HTTP {s} outcome {b.get('outcome')} {b.get('lateReason', '')}")
 
 
-def rest(delivery, rider, token, admin, locate, stale):
+def rest(delivery, rider, token, admin, locate, stale, fail=False):
     # 5. 포장 QR 인계(MFC) — QR = PKG:<packageId>:<버전>
     # 응답 packageIds 는 이미 인계된 포장뿐이다. 실제로는 포장에 붙은 QR 에서 읽으므로, 시험은 execution 이 받은 출고 포장(읽기만)으로 대신한다.
     s, v = http("GET", f"/deliveries/{delivery}", token)
@@ -257,6 +260,9 @@ def rest(delivery, rider, token, admin, locate, stale):
     s, ph = http("POST", f"/deliveries/{delivery}/evidence-photos", token, raw=body,
                  content_type="multipart/form-data; boundary=" + boundary)
     need("증빙 사진 올리기", s in (200, 201) and ph.get("photoRef"), f"HTTP {s} {ph.get('code', '')}")
+    if fail:
+        failed_return(delivery, rider, token, admin, ph["photoRef"])
+        return
     s, v = http("GET", f"/deliveries/{delivery}", token)
     s, b = http("POST", f"/deliveries/{delivery}/completions", token, {
         "method": "CONTACTLESS", "evidence": {"photoRefs": [ph["photoRef"]],
@@ -274,6 +280,62 @@ def rest(delivery, rider, token, admin, locate, stale):
           f"{[(i.get('settlementState'), i.get('total')) for i in items if i.get('deliveryId') == delivery]}")
 
     # 9. 운행 종료
+    s, me = http("GET", "/riders/me/state", token)
+    s, b = http("PUT", "/riders/me/state", token, {"status": "OFF_DUTY", "newDispatchEnabled": False},
+                version=me.get("version"))
+    check("운행 종료", s == 200, f"HTTP {s} {b.get('code', '')}")
+    summary()
+
+
+def failed_return(delivery, rider, token, admin, photo):
+    """전달 불가 → 확정 → 같은 라이더 반납 배송 → MFC 반납(2026-11-17 #142)."""
+    now = time.time()
+    attempts = [{"attemptedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60 * (i + 1))),
+                 "method": "PHONE_CALL", "result": "NO_ANSWER"} for i in range(2)]
+    s, v = http("GET", f"/deliveries/{delivery}", token)
+    s, b = http("POST", f"/deliveries/{delivery}/failures", token, {
+        "reason": "CUSTOMER_ABSENT", "evidenceRefs": [photo], "goodsLocation": "WITH_RIDER",
+        "contactAttempts": attempts, "detail": "LAN 시험 — 부재"}, version=v.get("version"))
+    need("전달 불가 등록(FAILURE_REPORTED)", s in (200, 202), f"HTTP {s} {b.get('code', '')} {str(b.get('detail', ''))[:80]}")
+    help_id = b.get("resultId")
+    s, h = http("GET", f"/deliveries/{delivery}/help-requests/{help_id}/messages", token)
+    check("전달 불가 대화 열림(도움요청 = resultId)", s == 200, f"HTTP {s} {h.get('code', '')}")
+    s, v = http("GET", f"/deliveries/{delivery}", admin)
+    s, b = http("POST", f"/deliveries/{delivery}/failure-decisions", admin,
+                {"decision": "CONFIRM", "custody": "RIDER", "note": "LAN 시험 확정"}, version=v.get("version"))
+    need("지원센터 확정(CONFIRM, 상품 라이더 손)", s in (200, 202), f"HTTP {s} {b.get('code', '')} {str(b.get('detail', ''))[:80]}")
+    s, v = http("GET", f"/deliveries/{delivery}", token)
+    check("원래 배송 FAILED", v.get("state") == "FAILED", f"상태 {v.get('state')}")
+    back, until = None, time.time() + 90  # 배차 판단 주기가 거리를 채운 뒤 배정
+    while time.time() < until and not back:
+        time.sleep(3)
+        s, v = http("GET", f"/deliveries/{delivery}", token)
+        back = (v.get("failure") or {}).get("returnDeliveryId")
+    need("반납 배송 생김(failure.returnDeliveryId)", bool(back), "90초 안에 없음")
+    s, r = http("GET", f"/deliveries/{back}", token)
+    check("반납 배송 — 같은 라이더·ASSIGNED·FAILED_DELIVERY_RETURN",
+          s == 200 and r.get("riderId") == rider and r.get("state") == "ASSIGNED" and r.get("purpose") == "FAILED_DELIVERY_RETURN",
+          f"HTTP {s} 상태 {r.get('state')} 목적 {r.get('purpose')}")
+    s, mine = http("GET", "/riders/me/deliveries", token)
+    check("내 배송 목록에 반납 배송", any(i.get("deliveryId") == back for i in mine.get("items", [])), f"HTTP {s}")
+    s, d = http("GET", f"/deliveries/{back}/dispatch", admin)
+    check("반납 배송 배차 — 제안 없이 배정", d.get("state") == "ASSIGNED" and d.get("riderId") == rider,
+          f"상태 {d.get('state')}")
+    s, b = http("POST", f"/deliveries/{back}/returns/pickups", token, {"items": [], "evidenceRefs": [photo]},
+                version=r.get("version"))
+    check("받음 없음(returns/pickups 409)", s == 409, f"HTTP {s} {b.get('code', '')}")
+    s, b = http("POST", f"/deliveries/{back}/returns/store-deliveries", token, {}, version=r.get("version"))
+    need("MFC 반납", s in (200, 202), f"HTTP {s} {b.get('code', '')} {str(b.get('detail', ''))[:80]}")
+    s, r = http("GET", f"/deliveries/{back}", token)
+    check("반납 배송 RETURNED_TO_STORE", r.get("state") == "RETURNED_TO_STORE", f"상태 {r.get('state')}")
+    time.sleep(5)
+    s, d = http("GET", f"/deliveries/{back}/dispatch", admin)
+    check("반납 배송 배차 CLOSED(ReturnDelivered)", d.get("state") == "CLOSED", f"상태 {d.get('state')}")
+    s, e = http("GET", "/riders/me/earnings", token)
+    got = {i.get("deliveryId"): i for i in e.get("items") or []}
+    for name, did in (("실패 배송(고객 사유 — 수락 금액)", delivery), ("반납(일반 표)", back)):
+        i = got.get(did) or {}
+        check(f"수행료 {name} 산정 가능", i.get("calculable") is True, f"{i.get('settlementState')} {i.get('total')}")
     s, me = http("GET", "/riders/me/state", token)
     s, b = http("PUT", "/riders/me/state", token, {"status": "OFF_DUTY", "newDispatchEnabled": False},
                 version=me.get("version"))
