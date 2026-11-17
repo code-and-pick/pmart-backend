@@ -326,6 +326,10 @@ public class Upstreams {
     if (c != null && c.path("address").isString()) {
       out.put("mfcAddress", c.path("address").asString());
     }
+    if (c != null && c.path("phone").isString()) {
+      // 지점 전화(center-master profile — 2026-11-17 라이더 앱 "가게 전화", 없으면 뺀다)
+      out.put("mfcPhone", c.path("phone").asString());
+    }
     out.set("items", s.path("items"));
     if (s.path("itemAmount").isNumber()) {
       out.put("itemAmount", s.path("itemAmount").asLong());

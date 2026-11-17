@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.13.0
+  version: 0.13.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1180,6 +1180,7 @@ components:
         claimId: { type: string, description: 'CLAIM_RETURN(0.10.1, 2026-11-17) — 고객 반품 클레임', x-added-in: '2026-11-17' }
         orderNumber: { type: [string, 'null'], description: '화면용 주문번호(0.11.0 — 배정 때 받은 값, 내 배달 내역 목록용). 이 배포 전 배정은 null', x-added-in: '2026-11-17' }
         mfcName: { type: [string, 'null'], description: '픽업지 지점 이름(0.11.0 — 배정 때 받은 값, 원문 §8.1 배달현황 "픽업지 마트 이름")', x-added-in: '2026-11-17' }
+        mfcPhone: { type: [string, 'null'], description: '픽업 지점 전화(center-master profile — 배정 때 받은 값, 2026-11-17 라이더 "가게 전화"). 없으면 null', x-added-in: '2026-11-17' }
         returnLines:
           type: array
           x-added-in: '2026-11-17'

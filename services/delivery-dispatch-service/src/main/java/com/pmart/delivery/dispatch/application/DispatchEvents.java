@@ -135,6 +135,9 @@ public class DispatchEvents {
       if (s.path("mfcName").isString()) {
         p.put("mfcName", s.path("mfcName").asString());
       }
+      if (s.path("mfcPhone").isString()) {
+        p.put("mfcPhone", s.path("mfcPhone").asString()); // 지점 전화(2026-11-17)
+      }
     }
     p.put("offerId", offerId);
     p.put("assignmentVersion", assignmentVersion);

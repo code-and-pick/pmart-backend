@@ -98,7 +98,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                     Map.of(
                         "coordinates", Map.of("lat", 37.4979, "lng", 127.0276),
                         "name", "부산진구지점",
-                        "address", "부산 부산진구 동천로 109"))));
+                        "address", "부산 부산진구 동천로 109",
+                        "phone", "051-000-0000"))));
     // 라이더용 주문 요약(라이더 앱 요청 §1)
     up.stubFor(
         get(urlPathMatching("/api/v1/internal/orders/.*/rider-summary"))
@@ -253,6 +254,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     // 라이더 앱 요청 §1(2026-11-16 "수락 전부터 전부"): 지점·품목·금액·요청사항
     JsonNode orderInfo = offer.path("summary").path("order");
     assertThat(orderInfo.path("mfcName").asString()).isEqualTo("부산진구지점");
+    assertThat(orderInfo.path("mfcPhone").asString())
+        .isEqualTo("051-000-0000"); // 가게 전화(2026-11-17)
     assertThat(orderInfo.path("orderNumber").asString()).isEqualTo("48213907");
     assertThat(orderInfo.path("items").get(0).path("name").asString()).isEqualTo("사과 1kg");
     assertThat(orderInfo.path("itemAmount").asInt()).isEqualTo(9800);
@@ -295,6 +298,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     // 라이더 내 배달 내역(2026-11-17 — 원문 §8.1 배달현황): 주문번호·픽업지 지점 이름
     assertThat(assigned.path("payload").path("orderNumber").asString()).isEqualTo("48213907");
     assertThat(assigned.path("payload").path("mfcName").asString()).isEqualTo("부산진구지점");
+    assertThat(assigned.path("payload").path("mfcPhone").asString()).isEqualTo("051-000-0000");
 
     // 다른 라이더가 배달리스트에서 수락 → 이미 배정
     JsonNode late =

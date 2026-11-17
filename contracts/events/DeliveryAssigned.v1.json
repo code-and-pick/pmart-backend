@@ -63,6 +63,10 @@
               "type": "integer",
               "minimum": 0,
               "description": "MFC → 고객 도로 거리(m) — 요금 구간 근거"
+            },
+            "mfcPhone": {
+              "type": "string",
+              "description": "픽업 지점 전화(2026-11-17 — center-master profile, 없으면 뺀다). 라이더 배송 조회용"
             }
           },
           "additionalProperties": true

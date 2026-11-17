@@ -41,7 +41,8 @@ public class ExecutionStore {
       @Nullable String claimId,
       @Nullable String returnLinesJson,
       @Nullable String orderNumber,
-      @Nullable String mfcName) {
+      @Nullable String mfcName,
+      @Nullable String mfcPhone) {
 
     /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. */
     public boolean claimReturn() {
@@ -130,7 +131,7 @@ public class ExecutionStore {
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
           + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text,"
-          + " order_number, mfc_name";
+          + " order_number, mfc_name, mfc_phone";
 
   private final JdbcTemplate jdbc;
 
@@ -549,16 +550,18 @@ public class ExecutionStore {
       @Nullable String vehicleType,
       @Nullable Integer distanceM,
       @Nullable String orderNumber,
-      @Nullable String mfcName) {
+      @Nullable String mfcName,
+      @Nullable String mfcPhone) {
     jdbc.update(
         "UPDATE execution_delivery SET accepted_fee = ?, vehicle_type = ?, distance_m = ?,"
-            + " order_number = COALESCE(?, order_number), mfc_name = COALESCE(?, mfc_name) WHERE"
-            + " delivery_id = ?",
+            + " order_number = COALESCE(?, order_number), mfc_name = COALESCE(?, mfc_name),"
+            + " mfc_phone = COALESCE(?, mfc_phone) WHERE delivery_id = ?",
         fee,
         vehicleType,
         distanceM,
         orderNumber,
         mfcName,
+        mfcPhone,
         deliveryId);
   }
 
@@ -1191,7 +1194,8 @@ public class ExecutionStore {
         rs.getString(24),
         rs.getString(25),
         rs.getString(26),
-        rs.getString(27));
+        rs.getString(27),
+        rs.getString(28));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

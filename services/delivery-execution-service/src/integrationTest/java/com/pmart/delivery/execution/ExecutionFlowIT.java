@@ -1499,6 +1499,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(done).isNotNull();
     assertThat(done.path("orderNumber").asString()).isEqualTo("12345678");
     assertThat(done.path("mfcName").asString()).isEqualTo("부산진구지점");
+    assertThat(done.path("mfcPhone").asString()).isEqualTo("051-000-0000"); // 가게 전화(2026-11-17)
 
     java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
     JsonNode t =
@@ -1939,32 +1940,19 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   void assigned(String id, String order, String rider, int version) {
-    send(
-        "delivery.delivery.v1",
-        "DeliveryAssigned",
-        "Delivery",
-        id,
-        Map.of(
-            "deliveryId",
-            id,
-            "orderId",
-            order,
-            "riderId",
-            rider,
-            "assignmentVersion",
-            version,
-            "acceptedAt",
-            Instant.now().toString(),
-            "fee",
-            3900,
-            "vehicleType",
-            "MOTORCYCLE",
-            "distanceM",
-            1800,
-            "orderNumber",
-            "12345678",
-            "mfcName",
-            "부산진구지점"));
+    Map<String, Object> p = new java.util.LinkedHashMap<>();
+    p.put("deliveryId", id);
+    p.put("orderId", order);
+    p.put("riderId", rider);
+    p.put("assignmentVersion", version);
+    p.put("acceptedAt", Instant.now().toString());
+    p.put("fee", 3900);
+    p.put("vehicleType", "MOTORCYCLE");
+    p.put("distanceM", 1800);
+    p.put("orderNumber", "12345678");
+    p.put("mfcName", "부산진구지점");
+    p.put("mfcPhone", "051-000-0000");
+    send("delivery.delivery.v1", "DeliveryAssigned", "Delivery", id, p);
   }
 
   /** 배정 → 목록(포장 1개) → 인계 → PICKED_UP 까지. */
