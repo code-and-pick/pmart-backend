@@ -7,6 +7,7 @@ import com.pmart.delivery.execution.infrastructure.ExecutionStore.DeliveryRow;
 import com.pmart.delivery.execution.infrastructure.OrderClient;
 import com.pmart.delivery.execution.infrastructure.OrderClient.DropInfo;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -41,11 +42,23 @@ public class DropInfoService {
   /** 고객 반품 회수(CL-1, 2026-11-17)의 전달지(= 회수지, 고객 집)를 여는 상태 — 배정 뒤 받기 전·실패 등록 중. */
   public static final Set<String> CLAIM_RETURN_OPEN = Set.of("ASSIGNED", "FAILURE_REPORTED");
 
-  /** 회수 연락처를 여는 상태 — 회수 진행 중. */
-  public static final Set<String> RECOVERY_OPEN = Set.of("ASSIGNED", "RETURN_PICKED_UP");
+  /** 회수 연락처를 여는 상태 — 회수 진행 중(반품 회수는 받기 전 실패 등록 중에도). */
+  public static final Set<String> RECOVERY_OPEN =
+      Set.of("ASSIGNED", "RETURN_PICKED_UP", "FAILURE_REPORTED");
 
-  /** 원래 고객 전화(회수 라이더 — 전화만). */
-  public record RecoveryContact(String originDeliveryId, String receiverPhone) {
+  /**
+   * 회수지 정보(회수 라이더). 오배송 회수는 원래 고객 전화만, 고객 반품 회수(2026-11-17 — 사용자 "라이더에게는 MFC 로 가져가는 배달 하나")는 회수지가 그
+   * 고객 집이라 주소·출입 정보까지.
+   */
+  public record RecoveryContact(
+      String purpose,
+      @Nullable String originDeliveryId,
+      String receiverPhone,
+      @Nullable String receiverName,
+      @Nullable String roadAddress,
+      @Nullable String detailAddress,
+      @Nullable String entranceMethod,
+      @Nullable String entranceNote) {
     @Override
     public String toString() {
       return "RecoveryContact[가림]";
@@ -67,8 +80,8 @@ public class DropInfoService {
             .delivery(deliveryId)
             .filter(x -> p.subject().equals(x.riderId()))
             .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
-    if (!d.recovery()) {
-      throw conflict("NOT_RECOVERY", "오배송 회수 배송이 아닙니다.");
+    if (!d.recovery() && !d.claimReturn()) {
+      throw conflict("NOT_RECOVERY", "회수 배송이 아닙니다.");
     }
     if (!RECOVERY_OPEN.contains(d.state())) {
       throw conflict("RECOVERY_CONTACT_CLOSED", "회수 중에만 볼 수 있습니다(지금 " + d.state() + ").");
@@ -76,13 +89,26 @@ public class DropInfoService {
     if (d.orderId() == null) {
       throw PmartException.notFound("DROP_INFO_NOT_FOUND", "주문이 없는 배송입니다.");
     }
-    String phone =
+    OrderClient.DropInfo info =
         order
             .dropInfo(d.orderId())
-            .map(OrderClient.DropInfo::receiverPhone)
             .orElseThrow(
                 () -> PmartException.notFound("DROP_INFO_NOT_FOUND", "주문 당시 배송지 사본이 없습니다."));
-    return new RecoveryContact(d.originDeliveryId(), phone);
+    if (d.claimReturn()) {
+      // 고객 반품 회수: 회수지 = 그 고객 집 — 주소·출입까지(라이더 앱은 오배송 회수와 같은 화면, 주소가 있으면 보인다)
+      return new RecoveryContact(
+          d.purpose(),
+          d.originDeliveryId(),
+          info.receiverPhone(),
+          info.receiverName(),
+          info.roadAddress(),
+          info.detailAddress(),
+          info.entranceMethod(),
+          info.entranceNote());
+    }
+    // 오배송 회수: 원래 고객은 상품이 없다 — 전화만(주소·출입은 주지 않는다)
+    return new RecoveryContact(
+        d.purpose(), d.originDeliveryId(), info.receiverPhone(), null, null, null, null, null);
   }
 
   private static PmartException conflict(String code, String message) {

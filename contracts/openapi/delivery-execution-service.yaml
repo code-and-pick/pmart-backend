@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.13.0
+  version: 0.13.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -884,8 +884,10 @@ paths:
   /deliveries/{deliveryId}/recovery-contact:
     get:
       tags: [returns]
-      summary: 오배송 회수 — 원래 고객 전화번호 (회수 라이더 본인)
+      summary: 회수지 연락처 — 오배송 회수는 전화만, 고객 반품 회수는 주소까지 (회수 라이더 본인)
       description: |
+        **2026-11-17 통합(사용자 "라이더 입장에서는 MFC 로 이동하는 배달 하나")**: 회수 배송(type RETURN) 두 목적 모두 이 하나로 — 라이더 앱은 purpose 로 문구만 바꾸고 같은 회수 화면을 쓴다.
+        고객 반품 회수(CLAIM_RETURN)는 회수지가 그 고객 집이라 `receiverName`·`roadAddress`·`detailAddress`·`entranceMethod`·`entranceNote` 도 준다(주소가 있으면 보이면 된다). 열리는 때에 FAILURE_REPORTED(받기 전 실패 등록 중)도 더함.
         2026-11-16 사용자 "원래 고객의 전화는 회수 라이더에게 보여야 해". 회수 배송(purpose MISDELIVERY_RECOVERY)에 배정된 라이더 본인만(아니면 404 — 있는지 알리지 않음, 직원 토큰 403).
         열리는 때: ASSIGNED·RETURN_PICKED_UP(회수 진행 중). 반납 뒤·취소는 409 RECOVERY_CONTACT_CLOSED, 회수 배송이 아니면 409 NOT_RECOVERY.
         **전화번호만** 준다(원래 고객 주소·출입 정보는 주지 않는다). 원천은 order 주문 당시 사본(O-5) — 저장·로그하지 않는다(`Cache-Control: no-store`). 사본 없음 404 DROP_INFO_NOT_FOUND, order 장애 503.
@@ -1266,12 +1268,18 @@ components:
     RecoveryContact:
       type: object
       x-added-in: '2026-11-16'
-      description: 오배송 회수 라이더용 원래 고객 연락처 — 전화번호만(개인정보, 앱도 화면 밖에 남기지 않는다)
+      description: 회수 라이더용 회수지 연락처 — 오배송 회수는 원래 고객 전화만, 고객 반품 회수는 주소·출입까지(2026-11-17). 개인정보 — 앱도 화면 밖에 남기지 않는다
       required: [deliveryId, receiverPhone]
       properties:
         deliveryId: { type: string, description: 회수 배송 }
-        originDeliveryId: { type: string, description: 오배송된 원래 배송 }
-        receiverPhone: { type: string, description: 원래 고객 전화번호(안심번호 아님) }
+        purpose: { type: string, enum: [MISDELIVERY_RECOVERY, CLAIM_RETURN], x-added-in: '2026-11-17' }
+        originDeliveryId: { type: [string, 'null'], description: 원래 배송(오배송된 배송 / 반품한 주문의 배송 — 모르면 null) }
+        receiverPhone: { type: string, description: 고객 전화번호(안심번호 아님) }
+        receiverName: { type: [string, 'null'], description: 'CLAIM_RETURN 만 — 받는 분(주문 당시)', x-added-in: '2026-11-17' }
+        roadAddress: { type: [string, 'null'], description: 'CLAIM_RETURN 만 — 회수지(고객 집) 도로명주소', x-added-in: '2026-11-17' }
+        detailAddress: { type: [string, 'null'], description: 'CLAIM_RETURN 만', x-added-in: '2026-11-17' }
+        entranceMethod: { type: [string, 'null'], description: 'CLAIM_RETURN 만 — 출입 방법', x-added-in: '2026-11-17' }
+        entranceNote: { type: [string, 'null'], description: 'CLAIM_RETURN 만 — 출입 메모', x-added-in: '2026-11-17' }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

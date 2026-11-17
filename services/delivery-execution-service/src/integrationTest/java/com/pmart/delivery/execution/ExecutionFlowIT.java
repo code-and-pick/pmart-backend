@@ -1207,8 +1207,12 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(contact.getHeaders().getCacheControl()).contains("no-store");
     assertThat(body(contact).path("receiverPhone").asString()).isEqualTo("01012345678");
     assertThat(body(contact).path("originDeliveryId").asString()).isEqualTo(origin);
-    assertThat(body(contact).has("roadAddress")).isFalse();
-    assertThat(body(contact).has("detailAddress")).isFalse();
+    // 오배송 회수는 주소를 주지 않는다(null 이거나 없음)
+    assertThat(
+            body(contact).path("roadAddress").isNull()
+                || body(contact).path("roadAddress").isMissingNode())
+        .isTrue();
+    assertThat(body(contact).path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
     assertThat(riderGet("/deliveries/{id}/recovery-contact", rec, r1).getStatusCode().value())
         .isEqualTo(404); // 회수 라이더가 아니면 있는지도 모른다
     ResponseEntity<String> notRecovery = riderGet("/deliveries/{id}/recovery-contact", origin, r1);
@@ -1338,6 +1342,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(drop).path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 1");
     assertThat(post(ok, "store-arrivals", rider, Map.of()).getStatusCode().value())
         .isEqualTo(409); // 일반 배송 단계 없음
+    // 회수지 연락처는 오배송 회수와 같은 경로 — 반품 회수는 고객 집 주소까지(2026-11-17 통합)
+    JsonNode spot = body(riderGet("/deliveries/{id}/recovery-contact", ok, rider));
+    assertThat(spot.path("purpose").asString()).isEqualTo("CLAIM_RETURN");
+    assertThat(spot.path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 1");
+    assertThat(spot.path("receiverPhone").asString()).isEqualTo("01012345678");
     JsonNode cv = view(ok, rider); // 회수 라이더에게 받을 품목(DD-3)
     assertThat(cv.path("claimId").asString()).isEqualTo(claimId);
     assertThat(cv.path("returnLines").get(0).path("orderLineId").asString()).isEqualTo("L-7");

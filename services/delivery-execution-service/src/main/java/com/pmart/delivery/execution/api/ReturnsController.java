@@ -36,8 +36,16 @@ public class ReturnsController implements ReturnsApi {
         .body(
             new com.pmart.delivery.execution.api.generated.model.RecoveryContact()
                 .deliveryId(deliveryId)
+                .purpose(
+                    com.pmart.delivery.execution.api.generated.model.RecoveryContact.PurposeEnum
+                        .fromValue(c.purpose()))
                 .originDeliveryId(c.originDeliveryId())
-                .receiverPhone(c.receiverPhone()));
+                .receiverPhone(c.receiverPhone())
+                .receiverName(c.receiverName())
+                .roadAddress(c.roadAddress())
+                .detailAddress(c.detailAddress())
+                .entranceMethod(c.entranceMethod())
+                .entranceNote(c.entranceNote()));
   }
 
   @Override
