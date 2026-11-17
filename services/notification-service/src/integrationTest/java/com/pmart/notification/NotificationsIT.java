@@ -129,6 +129,126 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     return m;
   }
 
+  /** 라이더 알림함(2026-11-16 §11-5, 사용자 "라이더 알림함 먼저"): 답장·처리 끝·문의 답변·계정 제한. 고객 알림함에는 안 섞인다. */
+  @Test
+  void riderInboxCollectsSupportNotices() throws Exception {
+    String rider = "RD-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String deliveryId = "DLV-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    publish(
+        "delivery.delivery.v1",
+        "HelpRequestReplied",
+        "Delivery",
+        deliveryId,
+        m(
+            "deliveryId",
+            deliveryId,
+            "requestId",
+            "REQ-1",
+            "riderId",
+            rider,
+            "messageSeq",
+            2,
+            "repliedAt",
+            Instant.now().toString()));
+    publish(
+        "platform.case.v1",
+        "CaseClosed",
+        "Case",
+        "CASE-NTF-1-" + rider,
+        m(
+            "caseId",
+            "CASE-NTF-1-" + rider,
+            "type",
+            "RIDER_HELP",
+            "refs",
+            List.of(
+                m("refType", "deliveryId", "refId", deliveryId),
+                m("refType", "requestId", "refId", "REQ-1"),
+                m("refType", "riderId", "refId", rider)),
+            "outcome",
+            "RESOLVED",
+            "closedAt",
+            Instant.now().toString()));
+    // 다른 종류 사건이 닫혀도 라이더에게 알리지 않는다
+    publish(
+        "platform.case.v1",
+        "CaseClosed",
+        "Case",
+        "CASE-NTF-2-" + rider,
+        m(
+            "caseId",
+            "CASE-NTF-2-" + rider,
+            "type",
+            "RIDER_LOCATION_STALE",
+            "refs",
+            List.of(m("refType", "riderId", "refId", rider)),
+            "closedAt",
+            Instant.now().toString()));
+    publish(
+        "platform.case.v1",
+        "RiderInquiryAnswered",
+        "Case",
+        "CASE-NTF-3-" + rider,
+        m(
+            "inquiryId",
+            "INQ-NTF-" + rider,
+            "caseId",
+            "CASE-NTF-3-" + rider,
+            "riderId",
+            rider,
+            "answeredAt",
+            Instant.now().toString()));
+    publish(
+        "delivery.rider.v1",
+        "RiderRestricted",
+        "Rider",
+        rider,
+        m(
+            "riderId",
+            rider,
+            "restriction",
+            "DISPATCH_RESTRICTED",
+            "previous",
+            "NORMAL",
+            "from",
+            Instant.now().toString(),
+            "to",
+            "2026-11-20T09:00:00Z",
+            "basis",
+            "민감한 근거 문구"));
+    Res inbox =
+        await(
+            () -> send("GET", TestJwt.rider(rider), "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 4);
+    JsonNode items = inbox.body().path("items");
+    assertThat(items).hasSize(4);
+    assertThat(inbox.body().path("unreadCount").asInt()).isEqualTo(4);
+    assertThat(items.findValuesAsString("title"))
+        .containsExactlyInAnyOrder(
+            "지원센터 답장이 왔어요", "도움요청 처리가 끝났어요", "문의에 답변이 등록되었어요", "새 배차가 제한되었어요");
+    for (JsonNode n : items) {
+      switch (n.path("title").asString()) {
+        case "지원센터 답장이 왔어요", "도움요청 처리가 끝났어요" -> {
+          assertThat(n.path("destination").path("type").asString()).isEqualTo("HELP_REQUEST");
+          assertThat(n.path("destination").path("ref").asString()).isEqualTo(deliveryId + ":REQ-1");
+        }
+        case "문의에 답변이 등록되었어요" ->
+            assertThat(n.path("destination").path("ref").asString()).isEqualTo("INQ-NTF-" + rider);
+        default -> {
+          assertThat(n.path("category").asString()).isEqualTo("SYSTEM");
+          assertThat(n.path("body").asString()).contains("11월 20일 18:00까지예요");
+          assertThat(n.toString()).doesNotContain("민감한 근거 문구");
+        }
+      }
+    }
+    // 같은 ID 의 고객 알림함은 비어 있다
+    assertThat(
+            send("GET", TestJwt.customer(rider), "/me/notifications?size=20", null)
+                .body()
+                .path("items"))
+        .isEmpty();
+  }
+
   /** S4(2026-11-16): 예약 시간 변경 확정 → "예약 시간이 바뀌었어요"(새 도착 시간대). */
   @Test
   void reservationTimeChangedTellsCustomerNewWindow() throws Exception {

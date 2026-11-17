@@ -1,6 +1,9 @@
 package com.pmart.notification.domain;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
 
@@ -23,6 +26,7 @@ public final class Notices {
   public static final String DELIVERY = "DELIVERY";
   public static final String REFUND = "REFUND";
   public static final String CASE = "CASE";
+  public static final String SYSTEM = "SYSTEM";
 
   private Notices() {}
 
@@ -204,6 +208,90 @@ public final class Notices {
         "고객센터에 남긴 문의의 답변을 확인해 주세요.",
         "INQUIRY",
         inquiryId);
+  }
+
+  // ---------------------------------------------------------------- 라이더(2026-11-16 §11-5)
+
+  /** 도움요청 목적지 참조 = 배송 ID + ":" + 요청 ID(라이더 앱이 GET /deliveries/{id}/help-requests/{requestId}). */
+  static @Nullable String helpRef(@Nullable String deliveryId, @Nullable String requestId) {
+    return deliveryId == null || requestId == null ? null : deliveryId + ":" + requestId;
+  }
+
+  public static Notice helpRequestReplied(String deliveryId, String requestId) {
+    return new Notice(
+        "HELP_REQUEST_REPLIED",
+        CASE,
+        "지원센터 답장이 왔어요",
+        "도움요청에 지원센터가 답했어요. 대화를 확인해 주세요.",
+        "HELP_REQUEST",
+        helpRef(deliveryId, requestId));
+  }
+
+  public static Notice helpRequestClosed(@Nullable String deliveryId, @Nullable String requestId) {
+    String ref = helpRef(deliveryId, requestId);
+    return new Notice(
+        "HELP_REQUEST_CLOSED",
+        CASE,
+        "도움요청 처리가 끝났어요",
+        "지원센터가 도움요청 처리를 마쳤어요. 더 필요한 것이 있으면 다시 도움요청을 보내 주세요.",
+        ref == null ? "NONE" : "HELP_REQUEST",
+        ref);
+  }
+
+  public static Notice riderInquiryAnswered(String inquiryId) {
+    return new Notice(
+        "RIDER_INQUIRY_ANSWERED",
+        CASE,
+        "문의에 답변이 등록되었어요",
+        "지원센터에 남긴 문의의 답변을 확인해 주세요.",
+        "INQUIRY",
+        inquiryId);
+  }
+
+  /** 계정 제한·해제. 사유·근거는 싣지 않는다(지원센터에 문의). 모르는 제한 종류는 알리지 않는다(null). */
+  public static @Nullable Notice riderRestriction(String restriction, @Nullable Instant until) {
+    String untilText =
+        until == null
+            ? ""
+            : " "
+                + DateTimeFormatter.ofPattern("M월 d일 HH:mm", Locale.KOREAN)
+                    .format(until.atZone(ZoneId.of("Asia/Seoul")))
+                + "까지예요.";
+    return switch (restriction) {
+      case "NORMAL" ->
+          new Notice(
+              "RIDER_RESTRICTION_LIFTED",
+              SYSTEM,
+              "계정 제한이 풀렸어요",
+              "다시 배차를 받을 수 있어요. 운행 중이면 신규 배차를 켜 주세요.",
+              "NONE",
+              null);
+      case "DISPATCH_RESTRICTED" ->
+          new Notice(
+              "RIDER_DISPATCH_RESTRICTED",
+              SYSTEM,
+              "새 배차가 제한되었어요",
+              "지금 맡은 배송은 끝까지 전달해 주세요." + untilText + " 자세한 내용은 지원센터에 문의해 주세요.",
+              "NONE",
+              null);
+      case "SUSPENDED" ->
+          new Notice(
+              "RIDER_SUSPENDED",
+              SYSTEM,
+              "계정이 정지되었어요",
+              "지금 맡은 배송은 끝까지 전달해 주세요." + untilText + " 자세한 내용은 지원센터에 문의해 주세요.",
+              "NONE",
+              null);
+      case "TERMINATED" ->
+          new Notice(
+              "RIDER_TERMINATED",
+              SYSTEM,
+              "계정 이용이 종료되었어요",
+              "지금 맡은 배송은 끝까지 전달해 주세요. 자세한 내용은 지원센터에 문의해 주세요.",
+              "NONE",
+              null);
+      default -> null;
+    };
   }
 
   /** 12,300원. */

@@ -159,6 +159,34 @@ public class ExecutionEvents {
         p);
   }
 
+  /**
+   * 지원센터 답장(2026-11-16 — 라이더 앱 요청 §11-5): 라이더 알림함용. 메시지 내용은 싣지 않는다. version = 지금 배송 수행 버전 그대로(대화는
+   * 배송 버전을 올리지 않는다 — 라이더 앱의 X-Expected-Version 이 흔들리지 않게).
+   */
+  public void helpReplied(
+      String deliveryId,
+      String requestId,
+      String riderId,
+      long seq,
+      java.time.Instant at,
+      int version,
+      String staffId) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", deliveryId);
+    p.put("requestId", requestId);
+    p.put("riderId", riderId);
+    p.put("messageSeq", seq);
+    p.put("repliedAt", at.toString());
+    events.publish(
+        "HelpRequestReplied",
+        1,
+        "Delivery",
+        deliveryId,
+        version,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, staffId),
+        p);
+  }
+
   /** 라이더 도움요청 → case-service 가 받아 지원센터 사건으로(구현 전). version = 이 사건의 수행 버전(bumpVersion). */
   public void helpRequested(
       DeliveryRow d, ExecutionStore.HelpRow h, List<String> evidenceRefs, int version) {

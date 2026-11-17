@@ -262,7 +262,21 @@ public class InquiryService {
             return inquiryId;
           }
           if (InquiryRules.RIDER.equals(row.requesterType())) {
-            // 라이더 문의: 고객 알림 사건(InquiryAnswered — customerId 필수)은 내지 않는다. 라이더 푸시는 아직 없음(§11-5)
+            // 라이더 문의: 고객용 InquiryAnswered(customerId 필수) 대신 RiderInquiryAnswered — 라이더 알림함(§11-5).
+            // 답변 내용 없음
+            Map<String, Object> r = new LinkedHashMap<>();
+            r.put("inquiryId", inquiryId);
+            r.put("caseId", row.caseId());
+            r.put("riderId", row.customerId());
+            r.put("answeredAt", now.toString());
+            events.publish(
+                "RiderInquiryAnswered",
+                1,
+                "Case",
+                row.caseId(),
+                row.version() + 1L,
+                new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+                r);
             log.info("rider inquiry answered id={}", inquiryId);
             return inquiryId;
           }

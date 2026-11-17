@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/HelpRequestReplied.v1.json",
+  "title": "HelpRequestReplied",
+  "description": "지원센터 상담원이 라이더 도움요청 대화에 답한 사실(메시지 내용은 싣지 않는다 — 라이더는 대화에서 읽는다). 발행 delivery-execution(2026-11-16, POST /deliveries/{id}/help-requests/{requestId}/messages 의 SUPPORT 메시지 — 라이더 앱 요청 §11-5). 구독 notification(라이더 알림함). aggregateVersion 은 배송 수행 버전 그대로(대화는 배송 버전을 올리지 않는다). 토픽 delivery.delivery.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "HelpRequestReplied"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deliveryId",
+            "requestId",
+            "riderId",
+            "repliedAt"
+          ],
+          "properties": {
+            "deliveryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "requestId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "messageSeq": {
+              "type": "integer"
+            },
+            "repliedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

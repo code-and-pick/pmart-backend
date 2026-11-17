@@ -746,7 +746,7 @@ paths:
       tags: [inquiries]
       summary: 문의에 답변 (고객 문의 = CS_AGENT, 라이더 문의 = RIDER_OPS)
       description: |
-        라이더 문의(0.13.0)는 지원센터(RIDER_OPS)가 답하고 CS_AGENT 는 403. 라이더 문의 답변은 `InquiryAnswered` 를 내지 않는다(고객 알림 사건 — 라이더 푸시는 아직 없음).
+        라이더 문의(0.13.0)는 지원센터(RIDER_OPS)가 답하고 CS_AGENT 는 403. 라이더 문의 답변은 고객용 `InquiryAnswered` 대신 `RiderInquiryAnswered`(라이더 알림함 — 0.13.0 같은 날, 답변 내용 없음).
         답변을 붙이면 상태가 ANSWERED. 닫힌(CLOSED) 문의는 409 INQUIRY_CLOSED. X-Expected-Version = 문의 version.
         고객 앱 알림은 notification-service 구현 뒤(지금은 고객이 문의 페이지에서 확인).
         0.12.0: 상담원 접수(origin STAFF_INTAKE) 문의에 답을 붙이면 상태는 같게 바뀌지만 InquiryAnswered 를 내지 않는다(고객 앱에 없는 문의 — 답변은 통화·채팅 기록).

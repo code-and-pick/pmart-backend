@@ -662,6 +662,20 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         staffPost("/deliveries/" + id + "/" + thread, ops, Map.of("body", "정문 왼쪽 계단으로 가세요"));
     assertThat(reply.getStatusCode().value()).isEqualTo(201);
     assertThat(body(reply).path("senderType").asString()).isEqualTo("SUPPORT");
+    // 라이더 알림함용 사건(§11-5) — 메시지 내용 없음, 배송 버전은 그대로
+    int versionBefore = body(staffGet("/deliveries/" + id, ops)).path("version").asInt();
+    JsonNode replied = outbox(id, "HelpRequestReplied").path("payload");
+    assertThat(replied.path("riderId").asString()).isEqualTo(rider);
+    assertThat(replied.path("requestId").asString()).isEqualTo(requestId);
+    assertThat(replied.toString()).doesNotContain("정문 왼쪽 계단으로 가세요");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'HelpRequestReplied'",
+                Integer.class,
+                id))
+        .isEqualTo(1);
+    assertThat(body(staffGet("/deliveries/" + id, ops)).path("version").asInt())
+        .isEqualTo(versionBefore);
     // 직원은 둘 다·보낸 사람 ID 보임, 라이더는 after 뒤 상담원 메시지만·상담원 ID 없음
     JsonNode all = body(staffGet("/deliveries/" + id + "/" + thread, ops));
     assertThat(all.path("items")).hasSize(2);

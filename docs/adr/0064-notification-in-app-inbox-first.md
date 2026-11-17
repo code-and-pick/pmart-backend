@@ -1,6 +1,7 @@
 # ADR-0064 알림 1차 — 고객 앱 알림함만, 거래 안내 8가지, 푸시는 나중
 
 - 상태: 승인 (2026-11-16, 사용자 — "알람 기능도 만들어줘" → 채널 "앱 알림함만 먼저", 알릴 일 "주문 확정·상품 준비 시작 / 배송 출발·배송 완료 / 취소·품절·환불 / 고객센터 답변", 라이더 "이번엔 고객만")
+- 일부 대체: 결정 2(받는 사람은 고객만)는 ADR-0066(라이더 알림함, 2026-11-16)이 대체.
 - 관련: `docs/architecture/service-map.md` notification-service, 계약 `notification-service.yaml` 0.2.0, 사건 `InquiryAnswered`(새 — case 발행), `service-requests/notification-service.md` N-1·N-2, 업무 원문 Commerce 15.x(알림은 주문 상태와 별도 기록, 알림 성공으로 거래를 확정하지 않음)
 
 ## 결정

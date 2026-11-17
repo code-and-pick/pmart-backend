@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderInquiryAnswered.v1.json",
+  "title": "RiderInquiryAnswered",
+  "description": "지원센터가 라이더 문의(배송 밖 — 정산·계정·앱 오류)에 답한 사실(답변 내용은 싣지 않는다). 발행 case(2026-11-16, POST /inquiries/{id}/replies 의 라이더 문의 — 라이더 앱 요청 §11-5). 고객 문의는 InquiryAnswered. 구독 notification(라이더 알림함). 토픽 platform.case.v1. 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderInquiryAnswered"
+        },
+        "aggregateType": {
+          "const": "Case"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "inquiryId",
+            "caseId",
+            "riderId",
+            "answeredAt"
+          ],
+          "properties": {
+            "inquiryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "answeredAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}
