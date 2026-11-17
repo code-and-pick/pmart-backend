@@ -18,6 +18,7 @@ public class LotLabelStore {
 
   public record LotRow(
       String lotId,
+      String lotNo,
       String sku,
       String tracking,
       @Nullable String sourceLotRef,
@@ -28,7 +29,7 @@ public class LotLabelStore {
       @Nullable Integer qtyAtLocation) {}
 
   private static final String SELECT =
-      "SELECT l.lot_id, l.sku, l.tracking, l.source_lot_ref, l.expiry_date, l.manufacture_date,"
+      "SELECT l.lot_id, l.lot_no, l.sku, l.tracking, l.source_lot_ref, l.expiry_date, l.manufacture_date,"
           + " b.first_normal_at, COALESCE(b.on_hand, 0) AS on_hand";
 
   private final JdbcTemplate jdbc;
@@ -47,6 +48,20 @@ public class LotLabelStore {
             (rs, i) -> row(rs),
             mfcId,
             lotId)
+        .stream()
+        .findFirst();
+  }
+
+  /** LOT 번호(GS1 (10), 0.21.0)로 LOT 한 개와 그 센터 보유. */
+  public Optional<LotRow> findByLotNo(String mfcId, String lotNo) {
+    return jdbc
+        .query(
+            SELECT
+                + ", NULL::integer AS at_location FROM stock_lot l LEFT JOIN stock_lot_balance b"
+                + " ON b.lot_id = l.lot_id AND b.mfc_id = ? WHERE l.lot_no = ?",
+            (rs, i) -> row(rs),
+            mfcId,
+            lotNo)
         .stream()
         .findFirst();
   }
@@ -89,6 +104,7 @@ public class LotLabelStore {
     Integer atLocation = rs.wasNull() ? null : at;
     return new LotRow(
         rs.getString("lot_id"),
+        rs.getString("lot_no"),
         rs.getString("sku"),
         rs.getString("tracking"),
         rs.getString("source_lot_ref"),

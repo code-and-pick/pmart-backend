@@ -91,14 +91,28 @@ public class TaskService {
   /** 실적 결과(상태 APPLIED / REJECTED / UNKNOWN_RESULT / RECORDED). */
   public record ExecResult(ExecutionRow execution, int taskVersion) {}
 
-  /** 지시 한 LOT. allocated = 위치 → 이 주문 몫으로 배정된 남은 양(inventory 위치 배정, 배정된 위치가 locations 앞). */
+  /**
+   * 지시 한 LOT. allocated = 위치 → 이 주문 몫으로 배정된 남은 양(inventory 위치 배정, 배정된 위치가 locations 앞). lotNo = GS1
+   * (10) LOT 번호(0.11.0, IV-4 — PICK 만, inventory 피킹 계획 사본).
+   */
   public record Pick(
       String lotId,
       @Nullable String expiresOn,
       int remainingQty,
       List<Map.Entry<String, Integer>> locations,
       Map<String, Integer> allocated,
-      List<String> suggestedTo) {
+      List<String> suggestedTo,
+      @Nullable String lotNo) {
+    public Pick(
+        String lotId,
+        @Nullable String expiresOn,
+        int remainingQty,
+        List<Map.Entry<String, Integer>> locations,
+        Map<String, Integer> allocated,
+        List<String> suggestedTo) {
+      this(lotId, expiresOn, remainingQty, locations, allocated, suggestedTo, null);
+    }
+
     public Pick(
         String lotId,
         @Nullable String expiresOn,
@@ -222,7 +236,15 @@ public class TaskService {
           }
           picks
               .computeIfAbsent(p.orderLineId(), k -> new ArrayList<>())
-              .add(new Pick(p.lotId(), p.expiryDate(), remaining, p.locations(), p.allocated()));
+              .add(
+                  new Pick(
+                      p.lotId(),
+                      p.expiryDate(),
+                      remaining,
+                      p.locations(),
+                      p.allocated(),
+                      List.of(),
+                      p.lotNo()));
         }
       } catch (PmartException | org.springframework.web.client.RestClientException e) {
         fresh = false; // 지시는 참고 — 실적 판정은 재고가 한다

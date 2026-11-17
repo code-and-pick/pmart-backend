@@ -121,6 +121,7 @@ public class QueriesController implements QueriesApi {
                 b -> {
                   var l = new CenterStockLotsInner();
                   l.setLotId(b.lotId());
+                  l.setLotNo(b.lotNo());
                   l.setTracking(CenterStockLotsInner.TrackingEnum.fromValue(b.tracking()));
                   l.setExpiryDate(b.expiryDate());
                   l.setManufactureDate(b.manufactureDate());

@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** LOT 라벨(QR) 인쇄·재출력·해석(0.20.0). */
+/** LOT 라벨 인쇄·재출력·해석(0.20.0), GS1-128 LOT 찾기(0.21.0). */
 @RestController
 public class LotLabelsController implements LotLabelsApi {
 
@@ -24,6 +24,11 @@ public class LotLabelsController implements LotLabelsApi {
   @Override
   public ResponseEntity<LotLabel> getLotLabel(String mfcId, String lotId) {
     return ResponseEntity.ok(dto(labels.get(mfcId, lotId)));
+  }
+
+  @Override
+  public ResponseEntity<LotLabel> resolveLot(String mfcId, String code) {
+    return ResponseEntity.ok(dto(labels.resolve(mfcId, code)));
   }
 
   @Override
@@ -41,6 +46,8 @@ public class LotLabelsController implements LotLabelsApi {
     var out = new LotLabel();
     out.setLabelValue(l.value());
     out.setLotId(lot.lotId());
+    out.setLotNo(lot.lotNo());
+    out.setGs1(l.gs1());
     out.setSku(lot.sku());
     out.setProductName(sku == null ? null : sku.productName());
     out.setBarcodes(sku == null ? List.of() : new ArrayList<>(sku.barcodes()));

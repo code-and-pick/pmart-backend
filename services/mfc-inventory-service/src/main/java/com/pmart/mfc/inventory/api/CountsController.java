@@ -109,6 +109,7 @@ public class CountsController implements CountsApi {
                           : new java.util.ArrayList<>(p.barcodes()));
                   x.setLotId(b.lotId());
                   var lot = v.lots().get(b.lotId());
+                  x.setLotNo(lot == null ? null : lot.lotNo());
                   x.setExpiryDate(lot == null ? null : lot.expiryDate());
                   return x;
                 })

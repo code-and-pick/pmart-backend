@@ -125,6 +125,7 @@ public class TasksController implements TasksApi {
       for (Pick p : d.picksByLine().getOrDefault(l.orderLineId(), List.of())) {
         var pi = new TaskLinePicksInner();
         pi.setLotId(p.lotId());
+        pi.setLotNo(p.lotNo());
         pi.setExpiresOn(p.expiresOn() == null ? null : LocalDate.parse(p.expiresOn()));
         pi.setRemainingQty(p.remainingQty());
         List<TaskLinePicksInnerLocationsInner> locs = new ArrayList<>();

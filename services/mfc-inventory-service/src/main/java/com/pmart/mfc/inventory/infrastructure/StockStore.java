@@ -59,6 +59,7 @@ public class StockStore {
   public record LotBalance(
       String sku,
       String lotId,
+      String lotNo,
       @Nullable LocalDate expiryDate,
       @Nullable LocalDate manufactureDate,
       String tracking,
@@ -81,7 +82,8 @@ public class StockStore {
       @Nullable String sourceLotRef,
       @Nullable LocalDate expiryDate,
       @Nullable LocalDate manufactureDate,
-      String tracking) {}
+      String tracking,
+      String lotNo) {}
 
   /** 수령 줄 결과. */
   public record ReceiptLineRow(
@@ -231,8 +233,8 @@ public class StockStore {
       return out;
     }
     named.query(
-        "SELECT lot_id, sku, source_lot_ref, expiry_date, manufacture_date, tracking FROM stock_lot"
-            + " WHERE lot_id IN (:ids)",
+        "SELECT lot_id, sku, source_lot_ref, expiry_date, manufacture_date, tracking, lot_no"
+            + " FROM stock_lot WHERE lot_id IN (:ids)",
         Map.of("ids", lotIds),
         rs -> {
           Date d = rs.getDate("expiry_date");
@@ -245,7 +247,8 @@ public class StockStore {
                   rs.getString("source_lot_ref"),
                   d == null ? null : d.toLocalDate(),
                   m == null ? null : m.toLocalDate(),
-                  rs.getString("tracking")));
+                  rs.getString("tracking"),
+                  rs.getString("lot_no")));
         });
     return out;
   }
@@ -264,7 +267,7 @@ public class StockStore {
   }
 
   private static final String LOT_BALANCE_SELECT =
-      "SELECT b.sku, b.lot_id, l.expiry_date, l.manufacture_date, l.tracking, b.on_hand, b.quarantined, b.sellable,"
+      "SELECT b.sku, b.lot_id, l.lot_no, l.expiry_date, l.manufacture_date, l.tracking, b.on_hand, b.quarantined, b.sellable,"
           + " b.reserved, b.first_normal_at, b.row_version"
           + " FROM stock_lot_balance b JOIN stock_lot l ON l.lot_id = b.lot_id";
 
@@ -841,6 +844,7 @@ public class StockStore {
     return new LotBalance(
         rs.getString("sku"),
         rs.getString("lot_id"),
+        rs.getString("lot_no"),
         d == null ? null : d.toLocalDate(),
         m == null ? null : m.toLocalDate(),
         rs.getString("tracking"),

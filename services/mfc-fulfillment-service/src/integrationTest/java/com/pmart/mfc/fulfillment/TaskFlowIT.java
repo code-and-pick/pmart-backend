@@ -238,6 +238,7 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     m.put("orderLineId", line);
     m.put("sku", sku);
     m.put("lotId", lot);
+    m.put("lotNo", "N" + lot); // LOT 번호(inventory 0.21.0) — 시험용 값
     m.put("expiryDate", exp);
     m.put("state", "CONFIRMED");
     m.put("qty", qty);
@@ -406,6 +407,8 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(l1.path("picks")).hasSize(2);
     assertThat(l1.path("lotId").asString()).isEqualTo("LOT-A");
     assertThat(l1.path("locationId").asString()).isEqualTo("A-S1-01-1-01");
+    // LOT 번호(0.11.0, IV-4) — PDA 가 찍은 GS1 (10) 과 대조
+    assertThat(l1.path("picks").path(0).path("lotNo").asString()).isEqualTo("NLOT-A");
     assertThat(l1.path("picks").path(0).path("locations").path(0).path("allocatedQty").asInt())
         .isEqualTo(1);
     // 0.4.9 화면 표시: 칸이 정해진 조각은 OK·안내 없음

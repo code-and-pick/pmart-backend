@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.10.0
+  version: 0.11.0
   description: |
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
@@ -51,6 +51,7 @@ info:
     0.10.0(2026-11-17, 백오피스 통합 조회 MFC 칸 BO-11 — 요청 F-3): `GET /work-orders?orderId=` — 주문 번호로 현장 상태(작업 지시·결정·출고별
       작업·작업자·시작/끝 시각·결품 보고·포장·인계·중지 요청). 직원 토큰: OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터, 그 밖 운영자는 자기 센터만.
       개인정보 없음.
+    0.11.0(2026-11-17, LOT 바코드 GS1-128 — 요청 IV-4): PICK 작업 상세 `picks[].lotNo`(mfc-inventory 0.21.0 피킹 계획 사본) — PDA 가 찍은 GS1 (10) 과 대조.
 servers:
   - url: /api/v1
 security:
@@ -1184,6 +1185,7 @@ components:
             type: object
             properties:
               lotId: { type: string }
+              lotNo: { type: [string, 'null'], description: '(0.11.0, IV-4) PICK 만 — LOT 번호(GS1-128 (10)). PDA 는 찍은 LOT 바코드의 (10) 을 이것과 대조(다르면 막기 — 서버도 예약 LOT 이 아니면 LOT_MISMATCH 로 거절). 재고 조회가 안 되면·RETURN 은 null' }
               expiresOn: { type: [string, 'null'], format: date }
               remainingQty: { type: integer, description: 이 LOT 조각에서 더 집을 양 }
               locations:

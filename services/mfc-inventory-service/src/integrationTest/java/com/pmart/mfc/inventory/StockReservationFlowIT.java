@@ -1532,13 +1532,11 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
                 "lines",
                 List.of(Map.of("orderLineId", "L1", "sku", sku, "qty", 4))));
     String rid = held.body().path("resultId").asString();
-    String lot =
-        get(ORCH, "/internal/reservations/" + rid + "/pick-plan")
-            .body()
-            .path("parts")
-            .path(0)
-            .path("lotId")
-            .asString();
+    JsonNode planPart =
+        get(ORCH, "/internal/reservations/" + rid + "/pick-plan").body().path("parts").path(0);
+    String lot = planPart.path("lotId").asString();
+    // 피킹 계획에 LOT 번호(0.21.0, IV-4) — 피킹 PDA 대조용
+    assertThat(planPart.path("lotNo").asString()).startsWith("L").hasSizeLessThanOrEqualTo(20);
     // 격리 3 → E2, R4 → 2 보류(다른 LOT 없음), 남은 HELD 2
     assertThat(quality("QUARANTINE", "QD-HS", sku, lot, 3).status()).isEqualTo(201);
     assertThat(partQty(rid, "BLOCKED")).isEqualTo(2);
@@ -2877,6 +2875,33 @@ class StockReservationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(one.status()).isEqualTo(200);
     assertThat(one.body().path("labelValue").asString()).isEqualTo("LOT:" + trackedLot);
     assertThat(one.body().path("onHand").asInt()).isEqualTo(3);
+    // GS1-128(0.21.0, IV-4): lotNo·gs1 — (01) 바코드 GTIN-14, (17) 기한, (10) lotNo
+    String lotNo = one.body().path("lotNo").asString();
+    assertThat(lotNo).matches("L\\d{12,}");
+    String yymmdd = expiry.substring(2, 4) + expiry.substring(5, 7) + expiry.substring(8, 10);
+    String gs1 = "(01)08801155720019(17)" + yymmdd + "(10)" + lotNo;
+    assertThat(one.body().path("gs1").asString()).isEqualTo(gs1);
+    assertThat(items.path(1).path("lotNo").asString()).isNotEqualTo(lotNo).startsWith("L");
+    assertThat(items.path(1).path("gs1").asString()).doesNotContain("(17)");
+    // 찍은 값으로 찾기 — 괄호 꼴·스캐너 원문(]C1)·예전 QR
+    String resolve = "/mfcs/" + mfc + "/lot-resolutions?code=";
+    Res byHri = get(op, resolve + gs1);
+    assertThat(byHri.status()).as(byHri.body().toString()).isEqualTo(200);
+    assertThat(byHri.body().path("lotId").asString()).isEqualTo(trackedLot);
+    String raw = "]C10108801155720019" + "17" + yymmdd + "10" + lotNo;
+    assertThat(get(op, resolve + raw).body().path("lotId").asString()).isEqualTo(trackedLot);
+    assertThat(get(op, resolve + "LOT:" + trackedLot).body().path("lotNo").asString())
+        .isEqualTo(lotNo);
+    // 다른 상품·다른 기한 → 422, 없는 번호 404, 틀린 값 400
+    Res otherGtin = get(op, resolve + "(01)02990000000000(10)" + lotNo);
+    assertThat(otherGtin.status()).isEqualTo(422);
+    assertThat(otherGtin.body().path("code").asString()).isEqualTo("GS1_MISMATCH");
+    assertThat(get(op, resolve + "(17)991231(10)" + lotNo).status()).isEqualTo(422);
+    assertThat(get(op, resolve + "(10)L000000000000").status()).isEqualTo(404);
+    assertThat(get(op, resolve + "(99)X").status()).isEqualTo(400);
+    // 재고 상세에도 lotNo
+    JsonNode stockLots = get(op, "/mfcs/" + mfc + "/stock?sku=" + sku).body().path("lots");
+    assertThat(stockLots.findValuesAsString("lotNo")).contains(lotNo);
     assertThat(get(op, "/mfcs/" + mfc + "/lot-labels/LOT-NONE").status()).isEqualTo(404);
     assertThat(get(op, "/mfcs/" + mfc + "/lot-labels").status()).isEqualTo(400);
     assertThat(get(other, "/mfcs/" + mfc + "/lot-labels/" + trackedLot).status()).isEqualTo(403);

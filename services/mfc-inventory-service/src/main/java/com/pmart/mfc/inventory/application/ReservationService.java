@@ -992,6 +992,7 @@ public class ReservationService {
   /** 피킹 지시 한 조각: 예약 조각 + LOT 소비기한 + 그 LOT 의 선반 위치별 잔량(코드 순). */
   public record PickPlanPart(
       ReservationStore.PickPart part,
+      @Nullable String lotNo,
       @Nullable LocalDate expiryDate,
       List<Map.Entry<String, Integer>> locations) {}
 
@@ -1031,7 +1032,10 @@ public class ReservationService {
       var lot = lots.get(p.lotId());
       out.add(
           new PickPlanPart(
-              p, lot == null ? null : lot.expiryDate(), new ArrayList<>(byLocation.entrySet())));
+              p,
+              lot == null ? null : lot.lotNo(),
+              lot == null ? null : lot.expiryDate(),
+              new ArrayList<>(byLocation.entrySet())));
     }
     return new PickPlan(r, out);
   }

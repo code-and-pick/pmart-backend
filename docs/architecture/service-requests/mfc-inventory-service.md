@@ -31,4 +31,12 @@
   3. **피킹 LOT 확인**(mfc-fulfillment·mfc_app): 작업 지시의 LOT 과 찍은 LOT 바코드가 다르면 PDA 가 막고, 실적 `lines[].lotId` 는 찍은 LOT 으로(지금은 지시 사본). 서버는 지금처럼 예약 LOT 이 아니면 거절(IV-07). 상품 바코드(EAN-13)만 찍는 경우를 계속 받을지 — PDA 화면 결정(제안: LOT 라벨이 붙은 상품은 LOT 바코드 필수).
   4. mfc_app 스캔 해석: GS1-128 은 FNC1 으로 시작하는 Code128 — 스캐너가 주는 원문(`]C1` 접두·그룹 구분자 GS)을 AI 로 나눠 읽는다.
 - **PC 1 이 할 것**: LAN 시험 데이터 — LOT 이 1개인 상품 일부를 두 LOT(기한 다름)으로 나눔 — **적용됨**(2026-11-17, `deploy/lan/seed/mfc_split_lots.py`: 195개, LAN LOT 1,064 → 1,259, LOT 1개 상품 1개만 남음), LOT 번호가 생기면 GS1-128 LOT 라벨 인쇄 파일(`deploy/lan/seed/labels/`).
-- **상태**: 요청함(2026-11-17).
+- **상태**: **구현**(PC 3, 2026-11-17 — 브랜치 `mfc/lot-gs1`, **mfc-inventory 0.21.0(V21)·mfc-fulfillment 0.11.0**). 처음엔 요청함(2026-11-17).
+- **회신(PC 3, 2026-11-17)** — 제안 1~3 수용, 4 는 앱:
+  1. **LOT 번호 `lotNo`**: `L` + 만든 날(Asia/Seoul) YYMMDD + 일련 6자리 이상(시퀀스 — 날마다 처음부터가 아님), 예 `L261117000123`(13자). **전체 유일**(센터 안이 아니라 — LOT 이 센터와 무관하게 하나라서), 바뀌지 않는다. 새 LOT 은 DB 기본값으로 붙는다(코드 밖에서 넣는 LAN 시드 행도). 기존 LOT 은 V21 이 만든 순서대로 한 번 채운다. 싣는 곳: `LotLabel`·`CenterStock.lots`·`PickPlan.parts`·`CountSession.sheet`, fulfillment 작업 상세 `picks[].lotNo`(PICK 만).
+  2. **GS1-128**: 라벨 값 `LotLabel.gs1` = 괄호 꼴 `(01)`GTIN-14 `(17)`YYMMDD `(10)`lotNo — 고정 길이(01·17)를 앞, 가변(10)을 끝에 두어 FNC1 구분자가 필요 없다(요청의 01→10→17 순서 대신 — GS1 권장). 기한 없는 LOT 은 `(17)` 생략. GTIN = 상품 바코드 중 숫자 8·12·13·14자리 첫 값을 앞에 0 붙여 14자리(검사 숫자는 보지 않음 — 시험 바코드). 숫자 바코드가 없으면 `gs1` null.
+  3. **LOT 찾기** `GET /mfcs/{mfcId}/lot-resolutions?code=`(그 센터 운영자): 스캐너 원문(`]C1` 접두·GS 구분자)·괄호 꼴·예전 QR `LOT:{lotId}` 모두. `(10)` 으로 찾고, `(01)` 이 그 LOT SKU 바코드와 다르거나 `(17)` 이 기한과 다르면 422 `GS1_MISMATCH`, 없는 번호 404 `LOT_NOT_FOUND`, 틀린 값 400. 응답 = `LotLabel`(그 센터 보유 포함). AI 는 01·10·11·15·17·21 만.
+  4. **피킹 LOT 확인**: PDA 는 찍은 GS1 의 `(10)` 을 `picks[].lotNo` 와 바로 대조(서버 호출 없이), 실적 `lines[].lotId` 는 그 pick 의 lotId. 서버는 예약 LOT 이 아니면 지금처럼 거절(LOT_MISMATCH). 입고 검수·이동·실사는 찍은 값으로 `lot-resolutions` → lotId 대조(실사표는 `sheet[].lotNo` 로 바로도). 상품 바코드만 찍는 경우를 받을지는 PDA 화면 결정(제안대로 LOT 라벨 붙은 상품은 LOT 바코드 필수 — 기존 재고 라벨을 다 붙인 뒤).
+  - 예전 QR `LOT:{lotId}`(0.20.0 `labelValue`)는 그대로 주고 읽는다 — 이미 붙인 라벨.
+  - **PC 1**: 배포 뒤 LAN LOT 1,259개에 lotNo 가 채워진다 → LOT 라벨 인쇄 파일(`deploy/lan/seed/labels/`)은 `GET /mfcs/{mfcId}/lot-labels?sku=|locationCode=` 의 `gs1` 이나 DB `stock_lot.lot_no` 로. 배포 순서 mfc-inventory → mfc-fulfillment(새 fulfillment 는 lotNo 가 없으면 null 로 둔다 — 순서가 바뀌어도 깨지지 않음). 게이트웨이 허용 목록 GET 한 줄.
+  - 시험(PC 3): inventory 단위 50(GS1 해석 6)·통합 31, fulfillment 단위 19·통합 27, 게이트웨이 허용 목록.

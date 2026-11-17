@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: mfc-inventory-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
     MFC 재고 수량의 **단일 쓰기 주체**. (docs/architecture/service-map.md §5, ADR-0002)
     정본: Balance(센터·위치·SKU·LOT·품질상태·업무상태·수량·버전), LedgerEntry, ReservationPart, MoveAllocation(물량 M·공간 V), commitId 원장.
@@ -18,6 +18,10 @@ info:
     0.20.0(2026-11-17, LOT 라벨 — 클라이언트 mfc-app 요청 L1~L6, 사용자 "추천대로"): LOT 라벨(QR) 값 `LOT:{lotId}` — LOT 하나 = 값 하나, 재출력해도 같다.
       LOT 기준은 그대로(SKU·제조사 LOT 원문·소비기한·제조일 — 납입일로 나누지 않음, 라벨에 표시만). 박스 상품은 박스 SKU(unitType B, unitsPerSku 입수) —
       라벨 1장 = 그 SKU 1단위. 조회 `GET /mfcs/{mfcId}/lot-labels/{lotId}`(인쇄·해석)·`GET /mfcs/{mfcId}/lot-labels?sku=|locationCode=`(재출력 찾기).
+    0.21.0(2026-11-17, LOT 바코드 GS1-128 — 요청 IV-4, 사용자 결정): LOT 마다 짧은 **LOT 번호 `lotNo`**(20자 이하, 전체 유일 — `L`+만든 날 YYMMDD+일련,
+      기존 LOT 은 한 번 채움). 라벨 바코드는 **GS1-128** `(01)` GTIN-14(상품 바코드 앞에 0) + `(17)` 소비기한 YYMMDD(없으면 생략) + `(10)` lotNo —
+      `LotLabel.gs1`. 찍은 값으로 LOT 찾기 `GET /mfcs/{mfcId}/lot-resolutions?code=`(GS1 원문·괄호 꼴, 예전 QR `LOT:{lotId}` 도).
+      `lotNo` 를 라벨·재고 상세(`CenterStock.lots`)·피킹 계획(`PickPlan.parts`)·실사 계수표(`CountSession.sheet`)에 싣는다.
 servers:
   - url: /api/v1
 security:
@@ -966,7 +970,8 @@ paths:
       tags: [lot-labels]
       summary: '[운영자] LOT 라벨 인쇄 정보·라벨 값 해석 (0.20.0)'
       description: |
-        LOT 라벨(QR) 값은 `LOT:{lotId}` — PDA 는 찍은 값에서 lotId 를 바로 읽어 피킹 지시 LOT(`picks[].lotId`)와 대조할 수 있다(이 조회 없이).
+        라벨 바코드는 GS1-128 `gs1`(0.21.0, IV-4) — PDA 는 찍은 값의 `(10)` LOT 번호를 피킹 지시 `picks[].lotNo` 와 바로 대조할 수 있다(이 조회 없이).
+        예전 QR 값 `LOT:{lotId}`(`labelValue`)도 그대로 준다 — 이미 붙인 라벨 해석용.
         이 조회는 인쇄 정보(상품명·소비기한·제조일·납입일 등)와 그 센터 보유량을 준다 — 입고 품질검사 뒤 라벨 출력, 재출력, 찍은 라벨의 유통기한·품질 확인에.
         그 센터 운영자. LOT 자체가 없으면 404 LOT_NOT_FOUND. 그 센터에 보유가 없어도(다 나갔어도) LOT 정보는 준다(onHand 0).
         붙일 장수는 이 조회가 아니라 그때의 수량 — 품질검사 합격 수량(낱개 SKU 는 낱개마다, 박스 SKU 는 박스마다 — 모두 SKU 단위 수량).
@@ -1010,6 +1015,35 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/LotLabel' } }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /mfcs/{mfcId}/lot-resolutions:
+    get:
+      tags: [lot-labels]
+      summary: '[운영자] 찍은 LOT 바코드로 LOT 찾기 — GS1-128 (0.21.0, IV-4)'
+      description: |
+        `code` = 스캐너 원문(앞 `]C1` 심볼 식별자 허용, 가변 길이 뒤 그룹 구분자 GS)이나 괄호 꼴 `(01)…(17)…(10)…`, 또는 예전 QR `LOT:{lotId}`.
+        GS1 은 `(10)` LOT 번호로 LOT 을 찾고, `(01)` 이 있으면 그 LOT SKU 의 상품 바코드(GTIN-14 로 맞춤) 중 하나와 같아야, `(17)` 이 있으면 LOT 소비기한과
+        같아야 한다(아니면 422 `GS1_MISMATCH` — 다른 상품·다른 LOT 의 라벨). AI 는 01·10·11·15·17·21 만 읽는다. 응답은 라벨 단건과 같다(그 센터 보유 포함).
+        입고 검수·이동·실사 화면에서 찍은 LOT 을 지시 lotId 와 대조할 때. 피킹은 `picks[].lotNo` 로 바로 대조해도 된다. 그 센터 운영자.
+      operationId: resolveLot
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: code, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 120 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LotLabel' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '422':
+          description: GS1_MISMATCH — (01) 상품·(17) 소비기한이 그 LOT 과 다르다
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /mfcs/{mfcId}/stock:
     get:
@@ -1536,6 +1570,7 @@ components:
               orderLineId: { type: [string, 'null'] }
               sku: { type: string }
               lotId: { type: string }
+              lotNo: { type: [string, 'null'], description: '(0.21.0) LOT 번호 — 찍은 GS1 (10) 과 대조' }
               expiryDate: { type: [string, 'null'], format: date }
               state: { $ref: '#/components/schemas/ReservationPartState' }
               qty: { type: integer }
@@ -1704,6 +1739,7 @@ components:
               productName: { type: [string, 'null'], description: '(0.16.0, 클라이언트 BR-52 R19-1) 표시용 상품 관리용 명칭(SKU 사본). 모르면 null' }
               barcodes: { type: array, items: { type: string }, description: '(0.16.0) 스캔 대조·라벨 재출력용 활성 바코드(선행 0 보존). 모르면 빈 배열' }
               lotId: { type: string }
+              lotNo: { type: [string, 'null'], description: '(0.21.0) LOT 번호 — 찍은 GS1 (10) 과 대조' }
               expiryDate: { type: [string, 'null'], format: date }
         differences:
           type: [array, 'null']
@@ -1825,11 +1861,13 @@ components:
               toManufactureDate: { type: string, format: date, description: '정정 대상 LOT 의 제조일(0.4.0, ADR-0041). toSourceLotRef·toExpiryDate·toManufactureDate 중 하나라도 있으면 그 추적 LOT 으로 옮긴다' }
     LotLabel:
       type: object
-      description: '(0.20.0) LOT 라벨 인쇄 정보. 값 labelValue 를 QR 로 찍는다'
-      required: [labelValue, lotId, sku, tracking, barcodes, onHand]
+      description: '(0.20.0) LOT 라벨 인쇄 정보. (0.21.0) 바코드는 GS1-128 gs1 — labelValue(QR)는 예전 라벨 해석용'
+      required: [labelValue, lotId, lotNo, sku, tracking, barcodes, onHand]
       properties:
-        labelValue: { type: string, description: 'LOT:{lotId} — 재출력해도 같다' }
+        labelValue: { type: string, description: 'LOT:{lotId} — 예전 QR 값(0.20.0). 재출력해도 같다' }
         lotId: { type: string }
+        lotNo: { type: string, maxLength: 20, description: '(0.21.0) LOT 번호 — GS1 (10) 값. 전체 유일, 바뀌지 않는다' }
+        gs1: { type: [string, 'null'], description: '(0.21.0) GS1-128 괄호 꼴 (01)GTIN-14(17)YYMMDD(10)lotNo — 기한 없으면 (17) 생략. 상품 바코드(숫자 8·12·13·14자리)가 없으면 null(GS1 라벨 불가)' }
         sku: { type: string }
         productName: { type: [string, 'null'], description: SKU 사본(모르면 null) }
         barcodes: { type: array, items: { type: string }, description: 상품 바코드(880·299…) — 라벨 대신 쓰지 않는다, 표시용 }
@@ -1854,6 +1892,7 @@ components:
             type: object
             properties:
               lotId: { type: string }
+              lotNo: { type: string, description: '(0.21.0) LOT 번호 — GS1 (10)' }
               tracking: { type: string, enum: [TRACKED, UNTRACKED] }
               expiryDate: { type: [string, 'null'], format: date }
               manufactureDate: { type: [string, 'null'], format: date, description: 제조일(0.4.0). 모르면 null }

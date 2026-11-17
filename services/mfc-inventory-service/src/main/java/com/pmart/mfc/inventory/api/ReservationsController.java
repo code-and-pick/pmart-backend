@@ -170,6 +170,7 @@ public class ReservationsController implements ReservationsApi {
       p.setOrderLineId(pp.part().orderLineId());
       p.setSku(pp.part().sku());
       p.setLotId(pp.part().lotId());
+      p.setLotNo(pp.lotNo());
       p.setExpiryDate(pp.expiryDate());
       p.setState(ReservationPartState.fromValue(pp.part().state().name()));
       p.setQty(pp.part().qty());
