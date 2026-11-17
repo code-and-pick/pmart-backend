@@ -104,7 +104,7 @@
 - **왜**: 사용자 2026-11-17 "포장 인계 현황 진행하자" — 업무 원문 `Delivery-business-logic.md` §10.1(관리자 페이지 DB 항목 "실시간 배송 현황·**포장 인계 현황**"), §3.1(출고대기·인계 구역에서 **출고요청·피킹중·패킹중·출고대기**를 주문번호로 보는 화면, **MFC 관리자가 모니터에 띄워 둠**), §3.4(포장마다 QR 인계, 인계 시각·처리 주체), §3.7(일부 인계면 가져간 포장과 남은 포장 구분).
 - **지금 없는 것**: 센터 단위로 "진행 중인 출고"를 고르는 목록이 없다. `/tasks` 는 진행 중 작업만(패킹 끝나 인계 기다리는 출고·주문번호 없음), `/packages` 는 확인 필요 포장만, F-3 `/work-orders?orderId=` 는 주문 하나씩(주문 검색은 센터 관리자 403 — 주 사용자가 못 씀).
 - **요청**(경로·이름은 PC 3 이 정한다 — 예): `GET /api/v1/shipments?mfcId=&state=&size=&cursor=`
-  - 권한: F-3 과 같게 — 센터 직원(센터 관리자 포함)은 자기 센터, OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터(mfcId 필수 또는 선택은 PC 3 판단).
+  - 권한: F-3 과 같게 — 센터 직원(센터 관리자 포함)은 자기 센터, OPERATOR_ADMIN·CS_AGENT·RIDER_OPS 는 모든 센터(mfcId 필수 또는 선택은 PC 3 판단). **사용자 2026-11-17: 센터 관리자(MFC_SUPERVISOR)를 이 화면 사용자로 넣음** — bff 는 관리자만(작업자 MFC_WORKER 는 PDA) 자기 센터로 고정해 부른다.
   - state 반복 가능, 비우면 `PREPARING`·`READY`·`PARTIALLY_HANDED_OVER`(끝나지 않은 출고). 오래된 순(만든 시각), 커서, `asOf`.
   - 항목(개인정보·메모·QR 없이 — 지금 계약에 있는 상태 값 그대로):
     - `shipmentId`·`orderId`·`orderNumber`(F-5 화면용 8자리, 있으면)·`fulfillmentId`·`mfcId`·`state`(ShipmentState)·`createdAt`·`readyAt`·`dispatchRequestedAt`
