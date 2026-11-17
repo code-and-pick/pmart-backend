@@ -607,4 +607,15 @@ public class RiderStore {
             riderId);
     return n != null && n > 0;
   }
+
+  /** 약관·개인정보 동의 — 항목마다 마지막 동의(2026-11-18 라이더 백오피스). */
+  public record Consent(String consentType, String version, Instant agreedAt) {}
+
+  public List<Consent> consents(String riderId) {
+    return jdbc.query(
+        "SELECT consent_type, version, agreed_at FROM rider_consent WHERE rider_id = ? ORDER BY"
+            + " consent_type",
+        (rs, i) -> new Consent(rs.getString(1), rs.getString(2), rs.getTimestamp(3).toInstant()),
+        riderId);
+  }
 }

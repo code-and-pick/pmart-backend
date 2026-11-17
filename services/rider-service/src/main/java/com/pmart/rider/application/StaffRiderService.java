@@ -74,6 +74,12 @@ public class StaffRiderService {
     return get(riderId);
   }
 
+  /** 상세의 동의 목록(직원 — 상세와 같은 권한, 2026-11-18). */
+  public List<RiderStore.Consent> consents(String riderId) {
+    requireStaff();
+    return store.consents(riderId);
+  }
+
   public Reveal reveal(
       String riderId,
       String idempotencyKey,

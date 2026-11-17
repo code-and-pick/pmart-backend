@@ -39,3 +39,4 @@
 
 - **운행 중 라이더(2026-11-17, 0.8.0 — ADR-0068 라이더 관제)**: `GET /internal/riders/on-duty?mfcId=` — 운행 중·탈퇴 안 함·배달지역에 mfcId, 신규배차·제한 무관, 200명, 가린 이름만(`RiderViews.onDuty`). tracking 이 부른다.
 - **대시보드·가입 승인(2026-11-17, 0.9.0 — 사용자 "승인 화면은 만들고 일단은 바로 승인, 정책은 나중에", "대시보드에 필요한 것만")**: `GET /riders/stats?mfcId=`(`StaffRiderService.stats` — 전체·운행 중·신규배차 켬·제한 단계별(기한 지난 제한은 NORMAL)·오늘 가입, RIDER_OPS·OPERATOR_ADMIN·CS_AGENT). 직원 목록·상세 `signupStatus`(지금 늘 APPROVED)·상세 `signupDecidedBy` AUTO — 승인 대기 정책이 정해지면 상태를 저장한다.
+- **정산계좌·동의(2026-11-18, 0.10.0 — 라이더 백오피스 요청 #2·#3)**: 직원 상세에 `bankAccountRegistered`(등록 여부만)·`bankName`(`BankCodes`)·`consents`(항목별 마지막 동의 — `rider_consent` 는 (라이더, 항목) 한 줄이라 과거 이력은 없음, 사용자 "최신만"으로 충분).

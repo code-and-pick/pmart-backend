@@ -25,18 +25,21 @@ public final class OperatingTime {
       List<Span> spans, LocalDate from, LocalDate to, ZoneId zone) {
     List<Span> merged = merge(spans);
     Map<LocalDate, Long> out = new LinkedHashMap<>();
+    // 나노초를 쌓아 가며 초로 나눈다 — 날마다 따로 버리면 자정을 걸친 구간의 합이 1초 모자랄 수 있다(2026-11-18)
+    long cumulativeNs = 0;
     for (LocalDate day = from; !day.isAfter(to); day = day.plusDays(1)) {
       Instant dayStart = day.atStartOfDay(zone).toInstant();
       Instant dayEnd = day.plusDays(1).atStartOfDay(zone).toInstant();
-      long seconds = 0;
+      long ns = 0;
       for (Span s : merged) {
         Instant a = s.start().isAfter(dayStart) ? s.start() : dayStart;
         Instant b = s.end().isBefore(dayEnd) ? s.end() : dayEnd;
         if (b.isAfter(a)) {
-          seconds += Duration.between(a, b).toSeconds();
+          ns += Duration.between(a, b).toNanos();
         }
       }
-      out.put(day, seconds);
+      out.put(day, (cumulativeNs + ns) / 1_000_000_000L - cumulativeNs / 1_000_000_000L);
+      cumulativeNs += ns;
     }
     return out;
   }

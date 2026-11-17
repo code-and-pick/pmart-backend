@@ -105,6 +105,22 @@ public class OperatorController implements OperatorApi {
             // 가입 승인(2026-11-17 — 정책 전까지 자동 승인)
             .signupStatus(com.pmart.rider.api.generated.model.SignupStatus.APPROVED)
             .signupDecidedBy("AUTO")
+            // 정산계좌는 있는지·은행 이름만(2026-11-18 요청 #2)
+            .bankAccountRegistered(
+                r.bankAccountNumber() != null && !r.bankAccountNumber().isBlank())
+            .bankName(
+                r.bankCode() == null
+                    ? null
+                    : com.pmart.rider.domain.BankCodes.ALL.get(r.bankCode()))
+            .consents(
+                staff.consents(r.riderId()).stream()
+                    .map(
+                        c ->
+                            new com.pmart.rider.api.generated.model.StaffRiderDetailConsentsInner()
+                                .consentType(c.consentType())
+                                .version(c.version())
+                                .agreedAt(RiderViews.time(c.agreedAt())))
+                    .toList())
             .nameMasked(r.name() == null ? null : RiderViews.maskName(r.name()))
             .phoneMasked(RiderViews.maskPhone(r.phone()))
             .vehicleType(VehicleType.fromValue(r.vehicleType()))

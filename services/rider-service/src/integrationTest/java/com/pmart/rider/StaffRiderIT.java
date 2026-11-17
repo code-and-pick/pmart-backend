@@ -110,6 +110,11 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
     assertThat(detail.has("residence")).isFalse();
     assertThat(detail.path("signupStatus").asString()).isEqualTo("APPROVED");
     assertThat(detail.path("signupDecidedBy").asString()).isEqualTo("AUTO");
+    // 정산계좌는 등록 여부만, 동의는 항목별 마지막(2026-11-18 라이더 백오피스 요청 #2·#3)
+    assertThat(detail.path("bankAccountRegistered").isBoolean()).isTrue();
+    assertThat(detail.has("bankAccountNumber")).isFalse();
+    assertThat(detail.path("consents").get(0).path("consentType").asString()).isEqualTo("TERMS");
+    assertThat(detail.path("consents").get(0).path("version").asString()).isEqualTo("2026-11");
     // 대시보드 라이더 수(2026-11-17)
     JsonNode stats = json(get(OPS, "/riders/stats?mfcId=MFC-IT-1"));
     assertThat(stats.path("total").asInt()).isPositive();

@@ -46,6 +46,18 @@ class OperatingTimeTest {
     assertThat(days).hasSize(3);
   }
 
+  /** 자정을 걸친 구간이 초 단위가 아니어도 날짜별 합 = 전체(2026-11-18 — 날마다 버리면 1초 모자랐다). */
+  @Test
+  void dayPartsAddUpWhenSplitMidSecond() {
+    var days =
+        OperatingTime.perDay(
+            List.of(span("2026-11-17T14:50:00.400Z", "2026-11-17T15:15:00.400Z")),
+            LocalDate.of(2026, 11, 17),
+            LocalDate.of(2026, 11, 18),
+            SEOUL);
+    assertThat(days.values().stream().mapToLong(Long::longValue).sum()).isEqualTo(25 * 60);
+  }
+
   @Test
   void ignoresBackwardSpans() {
     var days =

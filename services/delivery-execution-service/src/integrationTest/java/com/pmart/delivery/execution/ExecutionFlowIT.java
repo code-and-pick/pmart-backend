@@ -1948,6 +1948,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .value())
         .isEqualTo(403);
     JsonNode found = body(staffGet("/deliveries?orderNumber=12345678&riderId=" + rider, ops));
+    assertThat(found.path("items").get(0).path("orderNumber").asString())
+        .isEqualTo("12345678"); // 목록에도(요청 #5)
     assertThat(found.path("items").valueStream().map(n -> n.path("deliveryId").asString()))
         .contains(id, open);
     assertThat(
