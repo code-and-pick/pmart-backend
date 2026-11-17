@@ -260,6 +260,22 @@ public class ExecutionController implements ExecutionApi {
               summary,
               com.pmart.delivery.execution.api.generated.model.DeliveryExecutionOrderSummary
                   .class));
+      // 회수 줄에 상품명(2026-11-17 라이더 앱 — 앱이 짝짓지 않게): 주문 요약의 같은 주문 줄
+      if (out.getReturnLines() != null) {
+        java.util.Map<String, tools.jackson.databind.JsonNode> byLine = new java.util.HashMap<>();
+        for (var item : summary.path("items")) {
+          if (item.path("orderLineId").isString()) {
+            byLine.put(item.path("orderLineId").asString(), item);
+          }
+        }
+        for (var line : out.getReturnLines()) {
+          var item = byLine.get(line.getOrderLineId());
+          if (item != null) {
+            line.setName(item.path("name").asString(null));
+            line.setOptionLabel(item.path("optionLabel").asString(null));
+          }
+        }
+      }
     }
     return ResponseEntity.ok(out);
   }

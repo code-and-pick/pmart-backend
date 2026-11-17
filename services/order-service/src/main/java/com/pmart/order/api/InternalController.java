@@ -248,6 +248,7 @@ public class InternalController implements InternalApi {
       total += amount;
       items.add(
           new com.pmart.order.api.generated.model.RiderOrderSummaryItemsInner()
+              .orderLineId(l.orderLineId())
               .name(l.productName() == null ? l.sku() : l.productName())
               .optionLabel(l.optionLabel())
               .qty(qty)

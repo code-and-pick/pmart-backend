@@ -288,6 +288,8 @@ class FulfillmentProgressIT extends PostgresKafkaContainerSupport {
             .body(String.class);
     var n = new tools.jackson.databind.ObjectMapper().readTree(res);
     assertThat(n.path("items").get(0).path("name").asString()).isEqualTo("사과 1kg");
+    assertThat(n.path("items").get(0).path("orderLineId").asString())
+        .isNotBlank(); // 회수 줄과 짝(2026-11-17)
     assertThat(n.path("items").get(0).path("qty").asInt()).isEqualTo(2);
     assertThat(n.path("items").get(0).path("lineAmount").asInt()).isEqualTo(2000);
     assertThat(n.path("items").get(1).path("name").asString()).isEqualTo("E-00000002");

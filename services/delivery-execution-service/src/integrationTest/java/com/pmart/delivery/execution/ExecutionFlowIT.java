@@ -1347,7 +1347,22 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(spot.path("purpose").asString()).isEqualTo("CLAIM_RETURN");
     assertThat(spot.path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 1");
     assertThat(spot.path("receiverPhone").asString()).isEqualTo("01012345678");
+    // 회수 줄에 상품명(2026-11-17 라이더 앱 — 주문 요약의 같은 주문 줄에서)
+    var namesStub =
+        orderApi.stubFor(
+            com.github.tomakehurst.wiremock.client.WireMock.get(
+                    com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching(
+                        "/api/v1/internal/orders/.*/rider-summary"))
+                .atPriority(1)
+                .willReturn(
+                    com.github.tomakehurst.wiremock.client.WireMock.aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(
+                            "{\"orderId\":\"x\",\"items\":[{\"orderLineId\":\"L-1\",\"name\":\"우유\",\"qty\":1},{\"orderLineId\":\"L-7\",\"name\":\"사과 1kg\",\"optionLabel\":\"3입\",\"qty\":2}]}")));
     JsonNode cv = view(ok, rider); // 회수 라이더에게 받을 품목(DD-3)
+    assertThat(cv.path("returnLines").get(0).path("name").asString()).isEqualTo("사과 1kg");
+    assertThat(cv.path("returnLines").get(0).path("optionLabel").asString()).isEqualTo("3입");
+    orderApi.removeStub(namesStub); // 다른 시험의 주문 요약에 새지 않게
     assertThat(cv.path("claimId").asString()).isEqualTo(claimId);
     assertThat(cv.path("returnLines").get(0).path("orderLineId").asString()).isEqualTo("L-7");
     assertThat(cv.path("returnLines").get(0).path("qty").asInt()).isEqualTo(2);
