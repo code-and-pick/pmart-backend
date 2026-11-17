@@ -23,6 +23,41 @@ public class SignupController implements SignupApi {
     this.riders = riders;
   }
 
+  /** 휴대폰 번호 중복 확인(라이더 앱 요청 §14, 2026-11-17). */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.AvailabilityResult> checkRiderPhone(
+      com.pmart.rider.api.generated.model.CheckRiderPhoneRequest body) {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.AvailabilityResult()
+            .available(riders.phoneAvailable(body.getPhone())));
+  }
+
+  /** 정산 계좌 중복 확인(라이더 앱 요청 §15, 2026-11-17). */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.AvailabilityResult> checkRiderAccount(
+      com.pmart.rider.api.generated.model.CheckRiderAccountRequest body) {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.AvailabilityResult()
+            .available(riders.accountAvailable(body.getBankCode(), body.getAccountNumber())));
+  }
+
+  /** 정산 은행 목록(금융결제원 코드, 라이더 앱 요청 §16-1, 2026-11-17). */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.ListBankCodes200Response>
+      listBankCodes() {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.ListBankCodes200Response()
+            .items(
+                com.pmart.rider.domain.BankCodes.ALL.entrySet().stream()
+                    .map(
+                        e ->
+                            new com.pmart.rider.api.generated.model
+                                    .ListBankCodes200ResponseItemsInner()
+                                .code(e.getKey())
+                                .name(e.getValue()))
+                    .toList()));
+  }
+
   /** 운전면허 번호 중복 확인(라이더 앱 요청 §7, 2026-11-16). */
   @Override
   public ResponseEntity<com.pmart.rider.api.generated.model.CheckRiderLicense200Response>

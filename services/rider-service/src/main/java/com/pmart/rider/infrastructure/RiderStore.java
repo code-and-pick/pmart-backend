@@ -538,4 +538,17 @@ public class RiderStore {
         .stream()
         .findFirst();
   }
+
+  /** 다른 라이더가 같은 은행·계좌를 쓰는가(2026-11-17 — 사용자 "중복 불가"). 탈퇴 행은 계좌를 지웠다. */
+  public boolean accountTakenByOther(String bankCode, String accountNumber, String riderId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM rider WHERE bank_code = ? AND bank_account_number = ? AND rider_id"
+                + " <> ?",
+            Integer.class,
+            bankCode,
+            accountNumber,
+            riderId);
+    return n != null && n > 0;
+  }
 }

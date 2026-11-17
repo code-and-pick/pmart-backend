@@ -86,13 +86,17 @@ public class RiderService {
   private final ObjectMapper json;
   private final Clock clock;
 
+  private final com.pmart.rider.infrastructure.AddressClient addresses;
+
   public RiderService(
       RiderStore store,
       RequestIdempotency idempotency,
       EventPublisher events,
       ObjectMapper json,
       Clock clock,
-      LicenseHasher licenses) {
+      LicenseHasher licenses,
+      com.pmart.rider.infrastructure.AddressClient addresses) {
+    this.addresses = addresses;
     this.licenses = licenses;
     this.store = store;
     this.idempotency = idempotency;
@@ -108,6 +112,8 @@ public class RiderService {
     if (cmd.areas().isEmpty()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "배달지역을 하나 이상 고르세요.");
     }
+    requireBankCode(cmd.bankCode());
+    requireRealAddress(cmd.residenceRoad()); // 외부 호출 — 트랜잭션 밖
     String id =
         idempotency
             .execute(
@@ -130,6 +136,7 @@ public class RiderService {
                   if (store.phoneTaken(cmd.phone())) {
                     throw duplicate("같은 전화번호로 가입한 라이더가 있습니다.");
                   }
+                  requireAccountFree(cmd.bankCode(), cmd.bankAccountNumber(), riderId);
                   String license = LicenseRules.normalize(cmd.licenseNumber());
                   if (cmd.licenseNumber() != null && license == null) {
                     throw new PmartException(
@@ -182,6 +189,52 @@ public class RiderService {
     return get(id);
   }
 
+  /** 휴대폰 번호 중복 확인(가입 전, 라이더 앱 요청 §14 — 본인인증 아님). 형식은 계약이 400. 번호는 저장·로그하지 않는다. */
+  public boolean phoneAvailable(String phone) {
+    requireRider();
+    return !store.phoneTaken(phone);
+  }
+
+  /** 정산 계좌 중복 확인(가입 전, 라이더 앱 요청 §15 — 사용자 "중복 불가"). 본인 계좌는 사용 가능. 번호는 저장·로그하지 않는다. */
+  public boolean accountAvailable(String bankCode, String accountNumber) {
+    String riderId = requireRider();
+    requireBankCode(bankCode);
+    return !store.accountTakenByOther(bankCode, accountNumber, riderId);
+  }
+
+  /** 은행 코드(금융결제원 3자리, 사용자 2026-11-17)가 목록에 있어야 한다. 없으면(null) 검사하지 않는다. */
+  private static void requireBankCode(@Nullable String bankCode) {
+    if (bankCode != null && !com.pmart.rider.domain.BankCodes.known(bankCode)) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "은행 코드가 올바르지 않습니다(금융결제원 3자리 — GET /riders/bank-codes).");
+    }
+  }
+
+  private void requireAccountFree(
+      @Nullable String bankCode, @Nullable String accountNumber, String riderId) {
+    if (bankCode != null
+        && accountNumber != null
+        && store.accountTakenByOther(bankCode, accountNumber, riderId)) {
+      throw new PmartException(
+          "DUPLICATE_ACCOUNT", HttpStatus.CONFLICT, "같은 정산 계좌로 등록한 라이더가 있습니다.", false, List.of());
+    }
+  }
+
+  /** 거주지 도로명주소가 실제 주소인지(라이더 앱 요청 §12 — 사용자 "서버가 주소 변환으로 확인"). 없으면(null) 검사하지 않는다. */
+  private void requireRealAddress(@Nullable String roadAddress) {
+    if (roadAddress == null) {
+      return;
+    }
+    if (roadAddress.isBlank() || !addresses.exists(roadAddress.strip())) {
+      throw new PmartException(
+          "INVALID_ADDRESS",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "주소 검색에서 찾을 수 없는 주소입니다. 주소 검색으로 고른 도로명주소를 보내 주세요.",
+          false,
+          List.of());
+    }
+  }
+
   /** 운전면허 번호 중복 확인(가입 전, 라이더 앱 요청 §7). 형식이 틀리면 400. 번호는 저장·로그하지 않는다. */
   public boolean licenseAvailable(String licenseNumber) {
     requireRider();
@@ -209,6 +262,8 @@ public class RiderService {
   public Rider updateProfile(
       String requestId, String sourceSystem, @Nullable Integer expectedVersion, ProfileChange c) {
     String riderId = requireRider();
+    requireBankCode(c.bankCode());
+    requireRealAddress(c.residenceRoad()); // 외부 호출 — 트랜잭션 밖
     idempotency.execute(
         new RequestKey(sourceSystem, requestId, "updateMyRider", riderId),
         Map.of("change", c, "expectedVersion", String.valueOf(expectedVersion)),
@@ -246,6 +301,10 @@ public class RiderService {
                   List.of());
             }
             store.setLicense(riderId, hash, LicenseRules.mask(license));
+          }
+          if (c.bankAccountNumber() != null) {
+            requireAccountFree(
+                c.bankCode() == null ? r.bankCode() : c.bankCode(), c.bankAccountNumber(), riderId);
           }
           store.updateProfile(
               riderId,

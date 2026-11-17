@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -25,6 +25,8 @@ paths:
         라이더 토큰(rider-auth-service, Google 로그인)으로 받는다. riderId = 토큰 주체(RD-…) — 본문에 riderId 를 받지 않는다(RS-2, ADR-0054 결정 G).
         입력은 전화번호·배달 지역·배달 수단·약관(사용자 결정 2026-11-10: 면허·주민번호는 가입 때 받지 않는다). 전화번호는 본인인증 없이 중복만 확인한다(같은 번호 409 DUPLICATE_RIDER).
         같은 주체가 이미 가입했으면 409 DUPLICATE_RIDER(같은 Idempotency-Key 재전송은 기존 결과). 가입 직후 OFF_DUTY·NORMAL — 즉시 운행 승인(원문 §1.2).
+        0.7.0(2026-11-17, 라이더 앱 요청 §12·§15·§16-1): 거주지 `residence.roadAddress` 는 주소 검색(serviceability 정확 일치 — 주문 배송지와 같은 변환)에서 찾아야 한다(없으면 422 INVALID_ADDRESS, 주소 검색 장애 503).
+        정산 계좌 `bankCode` = 금융결제원 은행 코드 3자리(`GET /riders/bank-codes` 목록 밖이면 400), 다른 라이더와 같은 은행·계좌면 409 DUPLICATE_ACCOUNT(사용자 "중복 불가").
       operationId: createRiderSignup
       x-pmart-user-types: [RIDER]
       parameters:
@@ -44,10 +46,16 @@ paths:
               schema: { $ref: '#/components/schemas/RiderProfile' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '409':
-          description: DUPLICATE_RIDER (같은 주체 또는 전화번호) / IDEMPOTENCY_CONFLICT
+          description: DUPLICATE_RIDER (같은 주체 또는 전화번호) / DUPLICATE_ACCOUNT(같은 정산 계좌, 0.7.0) / DUPLICATE_LICENSE / RIDER_WITHDRAWN / IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /riders/license-checks:
     post:
@@ -79,6 +87,87 @@ paths:
                 properties:
                   available: { type: boolean }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /riders/phone-checks:
+    post:
+      tags: [signup]
+      summary: 휴대폰 번호 중복 확인 (가입 전, 0.7.0 — 라이더 앱 요청 §14)
+      x-added-in: '2026-11-17'
+      description: |
+        가입 화면의 "인증하기"(본인인증 아님 — 사용자 결정 2026-11-10 "본인인증 없이 중복만"). 라이더 토큰. 형식이 틀리면 400, 이미 가입한 라이더의 번호면 available=false.
+        번호는 저장·로그하지 않는다. 가입이 같은 검사를 다시 한다(409 DUPLICATE_RIDER).
+      operationId: checkRiderPhone
+      x-pmart-user-types: [RIDER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone: { type: string, pattern: '^01[0-9]{8,9}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /riders/account-checks:
+    post:
+      tags: [signup]
+      summary: 정산 계좌 중복 확인 (가입 전, 0.7.0 — 라이더 앱 요청 §15)
+      x-added-in: '2026-11-17'
+      description: |
+        다른 라이더가 같은 은행·계좌를 등록했는지만(실명·1원 확인 아님 — §9 나중에). 사용자 요청 2026-11-17 "중복 불가". 라이더 토큰, 본인 계좌는 available=true.
+        은행 코드가 목록 밖·형식이 틀리면 400. 번호는 저장·로그하지 않는다. 가입·프로필 변경이 같은 검사를 다시 한다(409 DUPLICATE_ACCOUNT).
+      operationId: checkRiderAccount
+      x-pmart-user-types: [RIDER]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bankCode, accountNumber]
+              properties:
+                bankCode: { type: string, pattern: '^[0-9]{3}$' }
+                accountNumber: { type: string, pattern: '^[0-9]{10,14}$' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /riders/bank-codes:
+    get:
+      tags: [signup]
+      summary: 정산 은행 목록 (금융결제원 은행 코드, 0.7.0 — 라이더 앱 요청 §16-1)
+      x-added-in: '2026-11-17'
+      description: 사용자 결정(2026-11-17) 은행 값 = 금융결제원 은행 코드 3자리. 앱은 이름을 보이고 코드를 보낸다. 라이더 토큰.
+      operationId: listBankCodes
+      x-pmart-user-types: [RIDER]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [code, name]
+                      properties:
+                        code: { type: string }
+                        name: { type: string }
 
   /riders/signups/{requestId}:
     get:
@@ -117,7 +206,9 @@ paths:
     patch:
       tags: [me]
       summary: 프로필 변경 (계좌·거주지·배달지역·수단)
-      description: 수단(vehicleType) 변경은 진행 중 배송이 있으면 409 INVALID_STATE. 오토바이·자동차·킥보드로 바꾸면서 등록된 면허가 없으면 licenseNumber 필수(422 LICENSE_REQUIRED — 2026-11-16 사용자 결정).
+      description: |
+        수단(vehicleType) 변경은 진행 중 배송이 있으면 409 INVALID_STATE. 오토바이·자동차·킥보드로 바꾸면서 등록된 면허가 없으면 licenseNumber 필수(422 LICENSE_REQUIRED — 2026-11-16 사용자 결정).
+        0.7.0(2026-11-17): 거주지 주소 확인(422 INVALID_ADDRESS)·은행 코드(400)·같은 계좌 409 DUPLICATE_ACCOUNT — 가입과 같다.
       operationId: updateMyRider
       x-pmart-user-types: [RIDER]
       parameters:
@@ -136,10 +227,16 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RiderProfile' }
         '409':
-          description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT
+          description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT / DUPLICATE_ACCOUNT(0.7.0) / DUPLICATE_LICENSE
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /riders/me/state:
     put:
@@ -595,8 +692,8 @@ components:
           description: 정산 계좌(선택 — 가입 뒤 프로필 변경으로도 넣는다)
           required: [bankCode, accountNumber, holderName]
           properties:
-            bankCode: { type: string }
-            accountNumber: { type: string }
+            bankCode: { type: string, pattern: '^[0-9]{3}$', description: '금융결제원 은행 코드 3자리(0.7.0 — GET /riders/bank-codes)' }
+            accountNumber: { type: string, pattern: '^[0-9]{10,14}$', description: 숫자 10~14자리(0.7.0) }
             holderName: { type: string }
         residence:
           type: object
@@ -630,8 +727,8 @@ components:
         bankAccount:
           type: object
           properties:
-            bankCode: { type: string }
-            accountNumber: { type: string }
+            bankCode: { type: string, pattern: '^[0-9]{3}$', description: '금융결제원 은행 코드 3자리(0.7.0)' }
+            accountNumber: { type: string, pattern: '^[0-9]{10,14}$' }
             holderName: { type: string }
         residence:
           type: object
@@ -801,6 +898,12 @@ components:
       x-added-in: '2026-11-17'
       description: 탈퇴를 막는 것(0.6.0) — 진행 중 배송 / 확정 전 수행료 / 산정 불가 조정 대기 / 열린 도움요청 / 제한 검토 중
       enum: [ACTIVE_DELIVERY, UNCONFIRMED_EARNING, EARNING_ADJUSTMENT_PENDING, OPEN_HELP_REQUEST, RESTRICTION_REVIEW]
+    AvailabilityResult:
+      type: object
+      x-added-in: '2026-11-17'
+      required: [available]
+      properties:
+        available: { type: boolean }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'
