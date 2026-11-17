@@ -76,3 +76,18 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - **PC 1 할 것**: pmart-config `delivery-dispatch-service.yml` 에 `claimEvents` 바인딩(order.claim.v1, 처음 켜기 전 시작 위치 latest — 시험 사본은 이 PR), 배포 순서 tracking → execution → dispatch. claim 은 `ReturnPickupRequested` 발행 때 `mfcId` 를 실어 주면 좋다(없으면 원래 배송의 MFC), 다시 보낼 때는 **새 사건**(같은 사건 ID 재발행은 무시됨), `ReturnPickupFailed` 구독(몇 번째 실패인지 세기).
 - **~~어긋남~~ 해결(2026-11-17 15:05 — claim 020053c9 가 `ReturnPickupFailed` 구독, #113 이 DeliveryCreated 에 pickupRequestId)**. 옛 메모: 위 요청 4번은 회수 실패를 `DeliveryFailed`(+claimId)로 요청했는데, #104 는 새 사건 `ReturnPickupFailed`(deliveryId·claimId·reason 등)로 냈다. claim `ReturnService` 의 `case "DeliveryFailed"` 에 `ReturnPickupFailed` 를 더해야 회수 실패가 claim 에 닿는다(백엔드 세션 할 일 — claim 배포 전에). `DeliveryCreated` 에는 pickupRequestId 가 없지만 claim 은 마지막 회수 요청으로 잇는다.
 - **DD-3 맞춤(2026-11-17, PC 5 — 브랜치 `delivery/dd-3-align`)**: 위 요청 1(배송 하나 = pickupRequestId 하나, DeliveryCreated 에 pickupRequestId) — 함. 요청 2(원래 배송이 전달 전) — **사용자 결정 2026-11-17 "배달 중이나 전달 완료 전에는 반품 불가"**: dispatch 는 원래 배송이 전달 완료 전이면 회수를 만들지 않고 경고만 남긴다 → **claim 접수에서 막아 주세요**(전달 완료 전 RETURN 접수 거절). 요청 4(실패 사건) — `ReturnPickupFailed` 로(claim 020053c9 가 구독함). 요청 5(회수 품목·전화) — 배송 조회 `returnLines`(execution 0.10.1)·전화는 drop-info(배정부터). 회수 줄의 claimLineId·sku 는 ReturnPickedUp·ReturnDelivered 까지 그대로.
+
+## DD-4. 정시 배송률 지표 — 날짜별 약속 시간대 안에 전달한 배송 수 (2026-11-18, 보낸 영역 backoffice — PC 2, **결정 필요**)
+- **왜**: 사용자 2026-11-18 "일단 그렇게 하고"(bff `views/metrics` 추천안). 정시 배송률 ON_TIME_DELIVERY 는 bff 가 다른 서비스 DB 를 못 읽어서 **약속과 전달 시각을 둘 다 가진 서비스**가 날짜별 수를 내야 한다. 지금 bff 는 501.
+- **누가 셀지(결정 필요 — PC 5·PC 1)**:
+  1. **delivery-dispatch(추천)**: 배차에 `arrivalWindow`(약속 시간대)가 있고, `DeliveryCompleted` 를 이미 구독한다(배송 CLOSED). 배송 단위로 센다.
+  2. order: 주문에 `arrivalWindow` 가 있고 `DeliveryCompleted` 를 구독한다. 다만 한 주문에 배송이 여럿(부분·재발송)이면 주문 단위 판정을 따로 정해야 한다.
+- **제안 정의**(정해지면 이 절을 고친다):
+  - 대상(분모): 그 날짜(Asia/Seoul)에 약속 시간대가 **끝나는** 고객 배송(FORWARD·RESHIPMENT). 실패·지연도 넣는다. 주문 취소로 없어진 배송만 뺀다(BO-28 — 분모를 줄이지 않는다).
+  - 정시(분자): `DeliveryCompleted.deliveredAt` ≤ 그때의 약속 시간대 끝. 고객이 시간을 바꿨으면(`ReservationTimeChanged`) 바뀐 시간대.
+  - **판정 불가**(분모에서 빼고 따로 수): 완료 방법이 고객 수령 확인(CUSTOMER_CONFIRMED)·자동 완료(AUTO_COMPLETED)면 deliveredAt 이 실제 전달 시각이 아니다 — 라이더 실제 전달 시각이 따로 남는다면 그걸로 판정할 수 있으니 알려 달라.
+  - 아직 끝나지 않은 배송(시간대는 지났는데 전달 전)은 "늦음"으로 넣을지, 끝날 때까지 미정으로 둘지도 정해 달라(추천: 시간대가 지났으면 늦음).
+- **요청 모양**(예 — 경로·이름은 받는 PC 가 정한다): `GET /api/v1/metrics/on-time-deliveries?from=&to=&mfcId=` → 날짜·센터별 `due`(분모)·`onTime`(분자)·`unjudged`·`asOf`. 직원 토큰(본사 관리자 모든 센터).
+- **받는 쪽(backoffice)**: bff `views/metrics?metric=ON_TIME_DELIVERY` 를 이 수로 채운다.
+- 급함: 낮음(운영 참고 지표).
+- **상태**: 결정 필요 — 누가 셀지(PC 1·PC 5·사용자).
