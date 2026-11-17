@@ -41,7 +41,7 @@
 ## 실시간 배송 현황 (2026-11-16, 배송 원문 §10.1 — 계약 0.3.0)
 - `GET /views/live-delivery?mfcId=&state=&size=&cursor=`(`application/LiveDeliveryView`): 역할은 통합 조회와 같은 셋(모든 센터) + **MFC_SUPERVISOR(0.3.1 — 자기 센터로 고정, `centerFor`: 비우면 하나뿐인 자기 센터, 다른 센터 403, 여럿이면 400)**. mfcId 비우면 모든 센터(셋만).
 - state 비우면 끝나지 않은 배송(`ACTIVE_STATES` 9개)을 delivery-execution 에서 상태마다 읽어 생긴 순으로 합쳐 size(≤50)건 — 쪽 넘김 없음, 넘으면 `truncated`. state 를 주면 원천 커서 그대로.
-- 배송마다 delivery-dispatch 배차를 한 번(배차 장애면 그 칸 state null·UNKNOWN), 열린 사건은 case `/cases?size=200` 한 번으로 읽어 배송 번호(subjectRef·refs deliveryId)로 잇는다. promisedAt = 배차 arrivalWindow 의 date+end(Asia/Seoul). latestEta 는 아직 null(tracking 미연결).
+- 배송마다 delivery-dispatch 배차를 한 번(배차 장애면 그 칸 state null·UNKNOWN), 열린 사건은 case `/cases?size=200` 한 번으로 읽어 배송 번호(subjectRef·refs deliveryId)로 잇는다. promisedAt = 배차 arrivalWindow 의 date+end(Asia/Seoul). **latestEta(0.7.0, 2026-11-17 TR-3)** = tracking `GET /deliveries/{id}/eta`(직원 토큰, 배송마다 한 번)의 dropEta.etaAt — status AVAILABLE 일 때만, `etaStatus`·`delayedBySeconds` 는 원천 값 그대로, `etaSource` 따로(404 = tracking 배포 전 배송 → null·DIRECT, 실패·403 → UNKNOWN + unavailableSources). 주소 `pmart.bff.tracking-base-url`(기본 `http://delivery-tracking-service:8406`).
 
 ## 사건함 화면 (2026-11-16 — 계약 0.5.0)
 - `GET /views/case-inbox`(`application/CaseInboxView`, `LookupClients` 재사용): case `GET /cases` 를 **직원 토큰**으로(필터 이름 옮김 — assignee → assigneeId, size ≤ 50). 보이는 범위·정렬·403 은 case 판정 그대로(case 403·400 은 그대로 돌려줌, case 장애는 200 + 빈 items + unavailableSources).

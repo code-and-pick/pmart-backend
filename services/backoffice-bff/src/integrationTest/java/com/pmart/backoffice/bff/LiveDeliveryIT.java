@@ -43,7 +43,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock({
   @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
   @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.bff.dispatch-base-url"),
-  @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url")
+  @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
+  @ConfigureWireMock(name = "tracking", baseUrlProperties = "pmart.bff.tracking-base-url")
 })
 class LiveDeliveryIT {
 
@@ -62,11 +63,14 @@ class LiveDeliveryIT {
   @InjectWireMock("case")
   WireMockServer cases;
 
+  @InjectWireMock("tracking")
+  WireMockServer tracking;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(execution, dispatch, cases)) {
+    for (WireMockServer w : List.of(execution, dispatch, cases, tracking)) {
       w.resetAll();
     }
     http =
@@ -131,6 +135,18 @@ class LiveDeliveryIT {
     dispatch.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-B/dispatch"))
             .willReturn(json(503, "{\"code\":\"DEPENDENCY_UNAVAILABLE\"}")));
+    // 도착 예정(0.7.0): A 는 산출됨, B 는 tracking 배포 전 배송(404)
+    tracking.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-A/eta"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"deliveryId":"DLV-A","stage":"TO_STORE",
+                     "dropEta":{"status":"AVAILABLE","etaAt":"2026-11-16T01:25:00Z","delayedBySeconds":-300}}""")));
+    tracking.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-B/eta"))
+            .willReturn(json(404, "{\"code\":\"NOT_FOUND\"}")));
     cases.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/cases"))
             .willReturn(
@@ -160,6 +176,12 @@ class LiveDeliveryIT {
         .as("10:30 Asia/Seoul")
         .isEqualTo("2026-11-16T01:30:00Z");
     assertThat(a.path("openCases")).isEmpty();
+    assertThat(a.path("latestEta").asString())
+        .as("tracking 도착 예정(0.7.0)")
+        .isEqualTo("2026-11-16T01:25:00Z");
+    assertThat(a.path("etaStatus").asString()).isEqualTo("AVAILABLE");
+    assertThat(a.path("delayedBySeconds").asLong()).isEqualTo(-300);
+    assertThat(a.path("etaSource").path("confidence").asString()).isEqualTo("DIRECT");
 
     JsonNode b = items.get(1);
     assertThat(b.path("dispatch").path("state").isNull()).as("배차 원천 장애 — 상태 없음").isTrue();
@@ -167,9 +189,12 @@ class LiveDeliveryIT {
         .isEqualTo("UNKNOWN");
     assertThat(b.path("promisedAt").isNull()).isTrue();
     assertThat(b.path("openCases").findValuesAsString("caseId")).containsExactly("CASE-9");
+    assertThat(b.path("latestEta").isNull()).as("tracking 에 없는 배송 — 없음").isTrue();
+    assertThat(b.path("etaSource").path("confidence").asString()).isEqualTo("DIRECT");
     assertThat(r.body().path("unavailableSources").toString())
         .contains("delivery-dispatch-service")
-        .doesNotContain("delivery-execution-service");
+        .doesNotContain("delivery-execution-service")
+        .doesNotContain("delivery-tracking-service");
 
     // 끝나지 않은 상태마다 한 번씩, 센터·오래된 순·직원 토큰 그대로
     execution.verify(

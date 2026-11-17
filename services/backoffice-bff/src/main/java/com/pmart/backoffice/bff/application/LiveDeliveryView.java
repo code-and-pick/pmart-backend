@@ -200,7 +200,37 @@ public class LiveDeliveryView {
       boolean hasWindow = window != null && window.isObject();
       i.put("arrivalWindow", hasWindow ? window : null);
       i.put("promisedAt", hasWindow ? promisedAt(window) : null);
-      i.put("latestEta", null);
+      // 0.7.0(TR-3): tracking 도착 예정 — 고객 도착(dropEta)이 산출됐을 때만 latestEta, 그 밖 상태는 etaStatus 로 그대로
+      used.add(Source.TRACKING);
+      boolean etaOk = true;
+      JsonNode eta = null;
+      try {
+        eta =
+            clients.get(
+                Source.TRACKING, token, "/deliveries/{id}/eta", Map.of("id", deliveryId), Map.of());
+      } catch (HttpClientErrorException.NotFound e) {
+        eta = null; // tracking 배포 전 배송 — 없음(원천의 답)
+      } catch (HttpClientErrorException | PmartException e) {
+        log.warn("실시간 배송 현황: 도착 예정 실패 — {}", e.getClass().getSimpleName());
+        failed.add(Source.TRACKING);
+        etaOk = false;
+      }
+      JsonNode drop = eta == null ? null : eta.path("dropEta");
+      String dropStatus = drop == null ? null : text(drop, "status");
+      i.put("latestEta", "AVAILABLE".equals(dropStatus) ? text(drop, "etaAt") : null);
+      i.put("etaStatus", dropStatus);
+      i.put(
+          "delayedBySeconds",
+          drop != null && drop.path("delayedBySeconds").isNumber()
+              ? drop.path("delayedBySeconds").asLong()
+              : null);
+      i.put(
+          "etaSource",
+          stamp(
+              Source.TRACKING.system,
+              now,
+              etaOk ? "CURRENT" : "UNAVAILABLE",
+              etaOk ? "DIRECT" : "UNKNOWN"));
       i.put(
           "openCases",
           casesByDelivery == null ? null : casesByDelivery.getOrDefault(deliveryId, List.of()));

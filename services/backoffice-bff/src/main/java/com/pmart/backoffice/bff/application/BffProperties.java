@@ -15,6 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param claimBaseUrl claim-service(통합 조회 — 클레임, 2026-11-16)
  * @param caseBaseUrl case-service(통합 조회 — 사건, 2026-11-16)
  * @param mfcFulfillmentBaseUrl mfc-fulfillment-service(처리 대기 — 중지 실패·인계 거절, 재시도 — 2026-11-16 F-4)
+ * @param trackingBaseUrl delivery-tracking-service(실시간 배송 현황 — 도착 예정, 2026-11-17 TR-3)
  * @param mfcPendingLists 처리 대기에 MFC 목록을 읽을지(기본 false — PC 3 목록 API F-4 가 생긴 뒤 켠다. 재시도 명령은 상관없이 열림)
  */
 @ConfigurationProperties(prefix = "pmart.bff")
@@ -27,6 +28,7 @@ public record BffProperties(
     @Nullable String claimBaseUrl,
     @Nullable String caseBaseUrl,
     @Nullable String mfcFulfillmentBaseUrl,
+    @Nullable String trackingBaseUrl,
     @Nullable Boolean mfcPendingLists) {
 
   public BffProperties {
@@ -38,6 +40,7 @@ public record BffProperties(
     claimBaseUrl = or(claimBaseUrl, "http://claim-service:8204");
     caseBaseUrl = or(caseBaseUrl, "http://case-service:8506");
     mfcFulfillmentBaseUrl = or(mfcFulfillmentBaseUrl, "http://mfc-fulfillment-service:8302");
+    trackingBaseUrl = or(trackingBaseUrl, "http://delivery-tracking-service:8406");
     mfcPendingLists = mfcPendingLists != null && mfcPendingLists;
   }
 
