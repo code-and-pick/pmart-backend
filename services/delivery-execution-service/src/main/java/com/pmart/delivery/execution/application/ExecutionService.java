@@ -98,6 +98,8 @@ public class ExecutionService {
   private final Clock clock;
   private final com.pmart.delivery.execution.infrastructure.OrderClient orders;
 
+  private final ReturnHandoverCodes handoverCodes;
+
   public ExecutionService(
       ExecutionStore store,
       ExecutionEvents events,
@@ -107,8 +109,10 @@ public class ExecutionService {
       ObjectProvider<EvidencePhotoStorage> photos,
       ObjectMapper mapper,
       Clock clock,
-      com.pmart.delivery.execution.infrastructure.OrderClient orders) {
+      com.pmart.delivery.execution.infrastructure.OrderClient orders,
+      ReturnHandoverCodes handoverCodes) {
     this.orders = orders;
+    this.handoverCodes = handoverCodes;
     this.store = store;
     this.events = events;
     this.pickup = pickup;
@@ -861,10 +865,12 @@ public class ExecutionService {
       String source,
       @Nullable Integer expectedVersion,
       List<String> evidenceRefs,
-      @Nullable String receivedByStaffRef) {
+      @Nullable String receivedByStaffRef,
+      @Nullable String handoverCode) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("evidenceRefs", evidenceRefs);
     body.put("receivedByStaffRef", String.valueOf(receivedByStaffRef));
+    body.put("handoverCodeGiven", handoverCode != null); // 번호 자체는 남기지 않는다
     return transition(
         "reportReturnStoreDelivery",
         deliveryId,
@@ -881,6 +887,7 @@ public class ExecutionService {
               && !(d.failedReturn() && !byOtherRider(d) && "ASSIGNED".equals(d.state()))) {
             throw PmartException.invalidState("회수한 배송만 반납할 수 있습니다(지금 " + d.state() + ").");
           }
+          handoverCodes.verify(deliveryId, handoverCode, now); // MFC 반납 인증번호(0.27.0)
           requireMyPhotos(deliveryId, rider, evidenceRefs, false);
           List<Map<String, Object>> lines = returnLines(d);
           String evidenceId = "EVD-" + UUID.randomUUID();

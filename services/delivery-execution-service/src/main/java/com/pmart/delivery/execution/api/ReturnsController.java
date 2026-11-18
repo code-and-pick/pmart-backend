@@ -80,6 +80,7 @@ public class ReturnsController implements ReturnsApi {
                 xSourceSystem,
                 xExpectedVersion,
                 body == null || body.getEvidenceRefs() == null ? List.of() : body.getEvidenceRefs(),
-                body == null ? null : body.getReceivedByStaffRef())));
+                body == null ? null : body.getReceivedByStaffRef(),
+                body == null ? null : body.getHandoverCode())));
   }
 }

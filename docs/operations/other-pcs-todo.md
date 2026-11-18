@@ -130,3 +130,4 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 - [ ] 다른 PC 에 비밀번호 파일 복사(필요한 PC·파일만 — `dev-on-other-pcs.md` §2)
 - [ ] 결정: 개발 PC(PC 4)에서 ollama 쓰는 방법, backoffice 영역 경계, MFC↔인사 3개 (CSRF 는 2026-11-13 결정 — ADR-0059)
+- [ ] (PC 3, 2026-11-18 delivery) PDA·센터 관리자 웹에 MFC 반납 인증번호 표시 — execution `GET /return-handovers?mfcId=`·`POST /return-handovers/{id}/code-reissues`(0.27.0, 회신 `docs/handoff/clients/rider-app/2026-11-18-reply-return-handover-code.md`)

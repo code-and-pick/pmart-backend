@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.26.0
+  version: 0.27.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -31,6 +31,7 @@ tags:
   - { name: me, description: 라이더 본인 이력·수행료 }
   - { name: internal, description: 운영자 정정 (승인 필요) }
   - { name: staff, description: 직원(백오피스 고객센터·라이더 운영) 목록·처리 (0.4.0) }
+  - { name: return-handovers, description: MFC 반납 인증번호 — 센터 직원 화면 (0.27.0) }
 
 paths:
   /deliveries/{deliveryId}:
@@ -697,6 +698,11 @@ paths:
       description: |
         0.5.0(2026-11-16) — RETURN_PICKED_UP → RETURNED_TO_STORE(배송 끝, 수행료 = 수락 당시 금액 → 확정 대기). 0.15.0: 전달 실패 반납(FAILED_DELIVERY_RETURN)은 배정(ASSIGNED)에서 바로(받음 없음 — returns/pickups 409), 앞 실패가 고객 사유가 아니면 수행료 산정 불가(지원센터 조정). 사용자 "추천대로"(2026-11-16): mfc-inbound 점원 수령 확인이 생기기 전까지 MFC 도착을 반납으로 본다.
         evidenceRefs(있으면 이 배송에 올린 사진)·receivedByStaffRef 는 선택.
+        **0.27.0(2026-11-18 사용자 "직원이나 어딘가에 뜨는 인증코드(번호)를 입력해야 전달완료가 되도록", "여기서 구현하고 바로 PR")**: `handoverCode` = 그 센터 직원 화면
+        (`GET /return-handovers?mfcId=`)에 뜨는 숫자 4자리 반납 인증번호. 라이더 응답에는 번호를 넣지 않는다. 회수·반납 배송마다 하나, 반납이 끝날 때까지 유효(시간 제한 없음).
+        틀리면 422 `RETURN_HANDOVER_CODE_MISMATCH`(상태 그대로, details 에 field attemptsLeft·reason 남은 횟수), 5번 틀리면 잠김 422 `RETURN_HANDOVER_LOCKED`(맞는 번호도 거절 —
+        직원이 `POST /return-handovers/{deliveryId}/code-reissues` 로 새 번호를 내면 풀림). 번호를 주지 않으면: 설정 `pmart.execution.return-handover.required`
+        가 true 면 422 `RETURN_HANDOVER_CODE_REQUIRED`, false(기본 — 라이더 앱이 번호 입력을 내보낼 때까지)면 지금처럼 반납. 번호는 로그·사건에 남기지 않는다.
       operationId: reportReturnStoreDelivery
       x-pmart-user-types: [RIDER]
       parameters:
@@ -715,9 +721,15 @@ paths:
                   properties:
                     evidenceRefs: { type: array, items: { type: string } }
                     receivedByStaffRef: { type: string, description: 점원 확인 참조(있으면) }
+                    handoverCode: { type: string, pattern: '^[0-9]{4}$', description: (0.27.0) MFC 직원 화면의 반납 인증번호 }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: RETURN_HANDOVER_CODE_MISMATCH · RETURN_HANDOVER_LOCKED · RETURN_HANDOVER_CODE_REQUIRED (0.27.0)
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /riders/me/deliveries:
     get:
@@ -1135,6 +1147,52 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /return-handovers:
+    get:
+      tags: [return-handovers]
+      summary: (0.27.0) MFC 반납 기다리는 회수·반납 배송과 인증번호 — 그 센터 직원
+      x-added-in: '2026-11-18'
+      description: |
+        그 센터 운영자(작업자 포함 — PDA·센터 관리자 웹)·OPERATOR_ADMIN·RIDER_OPS·CS_AGENT. 센터 직원은 mfcId 필수(그 센터 권한).
+        대상 = 회수품을 받아 MFC 로 오는 중(RETURN_PICKED_UP) 또는 전달 실패 반납(배정 상태). 번호가 없으면 이때 만든다. 라이더 이름은 rider 요약으로(riderId).
+      operationId: listReturnHandovers
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ReturnHandover' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /return-handovers/{deliveryId}/code-reissues:
+    post:
+      tags: [return-handovers]
+      summary: (0.27.0) 반납 인증번호 새로 내기 — 잠김 풀기
+      x-added-in: '2026-11-18'
+      description: 새 4자리 번호, 틀린 횟수 0, 잠김 풀림(앞 번호는 더 안 맞음). 볼 수 있는 직원과 같음. 반납을 기다리는 배송이 아니면 409.
+      operationId: reissueReturnHandoverCode
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 새 번호
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReturnHandover' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /internal/riders/{riderId}/withdrawal-blockers:
     get:
       tags: [internal]
@@ -1351,6 +1409,20 @@ paths:
 
 components:
   schemas:
+    ReturnHandover:
+      type: object
+      x-added-in: '2026-11-18'
+      required: [deliveryId, state, code, failedAttempts, locked, issuedAt]
+      properties:
+        deliveryId: { type: string }
+        deliveryNumber: { type: [string, 'null'], description: 화면 번호(ADR-0070) }
+        purpose: { type: [string, 'null'], description: CLAIM_RETURN · MISDELIVERY_RECOVERY · FAILED_DELIVERY_RETURN }
+        state: { type: string }
+        riderId: { type: [string, 'null'] }
+        code: { type: string, description: 반납 인증번호 4자리 — 라이더에게 불러 주거나 보여 준다 }
+        failedAttempts: { type: integer }
+        locked: { type: boolean, description: 5번 틀려 잠김 — 새로 내기로 풀린다 }
+        issuedAt: { type: string, format: date-time }
     DropInfo:
       type: object
       x-added-in: '2026-11-14'

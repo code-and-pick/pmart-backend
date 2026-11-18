@@ -865,6 +865,22 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(staffGet("/deliveries/" + id, ops).getStatusCode().value()).isEqualTo(200);
   }
 
+  String handoverCode(String deliveryId, String token) {
+    String c = handoverCodeOrNull(deliveryId, token);
+    assertThat(c).as("반납 인증번호 " + deliveryId).isNotNull();
+    return c;
+  }
+
+  @org.jspecify.annotations.Nullable
+  String handoverCodeOrNull(String deliveryId, String token) {
+    for (JsonNode h : body(staffGet("/return-handovers?mfcId=MFC-1", token)).path("items")) {
+      if (deliveryId.equals(h.path("deliveryId").asString())) {
+        return h.path("code").asString();
+      }
+    }
+    return null;
+  }
+
   ResponseEntity<String> staffGet(String uri, String token) {
     return http.get()
         .uri(uri)
@@ -2004,9 +2020,41 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .value())
         .isEqualTo(409);
 
+    // MFC 반납 인증번호(0.27.0): 센터 직원 화면에 번호, 틀리면 422, 5번이면 잠김, 새로 내면 풀림
+    String worker = TestJwt.operator("OP-W", List.of("MFC_WORKER"), List.of("MFC-1"));
+    assertThat(staffGet("/return-handovers", worker).getStatusCode().value()).isEqualTo(403);
+    String code = handoverCode(rec, worker);
+    String wrong = code.equals("0000") ? "1111" : "0000";
+    ResponseEntity<String> miss =
+        post(rec, "returns/store-deliveries", r2, Map.of("handoverCode", wrong));
+    assertThat(miss.getStatusCode().value()).isEqualTo(422);
+    assertThat(miss.getBody()).contains("RETURN_HANDOVER_CODE_MISMATCH").doesNotContain(code);
+    for (int k = 0; k < 4; k++) {
+      miss = post(rec, "returns/store-deliveries", r2, Map.of("handoverCode", wrong));
+    }
+    assertThat(miss.getBody()).contains("RETURN_HANDOVER_LOCKED");
+    assertThat(post(rec, "returns/store-deliveries", r2, Map.of("handoverCode", code)).getBody())
+        .contains("RETURN_HANDOVER_LOCKED");
+    assertThat(state(rec)).isEqualTo("RETURN_PICKED_UP");
+    ResponseEntity<String> re =
+        http.post()
+            .uri("/return-handovers/{id}/code-reissues", rec)
+            .header("Authorization", "Bearer " + worker)
+            .header("Idempotency-Key", UUID.randomUUID().toString())
+            .header("X-Source-System", "mfc-app")
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(re.getStatusCode().value()).isEqualTo(200);
+    String fresh = body(re).path("code").asString();
+    assertThat(body(re).path("locked").asBoolean()).isFalse();
+    assertThat(handoverCode(rec, worker)).isEqualTo(fresh);
     // MFC 도착 = 반납 → 배송 끝, 수행료
-    assertThat(post(rec, "returns/store-deliveries", r2, Map.of()).getStatusCode().value())
+    assertThat(
+            post(rec, "returns/store-deliveries", r2, Map.of("handoverCode", fresh))
+                .getStatusCode()
+                .value())
         .isEqualTo(200);
+    assertThat(handoverCodeOrNull(rec, worker)).isNull(); // 반납 끝나면 목록에서 빠짐
     assertThat(state(rec)).isEqualTo("RETURNED_TO_STORE");
     JsonNode returned = outbox(rec, "ReturnDelivered").path("payload");
     assertThat(returned.path("mfcId").asString()).isEqualTo("MFC-1");
