@@ -392,6 +392,13 @@ public class NotificationService {
 
   /** delivery.rider.v1 — 계정 제한·해제(사유·근거는 싣지 않는다). */
   public void onRiderEvent(EventEnvelope e) {
+    if ("DeliveryListUpdated".equals(e.eventType())) {
+      // 일반배차모드 새 배달(2026-11-18) — 알림함에는 넣지 않고 푸시만
+      JsonNode p = e.payload();
+      riderPush.listUpdated(
+          p.path("riderId").asString(""), p.path("newCount").asInt(1), clock.instant());
+      return;
+    }
     if (!"RiderRestricted".equals(e.eventType())) {
       return;
     }

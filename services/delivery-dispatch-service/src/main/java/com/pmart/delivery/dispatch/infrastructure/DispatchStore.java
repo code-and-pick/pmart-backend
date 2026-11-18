@@ -645,8 +645,8 @@ public class DispatchStore {
 
   /** 라이더가 지금 맡고 있는 배송(배정 ~ 픽업 전). 픽업 뒤 수행 상태는 execution 이 정본이라 여기서는 픽업까지만 센다. */
   /** 일반배차모드 새 배달 알림 — 라이더마다 마지막 알린 때(없으면 없음). */
-  public Map<String, Instant> lastListNotices(List<String> riderIds) {
-    Map<String, Instant> out = new HashMap<>();
+  public java.util.Map<String, Instant> lastListNotices(List<String> riderIds) {
+    java.util.Map<String, Instant> out = new java.util.HashMap<>();
     if (riderIds.isEmpty()) {
       return out;
     }

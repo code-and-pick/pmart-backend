@@ -120,6 +120,47 @@ public class RiderPush {
     }
   }
 
+  /**
+   * 일반배차모드 새 배달(2026-11-18 — 사용자 "보냄 — 묶어서", dispatch DeliveryListUpdated — 라이더마다 1분에 한 번까지). 알림함에는
+   * 넣지 않고 푸시만, 제안과 같은 채널·높은 우선순위, 1분 TTL, 같은 tag 로 앞 알림을 덮는다. 앱은 누르면 배달리스트를 다시 읽는다.
+   */
+  public void listUpdated(String riderId, int newCount, java.time.Instant now) {
+    if (!fcm.enabled() || riderId.isBlank()) {
+      return;
+    }
+    Map<String, String> data = new java.util.LinkedHashMap<>();
+    data.put("type", "DELIVERY_LIST");
+    data.put("newCount", String.valueOf(newCount));
+    data.put("sentAt", now.toString());
+    String body = "배달 목록에 새 배달 " + newCount + "건이 올라왔어요.";
+    Runnable send =
+        () -> {
+          for (PushTokenStore.TokenRow t : tokens.tokens("RIDER", riderId)) {
+            FcmSender.Result r =
+                fcm.send(
+                    t.token(),
+                    "새 배달이 있어요",
+                    body,
+                    data,
+                    new FcmSender.Options(CH_OFFER, true, 60L, "delivery_list"));
+            if (r == FcmSender.Result.UNREGISTERED) {
+              tokens.delete("RIDER", riderId, t.deviceId());
+            }
+          }
+        };
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(
+          new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+              send.run();
+            }
+          });
+    } else {
+      send.run();
+    }
+  }
+
   void send(String riderId, String notificationId, com.pmart.notification.domain.Notices.Notice n) {
     // 앱 요청서의 이름(type·ref) + 알림함 이름(destinationType·destinationRef) 둘 다
     Map<String, String> data = new java.util.LinkedHashMap<>();

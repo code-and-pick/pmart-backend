@@ -174,6 +174,44 @@ class RiderPushIT extends PostgresKafkaContainerSupport {
         0,
         postRequestedFor(urlPathMatching("/v1/projects/pmart-test/messages:send"))
             .withRequestBody(matchingJsonPath("$.message.data.offerId", equalTo("OFF-expired"))));
+
+    // 일반배차모드 새 배달(2026-11-18): dispatch DeliveryListUpdated(delivery.rider.v1) → 푸시만, 제안 채널·HIGH
+    kafka
+        .send(
+            "delivery.rider.v1",
+            rider,
+            EventEnvelopeFixtures.envelope("DeliveryListUpdated")
+                .from("delivery-dispatch-service")
+                .aggregate("Rider", rider, 1)
+                .payload(
+                    Map.of(
+                        "riderId",
+                        rider,
+                        "mfcId",
+                        "MFC-1",
+                        "newCount",
+                        2,
+                        "notifiedAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
+    Instant until3 = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until3)
+        && fcm.findAll(
+                postRequestedFor(urlPathMatching("/v1/projects/pmart-test/messages:send"))
+                    .withRequestBody(
+                        matchingJsonPath("$.message.data.type", equalTo("DELIVERY_LIST"))))
+            .isEmpty()) {
+      Thread.sleep(200);
+    }
+    fcm.verify(
+        postRequestedFor(urlPathMatching("/v1/projects/pmart-test/messages:send"))
+            .withRequestBody(matchingJsonPath("$.message.data.type", equalTo("DELIVERY_LIST")))
+            .withRequestBody(matchingJsonPath("$.message.data.newCount", equalTo("2")))
+            .withRequestBody(matchingJsonPath("$.message.android.priority", equalTo("HIGH")))
+            .withRequestBody(
+                matchingJsonPath(
+                    "$.message.android.notification.channel_id", equalTo("dispatch_offer"))));
   }
 
   void offer(String rider, String offerId, Instant expiresAt) {

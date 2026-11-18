@@ -19,9 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 일반배차모드 새 배달 알림(2026-11-18 — 사용자 "일반배차모드 라이더에게도 … 보냄 — 묶어서"). 일반 모드는 제안이 없어(원문 §2.4 배달리스트에서 고름)
- * 앱을 닫아 두면 새 배달을 모른다. {@code list-notice-interval}(15초)마다: 일반 모드·신규배차 켬·위치가 살아 있는 라이더에게 그 라이더의
- * 배달리스트에 보일 배송(반경 단계·방금 배차취소한 배송 제외·한집은 단독 규칙) 중 **지난 알림 뒤 새로 올라온 것**이 있으면 {@code
+ * 일반배차모드 새 배달 알림(2026-11-18 — 사용자 "일반배차모드 라이더에게도 … 보냄 — 묶어서"). 일반 모드는 제안이 없어(원문 §2.4 배달리스트에서 고름) 앱을
+ * 닫아 두면 새 배달을 모른다. {@code list-notice-interval}(15초)마다: 일반 모드·신규배차 켬·위치가 살아 있는 라이더에게 그 라이더의 배달리스트에
+ * 보일 배송(반경 단계·방금 배차취소한 배송 제외·한집은 단독 규칙) 중 **지난 알림 뒤 새로 올라온 것**이 있으면 {@code
  * DeliveryListUpdated}(notification 이 푸시). 라이더마다 {@code list-notice-min-gap}(1분)에 한 번까지.
  */
 @Service

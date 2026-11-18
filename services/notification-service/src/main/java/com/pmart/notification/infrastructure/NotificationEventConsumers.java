@@ -74,7 +74,9 @@ class NotificationEventConsumers {
   /** delivery.rider.v1 — 계정 제한·해제(라이더 알림함, 2026-11-16 §11-5). */
   @Bean
   PmartEventConsumer riderEvents(EventConsumers consumers, NotificationService n) {
-    return consumers.of(e -> "RiderRestricted".equals(e.eventType()), n::onRiderEvent);
+    return consumers.of(
+        e -> "RiderRestricted".equals(e.eventType()) || "DeliveryListUpdated".equals(e.eventType()),
+        n::onRiderEvent);
   }
 
   /**
