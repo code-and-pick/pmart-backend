@@ -46,7 +46,8 @@ public class ApprovalInboxView {
       @Nullable String reviewState,
       @Nullable String centerId,
       int size,
-      @Nullable String cursor) {
+      @Nullable String cursor,
+      @Nullable Boolean decidableByMe) {
     String token =
         PmartPrincipal.currentTokenValue()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자 토큰이 필요합니다."));
@@ -57,7 +58,8 @@ public class ApprovalInboxView {
     try {
       page =
           approvals.list(
-              new ApprovalClient.Query(type, reviewState, centerId, size, cursor), token);
+              new ApprovalClient.Query(type, reviewState, centerId, size, cursor, decidableByMe),
+              token);
     } catch (HttpClientErrorException e) {
       // approval-service 의 명시적 거절은 같은 뜻으로 돌려준다(운영자 아님 → 403, 잘못된 필터 → 400)
       if (e.getStatusCode().value() == 401 || e.getStatusCode().value() == 403) {
@@ -94,6 +96,11 @@ public class ApprovalInboxView {
       i.put("caseId", text(a, "caseId"));
       i.put("submittedAt", text(a, "submittedAt"));
       i.put("expiresAt", text(a, "expiresAt"));
+      // AP-3(approval 0.4.0): 지금 보는 사람이 결정할 수 있는지 — 판정은 approval 이 한다(그대로 옮김)
+      i.put(
+          "viewerCanDecide",
+          a.path("viewerCanDecide").isBoolean() ? a.path("viewerCanDecide").asBoolean() : null);
+      i.put("viewerDecideBlockedReason", text(a, "viewerDecideBlockedReason"));
       i.put("source", stamp(now, "CURRENT", "DIRECT"));
       items.add(i);
     }

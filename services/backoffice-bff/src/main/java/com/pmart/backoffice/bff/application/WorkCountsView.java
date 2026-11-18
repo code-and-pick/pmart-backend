@@ -36,6 +36,10 @@ public class WorkCountsView {
   static final List<String> APPROVAL_STATES = List.of("REVIEW_PENDING", "EVIDENCE_REQUIRED");
   static final int APPROVAL_PAGE = 200;
   static final int APPROVAL_MAX_PAGES = 10;
+
+  /** 승인 줄 key — 지금 보는 사람이 결정할 수 있는 심사 대기(AP-3). */
+  static final String DECIDABLE_BY_ME = "DECIDABLE_BY_ME";
+
   static final int DELIVERY_PAGE = 50;
   static final int DELIVERY_MAX_PAGES = 10;
 
@@ -160,28 +164,10 @@ public class WorkCountsView {
     List<Map<String, Object>> rows = new ArrayList<>();
     try {
       for (String state : APPROVAL_STATES) {
-        Map<String, Long> byType = new TreeMap<>();
-        boolean complete = true;
-        String cursor = null;
-        for (int page = 0; ; page++) {
-          if (page == APPROVAL_MAX_PAGES) {
-            complete = false;
-            break;
-          }
-          JsonNode body =
-              approvals.list(
-                  new ApprovalClient.Query(null, state, null, APPROVAL_PAGE, cursor), token);
-          for (JsonNode a : body.path("items")) {
-            byType.merge(String.valueOf(text(a, "type")), 1L, Long::sum);
-          }
-          cursor = text(body.path("page"), "nextCursor");
-          if (cursor == null) {
-            break;
-          }
-        }
-        boolean done = complete;
-        byType.forEach((type, n) -> rows.add(row("APPROVALS", state, type, n, done, APPROVAL)));
+        approvalRows(token, state, null, state, rows);
       }
+      // AP-3(approval 0.4.0): 지금 보는 사람이 지금 결정할 수 있는 것만 — 판정은 approval(decidableByMe=true)
+      approvalRows(token, null, Boolean.TRUE, DECIDABLE_BY_ME, rows);
     } catch (HttpClientErrorException | PmartException e) {
       log.warn("일 건수: 승인 목록 실패 — {}", e.getClass().getSimpleName());
       unavailable.add(APPROVAL);
@@ -190,6 +176,38 @@ public class WorkCountsView {
     }
     counts.addAll(rows);
     sources.add(stamp(APPROVAL, now, true));
+  }
+
+  /** 승인 목록을 쪽 상한까지 읽어 종류별로 센다(상한에 걸리면 complete=false). */
+  private void approvalRows(
+      String token,
+      @Nullable String reviewState,
+      @Nullable Boolean decidableByMe,
+      String key,
+      List<Map<String, Object>> rows) {
+    Map<String, Long> byType = new TreeMap<>();
+    boolean complete = true;
+    String cursor = null;
+    for (int page = 0; ; page++) {
+      if (page == APPROVAL_MAX_PAGES) {
+        complete = false;
+        break;
+      }
+      JsonNode body =
+          approvals.list(
+              new ApprovalClient.Query(
+                  null, reviewState, null, APPROVAL_PAGE, cursor, decidableByMe),
+              token);
+      for (JsonNode a : body.path("items")) {
+        byType.merge(String.valueOf(text(a, "type")), 1L, Long::sum);
+      }
+      cursor = text(body.path("page"), "nextCursor");
+      if (cursor == null) {
+        break;
+      }
+    }
+    boolean done = complete;
+    byType.forEach((type, n) -> rows.add(row("APPROVALS", key, type, n, done, APPROVAL)));
   }
 
   private void deliveryCounts(

@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.15.0
+  version: 0.16.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **0.16.0(2026-11-18 — approval 0.4.0 AP-3)**: 승인함 `decidableByMe` 거르기·항목 `viewerCanDecide`·`viewerDecideBlockedReason`(approval 판정 그대로), 지금 일 건수 APPROVALS 에 key DECIDABLE_BY_ME 줄.
     **화면 번호(0.14.0, 2026-11-18 — ADR-0070)**: 목록·표에는 화면 번호를 보인다 — 주문 `orderNumber`(8자리), 배송 `deliveryNumber`("주문번호-순번", 예 74939255-2 — 옆에 type·purpose 로 종류 표시),
     라이더 `rider`(RiderDisplay — 가린 이름 + 라이더 번호 6자리). 시스템 ID(orderId·deliveryId·riderId)는 그대로 실어 링크·상세의 "시스템 번호" 칸에 쓴다. 화면 번호는 원천 값 그대로(없으면 null —
     옛 기록·번호 전 주문, 화면은 시스템 ID 끝 8자리를 회색으로). 라이더 번호는 rider-service `GET /riders?riderIds=`(직원 토큰, 화면 응답 하나에 50개씩 한 번) — 덤이라 실패면
@@ -90,6 +91,7 @@ paths:
         - { name: approvalType, in: query, schema: { type: string } }
         - { name: reviewState, in: query, schema: { type: string } }
         - { name: centerId, in: query, schema: { type: string } }
+        - { name: decidableByMe, in: query, x-added-in: '2026-11-18', schema: { type: boolean }, description: '(0.16.0, AP-3) true 면 지금 토큰의 사람이 지금 결정할 수 있는 승인만 — approval-service `decidableByMe` 로 넘긴다(판정은 approval). 생략·false 면 거르지 않음' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -107,6 +109,8 @@ paths:
                         items:
                           type: object
                           properties:
+                            viewerCanDecide: { type: [boolean, 'null'], x-added-in: '2026-11-18', description: '(0.16.0, AP-3) 지금 토큰의 사람이 지금 이 승인을 결정(승인·반려)할 수 있는지 — approval-service 판정 그대로(결정 API 와 같은 검사). 원천에 값이 없으면 null' }
+                            viewerDecideBlockedReason: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.16.0, AP-3) viewerCanDecide=false 인 이유 — approval 값 그대로(닫힌 목록 아님, 새 값이 생길 수 있음). 지금 값: NOT_PENDING 심사 중 아님 · SELF_APPROVAL 발의자 본인 · CONFIG_REQUIRED 이 종류의 승인 역할 설정 없음 · NO_ROLE 승인 역할 없음 · GRANT_TO_SELF 자기에게 온 직원 권한 요청. true 면 null' }
                             dossierId: { type: string, description: '= approvalId' }
                             approvalId: { type: string }
                             changeRequestId: { type: string }
@@ -500,7 +504,7 @@ paths:
         `counts[]` 한 줄 = { group, key, segment, value, complete, source }. 0건 묶음은 원천처럼 줄이 없을 수 있다(사건·후속 처리·문의는 case 가 0건 줄을 내지 않음).
         - group **CASES**(case `GET /cases/metrics` — 정확): key OPEN·UNASSIGNED·OVERDUE, segment = 사건 종류. **OBLIGATIONS**: key OPEN·OVERDUE, segment = 담당 팀. **SHIFT_HANDOVERS**: key PENDING(수락 전 교대 인계서). **INQUIRIES**: key AWAITING_ANSWER, segment = CUSTOMER·RIDER(상담원 접수 제외).
         - group **PENDING_WORK**(`/views/pending-work` 와 같은 모음): key COUNT, segment = kind. 그 화면의 MFC 목록이 쪽 상한에 걸리면(truncated) complete=false.
-        - group **APPROVALS**(approval-service `GET /approvals` 를 직원 토큰으로 쪽 넘김): key REVIEW_PENDING·EVIDENCE_REQUIRED, segment = 승인 종류. 상태마다 200건 × 10쪽까지 — 넘으면 complete=false. **보는 사람이 심사할 수 있는 건만이 아니라 심사 대기 전부**(AP-3 `decidableByMe` 가 생기면 바꾼다).
+        - group **APPROVALS**(approval-service `GET /approvals` 를 직원 토큰으로 쪽 넘김): key REVIEW_PENDING·EVIDENCE_REQUIRED, segment = 승인 종류. 상태마다 200건 × 10쪽까지 — 넘으면 complete=false. REVIEW_PENDING·EVIDENCE_REQUIRED 줄은 **심사 대기 전부**(누가 심사하든). **key DECIDABLE_BY_ME**(0.16.0, AP-3) = 지금 보는 사람이 지금 결정할 수 있는 것만(approval `decidableByMe=true` — 판정은 approval), segment = 승인 종류, 같은 200건 × 10쪽 상한.
         - group **DELIVERIES**(delivery-execution `GET /deliveries?state=` 쪽 넘김): key ACTIVE, segment = 끝나지 않은 배송 상태(실시간 배송 현황과 같은 9개). 상태마다 50건 × 10쪽까지 — 넘으면 complete=false. **늦은 배송 수는 없다**(배송마다 도착 예정을 읽어야 해서 — 실시간 배송 현황에서).
         `complete=false` 면 value 는 "적어도 이만큼" — 화면은 "N건 이상"으로. 원천이 실패하면 그 묶음 줄 없이 unavailableSources(0건으로 바꾸지 않음), 화면은 200.
       operationId: getWorkCountsView

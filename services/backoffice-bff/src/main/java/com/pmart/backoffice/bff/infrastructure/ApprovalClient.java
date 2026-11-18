@@ -29,7 +29,9 @@ public class ApprovalClient {
       @Nullable String reviewState,
       @Nullable String centerId,
       int size,
-      @Nullable String cursor) {}
+      @Nullable String cursor,
+      /** AP-3(approval 0.4.0): true 면 지금 토큰의 사람이 지금 결정할 수 있는 승인만. null 이면 보내지 않음. */
+      @Nullable Boolean decidableByMe) {}
 
   /**
    * 4xx 는 그대로(호출자 권한·잘못된 필터), 연결 실패·503 은 DEPENDENCY_UNAVAILABLE, 그 밖은 UNKNOWN_RESULT(Downstream).
@@ -52,6 +54,9 @@ public class ApprovalClient {
                           }
                           if (q.centerId() != null) {
                             u.queryParam("centerId", q.centerId());
+                          }
+                          if (q.decidableByMe() != null) {
+                            u.queryParam("decidableByMe", q.decidableByMe());
                           }
                           if (q.cursor() != null) {
                             u.queryParam("cursor", q.cursor());

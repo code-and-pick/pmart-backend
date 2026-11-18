@@ -148,11 +148,12 @@ public class ViewsController implements ViewsApi {
       @Nullable String approvalType,
       @Nullable String reviewState,
       @Nullable String centerId,
+      @Nullable Boolean decidableByMe,
       Integer size,
       @Nullable String cursor) {
     return ResponseEntity.ok(
         mapper.convertValue(
-            approvalInbox.view(approvalType, reviewState, centerId, size, cursor),
+            approvalInbox.view(approvalType, reviewState, centerId, size, cursor, decidableByMe),
             GetApprovalInboxView200Response.class));
   }
 }

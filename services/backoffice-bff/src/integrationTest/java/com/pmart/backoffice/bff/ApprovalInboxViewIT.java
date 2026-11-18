@@ -1,6 +1,7 @@
 package com.pmart.backoffice.bff;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
@@ -98,7 +99,8 @@ class ApprovalInboxViewIT {
         {"items":[{"approvalId":"AP-1","changeRequestId":"CR-1","type":"PRODUCT",
           "targetService":"product-service","targetRef":"productImportBatch:PB-1","summary":"상품 일괄 등록 3건",
           "requesterId":"md-1","requestState":"SUBMITTED","reviewState":"PENDING","executionState":"NOT_STARTED",
-          "deliveryState":"NOT_SENT","caseId":null,"submittedAt":"2026-11-03T10:00:00Z","expiresAt":null}],
+          "deliveryState":"NOT_SENT","caseId":null,"submittedAt":"2026-11-03T10:00:00Z","expiresAt":null,
+          "viewerCanDecide":false,"viewerDecideBlockedReason":"NO_ROLE"}],
          "page":{"nextCursor":"c2","size":1}}
         """);
 
@@ -113,6 +115,8 @@ class ApprovalInboxViewIT {
     assertThat(item.path("summary").asString()).isEqualTo("상품 일괄 등록 3건");
     assertThat(item.path("requestedBy").asString()).isEqualTo("md-1");
     assertThat(item.path("source").path("confidence").asString()).isEqualTo("DIRECT");
+    assertThat(item.path("viewerCanDecide").asBoolean(true)).as("AP-3 판정 그대로").isFalse();
+    assertThat(item.path("viewerDecideBlockedReason").asString()).isEqualTo("NO_ROLE");
     assertThat(res.body().path("page").path("nextCursor").asString()).isEqualTo("c2");
     assertThat(res.body().path("unavailableSources")).isEmpty();
     // 운영자 본인 토큰과 필터를 그대로 넘긴다
@@ -121,7 +125,28 @@ class ApprovalInboxViewIT {
             .withHeader("Authorization", equalTo("Bearer " + OPERATOR))
             .withQueryParam("type", equalTo("PRODUCT"))
             .withQueryParam("reviewState", equalTo("PENDING"))
-            .withQueryParam("size", equalTo("20")));
+            .withQueryParam("size", equalTo("20"))
+            .withQueryParam("decidableByMe", absent()));
+  }
+
+  @Test
+  void decidableByMeIsPassedToApprovalService() {
+    approvalReturns(
+        200,
+        """
+        {"items":[{"approvalId":"AP-9","type":"PRICE","viewerCanDecide":true}],
+         "page":{"nextCursor":null,"size":1}}
+        """);
+
+    Res res = inbox("?decidableByMe=true", OPERATOR);
+
+    assertThat(res.status()).isEqualTo(200);
+    JsonNode item = res.body().path("items").path(0);
+    assertThat(item.path("viewerCanDecide").asBoolean(false)).isTrue();
+    assertThat(item.path("viewerDecideBlockedReason").isNull()).isTrue();
+    approval.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/approvals"))
+            .withQueryParam("decidableByMe", equalTo("true")));
   }
 
   @Test

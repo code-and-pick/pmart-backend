@@ -129,6 +129,15 @@ class WorkCountsViewIT {
         WireMock.get(urlPathEqualTo("/api/v1/approvals"))
             .withQueryParam("reviewState", equalTo("EVIDENCE_REQUIRED"))
             .willReturn(json(200, "{\"items\":[],\"page\":{\"nextCursor\":null,\"size\":0}}")));
+    // 승인(AP-3): 지금 보는 사람이 결정할 수 있는 것만 — PRICE 1건
+    approval.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/approvals"))
+            .withQueryParam("decidableByMe", equalTo("true"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"approvalId":"AP-1","type":"PRICE"}],"page":{"nextCursor":null,"size":1}}""")));
     // 배송: 기본은 0건, UNASSIGNED 3건(한 쪽)
     execution.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/deliveries"))
@@ -198,6 +207,10 @@ class WorkCountsViewIT {
         .isEqualTo(2);
     assertThat(find(b, "APPROVALS", "REVIEW_PENDING", "PRODUCT").path("complete").asBoolean())
         .isTrue();
+    JsonNode mine = find(b, "APPROVALS", "DECIDABLE_BY_ME", "PRICE");
+    assertThat(mine.path("value").asLong()).as("AP-3 — 내가 결정할 수 있는 것만").isEqualTo(1);
+    assertThat(mine.path("complete").asBoolean()).isTrue();
+    assertThat(find(b, "APPROVALS", "DECIDABLE_BY_ME", "PRODUCT")).isNull();
     JsonNode unassigned = find(b, "DELIVERIES", "ACTIVE", "UNASSIGNED");
     assertThat(unassigned.path("value").asLong()).isEqualTo(3);
     assertThat(unassigned.path("complete").asBoolean()).isTrue();
