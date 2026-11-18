@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.23.0
+  version: 0.23.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1503,7 +1503,7 @@ components:
         mfcId: { type: string }
         state: { $ref: '#/components/schemas/ExecutionState' }
         handoverIds: { type: array, items: { type: string } }
-        packageIds: { type: array, items: { type: string } }
+        packageIds: { type: array, items: { type: string }, description: '이 배송이 넘겨받을 포장 전부 — 출고 포장 목록(MFC ShipmentReady·PackingFinished) ∪ 인계 기록 포장(재포장 새 ID 포함). 밀봉 전이면 인계 기록만, 회수·반납 배송은 출고가 없어 인계 기록만. (2026-11-18 DE-4 — 예전에는 인계 기록만이라 첫 인계 전에는 비었다)' }
         evidence: { $ref: '#/components/schemas/Evidence' }
         failure:
           type: object

@@ -60,7 +60,20 @@ public class ExecutionService {
       List<ExecutionStore.HelpRow> helps,
       ExecutionStore.@Nullable EarningRow earning,
       @Nullable DeliveryRow origin,
-      @Nullable String returnDeliveryId) {}
+      @Nullable String returnDeliveryId,
+      List<String> shipmentPackages) {
+
+    /**
+     * 이 배송이 넘겨받을 포장 전부(DE-4, 2026-11-18 — PC 3 요청, 급함): 출고 포장 목록(ShipmentReady·PackingFinished) ∪
+     * 인계 기록 포장(재포장으로 바뀐 새 ID 포함). 밀봉 전이라 출고 포장을 모르면 인계 기록만. 예전에는 인계 기록만이라 첫 인계 전에는 늘 비어 라이더 앱이 모든
+     * 포장 QR 을 "이 배송의 포장이 아니에요"로 막았다.
+     */
+    public List<String> packageIds() {
+      java.util.LinkedHashSet<String> all = new java.util.LinkedHashSet<>(shipmentPackages);
+      handovers.forEach(h -> all.add(h.packageId()));
+      return List.copyOf(all);
+    }
+  }
 
   /** 전달 실패 등록(2026-11-13) — contactAttempts 는 [{attemptedAt, method, result}]. */
   public record Failure(
@@ -114,7 +127,25 @@ public class ExecutionService {
         store.helps(d.deliveryId()),
         d.riderId() == null ? null : store.earningOf(d.deliveryId(), d.riderId()).orElse(null),
         d.originDeliveryId() == null ? null : store.delivery(d.originDeliveryId()).orElse(null),
-        "FAILED".equals(d.state()) ? store.failedReturnOf(d.deliveryId()).orElse(null) : null);
+        "FAILED".equals(d.state()) ? store.failedReturnOf(d.deliveryId()).orElse(null) : null,
+        shipmentPackagesOf(d));
+  }
+
+  /** 출고 포장 목록(배송에 출고가 없거나 아직 모르면 빈 목록 — 회수·반납 배송 등). */
+  List<String> shipmentPackagesOf(DeliveryRow d) {
+    if (d.shipmentId() == null) {
+      return List.of();
+    }
+    List<String> out = new ArrayList<>();
+    store
+        .shipmentPackages(d.shipmentId())
+        .ifPresent(
+            json -> {
+              for (var n : mapper.readTree(json)) {
+                out.add(n.asString());
+              }
+            });
+    return out;
   }
 
   // ---- 조회

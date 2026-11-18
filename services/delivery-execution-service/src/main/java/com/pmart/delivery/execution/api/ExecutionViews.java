@@ -47,7 +47,7 @@ class ExecutionViews {
             .mfcId(d.mfcId())
             .state(ExecutionState.fromValue(d.state()))
             .handoverIds(v.handovers().stream().map(HandoverRow::handoverId).toList())
-            .packageIds(v.handovers().stream().map(HandoverRow::packageId).distinct().toList())
+            .packageIds(v.packageIds()) // DE-4: 출고 포장 ∪ 인계 기록 포장
             .history(
                 v.history().stream()
                     .map(

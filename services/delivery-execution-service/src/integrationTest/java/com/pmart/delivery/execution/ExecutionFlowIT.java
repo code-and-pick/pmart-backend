@@ -248,6 +248,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             List.of(Map.of("packageId", "PKG-1"), Map.of("packageId", "PKG-2"))));
     awaitSql("SELECT count(*) FROM shipment_package WHERE shipment_id = '" + shipment + "'");
     assertThat(state(id)).isEqualTo("ARRIVED_AT_STORE");
+    // DE-4(2026-11-18): 배송 조회 packageIds = 출고 포장 ∪ 인계 기록 — 아직 안 넘긴 PKG-2 도 보여야 라이더 앱이 QR 을 받는다
+    assertThat(view(id, rider).path("packageIds").valueStream().map(JsonNode::asString).toList())
+        .containsExactlyInAnyOrder("PKG-1", "PKG-2");
     handedOver(id, shipment, order, rider, "PKG-2", "HO-2", Map.of("L-1", 1, "L-2", 3));
     awaitState(id, "PICKED_UP");
     JsonNode picked = outbox(id, "PickupCompleted").path("payload");

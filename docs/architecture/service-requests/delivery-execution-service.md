@@ -42,3 +42,4 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **요청**: `packageIds` = **그 배송이 넘겨받을 포장 전부** — `shipment_package`(출고 포장 목록) ∪ 인계 기록 포장(재포장으로 바뀐 새 ID 포함). 출고 포장을 아직 모르면(밀봉 전) 인계 기록만. 계약 `DeliveryExecution.packageIds` 설명도 그렇게. 회수·반납 배송(출고 없음)은 지금처럼.
 - 다른 길(앱만 고치기 — 서버 검사에 맡기고 앱 사전 거르기를 빼기)도 되지만 회신과 어긋나 화면 "몇 개 중 몇 개 인계"도 못 그린다 → 서버 쪽을 권함.
 - **받는 쪽(PC 3 mfc)**: 할 것 없음(포장 사건은 그대로).
+- **구현(2026-11-18, PC 5 — execution 0.23.1, 브랜치 `delivery/de-4-package-ids`)**: 배송 조회 `packageIds` = 출고 포장 목록(`shipment_package`) ∪ 인계 기록 포장(`ExecutionService.View.packageIds`) — 밀봉 전이면 인계 기록만, 회수·반납은 출고가 없어 인계 기록만. 계약 설명 갱신. 시험: 첫 포장만 넘긴 상태에서 두 포장 모두 보임. 앱 변경 없음.
