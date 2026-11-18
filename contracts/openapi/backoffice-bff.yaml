@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.16.0
+  version: 0.17.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **0.17.0(2026-11-19 — ADR-0070 직원 표시, hr 0.8.0 HR-4)**: 처리자·요청자 칸에 `OperatorLabel`(이름 · 사번) — 승인함 `requestedByLabel`, 처리 대기 `lastRetry.operator`, 사건함 `assignee`. hr-service `GET /hr/employee-labels`(직원 토큰, 화면 응답 하나에 50개씩 한 번) — 덤이라 실패면 이름·사번만 null + unavailableSources hr-service(403·404 는 장애 아님), 운영자 ID 는 그대로(상세 "시스템 번호" 칸).
     **0.16.0(2026-11-18 — approval 0.4.0 AP-3)**: 승인함 `decidableByMe` 거르기·항목 `viewerCanDecide`·`viewerDecideBlockedReason`(approval 판정 그대로), 지금 일 건수 APPROVALS 에 key DECIDABLE_BY_ME 줄.
     **화면 번호(0.14.0, 2026-11-18 — ADR-0070)**: 목록·표에는 화면 번호를 보인다 — 주문 `orderNumber`(8자리), 배송 `deliveryNumber`("주문번호-순번", 예 74939255-2 — 옆에 type·purpose 로 종류 표시),
     라이더 `rider`(RiderDisplay — 가린 이름 + 라이더 번호 6자리). 시스템 ID(orderId·deliveryId·riderId)는 그대로 실어 링크·상세의 "시스템 번호" 칸에 쓴다. 화면 번호는 원천 값 그대로(없으면 null —
@@ -126,6 +127,7 @@ paths:
                             targetRef: { type: string }
                             expectedVersion: { type: integer }
                             requestedBy: { type: string }
+                            requestedByLabel: { $ref: '#/components/schemas/OperatorLabel' }
                             submittedAt: { type: string, format: date-time }
                             source: { $ref: '#/components/schemas/SourceStamp' }
                       page: { $ref: '_common.yaml#/components/schemas/Page' }
@@ -217,6 +219,7 @@ paths:
                             subjectRef: { type: [string, 'null'], x-added-in: '2026-11-16' }
                             centerId: { type: [string, 'null'], x-added-in: '2026-11-16' }
                             assigneeId: { type: [string, 'null'], x-added-in: '2026-11-16' }
+                            assignee: { $ref: '#/components/schemas/OperatorLabel' }
                             assigneeGroup: { type: [string, 'null'], x-added-in: '2026-11-16' }
                             slaDueAt: { type: [string, 'null'], format: date-time }
                             overdue: { type: [boolean, 'null'], x-added-in: '2026-11-16' }
@@ -705,6 +708,14 @@ paths:
 
 components:
   schemas:
+    OperatorLabel:
+      type: [object, 'null']
+      x-added-in: '2026-11-19'
+      description: '(0.17.0, ADR-0070·HR-4) 직원 화면 표시 — "홍길동 · P2026-00001". 이름·사번은 hr-service 값 그대로(가리지 않음 — 직원끼리 쓰는 화면). 못 읽었거나 모르는 ID 면 name·employeeNo null(화면은 "확인 불가"), 운영자 ID 가 없으면 칸 전체 null'
+      properties:
+        operatorId: { type: string, description: 시스템 ID — 상세의 "시스템 번호" 칸용 }
+        name: { type: [string, 'null'] }
+        employeeNo: { type: [string, 'null'], description: '사번(P2026-00012)' }
     RiderDisplay:
       type: [object, 'null']
       x-added-in: '2026-11-18'
@@ -767,6 +778,7 @@ components:
           description: '(0.8.0) MFC 항목만 — 최근 운영자 재시도(mfc-fulfillment 0.9.0 manual_retry). 없으면 null'
           properties:
             operatorId: { type: [string, 'null'] }
+            operator: { $ref: '#/components/schemas/OperatorLabel' }
             reason: { type: [string, 'null'] }
             retriedAt: { type: string, format: date-time }
         allowedActions:

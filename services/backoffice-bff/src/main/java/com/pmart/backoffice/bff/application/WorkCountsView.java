@@ -135,7 +135,7 @@ public class WorkCountsView {
       List<Map<String, Object>> counts,
       List<Map<String, Object>> sources,
       List<String> unavailable) {
-    Map<String, Object> pw = pendingWork.view();
+    Map<String, Object> pw = pendingWork.collect();
     boolean complete = !Boolean.TRUE.equals(pw.get("truncated"));
     Map<String, Long> byKind = new TreeMap<>();
     for (Map<String, Object> i : (List<Map<String, Object>>) pw.get("items")) {

@@ -38,8 +38,10 @@ import tools.jackson.databind.ObjectMapper;
       "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock(
-    @ConfigureWireMock(name = "approval", baseUrlProperties = "pmart.bff.approval-base-url"))
+@EnableWireMock({
+  @ConfigureWireMock(name = "approval", baseUrlProperties = "pmart.bff.approval-base-url"),
+  @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url")
+})
 class ApprovalInboxViewIT {
 
   static final String OPERATOR =
@@ -51,11 +53,15 @@ class ApprovalInboxViewIT {
   @InjectWireMock("approval")
   WireMockServer approval;
 
+  @InjectWireMock("hr")
+  WireMockServer hr;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
     approval.resetAll();
+    hr.resetAll();
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1/backoffice")
@@ -93,6 +99,11 @@ class ApprovalInboxViewIT {
 
   @Test
   void itemsComeFromApprovalServiceWithOperatorToken() {
+    hr.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/hr/employee-labels"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"operatorId\":\"md-1\",\"name\":\"홍길동\",\"employeeNo\":\"P2026-00001\"}]}")));
     approvalReturns(
         200,
         """
@@ -116,6 +127,14 @@ class ApprovalInboxViewIT {
     assertThat(item.path("requestedBy").asString()).isEqualTo("md-1");
     assertThat(item.path("source").path("confidence").asString()).isEqualTo("DIRECT");
     assertThat(item.path("viewerCanDecide").asBoolean(true)).as("AP-3 판정 그대로").isFalse();
+    JsonNode who = item.path("requestedByLabel");
+    assertThat(who.path("operatorId").asString()).isEqualTo("md-1");
+    assertThat(who.path("name").asString()).as("HR-4 이름 · 사번").isEqualTo("홍길동");
+    assertThat(who.path("employeeNo").asString()).isEqualTo("P2026-00001");
+    hr.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/hr/employee-labels"))
+            .withHeader("Authorization", equalTo("Bearer " + OPERATOR))
+            .withQueryParam("operatorIds", equalTo("md-1")));
     assertThat(item.path("viewerDecideBlockedReason").asString()).isEqualTo("NO_ROLE");
     assertThat(res.body().path("page").path("nextCursor").asString()).isEqualTo("c2");
     assertThat(res.body().path("unavailableSources")).isEmpty();
@@ -127,6 +146,27 @@ class ApprovalInboxViewIT {
             .withQueryParam("reviewState", equalTo("PENDING"))
             .withQueryParam("size", equalTo("20"))
             .withQueryParam("decidableByMe", absent()));
+  }
+
+  @Test
+  void hrOutageLeavesNamesEmptyButListIntact() {
+    hr.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/hr/employee-labels"))
+            .willReturn(WireMock.aResponse().withStatus(500)));
+    approvalReturns(
+        200,
+        """
+        {"items":[{"approvalId":"AP-5","type":"PRICE","requesterId":"md-2"}],
+         "page":{"nextCursor":null,"size":1}}
+        """);
+
+    Res res = inbox("", OPERATOR);
+
+    assertThat(res.status()).isEqualTo(200);
+    JsonNode who = res.body().path("items").path(0).path("requestedByLabel");
+    assertThat(who.path("operatorId").asString()).isEqualTo("md-2");
+    assertThat(who.path("name").isNull()).as("이름만 비움").isTrue();
+    assertThat(res.body().path("unavailableSources").toString()).contains("hr-service");
   }
 
   @Test

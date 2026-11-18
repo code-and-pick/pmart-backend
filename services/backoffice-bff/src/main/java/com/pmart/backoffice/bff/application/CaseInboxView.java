@@ -218,6 +218,25 @@ public class CaseInboxView {
       i.put("riders", rs);
     }
 
+    // 0.17.0(ADR-0070, HR-4): 맡은 직원 "이름 · 사번" — 화면 응답 하나에 한 번(실패해도 화면은 그대로, 이름만 null)
+    List<String> assignees = new ArrayList<>();
+    for (Map<String, Object> i : items) {
+      if (i.get("assigneeId") instanceof String s) {
+        assignees.add(s);
+      }
+    }
+    Map<String, JsonNode> labels = null;
+    if (!assignees.isEmpty()) {
+      used.add(Source.HR);
+      labels = OperatorLabels.lookup(clients, token, assignees);
+      if (labels == null) {
+        failed.add(Source.HR);
+      }
+    }
+    for (Map<String, Object> i : items) {
+      i.put("assignee", OperatorLabels.of((String) i.get("assigneeId"), labels));
+    }
+
     List<Map<String, Object>> sources = new ArrayList<>();
     List<String> unavailable = new ArrayList<>();
     for (Source s : used) {

@@ -49,7 +49,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock({
   @ConfigureWireMock(name = "orch", baseUrlProperties = "pmart.bff.orchestration-base-url"),
   @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url"),
-  @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url")
+  @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url"),
+  @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url")
 })
 class PendingWorkMfcIT {
 
@@ -68,11 +69,14 @@ class PendingWorkMfcIT {
   @InjectWireMock("mfc")
   WireMockServer mfc;
 
+  @InjectWireMock("hr")
+  WireMockServer hr;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(orch, order, mfc)) {
+    for (WireMockServer w : List.of(orch, order, mfc, hr)) {
       w.resetAll();
     }
     http =
@@ -136,6 +140,11 @@ class PendingWorkMfcIT {
 
   @Test
   void stopFailuresAndRejectedHandoversAreListedOldestFirst() {
+    hr.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/hr/employee-labels"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"operatorId\":\"op-admin\",\"name\":\"관리자\",\"employeeNo\":\"P2026-00009\"}]}")));
     Res r = call("GET", "/views/pending-work", ADMIN, null);
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
     JsonNode items = r.body().path("items");
@@ -154,6 +163,11 @@ class PendingWorkMfcIT {
         .as("최근 운영자 재시도(0.8.0)")
         .isEqualTo("op-admin");
     assertThat(s.path("lastRetry").path("retriedAt").asString()).isEqualTo("2026-11-16T02:10:00Z");
+    assertThat(s.path("lastRetry").path("operator").path("name").asString())
+        .as("재시도한 직원 이름 · 사번(HR-4)")
+        .isEqualTo("관리자");
+    assertThat(s.path("lastRetry").path("operator").path("employeeNo").asString())
+        .isEqualTo("P2026-00009");
     assertThat(h.path("lastRetry").isNull()).isTrue();
     assertThat(r.body().path("unavailableSources")).isEmpty();
     mfc.verify(

@@ -44,7 +44,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
   @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
   @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url"),
-  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.bff.rider-base-url")
+  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.bff.rider-base-url"),
+  @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url")
 })
 class CaseInboxViewIT {
 
@@ -65,11 +66,14 @@ class CaseInboxViewIT {
   @InjectWireMock("rider")
   WireMockServer rider;
 
+  @InjectWireMock("hr")
+  WireMockServer hr;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(cases, execution, order, rider)) {
+    for (WireMockServer w : List.of(cases, execution, order, rider, hr)) {
       w.resetAll();
     }
     http =
@@ -199,6 +203,39 @@ class CaseInboxViewIT {
             .withQueryParam("assigneeId", equalTo("op-x"))
             .withQueryParam("overdue", equalTo("true"))
             .withQueryParam("size", equalTo("50")));
+  }
+
+  /** 0.17.0(ADR-0070·HR-4): 맡은 직원 "이름 · 사번" — hr 를 화면 응답 하나에 한 번. */
+  @Test
+  void assigneeGetsNameAndEmployeeNo() {
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .atPriority(1)
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"caseId":"CASE-A","kind":"DISPATCH_FAILED","state":"ASSIGNED","priority":"P2",
+                     "assigneeId":"op-x","refs":[]},
+                     {"caseId":"CASE-B","kind":"DISPATCH_FAILED","state":"OPEN","priority":"P2","refs":[]}],
+                     "page":{"nextCursor":null}}""")));
+    hr.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/hr/employee-labels"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"items\":[{\"operatorId\":\"op-x\",\"name\":\"김지원\",\"employeeNo\":\"P2026-00003\"}]}")));
+
+    Res r = inbox("");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode a = r.body().path("items").get(0).path("assignee");
+    assertThat(a.path("operatorId").asString()).isEqualTo("op-x");
+    assertThat(a.path("name").asString()).isEqualTo("김지원");
+    assertThat(a.path("employeeNo").asString()).isEqualTo("P2026-00003");
+    assertThat(r.body().path("items").get(1).path("assignee").isNull()).as("안 맡은 건").isTrue();
+    assertThat(r.body().path("unavailableSources").toString()).doesNotContain("hr-service");
+    hr.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/hr/employee-labels")));
   }
 
   @Test

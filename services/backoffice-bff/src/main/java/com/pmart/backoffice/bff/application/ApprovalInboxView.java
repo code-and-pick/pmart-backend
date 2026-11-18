@@ -3,6 +3,8 @@ package com.pmart.backoffice.bff.application;
 import static com.pmart.backoffice.bff.application.ViewSupport.text;
 
 import com.pmart.backoffice.bff.infrastructure.ApprovalClient;
+import com.pmart.backoffice.bff.infrastructure.LookupClients;
+import com.pmart.backoffice.bff.infrastructure.LookupClients.Source;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
@@ -34,10 +36,12 @@ public class ApprovalInboxView {
   private static final Logger log = LoggerFactory.getLogger(ApprovalInboxView.class);
 
   private final ApprovalClient approvals;
+  private final LookupClients clients;
   private final Clock clock;
 
-  public ApprovalInboxView(ApprovalClient approvals, Clock clock) {
+  public ApprovalInboxView(ApprovalClient approvals, LookupClients clients, Clock clock) {
     this.approvals = approvals;
+    this.clients = clients;
     this.clock = clock;
   }
 
@@ -104,8 +108,29 @@ public class ApprovalInboxView {
       i.put("source", stamp(now, "CURRENT", "DIRECT"));
       items.add(i);
     }
-    out.put("sources", List.of(stamp(now, "CURRENT", "DIRECT")));
-    out.put("unavailableSources", List.of());
+    List<Map<String, Object>> sources = new ArrayList<>();
+    sources.add(stamp(now, "CURRENT", "DIRECT"));
+    List<String> unavailable = new ArrayList<>();
+    // 0.17.0(ADR-0070, HR-4): 요청자 "이름 · 사번" — 화면 응답 하나에 한 번(실패해도 목록은 그대로, 이름만 null)
+    List<String> requesters = new ArrayList<>();
+    for (Map<String, Object> i : items) {
+      if (i.get("requestedBy") instanceof String s) {
+        requesters.add(s);
+      }
+    }
+    Map<String, JsonNode> labels = null;
+    if (!requesters.isEmpty()) {
+      labels = OperatorLabels.lookup(clients, token, requesters);
+      sources.add(ViewSupport.stamp(Source.HR.system, now, labels != null));
+      if (labels == null) {
+        unavailable.add(Source.HR.system);
+      }
+    }
+    for (Map<String, Object> i : items) {
+      i.put("requestedByLabel", OperatorLabels.of((String) i.get("requestedBy"), labels));
+    }
+    out.put("sources", sources);
+    out.put("unavailableSources", unavailable);
     out.put("items", items);
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("size", items.size());

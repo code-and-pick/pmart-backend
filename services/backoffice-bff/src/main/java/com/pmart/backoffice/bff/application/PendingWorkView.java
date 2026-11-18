@@ -3,6 +3,8 @@ package com.pmart.backoffice.bff.application;
 import static com.pmart.backoffice.bff.application.ViewSupport.stamp;
 import static com.pmart.backoffice.bff.application.ViewSupport.text;
 
+import com.pmart.backoffice.bff.infrastructure.LookupClients;
+import com.pmart.backoffice.bff.infrastructure.LookupClients.Source;
 import com.pmart.backoffice.bff.infrastructure.PendingWorkClients;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
@@ -47,16 +49,54 @@ public class PendingWorkView {
   private static final Logger log = LoggerFactory.getLogger(PendingWorkView.class);
 
   private final PendingWorkClients clients;
+  private final LookupClients lookups;
   private final Clock clock;
   private final boolean mfcLists;
 
-  public PendingWorkView(PendingWorkClients clients, Clock clock, BffProperties props) {
+  public PendingWorkView(
+      PendingWorkClients clients, LookupClients lookups, Clock clock, BffProperties props) {
     this.clients = clients;
+    this.lookups = lookups;
     this.clock = clock;
     this.mfcLists = Boolean.TRUE.equals(props.mfcPendingLists());
   }
 
+  /**
+   * 화면 응답 — {@link #collect()} 에 MFC 재시도한 직원 "이름 · 사번"(lastRetry.operator, 0.17.0 ADR-0070·HR-4)을
+   * 붙인다. 실패해도 목록은 그대로(이름만 null + unavailableSources hr-service).
+   */
+  @SuppressWarnings("unchecked")
   public Map<String, Object> view() {
+    Map<String, Object> out = collect();
+    List<Map<String, Object>> items = (List<Map<String, Object>>) out.get("items");
+    List<String> ids = new ArrayList<>();
+    for (Map<String, Object> i : items) {
+      if (i.get("lastRetry") instanceof Map<?, ?> r && r.get("operatorId") instanceof String s) {
+        ids.add(s);
+      }
+    }
+    if (ids.isEmpty()) {
+      return out;
+    }
+    String token = PmartPrincipal.currentTokenValue().orElseThrow();
+    Map<String, JsonNode> labels = OperatorLabels.lookup(lookups, token, ids);
+    ((List<Map<String, Object>>) out.get("sources"))
+        .add(
+            stamp(Source.HR.system, Instant.parse((String) out.get("composedAt")), labels != null));
+    if (labels == null) {
+      ((List<String>) out.get("unavailableSources")).add(Source.HR.system);
+    }
+    for (Map<String, Object> i : items) {
+      if (i.get("lastRetry") instanceof Map<?, ?> r) {
+        ((Map<String, Object>) r)
+            .put("operator", OperatorLabels.of((String) r.get("operatorId"), labels));
+      }
+    }
+    return out;
+  }
+
+  /** 처리 대기 모음(이름 붙이기 전) — 지금 일 건수(WorkCountsView)는 이것만 센다(hr 를 부르지 않음). */
+  Map<String, Object> collect() {
     PmartPrincipal p = requireAdmin();
     String token =
         PmartPrincipal.currentTokenValue()
