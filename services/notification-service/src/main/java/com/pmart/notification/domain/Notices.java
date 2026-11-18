@@ -300,6 +300,22 @@ public final class Notices {
    * 지원센터 수행료 조정(2026-11-17 — 산정 불가였던 배송). 지급이면 금액·지급 예정일, 미지급이면 그 사실만(사유는 지원센터 문의). 목적지는 정산 화면이 따로
    * 없어 NONE.
    */
+  /** 소명·이의 결정(2026-11-18) — 결과만(설명 글은 앱의 내 신청에서). */
+  public static Notice appealDecided(boolean accepted, boolean earning) {
+    String what = earning ? "수행료 이의 신청" : "계정 제한 소명";
+    String result =
+        accepted
+            ? (earning ? "인정되었어요. 수행료는 지원센터에서 다시 조정해요." : "인정되어 계정 제한이 풀렸어요.")
+            : "검토 결과 기존 결정이 유지돼요.";
+    return new Notice(
+        "RIDER_APPEAL_DECIDED",
+        SYSTEM,
+        what + " 결과가 나왔어요",
+        what + "이 " + result + " 자세한 내용은 내 신청에서 확인해 주세요.",
+        "NONE",
+        null);
+  }
+
   /** 수행료 지급 결과(2026-11-18) — 지급 예정일 묶음 단위, 금액·실패 사유 없음. */
   public static Notice payoutResult(boolean paid, String payoutDate) {
     java.time.LocalDate d = java.time.LocalDate.parse(payoutDate);

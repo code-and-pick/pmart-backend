@@ -542,7 +542,7 @@ public class RiderService {
 
   // ---------- 공통 ----------
 
-  private Rider get(String riderId) {
+  Rider get(String riderId) {
     return store
         .find(riderId)
         .map(r -> r.asOf(clock.instant()))

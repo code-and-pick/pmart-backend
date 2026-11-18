@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderAppealDecided.v1.json",
+  "title": "RiderAppealDecided",
+  "description": "2026-11-18 — 라이더 소명·이의 신청이 결정됐다(사용자 \"앱에서 신청 → 백오피스 결정\"). 발행 rider. 토픽 delivery.rider.v1. 구독 notification(라이더 알림함). 결과 설명 글·신청 내용은 싣지 않는다 — 라이더는 GET /riders/me/appeals 로 본다.",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "RiderAppealDecided" },
+        "aggregateType": { "const": "Rider" },
+        "payload": {
+          "type": "object",
+          "required": ["riderId", "appealId", "targetType", "decision", "decidedAt"],
+          "properties": {
+            "riderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "appealId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "targetType": { "type": "string", "enum": ["RESTRICTION", "EARNING"] },
+            "decision": { "type": "string", "enum": ["UPHELD", "ACCEPTED"] },
+            "decidedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

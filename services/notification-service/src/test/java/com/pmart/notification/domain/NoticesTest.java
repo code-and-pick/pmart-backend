@@ -15,6 +15,16 @@ class NoticesTest {
   }
 
   @Test
+  void appealDecidedSaysResultOnly() {
+    var lifted = Notices.appealDecided(true, false);
+    org.assertj.core.api.Assertions.assertThat(lifted.templateKey())
+        .isEqualTo("RIDER_APPEAL_DECIDED");
+    org.assertj.core.api.Assertions.assertThat(lifted.body()).contains("제한이 풀렸어요");
+    org.assertj.core.api.Assertions.assertThat(Notices.appealDecided(false, true).body())
+        .contains("유지");
+  }
+
+  @Test
   void payoutResultHasDateButNoAmountOrReason() {
     var paid = Notices.payoutResult(true, "2026-11-21");
     org.assertj.core.api.Assertions.assertThat(paid.templateKey()).isEqualTo("RIDER_PAYOUT_PAID");

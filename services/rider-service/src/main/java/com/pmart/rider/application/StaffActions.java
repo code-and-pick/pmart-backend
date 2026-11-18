@@ -44,6 +44,9 @@ public class StaffActions {
   UNION ALL
   SELECT decided_at, decided_by, 'RESTRICTION_REVIEW_DECIDED', rider_id, NULL, complaint_type || ' ' || state, decision_note
     FROM rider_restriction_review WHERE decided_at IS NOT NULL
+  UNION ALL
+  SELECT decided_at, decided_by, 'APPEAL_DECIDED', rider_id, CASE WHEN target_type = 'EARNING' THEN target_ref END, target_type || ' ' || state, decision_note
+    FROM rider_appeal WHERE decided_at IS NOT NULL
 ) a
       """;
 

@@ -45,3 +45,4 @@
 - **공지 받는 라이더(2026-11-18, 0.13.0)**: `GET /internal/riders/recipients?mfcId&after&size`(탈퇴 제외, 배달지역 센터, riderId 순 1000개씩) — notification 라이더 공지.
 
 - **직원 조치 이력(2026-11-18, 0.14.0 — 사용자 "이미 기록된 조치를 모아 보기", 관리자만)**: `GET /rider-staff-actions`(`StaffActions` — 계정 제한 걸기·풀기, 제한 검토 결정) — OPERATOR_ADMIN, 기간 기본 7일·최대 31일.
+- **소명·이의 신청(2026-11-18, 0.15.0·V11 — 사용자 "앱에서 신청 → 백오피스 결정", 원문 §9.6)**: `application/AppealService`·`api/AppealsController` — 라이더 `POST/GET /riders/me/appeals`(대상 RESTRICTION=지금 제한, EARNING=deliveryId, 대상마다 한 번), 직원 `GET /rider-appeals`·`POST /rider-appeals/{id}/decisions`(RIDER_OPS·OPERATOR_ADMIN, UPHELD·ACCEPTED, 설명 필수). 제한 인정이면 바로 정상으로(changeRestriction), 수행료 인정은 adjustmentRequired. 사건 RiderAppealDecided(설명 없음), 조치 이력 APPEAL_DECIDED.

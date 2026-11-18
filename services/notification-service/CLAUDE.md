@@ -55,3 +55,4 @@
 - **일반배차모드 새 배달 푸시(2026-11-18)**: `riderEvents`(delivery.rider.v1) `DeliveryListUpdated` → `RiderPush.listUpdated` — 알림함 없이 푸시만, data type DELIVERY_LIST·newCount, 채널 dispatch_offer·HIGH·TTL 60초·tag delivery_list.
 - **라이더 공지(2026-11-18, 0.5.0·V5 — 사용자 "대상 고르기 + 알림함·푸시")**: `POST/GET /rider-notices`(`RiderNoticeService`·`RiderNoticesController`) — RIDER_OPS·OPERATOR_ADMIN, 제목 40·본문 500자, 대상 ALL·MFC → rider `/internal/riders/recipients`(`infrastructure/RiderClient`) → 라이더마다 알림함 RIDER_NOTICE(SYSTEM, NONE) + 커밋 뒤 푸시, `rider_notice`(보낸 사람·수, 같은 직원+Idempotency-Key 한 번).
 - **수행료 지급 결과 알림(2026-11-18)**: `RiderEarningRecorded` status PAID·PAYMENT_FAILED + payoutDate → 라이더 알림함 `RIDER_PAYOUT_PAID`·`RIDER_PAYOUT_FAILED`(SYSTEM, 정산 채널) — 묶음(라이더 × 지급 예정일)마다 한 번(dedupe `RiderPayout:<status>:<rider>:<date>`), 금액·실패 사유 없음.
+- **소명·이의 결정 알림(2026-11-18)**: riderEvents `RiderAppealDecided` → 라이더 알림함 `RIDER_APPEAL_DECIDED`(SYSTEM, 계정 채널) — 결과만, 설명은 앱의 내 신청에서.

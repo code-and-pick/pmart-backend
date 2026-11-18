@@ -253,6 +253,124 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(unknown.getStatusCode().value()).isEqualTo(404);
   }
 
+  /** 소명·이의 신청(2026-11-18 사용자 "앱에서 신청 → 백오피스 결정"): 대상마다 한 번, 제한 인정이면 바로 풀림, 수행료 인정은 조정 필요. */
+  @Test
+  void riderAppealsAndOpsDecide() {
+    String rider = "RD-ap-" + UUID.randomUUID();
+    assertThat(signup(rider, phone(), "k-" + rider).getStatusCode().value()).isEqualTo(201);
+    // 제한 없으면 409
+    assertThat(
+            appeal(rider, Map.of("targetType", "RESTRICTION", "body", "왜요"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    assertThat(
+            restrict(
+                    rider,
+                    "ap1-" + rider,
+                    "OPERATOR_ADMIN",
+                    Map.of("restriction", "DISPATCH_RESTRICTED", "reason", "지연 반복"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    ResponseEntity<String> sent =
+        appeal(rider, Map.of("targetType", "RESTRICTION", "body", "그날은 엘리베이터 고장이었어요"));
+    assertThat(sent.getStatusCode().value()).as(sent.getBody()).isEqualTo(200);
+    String appealId = json(sent.getBody()).path("appealId").asString();
+    assertThat(json(sent.getBody()).path("restriction").asString())
+        .isEqualTo("DISPATCH_RESTRICTED");
+    assertThat(appeal(rider, Map.of("targetType", "RESTRICTION", "body", "다시")).getBody())
+        .contains("APPEAL_EXISTS");
+    ResponseEntity<String> earning =
+        appeal(rider, Map.of("targetType", "EARNING", "targetRef", "DLV-ap-1", "body", "산정 불가 이의"));
+    assertThat(earning.getStatusCode().value()).isEqualTo(200);
+    String earningAppeal = json(earning.getBody()).path("appealId").asString();
+
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode open =
+        json(
+            http.get()
+                .uri("/rider-appeals?riderId={r}", rider)
+                .header("Authorization", "Bearer " + ops)
+                .retrieve()
+                .body(String.class));
+    assertThat(open.path("items")).hasSize(2);
+    // 상담원 403, 설명 없는 결정 400
+    assertThat(
+            decideAppeal(
+                    appealId,
+                    TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()),
+                    Map.of("decision", "ACCEPTED", "note", "x"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(
+            decideAppeal(appealId, ops, Map.of("decision", "ACCEPTED", "note", " "))
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    ResponseEntity<String> ok =
+        decideAppeal(appealId, ops, Map.of("decision", "ACCEPTED", "note", "확인 결과 고장 맞음"));
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(json(ok.getBody()).path("state").asString()).isEqualTo("ACCEPTED");
+    JsonNode me =
+        json(
+            http.get()
+                .uri("/riders/me")
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .body(String.class));
+    assertThat(me.path("restriction").path("state").asString()).isEqualTo("NORMAL");
+    assertThat(
+            decideAppeal(appealId, ops, Map.of("decision", "UPHELD", "note", "번복"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    JsonNode earned =
+        json(
+            decideAppeal(earningAppeal, ops, Map.of("decision", "ACCEPTED", "note", "조정할게요"))
+                .getBody());
+    assertThat(earned.path("adjustmentRequired").asBoolean()).isTrue();
+    // 라이더는 결과·설명을 보고 결정한 직원은 못 본다
+    JsonNode mine =
+        json(
+            http.get()
+                .uri("/riders/me/appeals")
+                .header("Authorization", "Bearer " + TestJwt.rider(rider))
+                .retrieve()
+                .body(String.class));
+    assertThat(mine.path("items")).hasSize(2);
+    assertThat(mine.path("items").get(0).path("decisionNote").asString()).isNotBlank();
+    assertThat(mine.path("items").get(0).path("decidedBy").isNull()).isTrue();
+    List<String> decided =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'RiderAppealDecided'",
+            String.class,
+            rider);
+    assertThat(decided).hasSize(2);
+    assertThat(decided.get(0)).doesNotContain("고장");
+  }
+
+  ResponseEntity<String> appeal(String rider, Map<String, Object> body) {
+    return http.post()
+        .uri("/riders/me/appeals")
+        .headers(h -> riderHeaders(h, rider, UUID.randomUUID().toString()))
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  ResponseEntity<String> decideAppeal(String appealId, String token, Map<String, Object> body) {
+    return http.post()
+        .uri("/rider-appeals/{id}/decisions", appealId)
+        .header("Authorization", "Bearer " + token)
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .header("X-Source-System", "rider-backoffice-web")
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   /** RS-1(2026-11-14): 운영자 계정 제한 → 신규배차 꺼짐·적격 목록에서 빠짐·RiderRestricted, 풀기·기한 지남·권한. */
   @Test
   void operatorRestrictsAndLiftsRider() {

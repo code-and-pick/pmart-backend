@@ -415,6 +415,20 @@ public class NotificationService {
           p.path("riderId").asString(""), p.path("newCount").asInt(1), clock.instant());
       return;
     }
+    if ("RiderAppealDecided".equals(e.eventType())) {
+      // 소명·이의 결정(2026-11-18) — 결과만, 설명 글은 앱에서
+      JsonNode a = e.payload();
+      String rider = text(a, "riderId");
+      if (rider != null) {
+        saveFor(
+            e,
+            RIDER,
+            rider,
+            Notices.appealDecided(
+                "ACCEPTED".equals(text(a, "decision")), "EARNING".equals(text(a, "targetType"))));
+      }
+      return;
+    }
     if (!"RiderRestricted".equals(e.eventType())) {
       return;
     }

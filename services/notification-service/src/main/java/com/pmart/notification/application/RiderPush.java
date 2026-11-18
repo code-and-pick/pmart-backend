@@ -60,7 +60,8 @@ public class RiderPush {
       case "RIDER_DISPATCH_RESTRICTED",
           "RIDER_SUSPENDED",
           "RIDER_TERMINATED",
-          "RIDER_RESTRICTION_LIFTED" ->
+          "RIDER_RESTRICTION_LIFTED",
+          "RIDER_APPEAL_DECIDED" ->
           CH_ACCOUNT;
       default -> CH_SUPPORT; // 지원센터 답장·도움요청 처리 끝·문의 답변
     };
