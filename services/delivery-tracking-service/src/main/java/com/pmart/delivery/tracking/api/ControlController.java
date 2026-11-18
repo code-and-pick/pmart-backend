@@ -40,6 +40,7 @@ public class ControlController implements ControlApi {
   private static ControlRider item(RiderControlService.Item i) {
     var r = new ControlRider();
     r.setRiderId(i.rider().riderId());
+    r.setRiderNumber(i.rider().riderNumber());
     r.setNameMasked(i.rider().nameMasked());
     r.setVehicleType(i.rider().vehicleType());
     r.setNewDispatchEnabled(i.rider().newDispatchEnabled());

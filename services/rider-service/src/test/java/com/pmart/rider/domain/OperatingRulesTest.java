@@ -77,6 +77,7 @@ class OperatingRulesTest {
         null,
         now,
         List.of(new Rider.Area("MFC-A", ""), new Rider.Area("MFC-B", "")),
-        null);
+        null,
+        "123456");
   }
 }

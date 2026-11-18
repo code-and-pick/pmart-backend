@@ -42,7 +42,7 @@ public class RiderStore {
           + " bank_account_number, bank_holder_name, residence_road, residence_detail,"
           + " operating_status, new_dispatch_enabled, operating_mfc_id, state_changed_at,"
           + " one_at_a_time, dispatch_mode, restriction, restriction_reason, restriction_until,"
-          + " last_heartbeat_at, joined_at, license_masked";
+          + " last_heartbeat_at, joined_at, license_masked, rider_number";
 
   private final JdbcTemplate jdbc;
 
@@ -156,7 +156,30 @@ public class RiderStore {
       @Nullable String operatingStatus,
       @Nullable String operatingMfcId,
       @Nullable String vehicleType,
-      boolean byStateChange) {}
+      boolean byStateChange,
+      @Nullable String riderNumber,
+      java.util.@Nullable List<String> riderIds) {
+
+    public Search(
+        @Nullable String riderId,
+        @Nullable String phone,
+        @Nullable String restriction,
+        @Nullable String operatingStatus,
+        @Nullable String operatingMfcId,
+        @Nullable String vehicleType,
+        boolean byStateChange) {
+      this(
+          riderId,
+          phone,
+          restriction,
+          operatingStatus,
+          operatingMfcId,
+          vehicleType,
+          byStateChange,
+          null,
+          null);
+    }
+  }
 
   /** 직원 라이더 찾기 — restriction 은 지금 유효한 제한(기한 지난 제한은 NORMAL)으로 거른다. */
   public List<Rider> search(Search s, Instant now, int limit, int offset) {
@@ -166,6 +189,16 @@ public class RiderStore {
     if (s.riderId() != null) {
       sql.append(" AND rider_id = ?");
       args.add(s.riderId());
+    }
+    if (s.riderNumber() != null) {
+      sql.append(" AND rider_number = ?");
+      args.add(s.riderNumber());
+    }
+    if (s.riderIds() != null && !s.riderIds().isEmpty()) {
+      sql.append(" AND rider_id IN (")
+          .append(String.join(",", java.util.Collections.nCopies(s.riderIds().size(), "?")))
+          .append(")");
+      args.addAll(s.riderIds());
     }
     if (s.phone() != null) {
       sql.append(" AND phone = ?");
@@ -465,7 +498,8 @@ public class RiderStore {
               x.lastHeartbeatAt(),
               x.joinedAt(),
               List.copyOf(areas.getOrDefault(x.riderId(), List.of())),
-              x.licenseMasked()));
+              x.licenseMasked(),
+              x.riderNumber()));
     }
     return out;
   }
@@ -496,7 +530,8 @@ public class RiderStore {
             instantOrNull(rs, "last_heartbeat_at"),
             instant(rs, "joined_at"),
             List.of(),
-            rs.getString("license_masked")));
+            rs.getString("license_masked"),
+            rs.getString("rider_number")));
   }
 
   private static Instant instant(ResultSet rs, String col) throws SQLException {

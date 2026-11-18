@@ -62,6 +62,8 @@ public class OperatorController implements OperatorApi {
   public ResponseEntity<StaffRiderSearchResult> searchRidersForStaff(
       @Nullable String riderId,
       @Nullable String phone,
+      @Nullable String riderNumber,
+      @Nullable String riderIds,
       @Nullable AccountRestriction restriction,
       @Nullable OperatingStatus operatingStatus,
       @Nullable String operatingMfcId,
@@ -82,7 +84,9 @@ public class OperatorController implements OperatorApi {
                 operatingStatus == null ? null : operatingStatus.getValue(),
                 blankToNull(operatingMfcId),
                 vehicleType == null ? null : vehicleType.getValue(),
-                "STATE_CHANGED_DESC".equals(sort)),
+                "STATE_CHANGED_DESC".equals(sort),
+                blankToNull(riderNumber),
+                ids(riderIds)),
             size + 1, // 한 줄 더 읽어 다음 쪽이 있는지 본다
             page * size); // 건너뛸 수는 쪽 크기 기준(page ≤ 1000, size ≤ 50 — 계약)
     boolean more = rows.size() > size;
@@ -101,6 +105,7 @@ public class OperatorController implements OperatorApi {
     return ResponseEntity.ok(
         new StaffRiderDetail()
             .riderId(r.riderId())
+            .riderNumber(r.riderNumber())
             .version(r.version())
             // 가입 승인(2026-11-17 — 정책 전까지 자동 승인)
             .signupStatus(com.pmart.rider.api.generated.model.SignupStatus.APPROVED)
@@ -165,6 +170,7 @@ public class OperatorController implements OperatorApi {
   private static StaffRiderSummary summary(Rider r) {
     return new StaffRiderSummary()
         .riderId(r.riderId())
+        .riderNumber(r.riderNumber())
         .version(r.version())
         .nameMasked(r.name() == null ? null : RiderViews.maskName(r.name()))
         .phoneMasked(RiderViews.maskPhone(r.phone()))
@@ -298,5 +304,22 @@ public class OperatorController implements OperatorApi {
         .changedBy(r.changedBy())
         .changedAt(RiderViews.time(r.changedAt()))
         .version(r.riderVersion());
+  }
+
+  /** 쉼표 구분 라이더 ID(0.12.0) — 비면 null, 50개 넘으면 400. */
+  private static java.util.@Nullable List<String> ids(@Nullable String raw) {
+    if (raw == null || raw.isBlank()) {
+      return null;
+    }
+    List<String> out =
+        java.util.Arrays.stream(raw.split(","))
+            .map(String::strip)
+            .filter(x -> !x.isEmpty())
+            .distinct()
+            .toList();
+    if (out.size() > 50) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "riderIds 는 50개까지입니다.");
+    }
+    return out.isEmpty() ? null : out;
   }
 }

@@ -30,6 +30,9 @@ public class DispatchEvents {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("deliveryId", d.deliveryId());
     p.put("orderId", d.orderId());
+    if (d.deliverySeq() != null) {
+      p.put("deliverySeq", d.deliverySeq()); // 화면 배송 번호 = 주문번호-이 값(2026-11-18, ADR-0070)
+    }
     p.put("shipmentId", d.shipmentId());
     p.put("type", d.type());
     p.put("mfcId", d.mfcId());

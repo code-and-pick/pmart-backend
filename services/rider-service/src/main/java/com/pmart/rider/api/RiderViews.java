@@ -24,6 +24,7 @@ final class RiderViews {
   static RiderProfile profile(Rider r) {
     return new RiderProfile()
         .riderId(r.riderId())
+        .riderNumber(r.riderNumber())
         .version(r.version())
         .name(r.name())
         .phoneMasked(maskPhone(r.phone()))
@@ -86,6 +87,7 @@ final class RiderViews {
   static com.pmart.rider.api.generated.model.OnDutyRider onDuty(Rider r) {
     return new com.pmart.rider.api.generated.model.OnDutyRider()
         .riderId(r.riderId())
+        .riderNumber(r.riderNumber())
         .nameMasked(r.name() == null || r.name().isBlank() ? null : maskName(r.name()))
         .vehicleType(VehicleType.fromValue(r.vehicleType()))
         .operating(operating(r))

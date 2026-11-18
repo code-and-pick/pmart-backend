@@ -73,6 +73,7 @@ public class DeliveriesController implements DeliveriesApi {
                           it.setFee(r.fee());
                           it.setAssignedAt(r.assignedAt().atOffset(java.time.ZoneOffset.UTC));
                           it.setDeliveryState(r.deliveryState());
+                          it.setDeliveryNumber(r.deliveryNumber());
                           it.setOutcome(
                               com.pmart.delivery.dispatch.api.generated.model
                                   .ListRiderAssignmentsForStaff200ResponseItemsInner.OutcomeEnum

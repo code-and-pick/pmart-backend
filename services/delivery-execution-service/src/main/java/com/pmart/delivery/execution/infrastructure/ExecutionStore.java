@@ -42,7 +42,13 @@ public class ExecutionStore {
       @Nullable String returnLinesJson,
       @Nullable String orderNumber,
       @Nullable String mfcName,
-      @Nullable String mfcPhone) {
+      @Nullable String mfcPhone,
+      @Nullable Integer deliverySeq) {
+
+    /** 화면 배송 번호(ADR-0070) = 화면용 주문번호-순번. 둘 중 하나라도 모르면 null. */
+    public @Nullable String deliveryNumber() {
+      return orderNumber == null || deliverySeq == null ? null : orderNumber + "-" + deliverySeq;
+    }
 
     /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. */
     public boolean claimReturn() {
@@ -136,7 +142,7 @@ public class ExecutionStore {
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
           + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text,"
-          + " order_number, mfc_name, mfc_phone";
+          + " order_number, mfc_name, mfc_phone, delivery_seq";
 
   private final JdbcTemplate jdbc;
 
@@ -240,6 +246,12 @@ public class ExecutionStore {
   }
 
   /** DeliveryCreated 의 유형·목적(회수 배송 — DD-2). 배정 사건이 먼저 와 FORWARD 로 만들어졌어도 바로잡는다. */
+  /** 같은 주문의 몇 번째 배송(dispatch DeliveryCreated.deliverySeq — ADR-0070). */
+  public void setDeliverySeq(String deliveryId, int seq) {
+    jdbc.update(
+        "UPDATE execution_delivery SET delivery_seq = ? WHERE delivery_id = ?", seq, deliveryId);
+  }
+
   /** 주문번호를 아직 모를 때만 채운다(2026-11-18 — 배송 생성 때 order 에서). */
   public void fillOrderNumber(String deliveryId, String orderNumber) {
     jdbc.update(
@@ -1285,7 +1297,8 @@ public class ExecutionStore {
         rs.getString(25),
         rs.getString(26),
         rs.getString(27),
-        rs.getString(28));
+        rs.getString(28),
+        rs.getObject(29, Integer.class));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

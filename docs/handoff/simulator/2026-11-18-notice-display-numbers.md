@@ -1,0 +1,23 @@
+# 알림 — 화면 번호 규칙(ADR-0070): 배송 "주문번호-순번", 라이더 "라이더 번호 6자리"
+
+보낸 영역: delivery
+- 작성: pmart-backend PC 5(delivery), 2026-11-18
+- 대상: MFC 시뮬레이터(pmart-mfc-simulation)·라이더 시뮬레이터(pmart-rider-simulation) — 화면 말풍선·목록도 같은 규칙
+- 사용자 2026-11-18: "DLV-… 이게 정확히 뭘 의미하는 번호인지 알 수 있어야", "다른 쪽 시뮬레이션도 다같이 적용되는 규칙", "안에 들어가면 상세번호가 나오게"
+- 상태: 백엔드 PR(PC 1 검토·배포 전) — 병합 뒤 `gen:api`
+
+## 화면 번호
+| 대상 | 화면 번호 | 어디서 받나 |
+|---|---|---|
+| 주문 | `74939255`(8자리) | 기존 `orderNumber` |
+| 배송 | `74939255-1`(주문번호-순번) + 종류 표시 | execution `GET /deliveries/{id}`·`GET /deliveries`(직원)·`GET /riders/me/deliveries` 의 **`deliveryNumber`**(0.26.0), dispatch 배정 이력 `deliveryNumber`(0.10.0) |
+| 라이더 | `김*수 · 482913` | rider 직원 목록·상세·본인 프로필·운행 중 목록 **`riderNumber`**(0.12.0), 관제 `ControlRider.riderNumber`(tracking 0.10.0) |
+| 포장 | 라벨 숫자 6자리 | 기존 |
+
+## 화면 규칙
+- 목록·표·지도·알림·대화에는 화면 번호만. `DLV-…`·`RD-…`·`ORD-…` 를 목록에 내지 마세요.
+- 배송은 번호 옆에 종류(배송·재발송·다시 배송·반납·회수 — `type`·`purpose`).
+- 라이더는 가린 이름 + 라이더 번호. 이메일(Google 계정)은 내지 않음, 전화는 상세에서 가린 값만.
+- 상세 화면에 접힌 **"시스템 번호"** 칸 + 복사 버튼(문의·로그 대조용).
+- 찾기: 주문번호(배송 찾기 `orderNumber`), 라이더 번호(`GET /riders?riderNumber=`). `riderId` 만 있는 목록은 `GET /riders?riderIds=a,b,c`(50개까지)로 한 번에 번호·가린 이름을 붙이세요.
+- 화면 번호가 아직 없으면(옛 기록·주문번호 전) 시스템 ID 끝 8자리를 회색으로 + "번호 없음".

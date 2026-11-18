@@ -29,7 +29,8 @@ public record Rider(
     @Nullable Instant lastHeartbeatAt,
     Instant joinedAt,
     List<Area> deliveryAreas,
-    @Nullable String licenseMasked) {
+    @Nullable String licenseMasked,
+    @Nullable String riderNumber) {
 
   public enum OperatingStatus {
     OFF_DUTY,
@@ -92,7 +93,8 @@ public record Rider(
         lastHeartbeatAt,
         joinedAt,
         deliveryAreas,
-        licenseMasked);
+        licenseMasked,
+        riderNumber);
   }
 
   /** 새 배차를 받을 수 있는 상태(운행 중·신규배차 ON·제한 없음). */

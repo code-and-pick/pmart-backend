@@ -194,6 +194,8 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                                     java.util.Map.of(
                                         "riderId",
                                         r1,
+                                        "riderNumber",
+                                        "482913",
                                         "nameMasked",
                                         "김*수",
                                         "vehicleType",
@@ -226,6 +228,7 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     JsonNode a = items.get(0).path("riderId").asString().equals(r1) ? items.get(0) : items.get(1);
     JsonNode b = a == items.get(0) ? items.get(1) : items.get(0);
     assertThat(a.path("nameMasked").asString()).isEqualTo("김*수");
+    assertThat(a.path("riderNumber").asString()).isEqualTo("482913"); // 화면용 라이더 번호(ADR-0070)
     assertThat(a.path("location").path("lat").asDouble()).isEqualTo(35.1585);
     assertThat(a.path("stale").asBoolean()).isFalse();
     assertThat(b.path("location").isNull() || b.path("location").isMissingNode()).isTrue();

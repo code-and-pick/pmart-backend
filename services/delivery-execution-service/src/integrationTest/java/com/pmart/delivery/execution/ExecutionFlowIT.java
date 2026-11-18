@@ -1494,10 +1494,36 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             .willReturn(
                 com.github.tomakehurst.wiremock.client.WireMock.okJson(
                     "{\"orderId\":\"" + order + "\",\"orderNumber\":\"" + number + "\"}")));
-    created(id, "SHP-" + UUID.randomUUID(), order);
+    String shipment = "SHP-" + UUID.randomUUID();
+    send(
+        "delivery.delivery.v1",
+        "DeliveryCreated",
+        "Delivery",
+        id,
+        Map.of(
+            "deliveryId",
+            id,
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "type",
+            "FORWARD",
+            "mfcId",
+            "MFC-1",
+            "deliverySeq",
+            1,
+            "dropAddressRef",
+            "order:" + order));
     awaitState(id, "UNASSIGNED");
     String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    awaitSql(
+        "SELECT count(*) FROM execution_delivery WHERE delivery_id = '"
+            + id
+            + "' AND delivery_seq = 1");
     JsonNode found = body(staffGet("/deliveries?orderNumber=" + number, ops));
+    assertThat(found.path("items").get(0).path("deliveryNumber").asString())
+        .isEqualTo(number + "-1");
     assertThat(found.path("items").size()).isEqualTo(1);
     assertThat(found.path("items").get(0).path("deliveryId").asString()).isEqualTo(id);
     assertThat(found.path("items").get(0).path("orderNumber").asString()).isEqualTo(number);

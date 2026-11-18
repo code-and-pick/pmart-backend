@@ -387,6 +387,7 @@ public class StaffController implements StaffApi {
         .type(StaffDeliverySummary.TypeEnum.fromValue(d.type()))
         .orderId(d.orderId())
         .orderNumber(d.orderNumber())
+        .deliveryNumber(d.deliveryNumber())
         .mfcId(d.mfcId())
         .riderId(d.riderId())
         .state(ExecutionState.fromValue(d.state()))

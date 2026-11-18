@@ -78,3 +78,4 @@
 - **직원 접속·대기(2026-11-18, 0.25.0)**: 직원용 운행시간에 `connectedSeconds`·`waitingSeconds`(합·날짜별) — rider `duty-segments`(`infrastructure/RiderClient`, `pmart.execution.urls.rider` 기본 `http://rider-service:8403`, 못 부르면 null) → 접속 = 운행 구간 합, 대기 = 신규배차 켠 구간 − 배송 맡은 구간(`ExecutionStore.riderBusySpans`, `OperatingTime.subtract`). 라이더 본인 조회에는 없음.
 
 - **전달지 좌표 대체(2026-11-18, 0.25.1 — 사용자 "좌표로 핀을 찍게 해야지")**: drop-info·직원 drop-location 의 lat·lng — 주문 사본 핀이 없으면 dispatch `route-points`(도로명주소 지오코딩 — 반품 회수는 픽업지, 그 밖 도착지, `DispatchClient.routePoints`) + `coordinateSource`(ORDER_PIN·ADDRESS_GEOCODE). 근본은 customer CU-2.
+- **화면 배송 번호(2026-11-18, 0.26.0·V19 — ADR-0070)**: DeliveryCreated.deliverySeq → `delivery_seq`, `DeliveryRow.deliveryNumber()` = orderNumber-순번 → 배송 조회·직원 목록·내 배달 내역 `deliveryNumber`.

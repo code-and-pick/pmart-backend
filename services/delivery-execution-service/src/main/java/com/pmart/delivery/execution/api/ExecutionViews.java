@@ -67,6 +67,7 @@ class ExecutionViews {
             .caseId(d.caseId())
             .claimId(d.claimId())
             .orderNumber(d.orderNumber())
+            .deliveryNumber(d.deliveryNumber())
             .mfcName(d.mfcName())
             .mfcPhone(d.mfcPhone())
             .originDeliveryId(d.originDeliveryId());

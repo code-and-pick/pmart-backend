@@ -21,7 +21,8 @@ public class RiderClient {
       boolean newDispatchEnabled,
       @Nullable String restriction,
       java.time.@Nullable Instant onDutySince,
-      java.time.@Nullable Instant availableSince) {}
+      java.time.@Nullable Instant availableSince,
+      @Nullable String riderNumber) {}
 
   private final RestClient rider;
   private final ObjectMapper mapper;
@@ -53,7 +54,8 @@ public class RiderClient {
               n.path("operating").path("newDispatchEnabled").asBoolean(false),
               n.path("restriction").asString(null),
               instantOrNull(n.path("onDutySince")),
-              instantOrNull(n.path("availableSince"))));
+              instantOrNull(n.path("availableSince")),
+              n.path("riderNumber").asString(null)));
     }
     return out;
   }

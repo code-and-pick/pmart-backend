@@ -93,6 +93,18 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
         .isEqualTo("APPROVED"); // 정책 전까지 자동 승인(2026-11-17)
 
     assertThat(json(get(OPS, "/riders?riderId=" + rider)).path("items")).hasSize(1);
+    // 화면용 라이더 번호(2026-11-18, ADR-0070): 6자리, 가입 때 정해짐 — 번호로·여러 ID 로 찾기
+    String number = row.path("riderNumber").asString();
+    assertThat(number).matches("[1-9][0-9]{5}");
+    assertThat(json(get(OPS, "/riders/" + rider)).path("riderNumber").asString()).isEqualTo(number);
+    assertThat(
+            json(get(OPS, "/riders?riderNumber=" + number))
+                .path("items")
+                .get(0)
+                .path("riderId")
+                .asString())
+        .isEqualTo(rider);
+    assertThat(json(get(OPS, "/riders?riderIds=" + rider + ",RD-none")).path("items")).hasSize(1);
     // 부분 번호·이름으로는 찾지 않는다
     assertThat(get(OPS, "/riders?phone=" + phone.substring(3)).getStatusCode().value())
         .isEqualTo(400);

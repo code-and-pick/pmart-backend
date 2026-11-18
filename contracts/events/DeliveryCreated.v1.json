@@ -30,6 +30,11 @@
             "deliveryId": {
               "$ref": "_defs.v1.json#/$defs/Ref"
             },
+            "deliverySeq": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "2026-11-18 — 같은 주문의 몇 번째 배송(1부터, dispatch 가 정함). 화면 배송 번호 = 화면용 주문번호-이 값(ADR-0070)"
+            },
             "orderId": {
               "$ref": "_defs.v1.json#/$defs/Ref"
             },

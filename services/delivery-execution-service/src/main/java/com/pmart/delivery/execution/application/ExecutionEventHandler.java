@@ -204,6 +204,9 @@ public class ExecutionEventHandler {
                 ? mapper.writeValueAsString(p.path("returnLines"))
                 : null);
         // 주문번호(2026-11-18): 배정 사건만 싣던 값이라 배차 전 배송은 주문번호로 못 찾았다 — 생길 때 order 에서 한 번 읽는다
+        if (p.path("deliverySeq").isInt()) {
+          store.setDeliverySeq(deliveryId, p.path("deliverySeq").asInt()); // 화면 배송 번호(ADR-0070)
+        }
         String orderId = p.path("orderId").asString("");
         if (d.orderNumber() == null && !orderId.isBlank()) {
           orders.orderNumber(orderId).ifPresent(n -> store.fillOrderNumber(deliveryId, n));

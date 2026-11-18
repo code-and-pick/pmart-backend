@@ -75,7 +75,8 @@ public class DispatchStore {
       @Nullable Instant releasedAt,
       @Nullable String claimId,
       @Nullable String returnLinesJson,
-      @Nullable String pickupRequestId) {
+      @Nullable String pickupRequestId,
+      @Nullable Integer deliverySeq) {
 
     /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 실제 집으로. */
     public boolean redelivery() {
@@ -1308,7 +1309,8 @@ public class DispatchStore {
         instant(rs, "released_at"),
         rs.getString("claim_id"),
         rs.getString("return_lines"),
-        rs.getString("pickup_request_id"));
+        rs.getString("pickup_request_id"),
+        rs.getObject("delivery_seq", Integer.class));
   }
 
   static AttemptRow attempt(ResultSet rs) throws SQLException {

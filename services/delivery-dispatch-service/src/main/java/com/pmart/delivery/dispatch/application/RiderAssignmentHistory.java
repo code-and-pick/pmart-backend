@@ -30,7 +30,8 @@ public class RiderAssignmentHistory {
       Instant assignedAt,
       String deliveryState,
       String outcome,
-      @Nullable Cancellation cancellation) {}
+      @Nullable Cancellation cancellation,
+      @Nullable String deliveryNumber) {}
 
   private final JdbcTemplate jdbc;
 
@@ -48,7 +49,8 @@ public class RiderAssignmentHistory {
     }
     return jdbc.query(
         "SELECT o.offer_id, o.delivery_id, o.source, o.fee, COALESCE(o.decided_at, o.sent_at) AS"
-            + " assigned_at, d.order_id, d.mfc_id, d.type, d.purpose, d.state, d.rider_id AS"
+            + " assigned_at, d.order_id, d.mfc_id, d.type, d.purpose, d.state, d.delivery_seq,"
+            + " d.order_summary->>'orderNumber' AS order_number, d.rider_id AS"
             + " current_rider, c.requested_by, c.reason, c.reason_detail, c.created_at AS"
             + " cancelled_at FROM dispatch_offer o JOIN delivery d ON d.delivery_id = o.delivery_id"
             + " LEFT JOIN LATERAL (SELECT * FROM assignment_cancellation x WHERE x.delivery_id ="
@@ -92,10 +94,18 @@ public class RiderAssignmentHistory {
               rs.getTimestamp("assigned_at").toInstant(),
               state,
               outcome,
-              c);
+              c,
+              deliveryNumber(
+                  rs.getString("order_number"), rs.getObject("delivery_seq", Integer.class)));
         },
         riderId,
         limit,
         offset);
+  }
+
+  /** 화면 배송 번호(ADR-0070) = 화면용 주문번호-순번. 둘 중 하나라도 모르면 null. */
+  public static @Nullable String deliveryNumber(
+      @Nullable String orderNumber, @Nullable Integer seq) {
+    return orderNumber == null || seq == null ? null : orderNumber + "-" + seq;
   }
 }

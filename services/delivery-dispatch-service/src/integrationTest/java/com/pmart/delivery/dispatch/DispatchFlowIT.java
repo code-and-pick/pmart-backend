@@ -223,6 +223,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(1);
     JsonNode created = outbox(deliveryId, "DeliveryCreated");
     assertThat(created.path("payload").path("shipmentId").asString()).isEqualTo(shipment);
+    assertThat(created.path("payload").path("deliverySeq").asInt())
+        .isEqualTo(1); // 화면 배송 번호 순번(ADR-0070)
     assertThat(created.path("payload").path("dropAddressRef").asString())
         .isEqualTo("order:" + order);
 
@@ -1809,6 +1811,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         jdbc.queryForObject(
             "SELECT delivery_id FROM delivery WHERE case_id = ?", String.class, caseId);
     JsonNode created = outbox(recovery, "DeliveryCreated").path("payload");
+    assertThat(created.path("deliverySeq").asInt()).isEqualTo(2); // 같은 주문의 두 번째 배송(ADR-0070)
     assertThat(created.path("type").asString()).isEqualTo("RETURN");
     assertThat(created.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
     assertThat(created.path("caseId").asString()).isEqualTo(caseId);
