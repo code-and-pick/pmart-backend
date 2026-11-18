@@ -1,5 +1,8 @@
 package com.pmart.backoffice.bff.application;
 
+import static com.pmart.backoffice.bff.application.ViewSupport.stamp;
+import static com.pmart.backoffice.bff.application.ViewSupport.text;
+
 import com.pmart.backoffice.bff.infrastructure.PendingWorkClients;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
@@ -313,7 +316,7 @@ public class PendingWorkView {
       }
       out.put("status", "UNKNOWN_RESULT");
       out.put("nextAction", "QUERY_RESULT");
-      out.put("source", resultStamp(system, now, false));
+      out.put("source", stamp(system, now, false));
       out.put("detail", detail);
       return out;
     } catch (HttpClientErrorException e) {
@@ -331,17 +334,9 @@ public class PendingWorkView {
     }
     out.put("status", sn[0]);
     out.put("nextAction", sn[1]);
-    out.put("source", resultStamp(system, now, true));
+    out.put("source", stamp(system, now, true));
     out.put("detail", detail);
     return out;
-  }
-
-  private static Map<String, Object> resultStamp(String system, Instant at, boolean ok) {
-    Map<String, Object> s = new LinkedHashMap<>();
-    s.put("system", system);
-    s.put("asOf", Map.of("asOf", at.toString(), "freshness", ok ? "CURRENT" : "UNAVAILABLE"));
-    s.put("confidence", ok ? "DIRECT" : "UNKNOWN");
-    return s;
   }
 
   private static JsonNode commandResponse(
@@ -458,19 +453,5 @@ public class PendingWorkView {
       throw new PmartException(ErrorCode.FORBIDDEN, "처리 대기는 OPERATOR_ADMIN 만 다룹니다(BO-12).");
     }
     return p;
-  }
-
-  private static Map<String, Object> stamp(
-      String system, Instant at, String freshness, String confidence) {
-    Map<String, Object> s = new LinkedHashMap<>();
-    s.put("system", system);
-    s.put("asOf", Map.of("asOf", at.toString(), "freshness", freshness));
-    s.put("confidence", confidence);
-    return s;
-  }
-
-  private static @Nullable String text(JsonNode n, String field) {
-    JsonNode v = n.path(field);
-    return v.isNull() || v.isMissingNode() ? null : v.asString();
   }
 }

@@ -1,5 +1,8 @@
 package com.pmart.backoffice.bff.application;
 
+import static com.pmart.backoffice.bff.application.ViewSupport.stamp;
+import static com.pmart.backoffice.bff.application.ViewSupport.text;
+
 import com.pmart.backoffice.bff.infrastructure.LookupClients;
 import com.pmart.backoffice.bff.infrastructure.LookupClients.Source;
 import com.pmart.common.security.PmartPrincipal;
@@ -403,20 +406,6 @@ public class LiveDeliveryView {
         "source",
         stamp(source.system, now, ok ? "CURRENT" : "UNAVAILABLE", ok ? "DIRECT" : "UNKNOWN"));
     return s;
-  }
-
-  private static Map<String, Object> stamp(
-      String system, Instant at, String freshness, String confidence) {
-    Map<String, Object> s = new LinkedHashMap<>();
-    s.put("system", system);
-    s.put("asOf", Map.of("asOf", at.toString(), "freshness", freshness));
-    s.put("confidence", confidence);
-    return s;
-  }
-
-  private static @Nullable String text(JsonNode n, String field) {
-    JsonNode v = n.path(field);
-    return v.isNull() || v.isMissingNode() ? null : v.asString();
   }
 
   private static @Nullable String blankToNull(@Nullable String s) {

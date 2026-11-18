@@ -1,5 +1,7 @@
 package com.pmart.backoffice.bff.application;
 
+import static com.pmart.backoffice.bff.application.ViewSupport.text;
+
 import com.pmart.backoffice.bff.infrastructure.ApprovalClient;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
@@ -106,15 +108,6 @@ public class ApprovalInboxView {
   }
 
   private static Map<String, Object> stamp(Instant at, String freshness, String confidence) {
-    Map<String, Object> s = new LinkedHashMap<>();
-    s.put("system", SOURCE);
-    s.put("asOf", Map.of("asOf", at.toString(), "freshness", freshness));
-    s.put("confidence", confidence);
-    return s;
-  }
-
-  private static @Nullable String text(JsonNode n, String field) {
-    JsonNode v = n.path(field);
-    return v.isNull() || v.isMissingNode() ? null : v.asString();
+    return ViewSupport.stamp(SOURCE, at, freshness, confidence);
   }
 }
