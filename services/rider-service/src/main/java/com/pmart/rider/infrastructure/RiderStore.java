@@ -530,6 +530,82 @@ public class RiderStore {
     return n == null ? 0 : n;
   }
 
+  /** 지금 운행 구간 시작·신규배차 켠 시각(2026-11-18 — 접속·대기 시간). */
+  public record DutySince(@Nullable Instant onDutySince, @Nullable Instant availableSince) {}
+
+  /** 운행 구간 하나 — endedAt null 은 지금 열려 있음. available = 신규배차 켬. */
+  public record DutySegment(Instant startedAt, @Nullable Instant endedAt, boolean available) {}
+
+  /**
+   * (운행 여부, 신규배차 켬) 이 바뀌었으면 열린 구간을 닫고, 운행 중이면 새 구간을 연다. on_duty_since·available_since 도 맞춘다. 같은
+   * 트랜잭션에서 상태 갱신과 함께 부른다(2026-11-18 — 접속·대기 시간).
+   */
+  public void recordDuty(
+      String riderId,
+      boolean prevOn,
+      boolean prevAvailable,
+      boolean on,
+      boolean available,
+      Instant at) {
+    if (prevOn == on && prevAvailable == available) {
+      return;
+    }
+    Timestamp t = Timestamp.from(at);
+    jdbc.update(
+        "UPDATE rider_duty_segment SET ended_at = ? WHERE rider_id = ? AND ended_at IS NULL",
+        t,
+        riderId);
+    if (on) {
+      jdbc.update(
+          "INSERT INTO rider_duty_segment (rider_id, started_at, available) VALUES (?, ?, ?)",
+          riderId,
+          t,
+          available);
+    }
+    jdbc.update(
+        "UPDATE rider SET on_duty_since = CASE WHEN ? THEN COALESCE(on_duty_since, ?) END,"
+            + " available_since = CASE WHEN ? THEN COALESCE(available_since, ?) END WHERE rider_id"
+            + " = ?",
+        on,
+        t,
+        available,
+        t,
+        riderId);
+  }
+
+  public Map<String, DutySince> dutySince(List<String> riderIds) {
+    Map<String, DutySince> out = new LinkedHashMap<>();
+    if (riderIds.isEmpty()) {
+      return out;
+    }
+    String in = String.join(",", java.util.Collections.nCopies(riderIds.size(), "?"));
+    jdbc.query(
+        "SELECT rider_id, on_duty_since, available_since FROM rider WHERE rider_id IN (" + in + ")",
+        rs -> {
+          out.put(
+              rs.getString(1),
+              new DutySince(
+                  instantOrNull(rs, "on_duty_since"), instantOrNull(rs, "available_since")));
+        },
+        riderIds.toArray());
+    return out;
+  }
+
+  /** [from, to) 와 겹치는 운행 구간(시작순). */
+  public List<DutySegment> dutySegments(String riderId, Instant from, Instant to) {
+    return jdbc.query(
+        "SELECT started_at, ended_at, available FROM rider_duty_segment WHERE rider_id = ? AND"
+            + " started_at < ? AND (ended_at IS NULL OR ended_at > ?) ORDER BY started_at",
+        (rs, i) ->
+            new DutySegment(
+                instant(rs, "started_at"),
+                instantOrNull(rs, "ended_at"),
+                rs.getBoolean("available")),
+        riderId,
+        Timestamp.from(to),
+        Timestamp.from(from));
+  }
+
   /** 탈퇴: 개인정보를 지우고(사용자 "즉시 가림·재가입 허용") 운행·신규배차를 끈다. 행은 이력의 주체로 남는다. */
   public void withdraw(String riderId, Instant at) {
     jdbc.update(

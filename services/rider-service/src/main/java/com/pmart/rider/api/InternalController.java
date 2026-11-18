@@ -60,9 +60,41 @@ public class InternalController implements InternalApi {
   @Override
   public ResponseEntity<com.pmart.rider.api.generated.model.ListOnDutyRidersInternal200Response>
       listOnDutyRidersInternal(String mfcId) {
+    var list = riders.onDuty(mfcId);
+    var since = riders.dutySince(list.stream().map(r -> r.riderId()).toList());
     return ResponseEntity.ok(
         new com.pmart.rider.api.generated.model.ListOnDutyRidersInternal200Response()
-            .items(riders.onDuty(mfcId).stream().map(RiderViews::onDuty).toList()));
+            .items(
+                list.stream()
+                    .map(
+                        r -> {
+                          var s = since.get(r.riderId());
+                          return RiderViews.onDuty(r)
+                              .onDutySince(s == null ? null : RiderViews.time(s.onDutySince()))
+                              .availableSince(
+                                  s == null ? null : RiderViews.time(s.availableSince()));
+                        })
+                    .toList()));
+  }
+
+  /** 운행 구간(0.11.0, 2026-11-18) — execution 직원 접속·대기 시간. */
+  @Override
+  public ResponseEntity<
+          com.pmart.rider.api.generated.model.ListRiderDutySegmentsInternal200Response>
+      listRiderDutySegmentsInternal(String riderId, OffsetDateTime from, OffsetDateTime to) {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.ListRiderDutySegmentsInternal200Response()
+            .riderId(riderId)
+            .items(
+                riders.dutySegments(riderId, from.toInstant(), to.toInstant()).stream()
+                    .map(
+                        s ->
+                            new com.pmart.rider.api.generated.model
+                                    .ListRiderDutySegmentsInternal200ResponseItemsInner()
+                                .startedAt(RiderViews.time(s.startedAt()))
+                                .endedAt(RiderViews.time(s.endedAt()))
+                                .available(s.available()))
+                    .toList()));
   }
 
   @Override

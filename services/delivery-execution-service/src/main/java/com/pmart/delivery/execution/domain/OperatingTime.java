@@ -44,6 +44,30 @@ public final class OperatingTime {
     return out;
   }
 
+  /** base 구간에서 cut 구간을 뺀다(2026-11-18 — 대기 = 신규배차 켠 구간 − 배송을 맡은 구간). */
+  public static List<Span> subtract(List<Span> base, List<Span> cut) {
+    List<Span> cuts = merge(cut);
+    List<Span> out = new ArrayList<>();
+    for (Span b : merge(base)) {
+      Instant cursor = b.start();
+      for (Span c : cuts) {
+        if (!c.end().isAfter(cursor) || !c.start().isBefore(b.end())) {
+          continue;
+        }
+        if (c.start().isAfter(cursor)) {
+          out.add(new Span(cursor, c.start()));
+        }
+        if (c.end().isAfter(cursor)) {
+          cursor = c.end();
+        }
+      }
+      if (b.end().isAfter(cursor)) {
+        out.add(new Span(cursor, b.end()));
+      }
+    }
+    return out;
+  }
+
   /** 시작 순으로 놓고 겹치거나 맞닿은 구간을 합친다. 끝이 시작보다 앞선 구간(시계 어긋남)은 버린다. */
   static List<Span> merge(List<Span> spans) {
     List<Span> sorted =

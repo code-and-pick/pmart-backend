@@ -68,4 +68,22 @@ class OperatingTimeTest {
             SEOUL);
     assertThat(days.get(LocalDate.of(2026, 11, 17))).isZero();
   }
+
+  /** 대기(2026-11-18) = 신규배차 켠 구간 − 배송 맡은 구간. */
+  @Test
+  void subtractRemovesBusySpans() {
+    java.time.Instant t0 = java.time.Instant.parse("2026-11-18T01:00:00Z");
+    var base = List.of(new OperatingTime.Span(t0, t0.plusSeconds(3600)));
+    var busy =
+        List.of(
+            new OperatingTime.Span(t0.plusSeconds(600), t0.plusSeconds(1200)),
+            new OperatingTime.Span(t0.plusSeconds(1000), t0.plusSeconds(1800)),
+            new OperatingTime.Span(t0.plusSeconds(3000), t0.plusSeconds(4000)));
+    var left = OperatingTime.subtract(base, busy);
+    assertThat(left)
+        .containsExactly(
+            new OperatingTime.Span(t0, t0.plusSeconds(600)),
+            new OperatingTime.Span(t0.plusSeconds(1800), t0.plusSeconds(3000)));
+    assertThat(OperatingTime.subtract(base, List.of())).isEqualTo(base);
+  }
 }

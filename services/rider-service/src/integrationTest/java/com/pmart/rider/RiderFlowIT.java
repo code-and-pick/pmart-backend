@@ -118,6 +118,29 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(me.path("operating").path("status").asString()).isEqualTo("ON_DUTY");
     assertThat(me.path("nameMasked").asString()).contains("*");
     assertThat(duty.toString()).doesNotContain("010");
+    // 접속·대기(2026-11-18): 운행 시작·신규배차 켠 시각, 신규배차를 꺼도 운행 시작은 그대로
+    String since = me.path("onDutySince").asString();
+    assertThat(since).isNotBlank();
+    assertThat(me.path("availableSince").asString()).isEqualTo(since);
+    assertThat(
+            http.put()
+                .uri("/riders/me/state")
+                .headers(h -> riderHeaders(h, rider, "pause-" + rider))
+                .body(Map.of("status", "ON_DUTY", "newDispatchEnabled", false))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    JsonNode paused =
+        onDuty("MFC-IT-1")
+            .path("items")
+            .valueStream()
+            .filter(i -> rider.equals(i.path("riderId").asString()))
+            .findFirst()
+            .orElseThrow();
+    assertThat(paused.path("onDutySince").asString()).isEqualTo(since);
+    assertThat(paused.path("availableSince").isNull()).isTrue();
 
     // 배달지역 밖 MFC 로 운행 시작 400, 옛 버전 409
     assertThat(
@@ -162,6 +185,22 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(json(off.getBody()).path("newDispatchEnabled").asBoolean()).isFalse();
     assertThat(eligibleIds("MFC-IT-1")).doesNotContain(rider);
     assertThat(onDuty("MFC-IT-1").toString()).doesNotContain(rider); // 운행 끝 → 관제에서 빠짐
+    // 운행 구간: 신규배차 켬 구간 → 끈 구간, 둘 다 닫힘
+    JsonNode segs =
+        json(
+            http.get()
+                .uri(
+                    "/internal/riders/{id}/duty-segments?from={f}&to={t}",
+                    rider,
+                    java.time.Instant.now().minusSeconds(3600).toString(),
+                    java.time.Instant.now().plusSeconds(60).toString())
+                .header("X-Source-System", "delivery-execution-service")
+                .retrieve()
+                .body(String.class));
+    assertThat(segs.path("items").size()).isEqualTo(2);
+    assertThat(segs.path("items").get(0).path("available").asBoolean()).isTrue();
+    assertThat(segs.path("items").get(1).path("available").asBoolean()).isFalse();
+    assertThat(segs.path("items").get(1).path("endedAt").isNull()).isFalse();
   }
 
   @Test

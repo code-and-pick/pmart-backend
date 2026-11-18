@@ -91,6 +91,7 @@ public class WithdrawalService {
                 return new Withdrawal(requestId, "REJECTED", List.copyOf(blockers), now, null);
               }
               store.withdraw(riderId, now);
+              store.recordDuty(riderId, true, true, false, false, now); // 열린 운행 구간 닫기
               store.upsertWithdrawal(riderId, requestId, "COMPLETED", List.of(), reason, now, now);
               Map<String, Object> p = new LinkedHashMap<>();
               p.put("riderId", riderId);

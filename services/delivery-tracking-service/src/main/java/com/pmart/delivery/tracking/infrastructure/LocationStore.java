@@ -6,6 +6,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -123,6 +124,25 @@ public class LocationStore {
       boolean pickedUp,
       @Nullable Instant etaPickup,
       @Nullable Instant etaDrop) {}
+
+  /** 라이더마다 마지막으로 끝난(CLOSED·EXPIRED) 진행 중 배송의 시각(2026-11-18 — 관제 대기 시작). */
+  public Map<String, Instant> lastEndedOf(List<String> riderIds) {
+    Map<String, Instant> out = new java.util.HashMap<>();
+    if (riderIds.isEmpty()) {
+      return out;
+    }
+    String in = String.join(",", Collections.nCopies(riderIds.size(), "?"));
+    jdbc.query(
+        "SELECT rider_id, max(updated_at) FROM rider_active_delivery WHERE state <> 'ACTIVE' AND"
+            + " rider_id IN ("
+            + in
+            + ") GROUP BY rider_id",
+        rs -> {
+          out.put(rs.getString(1), rs.getTimestamp(2).toInstant());
+        },
+        riderIds.toArray());
+    return out;
+  }
 
   public List<Active> activeOf(List<String> riderIds) {
     if (riderIds.isEmpty()) {

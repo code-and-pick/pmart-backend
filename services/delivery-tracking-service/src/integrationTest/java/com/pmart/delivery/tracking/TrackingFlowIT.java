@@ -192,13 +192,21 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                                 "items",
                                 List.of(
                                     java.util.Map.of(
-                                        "riderId", r1,
-                                        "nameMasked", "김*수",
-                                        "vehicleType", "MOTORCYCLE",
+                                        "riderId",
+                                        r1,
+                                        "nameMasked",
+                                        "김*수",
+                                        "vehicleType",
+                                        "MOTORCYCLE",
                                         "operating",
-                                            java.util.Map.of(
-                                                "status", "ON_DUTY", "newDispatchEnabled", true),
-                                        "restriction", "NORMAL"),
+                                        java.util.Map.of(
+                                            "status", "ON_DUTY", "newDispatchEnabled", true),
+                                        "restriction",
+                                        "NORMAL",
+                                        "onDutySince",
+                                        now.minusSeconds(3600).toString(),
+                                        "availableSince",
+                                        now.minusSeconds(1800).toString()),
                                     java.util.Map.of(
                                         "riderId",
                                         r2,
@@ -223,6 +231,10 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(b.path("location").isNull() || b.path("location").isMissingNode()).isTrue();
     assertThat(b.path("stale").asBoolean()).isTrue();
     assertThat(b.path("newDispatchEnabled").asBoolean()).isFalse();
+    // 접속·대기(2026-11-18): 운행 시작 그대로, 배송 0건 + 신규배차 켬 → 대기 시작 = 켠 시각, 신규배차 끔 → 대기 아님
+    assertThat(Instant.parse(a.path("onDutySince").asString())).isEqualTo(now.minusSeconds(3600));
+    assertThat(Instant.parse(a.path("waitingSince").asString())).isEqualTo(now.minusSeconds(1800));
+    assertThat(b.path("waitingSince").isNull() || b.path("waitingSince").isMissingNode()).isTrue();
     assertThat(res.getBody()).doesNotContain(off); // 운행 중이 아니면 위치가 있어도 안 보임
     // 관리자도 됨, 상담원·센터 관리자·라이더는 403
     assertThat(

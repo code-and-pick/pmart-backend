@@ -631,6 +631,34 @@ public class ExecutionStore {
         ts(to));
   }
 
+  /**
+   * 라이더가 배송을 맡고 있던 구간(2026-11-18 — 대기 시간 계산): 배정 ~ 끝(완료 시각, 진행 중이면 now, 실패·취소는 마지막 이력 시각). 상태 무관.
+   */
+  public List<com.pmart.delivery.execution.domain.OperatingTime.Span> riderBusySpans(
+      String riderId, Instant from, Instant to, Instant now) {
+    return jdbc
+        .query(
+            "SELECT d.assigned_at, COALESCE(d.completed_at, CASE WHEN d.state IN ('ASSIGNED',"
+                + " 'ARRIVED_AT_STORE', 'PICKED_UP', 'ARRIVED_AT_CUSTOMER', 'FAILURE_REPORTED',"
+                + " 'RETURN_PICKED_UP') THEN CAST(? AS timestamptz) END, (SELECT max(h.occurred_at)"
+                + " FROM execution_history h WHERE h.delivery_id = d.delivery_id)) FROM"
+                + " execution_delivery d WHERE d.rider_id = ? AND d.assigned_at IS NOT NULL AND"
+                + " d.assigned_at < ?",
+            (rs, i) -> {
+              java.sql.Timestamp end = rs.getTimestamp(2);
+              return end == null
+                  ? null
+                  : new com.pmart.delivery.execution.domain.OperatingTime.Span(
+                      rs.getTimestamp(1).toInstant(), end.toInstant());
+            },
+            ts(now),
+            riderId,
+            ts(to))
+        .stream()
+        .filter(s -> s != null && s.end().isAfter(from))
+        .toList();
+  }
+
   /** 실패 등록·결정 기록과 상태를 함께 바꾼다. */
   /** 이 배송의 전달 실패 반납 배송(dispatch 가 만든 뒤 DeliveryCreated 가 와야 있다). */
   public Optional<String> failedReturnOf(String originDeliveryId) {

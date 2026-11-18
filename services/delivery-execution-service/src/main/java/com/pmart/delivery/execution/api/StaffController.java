@@ -215,14 +215,24 @@ public class StaffController implements StaffApi {
             .from(r.from())
             .to(r.to())
             .totalSeconds(r.totalSeconds())
+            .connectedSeconds(r.connected() == null ? null : sum(r.connected()))
+            .waitingSeconds(r.waiting() == null ? null : sum(r.waiting()))
             .days(
                 r.days().entrySet().stream()
                     .map(
                         e ->
                             new com.pmart.delivery.execution.api.generated.model.OperatingTimeDay()
                                 .date(e.getKey())
-                                .seconds(e.getValue()))
+                                .seconds(e.getValue())
+                                .connectedSeconds(
+                                    r.connected() == null ? null : r.connected().get(e.getKey()))
+                                .waitingSeconds(
+                                    r.waiting() == null ? null : r.waiting().get(e.getKey())))
                     .toList()));
+  }
+
+  private static long sum(java.util.Map<java.time.LocalDate, Long> m) {
+    return m.values().stream().mapToLong(Long::longValue).sum();
   }
 
   @Override

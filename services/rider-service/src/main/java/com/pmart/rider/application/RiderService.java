@@ -353,6 +353,15 @@ public class RiderService {
           Instant now = clock.instant();
           store.updateOperating(
               riderId, r.version(), d.status().name(), d.newDispatchEnabled(), d.mfcId(), now);
+          boolean wasOn = r.operatingStatus() == Rider.OperatingStatus.ON_DUTY;
+          boolean on = d.status() == Rider.OperatingStatus.ON_DUTY;
+          store.recordDuty( // 접속·대기 시간(2026-11-18)
+              riderId,
+              wasOn,
+              wasOn && r.newDispatchEnabled(),
+              on,
+              on && d.newDispatchEnabled(),
+              now);
           Map<String, Object> p = new LinkedHashMap<>();
           p.put("riderId", riderId);
           p.put("operatingState", d.status().name());
@@ -410,6 +419,17 @@ public class RiderService {
   }
 
   /** 라이더 관제(2026-11-17) — 센터의 운행 중 라이더 200명까지. */
+  /** 관제용 운행 시작·신규배차 켠 시각(2026-11-18). */
+  public Map<String, RiderStore.DutySince> dutySince(List<String> riderIds) {
+    return store.dutySince(riderIds);
+  }
+
+  /** 운행 구간(직원 접속·대기 시간 계산 — execution 이 부른다, 2026-11-18). 없는 라이더 404. */
+  public List<RiderStore.DutySegment> dutySegments(String riderId, Instant from, Instant to) {
+    store.find(riderId).orElseThrow(() -> PmartException.notFound("RIDER_NOT_FOUND", "라이더가 없습니다."));
+    return store.dutySegments(riderId, from, to);
+  }
+
   public List<Rider> onDuty(String mfcId) {
     Instant now = clock.instant();
     return store.onDuty(mfcId, 200).stream().map(r -> r.asOf(now)).toList();

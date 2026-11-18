@@ -6,9 +6,12 @@ import com.pmart.common.web.PmartException;
 import com.pmart.delivery.execution.domain.OperatingTime;
 import com.pmart.delivery.execution.infrastructure.ExecutionStore;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
@@ -25,14 +28,29 @@ public class OperatingTimeService {
   static final int MAX_DAYS = 31;
 
   public record Result(
-      LocalDate from, LocalDate to, long totalSeconds, Map<LocalDate, Long> days) {}
+      LocalDate from,
+      LocalDate to,
+      long totalSeconds,
+      Map<LocalDate, Long> days,
+      @Nullable Map<LocalDate, Long> connected,
+      @Nullable Map<LocalDate, Long> waiting) {
+
+    Result(LocalDate from, LocalDate to, long totalSeconds, Map<LocalDate, Long> days) {
+      this(from, to, totalSeconds, days, null, null);
+    }
+  }
 
   private final ExecutionStore store;
   private final Clock clock;
+  private final com.pmart.delivery.execution.infrastructure.RiderClient riders;
 
-  public OperatingTimeService(ExecutionStore store, Clock clock) {
+  public OperatingTimeService(
+      ExecutionStore store,
+      Clock clock,
+      com.pmart.delivery.execution.infrastructure.RiderClient riders) {
     this.store = store;
     this.clock = clock;
+    this.riders = riders;
   }
 
   public Result mine(@Nullable LocalDate from, @Nullable LocalDate to) {
@@ -47,7 +65,33 @@ public class OperatingTimeService {
   /** 직원용(2026-11-17 라이더 백오피스) — RIDER_OPS·OPERATOR_ADMIN·CS_AGENT 보기. */
   public Result forStaff(String rider, @Nullable LocalDate from, @Nullable LocalDate to) {
     EarningService.requireRiderStaff();
-    return of(rider, from, to);
+    Result r = of(rider, from, to);
+    // 접속·대기(2026-11-18 — 사용자 "접속 시간 따로 더함", 대기 = 운행 중 + 신규배차 켬 + 배송 0건). rider 를 못 부르면 null
+    Instant start = r.from().atStartOfDay(SEOUL).toInstant();
+    Instant end = r.to().plusDays(1).atStartOfDay(SEOUL).toInstant();
+    Instant now = clock.instant();
+    var segments = riders.dutySegments(rider, start, end);
+    if (segments.isEmpty()) {
+      return r;
+    }
+    List<OperatingTime.Span> on = new ArrayList<>();
+    List<OperatingTime.Span> available = new ArrayList<>();
+    for (var s : segments.get()) {
+      Instant e = s.endedAt() != null ? s.endedAt() : now;
+      OperatingTime.Span span = new OperatingTime.Span(s.startedAt(), e);
+      on.add(span);
+      if (s.available()) {
+        available.add(span);
+      }
+    }
+    var busy = store.riderBusySpans(rider, start, end, now);
+    return new Result(
+        r.from(),
+        r.to(),
+        r.totalSeconds(),
+        r.days(),
+        OperatingTime.perDay(on, r.from(), r.to(), SEOUL),
+        OperatingTime.perDay(OperatingTime.subtract(available, busy), r.from(), r.to(), SEOUL));
   }
 
   private Result of(String rider, @Nullable LocalDate from, @Nullable LocalDate to) {

@@ -55,7 +55,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock({
   @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.execution.urls.order"),
   @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.execution.urls.dispatch"),
-  @ConfigureWireMock(name = "audit", baseUrlProperties = "pmart.execution.urls.audit")
+  @ConfigureWireMock(name = "audit", baseUrlProperties = "pmart.execution.urls.audit"),
+  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.execution.urls.rider")
 })
 class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
@@ -103,6 +104,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("audit")
   WireMockServer auditApi;
+
+  @InjectWireMock("rider")
+  WireMockServer riderApi;
 
   RestClient http;
 
@@ -289,6 +293,62 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     ResponseEntity<String> closed = staffGet("/deliveries/" + id + "/drop-location", ops);
     assertThat(closed.getStatusCode().value()).isEqualTo(409);
     assertThat(body(closed).path("code").asString()).isEqualTo("DROP_LOCATION_CLOSED");
+  }
+
+  /**
+   * 직원용 접속·대기(2026-11-18 — 사용자 "접속 시간 따로 더함", 대기 = 운행 중 + 신규배차 켬 + 배송 0건): rider 운행 구간 [2시간 전 ~ 1시간
+   * 전 신규배차 켬], [1시간 전 ~ 지금 끔] → 접속 약 2시간, 대기 1시간(배송 없음). rider 를 못 부르면 null. 라이더 본인 조회에는 없음.
+   */
+  @Test
+  void staffOperatingTimeAddsConnectedAndWaiting() {
+    String rider = "RDR-" + UUID.randomUUID();
+    Instant now = Instant.now();
+    riderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/riders/" + rider + "/duty-segments"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"riderId\":\""
+                        + rider
+                        + "\",\"items\":[{\"startedAt\":\""
+                        + now.minusSeconds(7200)
+                        + "\",\"endedAt\":\""
+                        + now.minusSeconds(3600)
+                        + "\",\"available\":true},{\"startedAt\":\""
+                        + now.minusSeconds(3600)
+                        + "\",\"endedAt\":null,\"available\":false}]}")));
+    java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul"));
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode t =
+        body(
+            staffGet(
+                "/rider-operating-time?riderId="
+                    + rider
+                    + "&from="
+                    + today.minusDays(1)
+                    + "&to="
+                    + today,
+                ops));
+    assertThat(t.path("totalSeconds").asLong()).isZero();
+    assertThat(t.path("connectedSeconds").asLong()).isBetween(7195L, 7260L);
+    assertThat(t.path("waitingSeconds").asLong()).isEqualTo(3600L);
+    // 라이더 본인 조회에는 접속·대기가 없다
+    JsonNode mine = body(meGet("/riders/me/operating-time", rider));
+    assertThat(
+            mine.path("connectedSeconds").isNull() || mine.path("connectedSeconds").isMissingNode())
+        .isTrue();
+    // rider 장애 → null(운행시간은 그대로)
+    riderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/riders/" + rider + "/duty-segments"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
+    JsonNode down = body(staffGet("/rider-operating-time?riderId=" + rider, ops));
+    assertThat(
+            down.path("connectedSeconds").isNull() || down.path("connectedSeconds").isMissingNode())
+        .isTrue();
   }
 
   ResponseEntity<String> dropInfo(String id, String rider) {

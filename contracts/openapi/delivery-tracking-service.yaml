@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.8.1
+  version: 0.9.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -265,6 +265,14 @@ components:
         vehicleType: { type: [string, 'null'] }
         newDispatchEnabled: { type: boolean }
         restriction: { type: [string, 'null'], description: 'rider AccountRestriction — NORMAL 이 아니면 계정 제한' }
+        onDutySince: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-18', description: '(0.9.0) 지금 운행 구간 시작(rider — 신규배차 켜고 끄기로는 안 바뀜)' }
+        waitingSince:
+          type: [string, 'null']
+          format: date-time
+          x-added-in: '2026-11-18'
+          description: |
+            (0.9.0) 대기 시작 — 사용자 2026-11-18 "대기 = 운행 중 + 신규배차 켬 + 배송 0건". 진행 중 배송이 없고 신규배차가 켜져 있으면
+            (신규배차 켠 시각, 이 라이더의 마지막 배송이 끝난 시각) 중 늦은 때, 아니면 null. 계정 제한은 따지지 않는다(제한이면 신규배차가 꺼진다).
         location:
           type: [object, 'null']
           properties:

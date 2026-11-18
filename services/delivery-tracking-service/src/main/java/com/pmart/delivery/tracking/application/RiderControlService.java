@@ -26,7 +26,8 @@ public class RiderControlService {
       LocationStore.@Nullable Latest location,
       @Nullable Long staleSinceSeconds,
       boolean stale,
-      List<LocationStore.Active> active) {}
+      List<LocationStore.Active> active,
+      @Nullable Instant waitingSince) {}
 
   public record Board(List<Item> items, Instant asOf) {}
 
@@ -60,6 +61,7 @@ public class RiderControlService {
     for (LocationStore.Active a : store.activeOf(ids)) {
       active.computeIfAbsent(a.riderId(), k -> new java.util.ArrayList<>()).add(a);
     }
+    Map<String, Instant> lastEnded = store.lastEndedOf(ids);
     Duration staleAfter = props.staleAfter();
     List<Item> items =
         onDuty.stream()
@@ -71,9 +73,28 @@ public class RiderControlService {
                           ? null
                           : Math.max(0, Duration.between(l.receivedAt(), now).toSeconds());
                   boolean stale = l == null || since > staleAfter.toSeconds();
-                  return new Item(r, l, since, stale, active.getOrDefault(r.riderId(), List.of()));
+                  List<LocationStore.Active> mine = active.getOrDefault(r.riderId(), List.of());
+                  return new Item(
+                      r,
+                      l,
+                      since,
+                      stale,
+                      mine,
+                      waitingSince(r.availableSince(), mine.isEmpty(), lastEnded.get(r.riderId())));
                 })
             .toList();
     return new Board(items, now);
+  }
+
+  /**
+   * 대기 시작(2026-11-18 사용자 "대기 = 운행 중 + 신규배차 켬 + 배송 0건"): 신규배차를 켜 두었고 진행 중 배송이 없으면 (켠 시각, 마지막 배송 끝) 중
+   * 늦은 때, 아니면 null.
+   */
+  static @Nullable Instant waitingSince(
+      @Nullable Instant availableSince, boolean noActive, @Nullable Instant lastEnded) {
+    if (availableSince == null || !noActive) {
+      return null;
+    }
+    return lastEnded != null && lastEnded.isAfter(availableSince) ? lastEnded : availableSince;
   }
 }

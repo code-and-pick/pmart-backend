@@ -19,7 +19,9 @@ public class RiderClient {
       @Nullable String nameMasked,
       @Nullable String vehicleType,
       boolean newDispatchEnabled,
-      @Nullable String restriction) {}
+      @Nullable String restriction,
+      java.time.@Nullable Instant onDutySince,
+      java.time.@Nullable Instant availableSince) {}
 
   private final RestClient rider;
   private final ObjectMapper mapper;
@@ -49,8 +51,14 @@ public class RiderClient {
               n.path("nameMasked").asString(null),
               n.path("vehicleType").asString(null),
               n.path("operating").path("newDispatchEnabled").asBoolean(false),
-              n.path("restriction").asString(null)));
+              n.path("restriction").asString(null),
+              instantOrNull(n.path("onDutySince")),
+              instantOrNull(n.path("availableSince"))));
     }
     return out;
+  }
+
+  private static java.time.@Nullable Instant instantOrNull(JsonNode n) {
+    return n.isString() ? java.time.Instant.parse(n.asString()) : null;
   }
 }

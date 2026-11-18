@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.24.0
+  version: 0.25.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1629,6 +1629,18 @@ components:
         from: { type: string, format: date }
         to: { type: string, format: date }
         totalSeconds: { type: integer, format: int64 }
+        connectedSeconds:
+          type: [integer, 'null']
+          format: int64
+          x-added-in: '2026-11-18'
+          description: |
+            (직원용만, 2026-11-18 — 사용자 "접속 시간 따로 더함") 접속 시간 = 운행(ON_DUTY)을 켜 둔 시간 합(rider 운행 구간). 운행시간(totalSeconds — 수락 ~ 완료)과 다르다.
+            rider 를 못 부르면 null. 라이더 본인 조회(/riders/me/operating-time)에는 없음.
+        waitingSeconds:
+          type: [integer, 'null']
+          format: int64
+          x-added-in: '2026-11-18'
+          description: (직원용만) 대기 시간 = 운행 중 + 신규배차 켬 + 맡은 배송 0건인 시간 합(사용자 2026-11-18). 배송을 맡은 동안 = 배정 ~ 끝(완료·실패·취소, 진행 중이면 지금).
         days:
           type: array
           items: { $ref: '#/components/schemas/OperatingTimeDay' }
@@ -1639,6 +1651,8 @@ components:
       properties:
         date: { type: string, format: date, description: Asia/Seoul 날짜 }
         seconds: { type: integer, format: int64 }
+        connectedSeconds: { type: [integer, 'null'], format: int64, x-added-in: '2026-11-18', description: (직원용만) 그날 접속 시간 }
+        waitingSeconds: { type: [integer, 'null'], format: int64, x-added-in: '2026-11-18', description: (직원용만) 그날 대기 시간 }
     EarningFault:
       type: string
       x-added-in: '2026-11-17'
