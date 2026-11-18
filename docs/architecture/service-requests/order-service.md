@@ -55,3 +55,14 @@
 - **결정(2026-11-17 사용자 "추천대로" — CL-1 추가 결정 9)**: (나) 사건 구독. claim 이 반품 종결 `ClaimClosed` 에 행별 반품 수량 `returnedLines` 를 싣고 order 가 받는다(검수 환불마다가 아니라 클레임이 끝날 때 한 번 — 받은 만큼만 끝낸 반품도 같은 길).
 - **구현(2026-11-17, PC 1 — order 계약 0.11.2·V15, 커밋만 — 미배포)**: 구독 `claimEvents-in-0` ← order.claim.v1 `ClaimClosed`(outcome RETURN_REFUNDED·RETURN_SHORT_CLOSED만, 취소·기한 만료 반품은 수량 없음) → `OrderService.claimClosed`: 업무 키 `order_fulfillment_fact`(kind RETURN, source_ref claimId — V15 가 CHECK 넓힘)로 한 번, `OrderRules.returned`(행마다 +q, 한도 = 전달 − 이미 반품 — 넘거나 없는 행이면 반영 없이 MISMATCH), 주문 상태 그대로·버전 +1·행마다 `OrderLineQuantityChanged`(reason RETURN·returnedQty·claimId). 내부·고객 조회의 `returnedQty` 가 채워진다(API 모양 그대로). `line-quantity-changes` reason RETURN 은 그대로 422.
   - 배포 전: pmart-config `order-service.yml` 에 `claimEvents` 함수·바인딩(order.claim.v1). claim 이 `returnedLines` 를 싣기 시작하는 claim 0.3.0 과 같이(이전 claim 의 ClaimClosed 는 행이 없어 무시 — 로그 경고).
+
+## O-8. 기간 주문 요약·상품별 판매 집계 — 백오피스 대시보드 D2·D3 (2026-11-18 기록, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: 백오피스 웹 대시보드(pmart-clients `docs/handoff/backoffice/2026-11-18-backend-dashboard-metrics.md` D2·D3) → backoffice-bff(PC 2)가 부른다. 화면은 금액·건수를 서버 값만 쓴다(목록을 받아 더하면 쪽 상한에 걸림).
+- **사용자 결정(2026-11-18, PC 2 추천대로)** — 매출 정의 Q-19 가 정해지기 전의 대시보드 기준:
+  - 기준 날짜 = **주문 확정 시각(`confirmed_at`)의 한국 날짜**(ADR-0010). 기준이 다른 숫자를 섞지 않는다(SCM 원문 "기준이 다른 숫자를 섞지 않는다").
+  - D2 = 상태별 주문 수 + **결제 승인 금액 합·건수**(확정 주문의 `approved_amount`). 환불은 빼지 않는다 — 환불 금액은 claim 에서 따로(CL-3) 나란히 보인다(순매출을 만들지 않음).
+  - D3 = 상품(SKU)별 **확정 수량 − 출고 전 취소 수량**과 그 금액(줄 금액 − 할인 분담, 같은 비율), 상위 N. 반품은 빼지 않고 "주문 확정 기준"이라 표시.
+- **필요한 것**: 직원(OPERATOR_ADMIN) 조회 — 예 `GET /orders/metrics/summary?from&to&mfcId`(상태별 count, approvedAmount 합·건수) · `GET /orders/metrics/top-products?from&to&mfcId&limit`(sku·productId·qty·amount). from·to 한국 날짜 포함, 기간 상한(예 93일), 정수 KRW. 이름·형태는 order 가 정한다.
+- **지금(임시)**: 없음 — 화면은 칸을 만들지 않는다. bff 는 받으면 `views/metrics` 또는 새 칸으로 잇는다.
+- 근거 표: `customer_order`(status·mfc_id·approved_amount·confirmed_at, 색인 `ix_customer_order_confirmed`·`ix_customer_order_mfc`), `customer_order_line`(sku·quantity·cancelled_before_ship_qty·line_amount·discount_share).

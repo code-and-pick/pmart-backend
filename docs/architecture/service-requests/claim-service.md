@@ -66,3 +66,9 @@
   2. (또는) `pickup.failures[]`: `{reason, customerReason, countedInLimit, failedAt}`. 화면이 규칙을 다시 짜야 해서 1보다 낫지 않다. 다만 상담원이 사유 이력을 보는 데는 쓸모가 있다.
 - 필드 추가뿐이라 하위 호환. 정해지면 backoffice 웹이 AGENT_CHOOSES 일 때만 고르기를 보인다.
 - **상태**: 요청(PC 1 결정·구현 대기).
+
+## CL-3. 기간 환불 금액 합 — 백오피스 대시보드 D2 (2026-11-18 기록, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: 백오피스 대시보드 D2(주문 요약 O-8 과 나란히). 사용자 결정(2026-11-18): 매출에서 환불을 빼지 않고 **환불 금액을 따로** 보인다.
+- **필요한 것**: 직원(OPERATOR_ADMIN) 조회 — 기간(환불 **완료 시각 `refund_intent.completed_at` 의 한국 날짜**, 포함) 안 완료된 환불의 금액 합·건수(정수 KRW), 선택 mfcId. 예 `GET /claims/metrics/refunds?from&to`. 종류(취소·반품)별로 나눠 주면 좋음.
+- **지금(임시)**: 없음.

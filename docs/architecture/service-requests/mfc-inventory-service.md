@@ -49,3 +49,9 @@
   - 예전 QR `LOT:{lotId}`(0.20.0 `labelValue`)는 그대로 주고 읽는다 — 이미 붙인 라벨.
   - **PC 1**: 배포 뒤 LAN LOT 1,259개에 lotNo 가 채워진다 → LOT 라벨 인쇄 파일(`deploy/lan/seed/labels/`)은 `GET /mfcs/{mfcId}/lot-labels?sku=|locationCode=` 의 `gs1` 이나 DB `stock_lot.lot_no` 로. 배포 순서 mfc-inventory → mfc-fulfillment(새 fulfillment 는 lotNo 가 없으면 null 로 둔다 — 순서가 바뀌어도 깨지지 않음). 게이트웨이 허용 목록 GET 한 줄. **→ 만듦(2026-11-17 PC 1): `deploy/lan/seed/labels/lots/`(1,259개 LOT, `lot_labels.py` — 다시 읽기 전부·서버 `lot-resolutions` 표본 50건 일치).**
   - 시험(PC 3): inventory 단위 50(GS1 해석 6)·통합 31, fulfillment 단위 19·통합 27, 게이트웨이 허용 목록.
+
+## IV-5. 센터별 품절 SKU 수 — 백오피스 대시보드 D5 (2026-11-18 기록, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: 백오피스 대시보드 D5("센터별 재고 부족"). 안전재고(Q-13)가 정해지지 않아 원문이 `A=E−R−SS` 를 막으므로(MFC 원문 "Q-13 결정 없이 적용하지 않는다") — **사용자 결정(2026-11-18)**: 정책 없이 셀 수 있는 사실 **"품절 SKU 수"** 로 바꾼다.
+- **필요한 것**: 본사 직원 조회 — 센터별 `stock_balance` 에서 **가용(A = E − R) ≤ 0 인 SKU 수**(그 센터가 취급하는 SKU 기준 — 취급 범위는 inventory 가 정함), 선택 mfcId. 예 `GET /mfcs/stock-summary`(mfcId·sku 수·품절 수·기준 시각). "재고 부족"이 아니라 "품절"로 부른다.
+- **지금(임시)**: 없음 — 화면은 칸을 만들지 않는다.
