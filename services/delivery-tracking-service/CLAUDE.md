@@ -41,3 +41,4 @@
 - **고객에게 받았는지 묻기(2026-11-17, V6)**: `ReceiptCheck`(`receipt-check-interval` 1분, `receipt-check-after` 20분) — 진행 단계 TO_CUSTOMER·AT_CUSTOMER 이고 아직 안 물은 배송, 기준 = 라이더 ETA(`eta_drop`) 없으면 약속 시간대 끝 → `DeliveryReceiptCheckRequested`(delivery.tracking.v1, 버전 = eta_version) 한 번(`receipt_asked_at`).
 - **관제 운행 시작·대기(2026-11-18, 0.9.0)**: `ControlRider.onDutySince`(rider 값 그대로)·`waitingSince`(`RiderControlService.waitingSince` — 신규배차 켬·진행 중 0건이면 (켠 시각, `LocationStore.lastEndedOf` 마지막 끝난 배송) 중 늦은 때).
 - **관제 라이더 번호(2026-11-18, 0.10.0 — ADR-0070)**: `ControlRider.riderNumber`(rider 운행 중 목록 값 그대로).
+- **관제 배송 번호(2026-11-18, 0.11.0·V7 — ADR-0070)**: `delivery_progress.delivery_seq`(DeliveryCreated.deliverySeq)·`order_number`(DeliveryAssigned.orderNumber) 사본 → `ControlRider.activeDeliveries[].deliveryNumber`.

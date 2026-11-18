@@ -103,7 +103,13 @@ public class ProgressService {
           text(w, "start"),
           text(w, "end"),
           now);
+      if (p.path("deliverySeq").isInt()) {
+        store.label(deliveryId, p.path("deliverySeq").asInt(), null);
+      }
       return;
+    }
+    if ("DeliveryAssigned".equals(e.eventType()) && text(p, "orderNumber") != null) {
+      store.label(deliveryId, null, text(p, "orderNumber")); // 화면 배송 번호(ADR-0070)
     }
     if ("DeliveryStatusCorrected".equals(e.eventType())) {
       String stage = ProgressRules.stageOfState(text(p, "to"));

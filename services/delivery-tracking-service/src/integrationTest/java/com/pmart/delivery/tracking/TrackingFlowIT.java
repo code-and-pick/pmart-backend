@@ -219,6 +219,34 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                                             "status", "ON_DUTY", "newDispatchEnabled", false),
                                         "restriction",
                                         "NORMAL")))))));
+    // r2 가 배송 하나 — 화면 배송 번호(ADR-0070) = 배정 사건 주문번호 + 생성 사건 순번
+    String dlv = "DLV-ctl-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryCreated",
+        dlv,
+        Map.of("deliveryId", dlv, "orderId", "ORD-ctl", "mfcId", "MFC-CTL", "deliverySeq", 2));
+    awaitCount(
+        "SELECT count(*) FROM delivery_progress WHERE delivery_id = '"
+            + dlv
+            + "' AND delivery_seq = 2");
+    deliveryEvent(
+        "DeliveryAssigned",
+        dlv,
+        Map.of(
+            "deliveryId",
+            dlv,
+            "riderId",
+            r2,
+            "assignmentVersion",
+            1,
+            "orderNumber",
+            "74939255",
+            "acceptedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM delivery_progress WHERE delivery_id = '"
+            + dlv
+            + "' AND order_number = '74939255'");
     String ops = TestJwt.operator("ro-ctl", List.of("RIDER_OPS"), List.of());
     ResponseEntity<String> res = control(ops, "MFC-CTL");
     assertThat(res.getStatusCode().value()).as(res.getBody()).isEqualTo(200);
@@ -234,6 +262,8 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(b.path("location").isNull() || b.path("location").isMissingNode()).isTrue();
     assertThat(b.path("stale").asBoolean()).isTrue();
     assertThat(b.path("newDispatchEnabled").asBoolean()).isFalse();
+    assertThat(b.path("activeDeliveries").get(0).path("deliveryNumber").asString())
+        .isEqualTo("74939255-2");
     // 접속·대기(2026-11-18): 운행 시작 그대로, 배송 0건 + 신규배차 켬 → 대기 시작 = 켠 시각, 신규배차 끔 → 대기 아님
     assertThat(Instant.parse(a.path("onDutySince").asString())).isEqualTo(now.minusSeconds(3600));
     assertThat(Instant.parse(a.path("waitingSince").asString())).isEqualTo(now.minusSeconds(1800));

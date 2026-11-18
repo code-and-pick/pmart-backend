@@ -73,7 +73,8 @@ public class ControlController implements ControlApi {
                                 : ControlRiderActiveDeliveriesInner.StageEnum.fromValue(a.stage()))
                         .pickedUp(a.pickedUp())
                         .etaPickup(time(a.etaPickup()))
-                        .etaDrop(time(a.etaDrop())))
+                        .etaDrop(time(a.etaDrop()))
+                        .deliveryNumber(a.deliveryNumber()))
             .toList());
     return r;
   }

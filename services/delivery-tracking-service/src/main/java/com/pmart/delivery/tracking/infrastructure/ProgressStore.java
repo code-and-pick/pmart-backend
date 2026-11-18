@@ -39,6 +39,16 @@ public class ProgressStore {
   }
 
   /** 배송 생성 — 이미 있으면(다른 사건이 먼저 와서 만든 행) 주문·센터·도착 시간대만 채운다. */
+  /** 화면 배송 번호 사본(2026-11-18, ADR-0070) — 순번(DeliveryCreated)·주문번호(DeliveryAssigned), 아는 값만. */
+  public void label(String deliveryId, @Nullable Integer seq, @Nullable String orderNumber) {
+    jdbc.update(
+        "UPDATE delivery_progress SET delivery_seq = COALESCE(?, delivery_seq), order_number ="
+            + " COALESCE(?, order_number) WHERE delivery_id = ?",
+        seq,
+        orderNumber,
+        deliveryId);
+  }
+
   public void created(
       String deliveryId,
       @Nullable String orderId,
