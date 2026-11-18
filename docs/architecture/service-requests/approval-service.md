@@ -48,3 +48,14 @@
 - **요청한 쪽에서 바꿀 것**: hr-service 등록 화면이 요청 권한을 받아 제출, employee-auth-service 가 `ApprovalDecided` 구독·grant 저장.
 - **사용자 결정**: 정함(2026-11-12 — 등록 화면에서 함께 받기 "1번을 하자", 자동 승인 "소속 센터 현장 역할만").
 - 근거: `docs/adr/0056-staff-login-employee-auth-service-and-hr-service.md` 결정 5·6, `docs/architecture/auth/employee-auth-structure.md` §8-1, 업무 원문 BO-01.
+
+## AP-3. 승인 상세·목록에 "지금 보는 사람이 결정할 수 있는지" (2026-11-18 기록, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-18-backend-approval-can-decide.md`) — PC 2 가 옮겨 적음.
+- **왜**: 승인함에 직원 권한(GRANT) 요청도 보이고 승인·반려 버튼이 나오는데, GRANT 심사 역할은 설정 `approver-roles.GRANT = OPERATOR_ADMIN` 이라 다른 승인자(PRODUCT_APPROVER 등)가 누르면 403. 화면은 설정을 모르고 판정을 만들면 안 되므로 눌러 본 뒤에야 안다. `Approval.allowedActions` 는 요청에 정해진 결정 종류라 "보는 사람"의 권한이 아니다.
+- **필요한 것**
+  1. **(R1)** `GET /approvals/{approvalId}` 응답에 지금 토큰의 사람이 지금 결정할 수 있는지 — 예 `viewerCanDecide: boolean` + 못 하면 `viewerDecideBlockedReason`(NO_ROLE·SELF_APPROVAL·GRANT_TO_SELF·NOT_PENDING·CONFIG_REQUIRED 등). 판정은 결정 API 와 같은 검사를 그대로 — `ApprovalService` 결정 경로의 `ApprovalRules.requireUnderReview`·`requireApprover`(자기 요청·역할·설정 없음)·`requireNotOwnGrant` 를 예외 대신 이유로 돌려주는 형태.
+  2. **(R2, 선택)** `GET /approvals` 목록에도 같은 값, 또는 `decidableByMe=true` 거르기 — 승인자 첫 화면 "심사 대기 N건"이 자기가 못 하는 건까지 센다(백오피스 대시보드 요청 D4 의 승인 건수도 이 값을 쓰면 좋음).
+- **지금(임시)**: 화면은 버튼을 두고 서버 403 을 거절 문구로 보인다(판정을 지어내지 않음).
+- **받으면 화면은**: `viewerCanDecide=false` 면 "○○ 역할이 심사해요" 안내·버튼 끔, 심사 대기 수를 그 값으로.
+- **사용자 결정**: 필요 없음(판정 규칙은 지금 결정 API 그대로).
