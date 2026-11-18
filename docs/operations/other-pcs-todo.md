@@ -58,7 +58,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 ## PC 5 — delivery 영역
 - [x] **DE-4 배송 `packageIds` 가 인계 전에 비어 라이더가 포장 QR 을 못 찍음**(2026-11-18 PC 3, **급함** — `delivery-execution-service.md` DE-4): `ExecutionViews.delivery` 의 packageIds 를 `shipment_package` ∪ 인계 기록으로. 지금 LAN 에서 모든 인계가 막힌다
 - [ ] **DD-5 제안 조회 `pollAfterSec: null` 이면 앱이 조회를 멈춤**(2026-11-18 PC 3 — `delivery-dispatch-service.md` DD-5): 첫 제안을 놓쳐 라이더 1명 LAN 에서 13분 지연. null 대신 긴 간격, 조회 실패는 평소 간격. 같이 보기: 라이더 앱 센터 연락처 알림 `docs/handoff/clients/rider-app/2026-11-18-notice-mfc-staff-contacts.md`
-- [ ] **DD-4 정시 배송률 지표 — 누가 셀지 결정**(2026-11-18 PC 2 — 요청서 `delivery-dispatch-service.md` DD-4): 추천 delivery-dispatch(배차 arrivalWindow + DeliveryCompleted). 결정·정의 확인 뒤 날짜별 due·onTime·unjudged API. 급하지 않음
+- [ ] **DD-4 정시 배송률 지표**(2026-11-18 PC 2 — 요청서 `delivery-dispatch-service.md` DD-4, **2026-11-19 사용자 결정**: delivery-dispatch 가 배송 단위로 셈, 시간대 지난 미전달은 늦음): 날짜·센터별 due·onTime·unjudged API → bff ON_TIME_DELIVERY
 - [ ] **라이더 앱 휴대폰 푸시(FCM) 연결**(2026-11-17 — 요청 `docs/handoff/clients/rider-app/2026-11-17-request-rider-push-fcm.md`): 서버 푸시 켜짐(Firebase `pmart-123`). 앱에 google-services.json(사용자가 PC 1 → PC 5 복사)·firebase_messaging·토큰 등록 `PUT /me/push-tokens/{deviceId}`
 - [ ] **`web/rider-backoffice`(라이더 백오피스 — 관제 포함) 맡기**(2026-11-17 사용자 "라이더 백오피스는 PC5로"): PC 1 이 뼈대·로그인·LAN 서빙(8446)을 만들었다. 계획·남은 결정 `docs/delivery/rider-backoffice-plan.md`, 앱 문서 pmart-clients `docs/apps/rider-backoffice-web.md`. 관제는 직원용 라이더 위치 API(delivery-tracking)부터. 로그인·세션 코드는 PC 1 만, 웹 공통은 PC 2 에 요청
 - [ ] **앱 바꾸기 메뉴(⋮⋮⋮) 붙이기**(2026-11-17 사용자 — 요청 `docs/handoff/clients/all/2026-11-17-request-app-launcher.md` §3-3): PC 2 의 `web/ui` `AppLauncher` 가 main 에 들어간 뒤 `web/rider-backoffice` 머리줄에 `current="rider-backoffice"` 한 줄
