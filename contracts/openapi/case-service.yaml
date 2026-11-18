@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.24.0
+  version: 0.24.1
   description: |
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -1581,7 +1581,14 @@ components:
                 properties:
                   at: { type: string, format: date-time }
                   actorId: { type: string }
-                  action: { type: string }
+                  action:
+                    type: string
+                    description: |
+                      이력 항목 이름(0.24.1, 2026-11-18 — 화면이 이름을 바꿔 보일 때의 정본 목록. 동작 변경 없음, 새 이름은 이 목록에 더한다. 모르는 이름은 그대로 보이면 된다).
+                      사건 흐름: OPENED(열림)·ASSIGNED(맡김·배정)·TRANSFERRED(다른 팀으로 넘김)·CLOSED(완료 처리)·REOPENED(다시 처리하기)·HANDOVER_REQUESTED(교대 인계 요청)·HANDED_OVER(교대 인계 수락 — 후임이 맡음).
+                      원천 사건: RECURRED(열린 동안 같은 일이 또 생김)·RECOVERY_CREATED·RECOVERY_PICKED_UP·RECOVERY_RETURNED(오배송 회수 배송 생성·수거·반납)·RESHIPMENT_CREATED(오배송 재발송 배송 생성)·CLAIM_CLOSED(반품 끝남 — 사건은 열린 채, 0.24.1).
+                      후속 처리·행위: OBLIGATION_CREATED·OBLIGATION_ATTEMPTED·OBLIGATION_RESOLVED, ACTION_REQUESTED·ACTION_RESULT_RECORDED.
+                      접수·문의: CS_INTAKE_LINKED(상담원 접수를 이 사건에 연결)·INQUIRY_CLOSED(문의 닫힘).
                   fromState: { type: string }
                   toState: { type: string }
                   note: { type: string }

@@ -1,4 +1,11 @@
-# 백오피스(backoffice) 인수인계 (2026-11-15 작성, **2026-11-16 갱신 — PC 2 로 넘김**, 11-16 오전 마지막 갱신)
+# 백오피스(backoffice) 인수인계 (2026-11-15 작성, **2026-11-16 갱신 — PC 2 로 넘김**, **2026-11-18 PC 2 갱신 — §2·§4·§5·§6, 맨 위 "지금 상태"**)
+
+## 지금 상태 (2026-11-18 PC 2 — 이것부터)
+- **백엔드에 열린 일 없음.** PC 2 몫 서비스 요청(R-1~R-8, BO-12)은 모두 구현·배포 또는 취소·거둠. 열린 PR 없음.
+- **최근(11-17~18)**: R-8 반품 회수 실패 → 상담원 사건(case 0.22.0), 반품 회수 실패 메모 claim 0.3.0 필드(0.22.x), 명령 결과 조회(bff 0.12.0), **지표 CASE_SLA**(case 0.24.0 `/cases/metrics/sla` + bff 0.13.0 `views/metrics`), 반품 끝남 이력 `CLAIM_CLOSED`(ClaimClosed 구독), 사건 이력 이름 목록(계약 0.24.1), LAN 확인 각본 `deploy/lan/checks/backoffice_views_check.py`.
+- **기다리는 것**: 결품률 지표 = PC 3 F-10(분모), 정시 배송률 = DD-4 누가 셀지 결정(사용자·PC 5, 급하지 않음), 반품 취소 회수비 판정 필드 = claim CL-2(PC 1) → 나오면 웹에 알림, 포장 인계 단계 표시 LAN 확인 = 진행 중 출고가 생길 때.
+- **웹(같은 PC 다른 세션 "프론트 백오피스")**: PR 을 앞 PR 병합 순서대로 올리는 중 — 주문 취소(#105) → … → 처리 기한 지킴(CASE_SLA), 인사팀 앱(권한 요청·CENTER_ROLE_MIX·연장), 앱 런처(#92). LAN 웹은 PC 1 `lan.sh web-sync` 가 병합 뒤 자동으로 맞춘다(`docs/handoff/clients/all/2026-11-18-notice-lan-web-sync.md`).
+- **사용자가 정할 것(막히지 않음 — 필요해질 때 묻는다)**: DD-4, 백오피스 영역 경계, MFC↔인사 3개, 비밀번호 파일 복사.
 
 보낸 영역: platform(PC 1). 받는 영역: backoffice(PC 2). 경계는 `docs/operations/pc-split.md` §1-1(사용자 2026-11-15 "너의 추천대로").
 
@@ -29,7 +36,11 @@
 6. 권한 흐름: `docs/business/flows/employee-account-provisioning.md` §1(BO-01 결정·구현), `docs/architecture/auth/keycloak-manage-users-and-grant-revocation.md`(권한 회수 구조)
 7. 클라이언트에 보낸 요청: §3 표의 파일들
 
-## 2. 서비스 상태 (2026-11-17 밤 갱신 — case 0.19.0·bff 0.9.1)
+## 2. 서비스 상태 (2026-11-17 밤 갱신 — case 0.19.0·bff 0.9.1, **11-18 덧붙임 아래**)
+
+- **2026-11-18 기준 버전**: **bff 0.13.0**(0.10.0 사건함 myLastSeenAt, 0.11.0 포장 인계 현황 `packing-handover`(PC 3 F-9, 단계 stage), 0.12.0 명령 결과 조회, 0.13.0 지표 CASE_SLA — LAN 배포 PC 4), **case 0.24.1**(0.20.0 직원별 읽음, 0.21.0 라이더 문의 대화, 0.22.0 R-8 RETURN_RECOVERY_FAILED(상담원 팀 CS, 1시간, 사람이 닫기), 0.23.0 배송 지연 신고 deliveryIssue DELAYED(PC 1), 0.24.0 `/cases/metrics/sla`, 0.24.1 이력 이름 목록(설명만)). 반품 끝남 이력 CLAIM_CLOSED 는 0.24.0 위 코드(계약 변경 없음) — LAN 배포는 PC 1 일지로 확인.
+- 아직 501: bff `replenishment-status`·`trip-control`(원천 서비스 없음), `metrics` 의 CASE_SLA 밖 지표.
+
 
 | 서비스 | 된 것 | 안 된 것 |
 |---|---|---|
@@ -53,12 +64,13 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 
 ## 3. 클라이언트 상태와 보낸 요청
 
-- **웹은 같은 PC 의 다른 Claude 세션("프론트 백오피스")이 맡는다**(사용자 확정). 백엔드 세션은 handoff(`docs/handoff/clients/backoffice/…`)와 세션 메시지로 요청하고, 화면 용어는 **"접수 건"(case)·"후속 처리"(의무)·처리 끝내기·다시 처리하기**(사용자 결정, pmart-clients PR #28)로 쓴다.
+- **웹은 같은 PC 의 다른 Claude 세션("프론트 백오피스")이 맡는다**(사용자 확정). 백엔드 세션은 handoff(`docs/handoff/clients/backoffice/…`)와 세션 메시지로 요청하고, 화면 용어는 **"접수 건"(case)·"후속 처리"(의무)·완료 처리(닫기 — 2026-11-17 전엔 처리 끝내기)·맡기(배정)·다시 처리하기**(사용자 결정, pmart-clients PR #28 뒤 고침)로 쓴다.
 - **pmart-clients main(2026-11-16 저녁)**: #27~#43 병합 — 다시 처리하기·넘기기·화면 용어·후속 처리·교대 인계·메모·회수/재발송 연결·오배송 귀책(고객 잘못 실제 주소 포함), MFC 백오피스 메뉴 11개. 목 모드 시험만, 실서버 쓰기(접수·주소 기록)는 사용자 승인 뒤.
 - **LAN 빌드는 아직 오전 것**: backoffice `index-BGISi3dQ.js`(f50025c), hr-backoffice `index-Bkg8rNsZ.js` — **PC 1 이 `lan.sh publish-backoffice`(MFC 백오피스도)로 올려야** 오늘 화면이 브라우저에 보인다(사용자 2026-11-16 "아직 안 해도 괜찮아" — 사용자가 PC 1 에 전할 때).
 - 남은 요청서(화면 쪽): 도움요청 대화는 PC 5 #60(execution 0.6.0)·DE-2 반영 뒤(권한·필드가 바뀜). **CS 접수 화면**(`2026-11-16-request-cs-intake.md`)은 case 0.12.0 배포를 2026-11-17 웹 세션에 알림 — 웹 순서는 #46 → 라이더와 대화 → CS 접수, 목 시험 뒤 실서버 쓰기는 사용자 승인.
 
 ## 4. 할 일 (추천 순서)
+0. **2026-11-18**: 위 "지금 상태"의 기다리는 것이 풀리면 — F-10 → bff SHORTAGE_RATE(줄 단위·사유별), DD-4 결정·API → bff ON_TIME_DELIVERY, CL-2 → 웹 알림. 배포 뒤 `backoffice_views_check.py` 로 읽기 확인.
 1. **LAN 웹 빌드가 올라오면** 시험 계정(§6)으로 오늘 화면을 눌러 보고 빠진 것만 고친다(실서버 쓰기는 사용자 승인 — 남는 기록을 먼저 알린다).
 2. ~~PC 5 DE-2 → bff `case-inbox` RIDER_HELP 건에 `lastRiderMessageAt`~~ — 2026-11-17 bff 0.6.0 배포.
 3. ~~PC 3 F-4 → bff 처리 대기 MFC 목록~~ — 2026-11-17 PC 3 #95(mfc-fulfillment 0.9.0) + bff 0.8.0 배포. ~~F-3 → 통합 조회 MFC 칸~~ — PC 3 #97(0.10.0) + bff 0.9.0 배포.
@@ -88,10 +100,15 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 - **문의 닫기(2026-11-17 사용자 "그 표대로 진행해, 다시 열기는 빼고")**: 고객·라이더 본인 또는 답변 역할 직원(상담원·지원센터 — 관리자는 보기만), 직원은 사유 필수(직원에게만 보임), 답변 전에도 닫힘, 닫을 때 만족도(선택, 답변 있을 때만), 자동 닫기·다시 열기 없음(새 문의로), 문의와 그 접수 건 행만 닫힘 — case 0.19.0.
 - **결정(2026-11-17 밤 — 사용자 "가가가나")**: ① 직원별 읽음 = case 에 접수 건별 "마지막으로 본 시각"(0.20.0 — `POST /cases/{id}/views`, 목록·상세 `myLastSeenAt`), ② 사건 알림 = 웹 화면 안 배지(새 백엔드 없음 — 기존 `/cases?unassigned`·`overdue` 1분 폴링, 화면을 연 사람만), ③ 다른 서비스 지표(bff `views/metrics`) = 지금은 안 함(정의 승인·다른 PC 집계 API 필요), ④ 역할별 메뉴 확정 = 계속 미룸(PC 1 사정상 LAN 웹 빌드 반영이 지금 어려움).
 
+- **반품 회수 실패(R-8, 2026-11-17 "상담원 팀 (추천)"·"1시간 (추천)"·"사람이 닫기 (추천)")**: 새 팀 CS = 상담원(CS_AGENT)의 첫 사건함 쓰기 권한, 넘기기·교대 인계 없음, 자동 닫기 없음 — 반품이 끝나면 이력 CLAIM_CLOSED 만(2026-11-18).
+- **지표(2026-11-18 "일단 그렇게 하고" — 추천안 검토 뒤)**: BO-28(분모를 줄이지 않음, 분모 0 → N/A). CASE_SLA = 닫힌 건 기준(마지막 닫은 시각·그때 기한), 기한 없던 건은 판정 불가로 따로, 종류·팀별, 지금 기한 지난 건은 스냅샷으로. 결품률 = 줄 단위·사유별(수량 합산 안 함). 정시 배송률 = 누가 셀지 결정 뒤(DD-4). 결제 불명 = 지표로 만들지 않음(처리 대기·사건함). 운송·계획 밖 = 원천 없음.
+
 ## 6. 규칙·도구
 - PR: 포크 `backoffice/<주제>` 브랜치 → PC 1 검토·병합·배포. main push 금지. 저장소마다 PR 따로(backend·clients).
 - 일지: `docs/worklog/backoffice/YYYY-MM-DD.md`(첫 날 폴더를 만든다). 클라이언트 handoff: `docs/handoff/clients/backoffice/`(첫머리 `보낸 영역: backoffice`).
 - 새 화면이 고객·라이더 개인정보 원문을 보여 주면 **ADR-0062 방식**(기본 가림 + 사유 + audit 동기 기록, 기록 실패면 원문 없음). 개인정보·사유·메모는 로그 금지.
 - 직원 토큰: `deploy/lan/checks/staff_auth.py`(`staff_token(이름)`). 시험 계정 — `claude-dev`(OPERATOR_ADMIN), `test-cs-rider@pmart.com`(CS_AGENT·RIDER_OPS), `claude-approver`(HR_ADMIN 등 승인자), `claude-mfc-sup`(MFC_SUPERVISOR, MFC-SEED-01). 비밀번호 파일은 `deploy/lan/.secrets/`(PC 1 에서 복사, Git 아님).
+- **LAN 확인 각본(2026-11-18)**: `python -X utf8 -I deploy/lan/checks/backoffice_views_check.py [--cs]` — GET 만, 관리자 15개(첫 실행 15/15). `--cs` 는 최신 비밀번호 파일이 있을 때만(옛 값으로 실패가 쌓이면 계정이 잠김).
+- **같은 날 PR 여럿**: 그날 일지 줄은 한 PR 에만(`git merge-tree` 로 main·서로 충돌 없음 확인 — 사용자 2026-11-18). 계약 경로를 바꾸면 게이트웨이 허용 목록(`user-type-allowlist.txt`, `PMART_WRITE_ALLOWLIST=1 … UserTypeAllowlistFileTest`)도 같은 PR 에서 다시 만든다.
 - LAN 배포 직후 1~2분은 게이트웨이가 503 일 수 있다(Eureka 목록 갱신 전) — 기다렸다 다시.
 - Gradle 제한(workers 2·Xmx2g)은 PC 2 에 이미 적용 — PC 2 는 commerce·RAG 를 돌리는 LAN PC 라 무거운 시험 중 LAN 이 느리면 PC 1 에 알린다.
