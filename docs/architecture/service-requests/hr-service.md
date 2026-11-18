@@ -39,3 +39,11 @@
 - **받는 쪽(mfc-backoffice, PC 3)**: 나오면 "내 정보" 연락처 폼. 웹 생성 목록에 `hr` 추가는 PC 2(`tools/web-tools/gen-api.mjs`)에 클라이언트가 요청.
 
 - **철회(2026-11-18 PC 3, 사용자 확인)**: 잘못 짚은 요청 — "내 정보"의 비밀번호는 로그인 비밀번호가 아니라 MFC 센터 휴게 번호(mfc-capacity 0.20.0 `PUT /mfcs/{mfcId}/break-pin`, 이미 배포)이고, 연락처는 시스템이 쓰지 않는 연락 수단 표시용이라 mfc-capacity 0.21.0 `/mfcs/{mfcId}/staff-contacts`(PC 3)로 만든다. **PC 1 할 일 없음.**
+
+## HR-4 직원 표시(이름 · 사번) 여럿 조회 — 직원 토큰 (2026-11-18, 보낸 영역 rider-backoffice — PC 5, PC 2 가 옮겨 적음, 받는 쪽 platform PC 1)
+
+- **요청한 곳**: 라이더 백오피스 "조치 이력"(pmart-clients PR #155 — rider `/rider-staff-actions`·execution `/delivery-staff-actions`·dispatch `/dispatch-staff-actions` 를 한 표로)과 공지 "보낸 사람" 칸. 각 줄에 운영자 ID(`actorId`)만 온다. 기본 백오피스(bff)의 승인함·처리 대기·접수 건 처리자 칸도 같은 처지.
+- **왜**: ADR-0070 직원 표시 = **이름 · 사번**(`홍길동 · P2026-00001`), 운영자 ID(OP-…)는 처리자·결정자 칸에도 내지 않는다(ADR-0070 결과 "HR 조회가 없으면 PC 1(HR)에"). 지금 있는 HR-1 `GET /internal/employee-names` 는 **토큰 없는 서비스 간 내부 경로**라 웹이 못 부르고, 사번도 싣지 않는다.
+- **필요한 것**: 직원 토큰 조회 — 예 `GET /employees/display?operatorIds=OP-1&operatorIds=OP-2`(1~50개, 같은 값 한 번) → `{items: [{operatorId, name, employeeNo}]}`. 퇴사자 포함(지난 기록 표시), 모르는 ID 는 빠짐(오류 아님), 메일·전화·소속 같은 다른 인사 정보는 싣지 않음. 권한: OPERATOR_ADMIN·RIDER_OPS(라이더 백오피스), 가능하면 CS_AGENT(접수 건 처리자 칸) — 정하는 것은 PC 1(직원 이름 노출 범위가 걸리면 사용자 결정).
+- **지금(임시)**: 화면은 actorId 그대로(또는 끝 8자리 회색).
+- **받으면**: 라이더 백오피스가 바로 붙임. 기본 백오피스는 PC 2 가 bff 화면 응답(승인함 requestedBy 등)에 붙일지 검토.
