@@ -201,6 +201,23 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(segs.path("items").get(0).path("available").asBoolean()).isTrue();
     assertThat(segs.path("items").get(1).path("available").asBoolean()).isFalse();
     assertThat(segs.path("items").get(1).path("endedAt").isNull()).isFalse();
+    // 공지 받는 라이더(2026-11-18): 배달지역 센터로 거름
+    JsonNode rec =
+        json(
+            http.get()
+                .uri("/internal/riders/recipients?mfcId=MFC-IT-1&size=1000")
+                .header("X-Source-System", "notification-service")
+                .retrieve()
+                .body(String.class));
+    assertThat(rec.path("riderIds").toString()).contains(rider);
+    assertThat(
+            json(http.get()
+                    .uri("/internal/riders/recipients?mfcId=MFC-NONE")
+                    .header("X-Source-System", "notification-service")
+                    .retrieve()
+                    .body(String.class))
+                .path("riderIds"))
+        .isEmpty();
   }
 
   @Test

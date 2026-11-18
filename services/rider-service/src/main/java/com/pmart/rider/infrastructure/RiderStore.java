@@ -278,6 +278,21 @@ public class RiderStore {
   }
 
   /** 운행 중·탈퇴 안 함·배달지역에 mfcId — 신규배차·제한 무관(라이더 관제, 2026-11-17). */
+  /** 공지 받는 라이더(2026-11-18) — 탈퇴 안 함, mfcId 면 배달지역에 그 센터, riderId 순 after 뒤부터. */
+  public List<String> recipients(@Nullable String mfcId, @Nullable String after, int limit) {
+    return jdbc.queryForList(
+        "SELECT r.rider_id FROM rider r WHERE r.withdrawn_at IS NULL AND (CAST(? AS varchar) IS NULL"
+            + " OR EXISTS (SELECT 1 FROM rider_delivery_area a WHERE a.rider_id = r.rider_id AND"
+            + " a.mfc_id = ?)) AND (CAST(? AS varchar) IS NULL OR r.rider_id > ?) ORDER BY r.rider_id"
+            + " LIMIT ?",
+        String.class,
+        mfcId,
+        mfcId,
+        after,
+        after,
+        limit);
+  }
+
   public List<Rider> onDuty(String mfcId, int limit) {
     List<Row> rows =
         jdbc.query(

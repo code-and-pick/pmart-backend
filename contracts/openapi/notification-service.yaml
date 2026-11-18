@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: notification-service
-  version: 0.4.4
+  version: 0.5.0
   description: |
     알림 요청·채널(앱 푸시·카카오 알림톡 [결정 필요])·발송 이력·재시도·읽음(본인만), 고객 알림함, 라이더 배차 알림 전송 기록, 지연 안내의 정본. (docs/architecture/service-map.md §8)
     비정본: 원사건(주문·배송·환불·배차 제안은 각 소유 서비스), 마케팅 동의(customer), OS 알림 권한(단말).
@@ -228,6 +228,67 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   # ---------- internal (서비스 토큰) ----------
+  /rider-notices:
+    post:
+      tags: [rider-notices]
+      summary: (0.5.0) 라이더 공지 보내기 — 전체 또는 센터 배달지역 라이더 (라이더 운영·관리자)
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 "대상 고르기 + 알림함·푸시". RIDER_OPS·OPERATOR_ADMIN(그 밖 403). 받는 라이더 = rider 가 정한 탈퇴 안 한 라이더(전체, 또는 배달지역에
+        mfcId 가 있는 라이더). 라이더마다 알림함 한 줄(templateKey RIDER_NOTICE, 분류 SYSTEM, 목적지 NONE) + 휴대폰 푸시(FCM 키가 있을 때). 같은 직원·같은
+        Idempotency-Key 는 같은 결과(새로 보내지 않음). 제목 1~40자, 본문 1~500자. rider 를 못 부르면 503(보내지 않음).
+      operationId: sendRiderNotice
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body, target]
+              properties:
+                title: { type: string, minLength: 1, maxLength: 40 }
+                body: { type: string, minLength: 1, maxLength: 500 }
+                target:
+                  type: object
+                  required: [type]
+                  properties:
+                    type: { type: string, enum: [ALL, MFC] }
+                    mfcId: { type: string, maxLength: 40, description: type MFC 일 때 }
+      responses:
+        '200':
+          description: 보냄(또는 같은 요청의 이전 결과)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderNotice' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+    get:
+      tags: [rider-notices]
+      summary: (0.5.0) 보낸 라이더 공지 — 최근 순 (라이더 운영·관리자)
+      x-added-in: '2026-11-18'
+      operationId: listRiderNotices
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RiderNotice' } }
+                  nextCursor: { type: [string, 'null'] }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /internal/notification-requests:
     post:
       tags: [internal]
@@ -356,6 +417,19 @@ components:
       type: string
       description: KAKAO_ALIMTALK은 [결정 필요] 승인 전 거절
       enum: [APP_PUSH, IN_APP, KAKAO_ALIMTALK, SMS]
+    RiderNotice:
+      type: object
+      x-added-in: '2026-11-18'
+      required: [noticeId, title, body, targetType, sentBy, sentAt, recipientCount]
+      properties:
+        noticeId: { type: string }
+        title: { type: string }
+        body: { type: string }
+        targetType: { type: string, enum: [ALL, MFC] }
+        mfcId: { type: [string, 'null'] }
+        sentBy: { type: string, description: 보낸 직원(운영자 ID) }
+        sentAt: { type: string, format: date-time }
+        recipientCount: { type: integer, description: 보낸 라이더 수 }
     Category:
       type: string
       enum: [ORDER, PAYMENT, DELIVERY, CLAIM, REFUND, DISPATCH, CASE, MARKETING, SYSTEM]

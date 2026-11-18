@@ -430,6 +430,11 @@ public class RiderService {
     return store.dutySegments(riderId, from, to);
   }
 
+  /** 공지 받는 라이더 ID(2026-11-18) — notification 이 부른다. */
+  public List<String> recipients(@Nullable String mfcId, @Nullable String after, int size) {
+    return store.recipients(mfcId, after, Math.max(1, Math.min(1000, size)));
+  }
+
   public List<Rider> onDuty(String mfcId) {
     Instant now = clock.instant();
     return store.onDuty(mfcId, 200).stream().map(r -> r.asOf(now)).toList();

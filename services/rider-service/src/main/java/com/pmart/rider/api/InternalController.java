@@ -77,6 +77,22 @@ public class InternalController implements InternalApi {
                     .toList()));
   }
 
+  /** 공지 받는 라이더 ID(0.13.0, 2026-11-18) — notification 라이더 공지. */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.ListRiderRecipientsInternal200Response>
+      listRiderRecipientsInternal(
+          @org.jspecify.annotations.Nullable String mfcId,
+          @org.jspecify.annotations.Nullable String after,
+          Integer size) {
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.ListRiderRecipientsInternal200Response()
+            .riderIds(
+                riders.recipients(
+                    mfcId == null || mfcId.isBlank() ? null : mfcId,
+                    after == null || after.isBlank() ? null : after,
+                    size)));
+  }
+
   /** 운행 구간(0.11.0, 2026-11-18) — execution 직원 접속·대기 시간. */
   @Override
   public ResponseEntity<

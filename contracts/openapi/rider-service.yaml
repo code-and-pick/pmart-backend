@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -652,6 +652,30 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/OnDutyRider' } }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+  /internal/riders/recipients:
+    get:
+      tags: [internal]
+      summary: "[notification→rider] (0.13.0) 공지 받는 라이더 ID — 전체 또는 그 센터 배달지역"
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 라이더 공지(사용자 "대상 고르기 + 알림함·푸시"). 탈퇴하지 않은 라이더 ID 를 riderId 순으로, mfcId 를 주면 배달지역에 그 센터가 있는 라이더만.
+        after(마지막으로 받은 riderId) 뒤부터 size(최대 1000)개 — 개인정보 없음.
+      operationId: listRiderRecipientsInternal
+      parameters:
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 40 } }
+        - { name: after, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 1000, default: 1000 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [riderIds]
+                properties:
+                  riderIds: { type: array, items: { type: string } }
 
   /internal/riders/{riderId}/duty-segments:
     get:

@@ -530,6 +530,12 @@ public class NotificationService {
     return null;
   }
 
+  /** 라이더 공지 한 사람 몫(2026-11-18) — 알림함 + 커밋 뒤 푸시. 같은 공지·라이더는 한 번. 호출자 트랜잭션 안. */
+  public void riderNotice(String riderId, Notice n, String noticeId, Instant at) {
+    insert(
+        RIDER, riderId, n, noticeId, "RiderNotice", at, "RIDER_NOTICE:" + noticeId + ":" + riderId);
+  }
+
   private static void skip(EventEnvelope e, String orderId) {
     log.warn("{} — 주문 {} 이 order 에 없어 알림을 만들지 않음", e.eventType(), orderId);
   }
