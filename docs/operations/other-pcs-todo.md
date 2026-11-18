@@ -90,8 +90,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [x] RS-2(rider-auth) — 표 참고(구현 2026-11-13, 표 "구현"). RS-3 컴플레인 검토 목록도 LAN 배포 확인(2026-11-17 PC 5 — 관리자 `GET /riders/restriction-reviews` 200)
   - [x] **DD-3 고객 반품 회수 배송**(2026-11-17 PC 5 — #104 구현·배포, 맞춤(pickupRequestId·회수 품목·전달 전 반품 불가) 브랜치 `delivery/dd-3-align`. 회수 실패는 DeliveryFailed 대신 `ReturnPickupFailed` — claim 구독함)(2026-11-17 PC 1 — CL-1, 사용자 "추천대로"): `ReturnPickupRequested`(order.claim.v1, purpose CLAIM_RETURN·pickupRequestId·attempt) 구독 → dispatch 회수 배송(원주문 배송지 → MFC)·execution 회수 수행(`ReturnPickedUp`·`ReturnDelivered` 에 claimId), 회수 실패는 `DeliveryFailed`(claimId 도 실어서). `DeliveryCreated` 에 claimId·pickupRequestId. 요청서 `delivery-dispatch-service.md` DD-3. claim 은 구현됨(미배포)
 
-- [ ] **DE-5 전달지 정확 좌표**(2026-11-18 PC 1 — 급함): drop-info·drop-location 이 주문 사본 좌표 없으면 dispatch `drop_lat·lng`, `coordinateSource` — 요청서 `delivery-execution-service.md` DE-5
-- [ ] **RS-6 운행 시작·대기 시간**(2026-11-18 PC 1): 운행 구간 기록, onDutySince·waitingSince(관제 목록), 오늘 합계 — 대기 = 운행 중·진행 중 배송 0건(신규배차 꺼짐 제외), 요청서 `rider-service.md` RS-6
+- [x] **DE-5 전달지 정확 좌표**(2026-11-18 PC 1 — 급함): drop-info·drop-location 이 주문 사본 좌표 없으면 dispatch `drop_lat·lng`, `coordinateSource` — 요청서 `delivery-execution-service.md` DE-5 — **2026-11-18 구현·배포(#183, execution 0.24.1)**
+- [x] **RS-6 운행 시작·대기 시간**(2026-11-18 PC 1): 운행 구간 기록, onDutySince·waitingSince(관제 목록), 오늘 합계 — 대기 = 운행 중·진행 중 배송 0건(신규배차 꺼짐 제외), 요청서 `rider-service.md` RS-6 — **2026-11-18 구현·배포(#182, rider 0.11.0·tracking 0.9.0·execution 0.25.0)**
 
 ## 클라이언트(pmart-clients) — 클라이언트를 맡은 PC
 

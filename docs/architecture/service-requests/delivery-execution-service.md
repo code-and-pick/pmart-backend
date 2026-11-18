@@ -50,3 +50,4 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **요청**: 주문 사본에 좌표가 없으면 그 배송의 dispatch `drop_lat`·`drop_lng` 를 lat·lng 로(사건 또는 dispatch 내부 조회 — PC 5 가 정함), 출처 `coordinateSource` = ORDER_PIN / ADDRESS_GEOCODE(계약 칸 추가). 클라이언트는 같은 lat·lng 칸이라 앱 변경 없음.
 - **PC 1 쪽(같이 함)**: customer-service 0.5.0 — 배송지 저장 때 핀이 없으면 지오코딩 좌표로 채움(`geoSource` GEOCODE). 새 주소부터 주문 사본에 좌표가 생기지만 옛 주소·옛 주문은 DE-5 가 필요.
 - 근거: pmart-clients `docs/handoff/rider-app/2026-11-18-backend-drop-exact-coordinates.md`, 회신 `docs/handoff/clients/rider-app/2026-11-18-reply-drop-exact-coordinates.md`.
+- **구현(2026-11-18, PC 5 — 이미 PR #183 으로 반영·배포, execution 0.24.1)**: drop-info·직원 drop-location 이 사본 핀이 없으면 dispatch `route-points`(배차 지오코딩 — 반품 회수는 픽업지, 그 밖 도착지) + `coordinateSource`(ORDER_PIN·ADDRESS_GEOCODE). customer 0.5.0(새 주소 좌표 채움)과 함께 옛 주소·주문도 핀이 찍힌다.

@@ -58,3 +58,4 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
   - `changedAt` 은 계약 설명에 "운행 상태(신규배차 포함)가 마지막으로 바뀐 때"로 적어 둔다.
 - 권한: 관제와 같게(RIDER_OPS·OPERATOR_ADMIN, 3 은 CS_AGENT 도).
 - 근거: pmart-clients `docs/handoff/rider-backoffice/2026-11-18-backend-rider-waiting-time.md`, 회신 `docs/handoff/clients/rider-backoffice/2026-11-18-reply-rider-waiting-time.md`.
+- **구현(2026-11-18, PC 5 — 이미 PR #182 로 반영·배포)**: 사용자 결정 대기 = 운행 중 + 신규배차 켬 + 배송 0건, 운행 켠 시간은 "접속 시간"으로 따로. rider 0.11.0·V9(`rider_duty_segment`, `onDutySince`·`availableSince`, `GET /internal/riders/{id}/duty-segments`), tracking 0.9.0(관제 `onDutySince`·`waitingSince`), execution 0.25.0(직원 운행시간 `connectedSeconds`·`waitingSeconds`). 회신 `docs/handoff/clients/rider-backoffice/2026-11-18-reply-rider-waiting-time.md`.
