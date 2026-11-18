@@ -644,6 +644,35 @@ public class DispatchStore {
   }
 
   /** 라이더가 지금 맡고 있는 배송(배정 ~ 픽업 전). 픽업 뒤 수행 상태는 execution 이 정본이라 여기서는 픽업까지만 센다. */
+  /** 일반배차모드 새 배달 알림 — 라이더마다 마지막 알린 때(없으면 없음). */
+  public Map<String, Instant> lastListNotices(List<String> riderIds) {
+    Map<String, Instant> out = new HashMap<>();
+    if (riderIds.isEmpty()) {
+      return out;
+    }
+    String in = String.join(",", java.util.Collections.nCopies(riderIds.size(), "?"));
+    jdbc.query(
+        "SELECT rider_id, notified_at FROM list_notice WHERE rider_id IN (" + in + ")",
+        rs -> {
+          out.put(rs.getString(1), rs.getTimestamp(2).toInstant());
+        },
+        riderIds.toArray());
+    return out;
+  }
+
+  /** 알린 때를 남기고 몇 번째 알림인지 돌려준다(사건 버전). */
+  public int markListNotice(String riderId, Instant at) {
+    Integer n =
+        jdbc.queryForObject(
+            "INSERT INTO list_notice (rider_id, notified_at, notice_count) VALUES (?, ?, 1) ON"
+                + " CONFLICT (rider_id) DO UPDATE SET notified_at = EXCLUDED.notified_at,"
+                + " notice_count = list_notice.notice_count + 1 RETURNING notice_count",
+            Integer.class,
+            riderId,
+            Timestamp.from(at));
+    return n == null ? 1 : n;
+  }
+
   /** 고객 한집배달(SINGLE — 회수·반납 RETURN 은 아님)을 지금 맡고 있는 라이더(2026-11-18 "한집은 단독"). */
   public java.util.Set<String> singleHolders(List<String> riderIds) {
     if (riderIds.isEmpty()) {

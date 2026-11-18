@@ -52,6 +52,7 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.dispatch.tick-interval=PT1H",
+      "pmart.dispatch.list-notice-interval=PT1H", // 일반 모드 새 배달 알림도 시험이 직접 부른다
       "pmart.dispatch.tick-initial-delay=PT1H",
       "pmart.dispatch.operating-start=00:00",
       "pmart.dispatch.operating-end=24:00"
@@ -523,6 +524,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 deliveryId))
         .isEqualTo(1);
     assertThat(listIds(normal)).doesNotContain(deliveryId); // 1km 밖
+    listNotifier.run();
+    assertThat(listNotices(normal)).isZero(); // 목록에 안 보이면 알림도 없다
 
     jdbc.update(
         "UPDATE dispatch_attempt SET stage_started_at = ?, next_run_at = ? WHERE delivery_id = ?",
@@ -537,6 +540,13 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 deliveryId))
         .isEqualTo(2);
     assertThat(listIds(normal)).contains(deliveryId);
+    // 일반 모드 새 배달 알림(2026-11-18 "보냄 — 묶어서"): 목록에 새로 보이면 한 번, 1분 안에는 다시 안 보냄
+    listNotifier.run();
+    assertThat(listNotices(normal)).isEqualTo(1);
+    assertThat(outbox(normal, "DeliveryListUpdated").path("payload").path("newCount").asInt())
+        .isEqualTo(1);
+    listNotifier.run();
+    assertThat(listNotices(normal)).isEqualTo(1);
 
     JsonNode ok =
         body(
@@ -1268,6 +1278,18 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** 배송 하나를 만들어 그 라이더에게 제안 → 수락(ASSIGNED). 그 MFC 의 적격 라이더는 미리 그 한 명만. */
+  @org.springframework.beans.factory.annotation.Autowired
+  com.pmart.delivery.dispatch.application.ListNotifier listNotifier;
+
+  int listNotices(String rider) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryListUpdated'",
+            Integer.class,
+            rider);
+    return n == null ? 0 : n;
+  }
+
   /** 한 라이더가 여러 건을 맡는 시험용 — 알뜰배달 주문(2026-11-18 "한집은 단독" — 한집은 한 건씩만). */
   String acceptedBy(String rider, String mfc) {
     String order = "ORD-" + UUID.randomUUID();

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryListUpdated.v1.json",
+  "title": "DeliveryListUpdated",
+  "description": "2026-11-18 — 일반배차모드 라이더의 배달리스트에 새 배송이 올라왔다(사용자 \"일반배차모드 라이더에게도 … 보냄 — 묶어서\"). 발행 delivery-dispatch(라이더마다 1분에 한 번까지, 지난 알림 뒤 새로 올라온 수). 구독 notification(라이더 푸시만 — 알림함에 넣지 않음). 주소·고객 정보 없음.",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "DeliveryListUpdated" },
+        "aggregateType": { "const": "Rider" },
+        "payload": {
+          "type": "object",
+          "required": ["riderId", "mfcId", "newCount", "notifiedAt"],
+          "properties": {
+            "riderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "mfcId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "newCount": { "type": "integer", "minimum": 1, "description": "지난 알림 뒤 새로 보이게 된 배송 수" },
+            "notifiedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -257,6 +257,16 @@ public class DispatchEvents {
     events.publish("ReturnPickupFailed", 1, "Delivery", deliveryId, 1L, system(), p);
   }
 
+  /** 일반배차모드 라이더에게 새 배달이 목록에 올라왔다(2026-11-18) — notification 이 푸시만 보낸다. 주소 없음. */
+  public void deliveryListUpdated(String riderId, String mfcId, int newCount, int version, Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("riderId", riderId);
+    p.put("mfcId", mfcId);
+    p.put("newCount", newCount);
+    p.put("notifiedAt", at.toString());
+    events.publish("DeliveryListUpdated", 1, "Rider", riderId, version, system(), p);
+  }
+
   private void publish(
       String type,
       DeliveryRow d,
