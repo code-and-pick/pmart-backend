@@ -51,6 +51,9 @@ public class StaffActions {
   UNION ALL
   SELECT decided_at, decided_by, 'SURCHARGE_' || state, rider_id, delivery_id, reason || ' ' || floor || '층 ' || amount || '원', NULL
     FROM surcharge_request WHERE decided_at IS NOT NULL
+  UNION ALL
+  SELECT recorded_at, recorded_by, 'PAYOUT_' || result, rider_id, NULL, payout_date || ' ' || earning_count || '건 ' || total || '원', failure_reason
+    FROM rider_payout_result
 ) a
       """;
 

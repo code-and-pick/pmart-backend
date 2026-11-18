@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.28.0
+  version: 0.29.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1237,6 +1237,109 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
+  /rider-payouts:
+    get:
+      tags: [rider-payouts]
+      summary: (0.29.0) 지급 묶음 — 라이더 × 지급 예정일 (관리자·라이더 운영)
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 "결과 받는 창구 + 수동 표시". 지급 실행은 외부 회계 — 묶음 = 한 라이더의 같은 지급 예정일 확정 수행료(CONFIRMED·PAYING·PAID·PAYMENT_FAILED).
+        OPERATOR_ADMIN·RIDER_OPS 조회(그 밖 403). payoutDate 기본 = 오늘(Asia/Seoul). state 는 묶음 안 수행료 상태(섞이면 MIXED).
+      operationId: listRiderPayouts
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: payoutDate, in: query, schema: { type: string, format: date } }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: state, in: query, schema: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RiderPayout' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /rider-payouts/{riderId}/{payoutDate}/results:
+    post:
+      tags: [rider-payouts]
+      summary: (0.29.0) 지급 결과 표시 — 관리자 수동 (외부 회계 연동 전)
+      x-added-in: '2026-11-18'
+      description: |
+        OPERATOR_ADMIN 만. 묶음 안 아직 지급 안 된 수행료(CONFIRMED·PAYING·PAYMENT_FAILED)를 한꺼번에: PAYING(지급중 — CONFIRMED·PAYMENT_FAILED 에서), PAID(지급 완료),
+        FAILED → PAYMENT_FAILED(지급중·확정에서, failureReason 필수). 이미 PAID 인 줄은 그대로. 지급 예정일이 오늘(Asia/Seoul)보다 뒤면 PAYING·PAID 는 422 PAYOUT_NOT_DUE.
+        바꿀 줄이 없으면 409. 줄마다 RiderEarningRecorded(status) — 라이더 알림함은 PAID·PAYMENT_FAILED 를 묶음마다 한 번 알린다(금액·사유 없음).
+        같은 직원 + Idempotency-Key 는 같은 결과. 조치 이력(delivery-staff-actions)에 PAYOUT_<결과>.
+      operationId: recordRiderPayoutResult
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+        - { name: payoutDate, in: path, required: true, schema: { type: string, format: date } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result]
+              properties:
+                result: { type: string, enum: [PAYING, PAID, FAILED] }
+                reference: { type: string, maxLength: 100, description: 회계 처리 번호(있으면) }
+                failureReason: { type: string, maxLength: 300, description: 'FAILED 일 때 필수. 계좌번호 등 개인정보를 적지 않는다' }
+      responses:
+        '200':
+          description: 바뀐 묶음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderPayout' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: PAYOUT_NOT_DUE
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/rider-payouts/{riderId}/{payoutDate}/results:
+    post:
+      tags: [rider-payouts]
+      summary: (0.29.0) 외부 회계 지급 결과 받기 (서비스 토큰)
+      x-added-in: '2026-11-18'
+      description: 위 관리자 수동 표시와 같은 규칙, 서비스 토큰(회계 어댑터)만. 게이트웨이에 내지 않는다.
+      operationId: recordRiderPayoutResultInternal
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+        - { name: payoutDate, in: path, required: true, schema: { type: string, format: date } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result]
+              properties:
+                result: { type: string, enum: [PAYING, PAID, FAILED] }
+                reference: { type: string, maxLength: 100, description: 회계 처리 번호(있으면) }
+                failureReason: { type: string, maxLength: 300, description: 'FAILED 일 때 필수. 계좌번호 등 개인정보를 적지 않는다' }
+      responses:
+        '200':
+          description: 바뀐 묶음
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderPayout' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /internal/riders/{riderId}/withdrawal-blockers:
     get:
       tags: [internal]
@@ -1453,6 +1556,24 @@ paths:
 
 components:
   schemas:
+    RiderPayout:
+      type: object
+      x-added-in: '2026-11-18'
+      required: [riderId, payoutDate, count, total, state]
+      properties:
+        riderId: { type: string }
+        payoutDate: { type: string, format: date }
+        count: { type: integer, description: 묶음 안 수행료 수 }
+        total: { type: integer, description: 합계(원) }
+        state: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED, MIXED] }
+        lastResult:
+          type: [object, 'null']
+          properties:
+            result: { type: string, enum: [PAYING, PAID, FAILED] }
+            reference: { type: [string, 'null'] }
+            failureReason: { type: [string, 'null'] }
+            recordedBy: { type: string, description: 운영자 ID 또는 서비스 }
+            recordedAt: { type: string, format: date-time }
     ReturnHandover:
       type: object
       x-added-in: '2026-11-18'

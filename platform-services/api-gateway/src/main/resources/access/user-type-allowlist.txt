@@ -248,6 +248,7 @@ GET /api/v1/rider-earnings/adjustment-queue OPERATOR
 GET /api/v1/rider-locations OPERATOR
 GET /api/v1/rider-notices OPERATOR
 GET /api/v1/rider-operating-time OPERATOR
+GET /api/v1/rider-payouts OPERATOR
 GET /api/v1/rider-staff-actions OPERATOR
 GET /api/v1/riders OPERATOR
 GET /api/v1/riders/bank-codes RIDER
@@ -507,6 +508,7 @@ POST /api/v1/rider-auth/tokens PUBLIC
 POST /api/v1/rider-complaints OPERATOR
 POST /api/v1/rider-earnings/{earningId}/adjustments OPERATOR
 POST /api/v1/rider-notices OPERATOR
+POST /api/v1/rider-payouts/{riderId}/{payoutDate}/results OPERATOR
 POST /api/v1/riders/account-checks RIDER
 POST /api/v1/riders/license-checks RIDER
 POST /api/v1/riders/me/locations RIDER

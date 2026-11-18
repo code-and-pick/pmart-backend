@@ -56,7 +56,7 @@ public class RiderPush {
 
   static String channel(String templateKey) {
     return switch (templateKey) {
-      case "RIDER_EARNING_ADJUSTED" -> CH_SETTLEMENT;
+      case "RIDER_EARNING_ADJUSTED", "RIDER_PAYOUT_PAID", "RIDER_PAYOUT_FAILED" -> CH_SETTLEMENT;
       case "RIDER_DISPATCH_RESTRICTED",
           "RIDER_SUSPENDED",
           "RIDER_TERMINATED",

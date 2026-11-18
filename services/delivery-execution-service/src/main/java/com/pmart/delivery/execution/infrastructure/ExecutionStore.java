@@ -1172,6 +1172,25 @@ public class ExecutionStore {
    * 라이더 귀책 오배송(ADR-0065) — 지급 전이면 ADJUSTED·산정 제외(calculable false)로, 지급 중·지급됐으면 상태는 그대로 두고 메모만(지원센터
    * 조정). 바꾼 행 수.
    */
+  /** 지급 묶음(2026-11-18) — 한 라이더의 그 지급 예정일 수행료 전부. */
+  public List<EarningRow> earningsForPayout(String riderId, java.time.LocalDate payoutDate) {
+    return jdbc.query(
+        "SELECT * FROM rider_earning WHERE rider_id = ? AND payout_date = ? ORDER BY earning_id FOR"
+            + " UPDATE",
+        this::mapEarning,
+        riderId,
+        payoutDate);
+  }
+
+  /** 지급 결과(2026-11-18) — 정산 상태만 바꾼다. */
+  public void setSettlementState(String earningId, String state, Instant now) {
+    jdbc.update(
+        "UPDATE rider_earning SET settlement_state = ?, updated_at = ? WHERE earning_id = ?",
+        state,
+        ts(now),
+        earningId);
+  }
+
   public int withholdEarning(String earningId, boolean beforePayout, String note, Instant now) {
     return beforePayout
         ? jdbc.update(

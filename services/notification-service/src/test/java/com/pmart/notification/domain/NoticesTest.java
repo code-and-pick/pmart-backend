@@ -15,6 +15,16 @@ class NoticesTest {
   }
 
   @Test
+  void payoutResultHasDateButNoAmountOrReason() {
+    var paid = Notices.payoutResult(true, "2026-11-21");
+    org.assertj.core.api.Assertions.assertThat(paid.templateKey()).isEqualTo("RIDER_PAYOUT_PAID");
+    org.assertj.core.api.Assertions.assertThat(paid.body()).contains("11월 21일").doesNotContain("원");
+    var failed = Notices.payoutResult(false, "2026-11-21");
+    org.assertj.core.api.Assertions.assertThat(failed.templateKey())
+        .isEqualTo("RIDER_PAYOUT_FAILED");
+  }
+
+  @org.junit.jupiter.api.Test
   void earningAdjustedShowsAmountAndDateOnlyWhenPaid() {
     var paid = Notices.earningAdjusted("DLV-1", true, 3900L, "2026-11-20");
     assertThat(paid.body()).contains("3,900원").contains("11월 20일");

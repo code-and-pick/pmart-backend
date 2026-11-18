@@ -154,6 +154,22 @@ public class NotificationService {
       JsonNode p = e.payload();
       String riderId = text(p, "riderId");
       String decision = text(p.path("adjustment"), "decision");
+      String status = text(p, "status");
+      String payoutDate = text(p, "payoutDate");
+      // 지급 결과(2026-11-18 사용자 "결과 받는 창구 + 수동 표시") — 묶음(라이더 × 지급 예정일)마다 한 번, 금액·사유 없음
+      if (riderId != null
+          && payoutDate != null
+          && ("PAID".equals(status) || "PAYMENT_FAILED".equals(status))) {
+        insert(
+            RIDER,
+            riderId,
+            Notices.payoutResult("PAID".equals(status), payoutDate),
+            e.eventId().toString(),
+            e.eventType(),
+            e.occurredAt(),
+            "RiderPayout:" + status + ":" + riderId + ":" + payoutDate);
+        return;
+      }
       if (riderId != null && decision != null) {
         JsonNode total = p.path("feeBasis").path("totalFee");
         Notice n =

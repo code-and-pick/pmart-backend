@@ -881,6 +881,76 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     return null;
   }
 
+  /** 수행료 지급 결과(2026-11-18 사용자 "결과 받는 창구 + 수동 표시"): 묶음 단위, 관리자만, 실패 사유 필수, 이미 지급은 409. */
+  @Test
+  void payoutResultsMoveConfirmedEarningsOfOneBatch() {
+    String rider = "RDR-po-" + UUID.randomUUID();
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    List<String> ids = new java.util.ArrayList<>();
+    for (int k = 0; k < 2; k++) {
+      String id = "DLV-po-" + UUID.randomUUID();
+      created(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID());
+      awaitSql("SELECT count(*) FROM execution_delivery WHERE delivery_id = '" + id + "'");
+      jdbc.update(
+          "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable, rate_table_version,"
+              + " base_fee, total, settlement_state, performed_on, payout_date, recorded_at, updated_at)"
+              + " VALUES (?, ?, ?, true, 1, 3000, 3000, 'CONFIRMED', CAST(? AS date) - 3, CAST(? AS date),"
+              + " now(), now())",
+          "ERN-po-" + id,
+          id,
+          rider,
+          today,
+          today);
+      ids.add(id);
+    }
+    String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode list = body(staffGet("/rider-payouts?riderId=" + rider, ops));
+    assertThat(list.path("items").get(0).path("count").asInt()).isEqualTo(2);
+    assertThat(list.path("items").get(0).path("total").asInt()).isEqualTo(6000);
+    assertThat(list.path("items").get(0).path("state").asString()).isEqualTo("CONFIRMED");
+    String uri = "/rider-payouts/" + rider + "/" + today + "/results";
+    // 라이더 운영은 표시 못 함, 실패는 사유 필수
+    assertThat(staffPost(uri, ops, Map.of("result", "PAID")).getStatusCode().value())
+        .isEqualTo(403);
+    assertThat(staffPost(uri, adm, Map.of("result", "FAILED")).getStatusCode().value())
+        .isEqualTo(400);
+    ResponseEntity<String> failed =
+        staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 확인 필요"));
+    assertThat(failed.getStatusCode().value()).as(failed.getBody()).isEqualTo(200);
+    assertThat(body(failed).path("state").asString()).isEqualTo("PAYMENT_FAILED");
+    assertThat(outbox(ids.get(0), "RiderEarningRecorded").path("payload").toString())
+        .doesNotContain("계좌");
+    ResponseEntity<String> paid =
+        staffPost(uri, adm, Map.of("result", "PAID", "reference", "ACC-77"));
+    assertThat(body(paid).path("state").asString()).isEqualTo("PAID");
+    assertThat(body(paid).path("lastResult").path("reference").asString()).isEqualTo("ACC-77");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_earning WHERE rider_id = ? AND settlement_state = 'PAID'",
+                Integer.class,
+                rider))
+        .isEqualTo(2);
+    assertThat(staffPost(uri, adm, Map.of("result", "PAID")).getStatusCode().value())
+        .isEqualTo(409);
+    // 지급 예정일 전이면 422, 조치 이력에 남음
+    String later = java.time.LocalDate.parse(today).plusDays(5).toString();
+    jdbc.update(
+        "UPDATE rider_earning SET settlement_state = 'CONFIRMED', payout_date = CAST(? AS date) WHERE"
+            + " earning_id = ?",
+        later,
+        "ERN-po-" + ids.get(0));
+    assertThat(
+            staffPost(
+                    "/rider-payouts/" + rider + "/" + later + "/results",
+                    adm,
+                    Map.of("result", "PAID"))
+                .getBody())
+        .contains("PAYOUT_NOT_DUE");
+    JsonNode acts = body(staffGet("/delivery-staff-actions?riderId=" + rider, adm));
+    assertThat(acts.path("items").get(0).path("action").asString()).isEqualTo("PAYOUT_PAID");
+  }
+
   ResponseEntity<String> staffGet(String uri, String token) {
     return http.get()
         .uri(uri)

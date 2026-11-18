@@ -300,6 +300,27 @@ public final class Notices {
    * 지원센터 수행료 조정(2026-11-17 — 산정 불가였던 배송). 지급이면 금액·지급 예정일, 미지급이면 그 사실만(사유는 지원센터 문의). 목적지는 정산 화면이 따로
    * 없어 NONE.
    */
+  /** 수행료 지급 결과(2026-11-18) — 지급 예정일 묶음 단위, 금액·실패 사유 없음. */
+  public static Notice payoutResult(boolean paid, String payoutDate) {
+    java.time.LocalDate d = java.time.LocalDate.parse(payoutDate);
+    String day = d.getMonthValue() + "월 " + d.getDayOfMonth() + "일";
+    return paid
+        ? new Notice(
+            "RIDER_PAYOUT_PAID",
+            SYSTEM,
+            "수행료가 지급되었어요",
+            day + " 지급분이 입금되었어요. 정산 내역에서 확인해 주세요.",
+            "NONE",
+            null)
+        : new Notice(
+            "RIDER_PAYOUT_FAILED",
+            SYSTEM,
+            "수행료 지급에 실패했어요",
+            day + " 지급분이 입금되지 않았어요. 지원센터에서 확인 후 다시 지급해요. 계좌 정보를 확인해 주세요.",
+            "NONE",
+            null);
+  }
+
   public static Notice earningAdjusted(
       @Nullable String deliveryId,
       boolean pay,

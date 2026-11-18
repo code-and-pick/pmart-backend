@@ -83,3 +83,4 @@
 - **직원 조치 이력(2026-11-18, 관리자만)**: `GET /delivery-staff-actions`(`StaffActions` — 상태 정정, 전달 실패 확정·반려, 수행료 조정, 추가 배달료 결정).
 
 - **MFC 반납 인증번호(2026-11-18, 0.28.0·V20 — 사용자 "인증코드를 입력해야 전달완료")**: `application/ReturnHandoverCodes`·`api/ReturnHandoversController` — 반납 기다리는 회수·반납 배송마다 4자리(직원 `GET /return-handovers?mfcId=`), 라이더 `returns/store-deliveries` 의 `handoverCode` 확인, 5번 틀리면 잠김(`code-reissues` 로 풀림). 번호 없으면 `pmart.execution.return-handover.required`(기본 false) 따라. 번호·틀린 횟수는 따로 커밋.
+- **수행료 지급 결과(2026-11-18, 0.29.0·V21 — 사용자 "결과 받는 창구 + 수동 표시")**: `application/PayoutResults`·`api/RiderPayoutsController` — 묶음 = 라이더 × 지급 예정일. `GET /rider-payouts`(관리자·라이더 운영), `POST /rider-payouts/{riderId}/{payoutDate}/results`(관리자 수동 PAYING·PAID·FAILED), `POST /internal/rider-payouts/.../results`(외부 회계 서비스 토큰). 줄마다 RiderEarningRecorded(status), 기록 `rider_payout_result`, 조치 이력 PAYOUT_*. 예정일 전 PAYING·PAID 는 422 PAYOUT_NOT_DUE.
