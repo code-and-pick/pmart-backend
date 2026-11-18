@@ -49,7 +49,11 @@ public class FcmSender {
    * ttlSeconds = 그 뒤 도착하면 버림(배차 제안 만료), tag = 같은 tag 의 앞 알림을 덮음.
    */
   public record Options(
-      String channelId, boolean high, @Nullable Long ttlSeconds, @Nullable String tag) {}
+      @Nullable String channelId, boolean high, @Nullable Long ttlSeconds, @Nullable String tag) {
+
+    /** 채널 없이 HIGH(고객 푸시 — 처음 형식 그대로). */
+    public static final Options PLAIN_HIGH = new Options(null, true, null, null);
+  }
 
   private final @Nullable Account account;
   private final RestClient http;
@@ -78,6 +82,11 @@ public class FcmSender {
   }
 
   /** 단말 하나에 보낸다. 실패는 결과로만(알림 실패로 업무를 다시 하지 않는다). */
+  /** 채널 지정 없이 HIGH(고객 푸시 — CustomerPush, 처음 형식). */
+  public Result send(String deviceToken, String title, String body, Map<String, String> data) {
+    return send(deviceToken, title, body, data, Options.PLAIN_HIGH);
+  }
+
   public Result send(
       String deviceToken, String title, String body, Map<String, String> data, Options o) {
     Account a = account;
@@ -89,7 +98,9 @@ public class FcmSender {
     message.put("notification", Map.of("title", title, "body", body));
     message.put("data", data);
     Map<String, Object> androidNotice = new LinkedHashMap<>();
-    androidNotice.put("channel_id", o.channelId());
+    if (o.channelId() != null) {
+      androidNotice.put("channel_id", o.channelId());
+    }
     if (o.tag() != null) {
       androidNotice.put("tag", o.tag());
     }
@@ -98,7 +109,9 @@ public class FcmSender {
     if (o.ttlSeconds() != null) {
       android.put("ttl", o.ttlSeconds() + "s");
     }
-    android.put("notification", androidNotice);
+    if (!androidNotice.isEmpty()) {
+      android.put("notification", androidNotice);
+    }
     message.put("android", android);
     try {
       http.post()
