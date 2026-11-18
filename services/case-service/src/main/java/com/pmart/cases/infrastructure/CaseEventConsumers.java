@@ -19,8 +19,8 @@ import org.springframework.context.annotation.Configuration;
  *   <li>{@code trackingEvents-in-0} = delivery.tracking.v1 — {@code RiderLocationStale} 만(R-6).
  *   <li>{@code sagaEvents-in-0} = order.saga.v1, {@code paymentEvents-in-0} = order.payment.v1 —
  *       사가·결제 이상(R-3, 2026-11-16). 처음 켤 때 latest(지난 이상은 처리 대기 BO-12 에 이미 보인다).
- *   <li>{@code claimEvents-in-0} = order.claim.v1 — {@code ReturnRecoveryFailed} 만(R-8,
- *       2026-11-17).
+ *   <li>{@code claimEvents-in-0} = order.claim.v1 — {@code ReturnRecoveryFailed}(R-8, 2026-11-17),
+ *       {@code ClaimClosed}(2026-11-18 — 열린 반품 회수 실패 사건에 이력만).
  * </ul>
  */
 @Configuration(proxyBeanMethods = false)
@@ -60,11 +60,21 @@ class CaseEventConsumers {
     return consumers.of(e -> PAYMENT_TYPES.contains(e.eventType()), cases::onOrderException);
   }
 
-  /** R-8(2026-11-17): order.claim.v1 — {@code ReturnRecoveryFailed} 만(반품 회수 실패 → 상담원 재연락). */
+  /**
+   * R-8(2026-11-17): order.claim.v1 — {@code ReturnRecoveryFailed}(반품 회수 실패 → 상담원 재연락), {@code
+   * ClaimClosed}(2026-11-18 — 열린 그 사건에 "반품 끝남" 이력만).
+   */
   @Bean
   PmartEventConsumer claimEvents(EventConsumers consumers, CaseInboxService cases) {
     return consumers.of(
-        e -> "ReturnRecoveryFailed".equals(e.eventType()), cases::onReturnRecoveryFailed);
+        e -> "ReturnRecoveryFailed".equals(e.eventType()) || "ClaimClosed".equals(e.eventType()),
+        e -> {
+          if ("ClaimClosed".equals(e.eventType())) {
+            cases.onClaimClosed(e); // 2026-11-18 — 열린 반품 회수 실패 사건에 이력만
+          } else {
+            cases.onReturnRecoveryFailed(e);
+          }
+        });
   }
 
   private static final Set<String> DELIVERY_TYPES =

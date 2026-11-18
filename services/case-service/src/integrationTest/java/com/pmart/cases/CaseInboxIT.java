@@ -692,6 +692,58 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
    * R-8(2026-11-17 사용자 — 상담원 팀·1시간·사람이 닫기): 반품 회수 실패 → RETURN_RECOVERY_FAILED. 상담원(CS_AGENT)이 보고 집고
    * 닫는다, 지원센터에는 안 보인다. 열린 동안 또 실패하면 이력, 닫은 뒤 실패하면 새 사건(이전 사건 연결). 같은 토픽의 다른 클레임 사건은 버린다.
    */
+  /**
+   * 반품이 끝나면(ClaimClosed, 2026-11-18) 열린 반품 회수 실패 사건에 이력 CLAIM_CLOSED 만 — 사건은 열린 채(사람이 닫기). 열린 사건이
+   * 없는 클레임은 아무것도 안 생긴다.
+   */
+  @Test
+  void claimClosedLeavesHistoryButKeepsCaseOpen() throws Exception {
+    String claimId = "CLM-CC-" + UUID.randomUUID().toString().substring(0, 8);
+    publishClaim(claimId, 2, "CUSTOMER_ABSENT");
+    String caseId =
+        await(
+                () ->
+                    jdbc.queryForList(
+                        "SELECT case_id FROM case_record WHERE subject_ref = ?",
+                        String.class,
+                        claimId),
+                l -> !l.isEmpty())
+            .get(0);
+    publish(
+        "order.claim.v1",
+        "ClaimClosed",
+        claimId,
+        Map.of("claimId", claimId, "type", "RETURN", "outcome", "RETURN_EXPIRED"),
+        "claim-service");
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'CLAIM_CLOSED'",
+                caseId),
+        c -> c > 0);
+    JsonNode c = send("GET", cs, "/cases/" + caseId, null).body();
+    assertThat(c.path("state").asString()).as("닫지 않는다").isNotEqualTo("CLOSED");
+    assertThat(c.path("history").toString()).contains("CLAIM_CLOSED", "반품 기한이 지나 자동 취소");
+
+    String other = "CLM-CC-NONE-" + UUID.randomUUID().toString().substring(0, 6);
+    publish(
+        "order.claim.v1",
+        "ClaimClosed",
+        other,
+        Map.of("claimId", other, "type", "RETURN", "outcome", "RETURN_REFUNDED"),
+        "claim-service");
+    publishClaim(claimId, 3, "CUSTOMER_ABSENT"); // 뒤 사건이 처리된 것을 확인하는 표지
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'RECURRED'",
+                caseId),
+        n -> n > 0);
+    assertThat(count("SELECT count(*) FROM case_record WHERE subject_ref = ?", other))
+        .as("열린 사건 없는 클레임은 새 사건 없음")
+        .isZero();
+  }
+
   @Test
   void returnRecoveryFailureOpensCsCase() throws Exception {
     String claimId = "CLM-RR-" + UUID.randomUUID().toString().substring(0, 8);

@@ -309,6 +309,41 @@ public class CaseInboxService {
   }
 
   /**
+   * 반품이 끝남(ClaimClosed, 2026-11-18 사용자 "1, 2, 3 다 진행해줘"): 그 클레임의 반품 회수 실패 사건이 열려 있으면 이력
+   * CLAIM_CLOSED 만 남긴다 — 상담원이 이미 끝난 반품을 붙들지 않게. **사건은 닫지 않는다**(R-8 "사람이 닫기"). 열린 사건이 없으면 아무것도 안
+   * 한다(새 사건 없음).
+   */
+  public void onClaimClosed(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String claimId = text(p, "claimId");
+    if (claimId == null) {
+      throw new IllegalArgumentException("claimId 없음"); // 계약 위반 → DLT
+    }
+    var open = store.lockOpenByDedupe("RETURN_RECOVERY:" + claimId);
+    if (open.isEmpty()) {
+      return;
+    }
+    store.touch(open.get().caseId(), now());
+    store.history(
+        open.get().caseId(), now(), SYSTEM, "CLAIM_CLOSED", null, null, claimClosedNote(p));
+    log.info("반품 끝남 — 사건 {} 에 이력만(닫지 않음)", open.get().caseId());
+  }
+
+  static String claimClosedNote(JsonNode p) {
+    String outcome = text(p, "outcome");
+    String what =
+        switch (outcome == null ? "" : outcome) {
+          case "RETURN_REFUNDED" -> "검수·환불 완료";
+          case "RETURN_SHORT_CLOSED" -> "받은 만큼만 환불하고 끝냄";
+          case "RETURN_CANCELLED" -> "상담원이 반품 취소";
+          case "RETURN_FEE_UNPAID" -> "회수비 미결제로 취소";
+          case "RETURN_EXPIRED" -> "반품 기한이 지나 자동 취소";
+          default -> orDash(outcome);
+        };
+    return "반품이 끝났어요 — " + what + ". 고객 연락이 끝났으면 완료 처리하세요";
+  }
+
+  /**
    * 반품 회수 실패 메모. claim 0.3.0(CL-1 추가 결정, 2026-11-17)의 countedAttempts·retryAllowed·returnDeadlineAt
    * 이 있으면 쓴다 — 우리 잘못(RIDER_INCIDENT)은 횟수에 들지 않으므로 attempts(요청 수)보다 countedAttempts 가 맞다. 없으면(이전 발행)
    * 예전 문구. 상담원이 "다시 회수 요청"을 할 수 있는지 메모만 보고 알게 한다(판정은 claim 이 하고 여기선 옮기기만).
