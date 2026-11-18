@@ -346,4 +346,21 @@ class LiveDeliveryIT {
     assertThat(a.path("rider").path("nameMasked").isNull()).isTrue();
     assertThat(r.body().path("unavailableSources").toString()).contains("rider-service");
   }
+
+  /**
+   * 0.15.0(#194 검토 후속): rider 403 — 이 직원은 라이더를 볼 수 없음(예: 센터 관리자) — 은 장애가 아니다. 번호·이름만 null,
+   * unavailableSources 에 rider-service 를 넣지 않는다.
+   */
+  @Test
+  void riderForbiddenIsNotReportedAsOutage() {
+    rider.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/riders"))
+            .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
+    Res r = live(CS, "mfcId=MFC-1&size=20");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode a = r.body().path("items").get(0);
+    assertThat(a.path("rider").path("riderId").asString()).isEqualTo("RD-1");
+    assertThat(a.path("rider").path("riderNumber").isNull()).isTrue();
+    assertThat(r.body().path("unavailableSources").toString()).doesNotContain("rider-service");
+  }
 }

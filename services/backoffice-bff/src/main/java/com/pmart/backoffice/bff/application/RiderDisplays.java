@@ -21,7 +21,8 @@ import tools.jackson.databind.JsonNode;
 /**
  * 화면 라이더 표시(ADR-0070, 2026-11-18 — "가린 이름 + 라이더 번호 6자리"). 화면 응답 하나에서 나온 라이더 ID 를 모아 rider-service
  * {@code GET /riders?riderIds=}(직원 토큰, 50개씩)로 한 번에 읽는다. 덤으로 붙이는 값이라 실패해도 화면은 그대로 — 번호는 null 이고 부른
- * 화면이 rider-service 를 unavailableSources 에 넣는다. 404 는 원천의 답(없음). 라이더 ID·이름은 로그에 남기지 않는다.
+ * 화면이 rider-service 를 unavailableSources 에 넣는다(403 — 볼 권한 없음 — 은 번호만 null, 장애로 보이지 않음). 404 는 원천의
+ * 답(없음). 라이더 ID·이름은 로그에 남기지 않는다.
  */
 final class RiderDisplays {
 
@@ -31,8 +32,9 @@ final class RiderDisplays {
   private RiderDisplays() {}
 
   /**
-   * 라이더 ID → {riderNumber, nameMasked}. 원천 실패(403 포함)면 null — 부른 쪽이 {@code Source.RIDER} 를 실패로
-   * 표시한다. 빈 목록이면 부르지 않고 빈 맵.
+   * 라이더 ID → {riderNumber, nameMasked}. 원천 실패(연결·5xx·403·404 밖 4xx)면 null — 부른 쪽이 {@code
+   * Source.RIDER} 를 실패로 표시한다. 403(이 직원은 라이더를 못 봄)은 실패가 아니라 빈 맵(번호 null, unavailableSources 아님). 빈
+   * 목록이면 부르지 않고 빈 맵.
    */
   static @Nullable Map<String, JsonNode> lookup(
       LookupClients clients, String token, Collection<String> riderIds) {
@@ -54,6 +56,10 @@ final class RiderDisplays {
         }
       } catch (HttpClientErrorException.NotFound e) {
         // 없음 — 원천의 답(번호 null)
+      } catch (HttpClientErrorException.Forbidden e) {
+        // 이 직원은 라이더를 볼 수 없음(예: 센터 관리자 MFC_SUPERVISOR) — 장애가 아니라 권한의 답. 번호만 null, 화면에 장애로 보이지
+        // 않게 빈 맵(2026-11-18 #194 검토 후속)
+        return out;
       } catch (HttpClientErrorException | PmartException e) {
         log.warn("화면 라이더 번호: rider-service 실패 — {}", e.getClass().getSimpleName());
         return null;

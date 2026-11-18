@@ -302,6 +302,8 @@ class CaseInboxViewIT {
     JsonNode rd = denied.body().path("items").get(0).path("riders").get(0);
     assertThat(rd.path("riderId").asString()).isEqualTo("RD-7");
     assertThat(rd.path("riderNumber").isNull()).as("rider 를 못 읽으면 번호만 null").isTrue();
-    assertThat(denied.body().path("unavailableSources").toString()).contains("rider-service");
+    assertThat(denied.body().path("unavailableSources").toString())
+        .as("0.15.0 — 403 은 볼 권한 없음이지 장애가 아님")
+        .doesNotContain("rider-service");
   }
 }

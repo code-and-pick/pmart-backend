@@ -41,6 +41,7 @@ GET /api/v1/backoffice/views/pending-work OPERATOR
 GET /api/v1/backoffice/views/replenishment-status OPERATOR
 GET /api/v1/backoffice/views/trip-control OPERATOR
 GET /api/v1/backoffice/views/unified-lookup OPERATOR
+GET /api/v1/backoffice/views/work-counts OPERATOR
 GET /api/v1/barcodes/{barcode} OPERATOR
 GET /api/v1/batch-changes/{batchId} OPERATOR
 GET /api/v1/batch-changes/{batchId}/rows OPERATOR
