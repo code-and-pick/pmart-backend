@@ -410,6 +410,55 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             + deliveryId
             + "' AND state = 'PICKED_UP'");
 
+    // 사고 지점까지 간 거리(0.9.0, 2026-11-18 — execution 사고 수행료): 등록 시각의 라이더 점 → MFC 에서 그 점까지 도로 거리
+    Instant incidentAt = Instant.now();
+    up.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/riders/" + rider + "/location-at"))
+            .withQueryParam("at", equalTo(incidentAt.toString()))
+            .willReturn(
+                json(
+                    Map.of(
+                        "riderId",
+                        rider,
+                        "lat",
+                        37.4991,
+                        "lng",
+                        127.0301,
+                        "recordedAt",
+                        incidentAt.minusSeconds(20).toString(),
+                        "quality",
+                        "GOOD"))));
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/distance-matrix"))
+            .atPriority(1)
+            .withRequestBody(matchingJsonPath("$.destinations[0].lat", equalTo("37.4991")))
+            .willReturn(json(matrix(List.of(List.of(800, 200))))));
+    JsonNode incident =
+        body(
+            http.get()
+                .uri(
+                    "/internal/deliveries/{id}/incident-distance?at={at}",
+                    deliveryId,
+                    incidentAt.toString())
+                .header("X-Source-System", "delivery-execution-service")
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(incident.path("distanceM").asInt()).isEqualTo(800);
+    assertThat(incident.path("source").asString()).isEqualTo("LOCATION_AT");
+    assertThat(
+            http.get()
+                .uri(
+                    "/internal/deliveries/{id}/incident-distance?at={at}",
+                    "DLV-none",
+                    incidentAt.toString())
+                .header("X-Source-System", "delivery-execution-service")
+                .retrieve()
+                .onStatus(s -> true, (req, res) -> {})
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+
     // 전달 완료(delivery-execution) → CLOSED — 라이더 "진행 중" 수에서 빠진다(PC 1 검토 H2)
     String completed =
         EventEnvelopeFixtures.envelope("DeliveryCompleted")

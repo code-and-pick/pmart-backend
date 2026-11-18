@@ -201,6 +201,11 @@ public class ExecutionEvents {
     if (before.riderId() != null) {
       p.put("riderId", before.riderId());
     }
+    // 2026-11-18 — orchestration 이 사고·파손 재발송을 일반·재발송 배송에만 걸도록
+    p.put("deliveryType", before.type());
+    if (before.purpose() != null) {
+      p.put("purpose", before.purpose());
+    }
     p.put("reason", reason);
     p.put("custody", custody);
     if (goodsLocation != null) {

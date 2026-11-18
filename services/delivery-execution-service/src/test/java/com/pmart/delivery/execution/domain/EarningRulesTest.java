@@ -54,4 +54,14 @@ class EarningRulesTest {
     assertThat(ExecutionRules.custody(null, "WITH_RIDER")).isEqualTo("RIDER");
     assertThat(ExecutionRules.custody("STORE", "WITH_RIDER")).isEqualTo("STORE");
   }
+
+  /** 사고 수행료(2026-11-18 "원래 금액을 거리 비율로") — 원 미만 버림, 전체보다 멀어도 수락 금액까지. */
+  @org.junit.jupiter.api.Test
+  void incidentFeeIsAcceptedFeeByTravelledRatio() {
+    assertThat(EarningRules.incidentFee(3900, 900, 1800)).isEqualTo(1950);
+    assertThat(EarningRules.incidentFee(2900, 1000, 3000)).isEqualTo(966);
+    assertThat(EarningRules.incidentFee(3200, 2500, 2000)).isEqualTo(3200);
+    assertThat(EarningRules.incidentFee(3200, 0, 2000)).isZero();
+    assertThat(EarningRules.incidentFee(3200, 500, 0)).isEqualTo(3200);
+  }
 }

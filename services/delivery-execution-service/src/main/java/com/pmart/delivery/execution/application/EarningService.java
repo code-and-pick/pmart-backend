@@ -66,19 +66,7 @@ public class EarningService {
       return;
     }
     LocalDate performedOn = completedAt.atZone(SEOUL).toLocalDate();
-    LocalDate payout =
-        EarningRules.payoutDate(performedOn, props.payoutBusinessDays(), props.holidays());
-    int lastYear =
-        props.publicHolidays().stream()
-            .mapToInt(LocalDate::getYear)
-            .max()
-            .orElse(Integer.MIN_VALUE);
-    if (payout.getYear() > lastYear) {
-      // 지급 예정일 해의 공휴일을 모른다 — 주말만 빼서 계산했다(해마다 법정공휴일 목록을 더한다)
-      log.warn(
-          "공휴일 목록에 {}년이 없음 — pmart.execution.public-holidays·KoreanPublicHolidays 에 더한다",
-          payout.getYear());
-    }
+    LocalDate payout = payoutOf(performedOn);
     boolean known = d.acceptedFee() != null;
     EarningRow e =
         new EarningRow(
@@ -98,6 +86,60 @@ public class EarningService {
             known ? null : "수락 당시 금액을 모름 — 지원센터 조정",
             completedAt);
     record(e, d.assignmentVersion(), completedAt);
+  }
+
+  /** 지급 예정일 — 수행일 + 영업일. 공휴일 목록 밖 해면 경고. */
+  private LocalDate payoutOf(LocalDate performedOn) {
+    LocalDate payout =
+        EarningRules.payoutDate(performedOn, props.payoutBusinessDays(), props.holidays());
+    int lastYear =
+        props.publicHolidays().stream()
+            .mapToInt(LocalDate::getYear)
+            .max()
+            .orElse(Integer.MIN_VALUE);
+    if (payout.getYear() > lastYear) {
+      // 지급 예정일 해의 공휴일을 모른다 — 주말만 빼서 계산했다(해마다 법정공휴일 목록을 더한다)
+      log.warn(
+          "공휴일 목록에 {}년이 없음 — pmart.execution.public-holidays·KoreanPublicHolidays 에 더한다",
+          payout.getYear());
+    }
+    return payout;
+  }
+
+  /**
+   * 사고 실패 확정(2026-11-18 사용자 "사고나면 배달료는 이동시점까지의 거리를 계산해서 지급" → "원래 금액을 거리 비율로") — 수락 금액 × min(1, 간
+   * 거리 ÷ 수락 당시 MFC → 고객 거리)로 확정 대기(완료와 같은 확정·지급 일정). 간 거리·수락 금액·전체 거리를 모르면 산정 불가.
+   *
+   * @param travelledM MFC → 사고 지점 도로 거리(dispatch incident-distance), 모르면 null
+   */
+  public void incident(DeliveryRow d, @Nullable Integer travelledM, Instant at) {
+    if (d.riderId() == null) {
+      return;
+    }
+    if (travelledM == null || d.acceptedFee() == null || d.distanceM() == null) {
+      notCalculable(d, "RIDER_INCIDENT(사고 지점 거리 모름)", at);
+      return;
+    }
+    int fee = EarningRules.incidentFee(d.acceptedFee(), travelledM, d.distanceM());
+    LocalDate performedOn = at.atZone(SEOUL).toLocalDate();
+    EarningRow e =
+        new EarningRow(
+            "ERN-" + UUID.randomUUID(),
+            d.deliveryId(),
+            d.riderId(),
+            true,
+            EarningRules.RATE_TABLE_VERSION,
+            d.vehicleType(),
+            travelledM,
+            d.acceptedFee(),
+            fee,
+            "PENDING_CONFIRMATION",
+            performedOn,
+            EarningRules.confirmAt(at, props.confirmAfter()),
+            payoutOf(performedOn),
+            "사고 — 간 거리 " + travelledM + "m / 전체 " + d.distanceM() + "m 비율",
+            at);
+    record(e, d.assignmentVersion(), at);
   }
 
   /** 실패 확정·취소 — 원문에 금액 기준이 없어 산정 불가(지원센터 조정). */

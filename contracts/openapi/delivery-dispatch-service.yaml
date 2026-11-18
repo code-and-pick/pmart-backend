@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -514,6 +514,36 @@ paths:
                   pickup: { $ref: '#/components/schemas/LatLng' }
                   drop: { $ref: '#/components/schemas/LatLng' }
                   pickupToDropS: { type: integer, minimum: 0 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/deliveries/{deliveryId}/incident-distance:
+    get:
+      tags: [internal]
+      summary: "[execution→dispatch] (0.9.0) 사고 지점까지 간 거리 — 사고 수행료(거리 비율)"
+      description: |
+        2026-11-18 사용자 "사고나면 배달료는 이동시점까지의 거리를 계산해서 지급" → "원래 금액을 거리 비율로". execution 이 사고(RIDER_INCIDENT)
+        실패를 확정할 때 부른다 — 수행료 = 수락 금액 × min(1, distanceM ÷ 수락 당시 MFC → 고객 거리).
+        사고 지점 = `at`(실패 등록 시각)에 가장 가까운 배정 라이더 위치 점(tracking location-at, 앞뒤 3분), 없으면 마지막으로 받은 위치(픽업 뒤에 받은 점만).
+        distanceM = MFC → 사고 지점 도로 거리(배차가 쓰는 같은 거리 행렬). 좌표는 응답에 싣지 않는다.
+        잴 수 없으면 404 — DELIVERY_NOT_FOUND / INCIDENT_POINT_NOT_FOUND(픽업 전·위치 없음) / NO_MFC_COORDINATES / NO_ROUTE. 호출자는 산정 불가(지원센터 조정)로 둔다.
+      x-added-in: '2026-11-18'
+      operationId: getDeliveryIncidentDistance
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - { name: at, in: query, required: true, schema: { type: string, format: date-time }, description: 실패 등록 시각 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveryId, distanceM, source, recordedAt]
+                properties:
+                  deliveryId: { type: string }
+                  distanceM: { type: integer, minimum: 0, description: MFC → 사고 지점 도로 거리(m) }
+                  source: { type: string, enum: [LOCATION_AT, LAST_LOCATION], description: 등록 시각의 위치 점 / 마지막으로 받은 위치 }
+                  recordedAt: { type: string, format: date-time, description: 쓴 위치 점의 시각 }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/deliveries/{deliveryId}/assignment:

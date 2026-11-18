@@ -125,6 +125,51 @@ public class ReshipmentSagaService {
         });
   }
 
+  /**
+   * delivery.delivery.v1 — 전달 실패 확정(execution DeliveryFailed) 중 사고·파손(2026-11-18 사용자 "사고나면 재배송해야지.
+   * 음식이 어떤 상태일줄 알고", "파손도 재배송")이면 새 상품 재발송(RESHIP — 고객 비용 0원). 실패한 상품은 delivery 가 따로 반납한다. 근거 ID =
+   * {@code DF-<deliveryId>}(실패한 배송마다 하나). 다른 사건은 지나간다.
+   */
+  public void onDeliveryEvent(EventEnvelope e) {
+    if (!"DeliveryFailed".equals(e.eventType())) {
+      return;
+    }
+    JsonNode p = e.payload();
+    String deliveryId = p.path("deliveryId").asString("");
+    String reason = p.path("reason").asString("");
+    if (deliveryId.isBlank()
+        || !ReshipmentRules.reshipsOnFailure(
+            p.path("deliveryType").asString(""), p.path("purpose").asString(""), reason)) {
+      return;
+    }
+    Instant after = props.reshipment().startCasesConfirmedAfter();
+    Instant failedAt = instant(p, "failedAt");
+    if (after == null || (failedAt != null && failedAt.isBefore(after))) {
+      return; // 전환 시각 전 사건 — 설정이 없으면 시작하지 않는다(오배송 재발송과 같은 기준)
+    }
+    String ref = ReshipmentRules.failureRef(deliveryId);
+    String sagaId = "SAGA-R-" + UUID.randomUUID();
+    if (!store.insert(
+        sagaId,
+        ref,
+        deliveryId,
+        p.path("orderId").asString(null),
+        failedAt,
+        "RESHIP",
+        ReshipmentRules.RESOLVE_ORDER,
+        clock.instant())) {
+      return;
+    }
+    log.info("전달 실패({}) 재발송 사가 {} 시작 — 배송 {}", reason, sagaId, deliveryId);
+    TransactionSynchronizationManager.registerSynchronization(
+        new TransactionSynchronization() {
+          @Override
+          public void afterCommit() {
+            kick(sagaId);
+          }
+        });
+  }
+
   void kick(String sagaId) {
     executor.execute(
         () -> {
@@ -284,12 +329,18 @@ public class ReshipmentSagaService {
       return escalate(s, ReshipmentRules.RESOLVE_ORDER, "ORDER_CANCELLED", "취소된 주문입니다", now);
     }
     List<Line> resend = new ArrayList<>();
+    boolean failure = ReshipmentRules.fromFailure(s.caseId());
     for (JsonNode l : o.path("lines")) {
       int q =
-          ReshipmentRules.resendQty(
-              l.path("originalQty").asInt(0),
-              l.path("cancelledBeforeShipQty").asInt(0),
-              l.path("reshippedQty").asInt(0));
+          failure
+              ? ReshipmentRules.failedResendQty(
+                  l.path("originalQty").asInt(0),
+                  l.path("cancelledBeforeShipQty").asInt(0),
+                  l.path("deliveredQty").asInt(0))
+              : ReshipmentRules.resendQty(
+                  l.path("originalQty").asInt(0),
+                  l.path("cancelledBeforeShipQty").asInt(0),
+                  l.path("reshippedQty").asInt(0));
       if (q > 0) {
         resend.add(
             new Line(
@@ -422,7 +473,10 @@ public class ReshipmentSagaService {
         r,
         now,
         ok -> {
-          String next = next(ReshipmentRules.REQUEST_WORK, true, !shortLines.isEmpty());
+          // 모자란 줄이 없으면 다음 단계 없음 → 완료(2026-11-18 고침: 예전에는 private next 가 null 을 같은 단계로 바꿔 작업 지시를 끝없이
+          // 다시 불렀다)
+          String next =
+              ReshipmentRules.next(ReshipmentRules.REQUEST_WORK, true, !shortLines.isEmpty());
           store.work(
               s.sagaId(),
               ok.body().path("fulfillmentId").asString(""),

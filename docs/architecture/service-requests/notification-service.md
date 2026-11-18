@@ -29,3 +29,8 @@ notification-service 1차(2026-11-16, 계약 0.2.0, ADR-0064 — 고객 앱 알�
 - **필요한 것**: delivery.delivery.v1 `RedeliveryPaymentRequired`(deliveryId·orderId·caseId·fee·requiredAt — 받는 고객은 order 내부 조회 accountId) → 고객 알림함 "오배송된 상품을 실제 주소로 보내려면 9,000원 결제가 필요해요"(목적지 주문 상세 또는 결제 화면, 기한 = requiredAt + 30분). 회수로 바뀐 안내는 기존 환불 결과 알림으로 충분한지 함께 판단.
 - **지금(임시)**: 상담원이 통화로 안내.
 - **구현(2026-11-16, PC 5 PR — PC 1 검토)**: `RedeliveryPaymentRequired` → 주문 소유자 알림함 "실제 주소로 다시 보내려면 결제가 필요해요"(분류 PAYMENT, 목적지 ORDER = orderId, 본문에 금액·30분·미결제 시 회수 후 상품값 − 금액 환불). 회수로 바뀐 뒤는 기존 환불 결과 알림, 다시 배송 완료는 기존 "배송이 완료되었어요".
+
+## N-4. 사고·파손 재발송 고객 안내 (2026-11-18, ADR-0069 — 보낸 영역 delivery)
+- **배경**: 배송 중 라이더 사고·상품 파손으로 전달 실패가 확정되면 order-orchestration 이 새 상품을 다시 보낸다(고객 비용 0원). 지금 notification 은 `DeliveryFailed` 를 받지 않아 고객은 아무 안내도 못 받는다.
+- **필요한 것**: delivery.delivery.v1 `DeliveryFailed`(deliveryId·orderId·reason·deliveryType — 받는 고객은 order 내부 조회 accountId) 중 reason RIDER_INCIDENT·DAMAGED 이고 deliveryType FORWARD(또는 RESHIPMENT)면 고객 알림함 "배송 중 문제가 생겨 새 상품으로 다시 보내드려요"(목적지 ORDER). 재고가 모자라 일부 환불되면 환불 알림은 기존대로. 그 밖 사유(고객 부재 등)는 상담원이 안내 — 문구는 PC 1 이 정한다. 휴대폰 푸시 여부는 `customer-templates`.
+- **지금(임시)**: 상담원이 통화로 안내.

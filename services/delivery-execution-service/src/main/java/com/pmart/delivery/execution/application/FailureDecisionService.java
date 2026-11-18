@@ -5,6 +5,7 @@ import com.pmart.common.messaging.RequestIdempotency.RequestKey;
 import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.PmartException;
 import com.pmart.delivery.execution.domain.ExecutionRules;
+import com.pmart.delivery.execution.infrastructure.DispatchClient;
 import com.pmart.delivery.execution.infrastructure.ExecutionStore;
 import com.pmart.delivery.execution.infrastructure.ExecutionStore.DeliveryRow;
 import java.time.Clock;
@@ -58,6 +59,7 @@ public class FailureDecisionService {
   private final RequestIdempotency idempotency;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final DispatchClient dispatch;
 
   public FailureDecisionService(
       ExecutionStore store,
@@ -65,13 +67,15 @@ public class FailureDecisionService {
       EarningService earnings,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      DispatchClient dispatch) {
     this.store = store;
     this.events = events;
     this.earnings = earnings;
     this.idempotency = idempotency;
     this.mapper = mapper;
     this.clock = clock;
+    this.dispatch = dispatch;
   }
 
   public ExecutionService.Applied decide(
@@ -178,8 +182,13 @@ public class FailureDecisionService {
                 events.failed(d, reason, custody, goods, returnBy, p.subject(), now);
                 // 수행료(2026-11-17 사용자 "고객 귀책이면 라이더는 잘못 없으니 원래 측정돼 있던 수행료"): 고객 사유(부재·연락 두절·주소
                 // 오류·거부)면 수락 당시 금액, 그 밖은 산정 불가 → 지원센터 조정. 상품이 라이더 손이면 dispatch 가 반납 배송을 같은 라이더에게
+                // 사고(2026-11-18 사용자 "이동시점까지의 거리" → "원래 금액을 거리 비율로"): 등록 시각의 라이더 위치까지 간 거리 비율
                 if (ExecutionRules.CUSTOMER_REASONS.contains(reason)) {
                   earnings.completed(d, now);
+                } else if (ExecutionRules.INCIDENT_REASON.equals(reason)) {
+                  Instant reportedAt = instantOr(reported.path("reportedAt").asString(null), now);
+                  var travelled = dispatch.incidentDistance(deliveryId, reportedAt);
+                  earnings.incident(d, travelled.isPresent() ? travelled.getAsInt() : null, now);
                 } else {
                   earnings.notCalculable(d, "FAILED", now);
                 }
@@ -196,5 +205,16 @@ public class FailureDecisionService {
               return new ExecutionService.Applied(requestId, deliveryId, version, now);
             })
         .value();
+  }
+
+  private static Instant instantOr(@Nullable String s, Instant fallback) {
+    if (s == null || s.isBlank()) {
+      return fallback;
+    }
+    try {
+      return Instant.parse(s);
+    } catch (java.time.format.DateTimeParseException e) {
+      return fallback;
+    }
   }
 }

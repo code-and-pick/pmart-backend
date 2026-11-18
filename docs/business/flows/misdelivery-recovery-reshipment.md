@@ -55,7 +55,15 @@
 - 고객 앱: `GET /redelivery-payments`(본인 것) → 결제위젯(orderId = paymentAttemptId, 9,000원, "오배송 다시 배송비") → payment `POST /payment-confirmations`. 실패하면 `POST /redelivery-payments/{id}/payment-attempts`(새 시도), 결제 대신 회수 후 환불은 `…/declines`. handoff `docs/handoff/clients/customer-app/2026-11-16-request-redelivery-payment.md`.
 - 결제 기한 안에 결제창에 들어갔다면 결제 서비스가 기한(`resourceExpiresAt`) 뒤 승인을 막는다(EXPIRED). 그래도 기한 직전 승인 결과가 늦게 오면 CANCEL_LATE_PAYMENT.
 
+## 2.3 전달 실패(사고·파손) 재발송 (2026-11-18, ADR-0069)
+사용자 "사고나면 재배송해야지. 음식이 어떤 상태일줄 알고", "파손도 재배송".
+- 시작: execution `DeliveryFailed`(delivery.delivery.v1 — 지원센터가 실패 확정) reason **RIDER_INCIDENT·DAMAGED**, deliveryType FORWARD 또는 RESHIPMENT·purpose MISDELIVERY_RESHIPMENT → orchestration `ReshipmentSagaService.onDeliveryEvent`. 근거 ID(`case_id` 칸) = `DF-<deliveryId>` — 실패마다 하나. 시작 기준 시각은 오배송과 같은 `start-cases-confirmed-after`(failedAt 으로 비교).
+- 단계는 §2 와 같다(mode RESHIP). 다른 점: RESOLVE_ORDER 의 보낼 수량 = 원수량 − 출고 전 취소 − **전달됨**(오배송은 − 이미 재발송). 출고 ID·작업 지시 `reshipmentRef` = `DF-…`. MFC·배송 쪽 purpose 는 MISDELIVERY_RESHIPMENT 그대로(계약을 바꾸지 않음), 약속 = 재발송 배송 생성 + 50분(사건 첫 시각이 없으므로).
+- 실패한 상품은 따로 반납(같은 라이더·다른 라이더 — dispatch FAILED_DELIVERY_RETURN). 사고 수행료 = 수락 금액 × 간 거리 비율(execution, dispatch `incident-distance`), 파손은 지원센터 조정.
+
 ## 3. 남은 것
+- **고침(2026-11-18)**: 모자란 품목이 없으면 REQUEST_WORK 뒤 완료해야 하는데, 다음 단계를 고르는 보조 함수가 "없음"을 같은 단계로 바꿔 **작업 지시를 같은 트랜잭션에서 끝없이 다시 불렀다**(시험은 늘 모자란 품목이 있어 못 봤다). 사고 재발송 시험에서 찾음.
+- 고객 안내: 사고·파손 재발송 알림 없음(notification N-4 요청) — 지금은 상담원.
 - ~~고객 알림 N-3~~ → "결제 필요" 알림함 구현(2026-11-16). 기한 임박 알림은 없음.
 - 재발송 지연(재고 확보·배정 실패) 기한과 고객 안내(ADR-0052 남은 것) — 지금은 상신(수동).
 - 재발송 출고 작업 중지(고객이 재발송을 원치 않을 때) — 원래 작업 지시만 중지된다.

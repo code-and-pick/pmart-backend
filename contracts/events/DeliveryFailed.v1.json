@@ -34,9 +34,17 @@
             "riderId": {
               "$ref": "_defs.v1.json#/$defs/Ref"
             },
+            "deliveryType": {
+              "type": "string",
+              "description": "2026-11-18 — 배송 유형(FORWARD 일반·RESHIPMENT 재발송·다시 배송·RETURN 회수·반납). order-orchestration 이 사고·파손 재발송을 일반·재발송 배송에만"
+            },
+            "purpose": {
+              "type": "string",
+              "description": "2026-11-18 — 목적(RETURN·RESHIPMENT 일 때 — MISDELIVERY_RESHIPMENT 등). 일반 배송은 없음"
+            },
             "reason": {
               "type": "string",
-              "description": "실패 사유 코드"
+              "description": "실패 사유 코드(CUSTOMER_ABSENT·ADDRESS_ERROR·UNREACHABLE·REFUSED·DAMAGED·RIDER_INCIDENT·OTHER). 2026-11-18 — RIDER_INCIDENT·DAMAGED 면 order-orchestration 이 새 상품 재발송"
             },
             "custody": {
               "type": "string",

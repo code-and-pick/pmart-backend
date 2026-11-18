@@ -5,6 +5,7 @@ import com.pmart.delivery.dispatch.api.generated.InternalApi;
 import com.pmart.delivery.dispatch.api.generated.model.Assignment;
 import com.pmart.delivery.dispatch.api.generated.model.CancelRedeliveryRequest;
 import com.pmart.delivery.dispatch.api.generated.model.CreateDispatchRequest202Response;
+import com.pmart.delivery.dispatch.api.generated.model.GetDeliveryIncidentDistance200Response;
 import com.pmart.delivery.dispatch.api.generated.model.GetDeliveryRoutePoints200Response;
 import com.pmart.delivery.dispatch.api.generated.model.GetRiderActiveDeliveries200Response;
 import com.pmart.delivery.dispatch.api.generated.model.LatLng;
@@ -24,12 +25,30 @@ public class InternalController implements InternalApi {
   private final DeliveryQueries queries;
   private final DispatchViews views;
   private final RedeliveryCommands redelivery;
+  private final com.pmart.delivery.dispatch.application.IncidentDistance incidents;
 
   public InternalController(
-      DeliveryQueries queries, DispatchViews views, RedeliveryCommands redelivery) {
+      DeliveryQueries queries,
+      DispatchViews views,
+      RedeliveryCommands redelivery,
+      com.pmart.delivery.dispatch.application.IncidentDistance incidents) {
     this.queries = queries;
     this.views = views;
     this.redelivery = redelivery;
+    this.incidents = incidents;
+  }
+
+  /** 사고 지점까지 간 거리(0.9.0, 2026-11-18) — execution 사고 수행료(거리 비율). */
+  @Override
+  public ResponseEntity<GetDeliveryIncidentDistance200Response> getDeliveryIncidentDistance(
+      String deliveryId, java.time.OffsetDateTime at) {
+    var m = incidents.measure(deliveryId, at.toInstant());
+    return ResponseEntity.ok(
+        new GetDeliveryIncidentDistance200Response()
+            .deliveryId(m.deliveryId())
+            .distanceM(m.distanceM())
+            .source(GetDeliveryIncidentDistance200Response.SourceEnum.fromValue(m.source()))
+            .recordedAt(m.recordedAt().atOffset(java.time.ZoneOffset.UTC)));
   }
 
   /** 오배송 다시 배송 결제됨 → 배차 풀기(ADR-0065 4단계, orchestration). 같은 요청은 같은 결과(행 상태로 멱등). */

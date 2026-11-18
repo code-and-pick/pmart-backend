@@ -68,6 +68,41 @@ public final class ReshipmentRules {
     return orderId + "-RS-" + h;
   }
 
+  /** 전달 실패(사고·파손)로 시작한 재발송의 근거 — 실패한 배송마다 하나(2026-11-18). */
+  public static final String FAILURE_REF_PREFIX = "DF-";
+
+  /** 재발송이 일어나는 전달 실패 사유 — 사용자 2026-11-18 "사고나면 재배송", "파손도 재배송". */
+  public static final java.util.Set<String> RESHIP_FAILURE_REASONS =
+      java.util.Set.of("RIDER_INCIDENT", "DAMAGED");
+
+  public static String failureRef(String deliveryId) {
+    return FAILURE_REF_PREFIX + deliveryId;
+  }
+
+  public static boolean fromFailure(String caseId) {
+    return caseId.startsWith(FAILURE_REF_PREFIX);
+  }
+
+  /**
+   * 재발송을 거는 배송 — 일반 배송(FORWARD)과 앞선 재발송 배송(RESHIPMENT·MISDELIVERY_RESHIPMENT)만. 회수·반납·오배송 다시 배송(잘못
+   * 둔 곳 → 실제 집, 원래 상품)은 아니다.
+   */
+  public static boolean reshipsOnFailure(String deliveryType, String purpose, String reason) {
+    if (!RESHIP_FAILURE_REASONS.contains(reason)) {
+      return false;
+    }
+    return "FORWARD".equals(deliveryType)
+        || ("RESHIPMENT".equals(deliveryType) && "MISDELIVERY_RESHIPMENT".equals(purpose));
+  }
+
+  /**
+   * 전달 실패 재발송 수량 = 원수량 + 재발송 − 출고 전 취소 − 전달됨 − 이미 재발송(2026-11-18). 실패한 출고는 전달되지 않았으므로 아직 고객에게 가지 않은
+   * 만큼 — 주문 첫 배송이 실패하면 원수량 − 출고 전 취소. 오배송 재발송 배송이 사고 나면 오배송 상품이 전달됨으로 세어져 0 이 될 수 있다 — 그때는 상신(수동).
+   */
+  public static int failedResendQty(int originalQty, int cancelledBeforeShipQty, int deliveredQty) {
+    return originalQty - cancelledBeforeShipQty - deliveredQty;
+  }
+
   /**
    * 보낼 수량 = 원수량 − 출고 전 취소 − 이미 재발송(배송된 만큼 다시 — 출고는 주문당 하나, D6-2).
    *

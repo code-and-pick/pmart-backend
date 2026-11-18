@@ -24,6 +24,18 @@ public final class EarningRules {
 
   private EarningRules() {}
 
+  /**
+   * 사고 수행료(2026-11-18 사용자 "사고나면 배달료는 이동시점까지의 거리를 계산해서 지급" → "원래 금액을 거리 비율로") = 수락 금액 × min(1, 간 거리
+   * ÷ 전체 거리), 원 미만 버림. 전체 거리가 0 이하면 수락 금액 그대로.
+   */
+  public static int incidentFee(int acceptedFee, int travelledM, int totalM) {
+    if (totalM <= 0) {
+      return acceptedFee;
+    }
+    long part = Math.max(0, Math.min(travelledM, totalM));
+    return (int) (acceptedFee * part / totalM);
+  }
+
   public static Instant confirmAt(Instant completedAt, Duration confirmAfter) {
     return completedAt.plus(confirmAfter);
   }

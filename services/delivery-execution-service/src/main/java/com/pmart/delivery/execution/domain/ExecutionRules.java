@@ -41,6 +41,9 @@ public final class ExecutionRules {
   public static final Set<String> CUSTOMER_REASONS =
       Set.of("CUSTOMER_ABSENT", "UNREACHABLE", "ADDRESS_ERROR", "REFUSED");
 
+  /** 사고 — 수행료는 간 거리 비율(2026-11-18), 새 상품 재발송은 orchestration 이 DeliveryFailed 로. */
+  public static final String INCIDENT_REASON = "RIDER_INCIDENT";
+
   public static final int MIN_CONTACT_ATTEMPTS = 2;
 
   /** 도움요청을 낼 수 있는 상태 — 배정 뒤 끝나기 전(실패 등록 뒤에도 지원센터와 연락). */

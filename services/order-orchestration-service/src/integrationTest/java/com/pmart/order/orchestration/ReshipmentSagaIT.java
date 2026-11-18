@@ -343,6 +343,81 @@ class ReshipmentSagaIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.lines[0].qty", WireMock.equalTo("1"))));
   }
 
+  void deliveryFailed(String deliveryId, String o, String type, String reason) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", deliveryId);
+    p.put("orderId", o);
+    p.put("riderId", "RD-1");
+    p.put("deliveryType", type);
+    p.put("reason", reason);
+    p.put("custody", "RIDER");
+    p.put("returnBy", "OTHER_RIDER");
+    p.put("failedAt", Instant.now().toString());
+    String json =
+        EventEnvelopeFixtures.envelope("DeliveryFailed")
+            .from("delivery-execution-service")
+            .aggregate("Delivery", deliveryId, 7)
+            .payload(p)
+            .buildJson();
+    kafka.send("delivery.delivery.v1", deliveryId, json).join();
+  }
+
+  /**
+   * 사고·파손 전달 실패(2026-11-18 사용자 "사고나면 재배송해야지", "파손도 재배송") → 새 상품 재발송(고객 비용 0원). 보낼 수량 = 원수량 − 출고 전
+   * 취소 − 전달됨(실패는 전달 0). 회수·반납 배송의 실패, 그 밖 사유는 시작하지 않는다.
+   */
+  @Test
+  void incidentFailureReshipsNewGoods() throws Exception {
+    String o = "ORD-" + UUID.randomUUID().toString().substring(0, 8);
+    String deliveryId = "DLV-" + UUID.randomUUID();
+    Map<String, Object> l1 = line(o + "-L1", "E-0000000A", 2, "두부");
+    l1.put("deliveredQty", 0);
+    l1.put("handedOverQty", 2);
+    parts.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/orders/" + o))
+            .willReturn(
+                json(
+                    200,
+                    Map.of(
+                        "orderId",
+                        o,
+                        "status",
+                        "IN_DELIVERY",
+                        "mfcId",
+                        "MFC-T1",
+                        "lines",
+                        List.of(l1)))));
+    participants(o);
+    deliveryFailed(deliveryId, o, "FORWARD", "RIDER_INCIDENT");
+    deliveryFailed(deliveryId, o, "FORWARD", "RIDER_INCIDENT"); // 같은 실패 다시 → 사가 하나
+    String ref = "DF-" + deliveryId;
+    ReshipmentRow s = await(ref, "COMPLETED");
+    assertThat(s.mode()).isEqualTo("RESHIP");
+    assertThat(sagas.byOrder(o)).hasSize(1);
+    parts.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/work-orders"))
+            .withRequestBody(matchingJsonPath("$.kind", WireMock.equalTo("RESHIPMENT")))
+            .withRequestBody(matchingJsonPath("$.reshipmentRef", WireMock.equalTo(ref)))
+            .withRequestBody(
+                matchingJsonPath("$.shipments[0].lines[0].qty", WireMock.equalTo("2"))));
+    parts.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/internal/claims/shortage-refunds")));
+
+    // 파손도 재발송, 반납 배송·고객 사유 실패는 아님
+    String damaged = "DLV-" + UUID.randomUUID();
+    String back = "DLV-" + UUID.randomUUID();
+    String absent = "DLV-" + UUID.randomUUID();
+    deliveryFailed(back, o, "RETURN", "DAMAGED");
+    deliveryFailed(absent, o, "FORWARD", "CUSTOMER_ABSENT");
+    deliveryFailed(damaged, o, "FORWARD", "DAMAGED");
+    long until = System.currentTimeMillis() + 20_000;
+    while (sagas.byCase("DF-" + damaged).isEmpty() && System.currentTimeMillis() < until) {
+      Thread.sleep(200);
+    }
+    assertThat(sagas.byCase("DF-" + damaged)).isPresent();
+    assertThat(sagas.byCase("DF-" + back)).isEmpty();
+    assertThat(sagas.byCase("DF-" + absent)).isEmpty();
+  }
+
   @Test
   void caseBeforeSwitchTimeDoesNotStart() throws Exception {
     String caseId = "CASE-" + UUID.randomUUID();

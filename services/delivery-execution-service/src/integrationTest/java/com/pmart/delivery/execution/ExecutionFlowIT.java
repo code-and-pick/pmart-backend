@@ -52,8 +52,10 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.execution.photo-sweep-interval=PT1H" // 사진 정리도 시험이 직접 부른다
     })
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
-@EnableWireMock(
-    @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.execution.urls.order"))
+@EnableWireMock({
+  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.execution.urls.order"),
+  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.execution.urls.dispatch")
+})
 class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   static final Map<String, byte[]> STORED = new ConcurrentHashMap<>();
@@ -94,6 +96,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("order")
   WireMockServer orderApi;
+
+  @InjectWireMock("dispatch")
+  WireMockServer dispatchApi;
 
   RestClient http;
 
@@ -1217,6 +1222,18 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     String r1 = "RDR-" + UUID.randomUUID();
     String r2 = "RDR-" + UUID.randomUUID();
     pickedUp(origin, "SHP-" + UUID.randomUUID(), order, r1);
+    // 사고 수행료(2026-11-18 — 거리 비율): 수락 3,900원·1,800m 중 MFC → 사고 지점 900m → 1,950원
+    dispatchApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/deliveries/" + origin + "/incident-distance"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"deliveryId\":\""
+                        + origin
+                        + "\",\"distanceM\":900,\"source\":\"LAST_LOCATION\",\"recordedAt\":\""
+                        + Instant.now()
+                        + "\"}")));
     Map<String, Object> direct =
         Map.of(
             "decision", "CONFIRM",
@@ -1233,12 +1250,16 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode failed = outbox(origin, "DeliveryFailed").path("payload");
     assertThat(failed.path("reason").asString()).isEqualTo("RIDER_INCIDENT");
     assertThat(failed.path("returnBy").asString()).isEqualTo("OTHER_RIDER");
-    assertThat(
-            jdbc.queryForObject(
-                "SELECT calculable FROM rider_earning WHERE delivery_id = ?",
-                Boolean.class,
-                origin))
-        .isFalse(); // 고객 사유가 아님 — 지원센터 조정
+    assertThat(failed.path("deliveryType").asString()).isEqualTo("FORWARD");
+    Map<String, Object> earning =
+        jdbc.queryForMap(
+            "SELECT calculable, total, distance_m, settlement_state FROM rider_earning WHERE"
+                + " delivery_id = ?",
+            origin);
+    assertThat(earning.get("calculable")).isEqualTo(true); // 사고 — 간 거리 비율
+    assertThat(((Number) earning.get("total")).intValue()).isEqualTo(1950);
+    assertThat(((Number) earning.get("distance_m")).intValue()).isEqualTo(900);
+    assertThat(earning.get("settlement_state")).isEqualTo("PENDING_CONFIRMATION");
 
     String back = "DLV-" + UUID.randomUUID();
     Map<String, Object> created = new java.util.LinkedHashMap<>();
