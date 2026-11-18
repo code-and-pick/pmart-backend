@@ -98,4 +98,25 @@ public class DispatchClient {
       return java.util.Optional.empty();
     }
   }
+
+  /** 배송 순번(dispatch 0.10.1 — 화면 배송 번호). 없거나 부르지 못하면 비어 있다. */
+  public OptionalInt deliverySeq(String deliveryId) {
+    try {
+      String body =
+          Downstream.call(
+              "delivery-dispatch sequence",
+              () ->
+                  dispatch
+                      .get()
+                      .uri("/api/v1/internal/deliveries/{id}/sequence", deliveryId)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = mapper.readTree(body == null ? "{}" : body);
+      return n.path("deliverySeq").isInt()
+          ? OptionalInt.of(n.path("deliverySeq").asInt())
+          : OptionalInt.empty();
+    } catch (HttpClientErrorException | PmartException e) {
+      return OptionalInt.empty();
+    }
+  }
 }

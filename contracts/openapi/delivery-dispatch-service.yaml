@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.10.0
+  version: 0.10.1
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -545,6 +545,29 @@ paths:
                   distanceM: { type: integer, minimum: 0, description: MFC → 사고 지점 도로 거리(m) }
                   source: { type: string, enum: [LOCATION_AT, LAST_LOCATION], description: 등록 시각의 위치 점 / 마지막으로 받은 위치 }
                   recordedAt: { type: string, format: date-time, description: 쓴 위치 점의 시각 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/deliveries/{deliveryId}/sequence:
+    get:
+      tags: [internal]
+      summary: "[execution→dispatch] (0.10.1) 같은 주문의 몇 번째 배송(화면 배송 번호 순번 — ADR-0070)"
+      description: |
+        execution 이 DeliveryCreated.deliverySeq 를 받지 못한 배송(0.10.0 배포 전 배송·놓친 사건)의 순번을 채울 때 부른다. 없는 배송 404.
+      x-added-in: '2026-11-18'
+      operationId: getDeliverySequence
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deliveryId, deliverySeq]
+                properties:
+                  deliveryId: { type: string }
+                  deliverySeq: { type: integer, minimum: 1 }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/deliveries/{deliveryId}/assignment:

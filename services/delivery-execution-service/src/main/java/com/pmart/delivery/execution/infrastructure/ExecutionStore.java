@@ -246,6 +246,15 @@ public class ExecutionStore {
   }
 
   /** DeliveryCreated 의 유형·목적(회수 배송 — DD-2). 배정 사건이 먼저 와 FORWARD 로 만들어졌어도 바로잡는다. */
+  /** 순번을 아직 모르는 배송(오래된 것 먼저) — 순번 채우기(SeqBackfill). */
+  public List<String> missingDeliverySeq(int limit) {
+    return jdbc.queryForList(
+        "SELECT delivery_id FROM execution_delivery WHERE delivery_seq IS NULL ORDER BY created_at"
+            + " LIMIT ?",
+        String.class,
+        limit);
+  }
+
   /** 같은 주문의 몇 번째 배송(dispatch DeliveryCreated.deliverySeq — ADR-0070). */
   public void setDeliverySeq(String deliveryId, int seq) {
     jdbc.update(

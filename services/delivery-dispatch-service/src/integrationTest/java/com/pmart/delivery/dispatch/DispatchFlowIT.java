@@ -225,6 +225,15 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(created.path("payload").path("shipmentId").asString()).isEqualTo(shipment);
     assertThat(created.path("payload").path("deliverySeq").asInt())
         .isEqualTo(1); // 화면 배송 번호 순번(ADR-0070)
+    assertThat(
+            body(http.get()
+                    .uri("/internal/deliveries/{id}/sequence", deliveryId)
+                    .header("X-Source-System", "delivery-execution-service")
+                    .retrieve()
+                    .toEntity(String.class))
+                .path("deliverySeq")
+                .asInt())
+        .isEqualTo(1);
     assertThat(created.path("payload").path("dropAddressRef").asString())
         .isEqualTo("order:" + order);
 

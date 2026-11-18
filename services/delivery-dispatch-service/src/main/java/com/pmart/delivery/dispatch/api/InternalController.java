@@ -80,6 +80,21 @@ public class InternalController implements InternalApi {
         .occurredAt(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC));
   }
 
+  /** 화면 배송 번호 순번(0.10.1, ADR-0070) — execution 이 놓친 순번을 채운다. */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.dispatch.api.generated.model.GetDeliverySequence200Response>
+      getDeliverySequence(String deliveryId) {
+    var d = queries.assignment(deliveryId);
+    if (d.deliverySeq() == null) {
+      throw com.pmart.common.web.PmartException.notFound("DELIVERY_SEQ_NOT_FOUND", "순번이 없는 배송입니다.");
+    }
+    return ResponseEntity.ok(
+        new com.pmart.delivery.dispatch.api.generated.model.GetDeliverySequence200Response()
+            .deliveryId(deliveryId)
+            .deliverySeq(d.deliverySeq()));
+  }
+
   @Override
   public ResponseEntity<Assignment> getDeliveryAssignment(String deliveryId) {
     var d = queries.assignment(deliveryId);

@@ -49,7 +49,8 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.execution.confirm-interval=PT1H", // 확정 판단은 시험이 직접 부른다
-      "pmart.execution.photo-sweep-interval=PT1H" // 사진 정리도 시험이 직접 부른다
+      "pmart.execution.photo-sweep-interval=PT1H", // 사진 정리도 시험이 직접 부른다
+      "pmart.execution.seq-backfill-interval=PT1H" // 순번 채우기도 시험이 직접 부른다
     })
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
 @EnableWireMock({
@@ -371,6 +372,32 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(
             down.path("connectedSeconds").isNull() || down.path("connectedSeconds").isMissingNode())
         .isTrue();
+  }
+
+  /** 순번 채우기(2026-11-18, ADR-0070): DeliveryCreated 에 순번이 없던 배송을 dispatch sequence 로 채운다. */
+  @org.springframework.beans.factory.annotation.Autowired
+  com.pmart.delivery.execution.application.SeqBackfill seqBackfill;
+
+  @Test
+  void backfillsMissingDeliverySeqFromDispatch() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    created(id, "SHP-" + UUID.randomUUID(), order); // 순번 없는 옛 사건
+    awaitState(id, "UNASSIGNED");
+    dispatchApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/deliveries/" + id + "/sequence"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"deliveryId\":\"" + id + "\",\"deliverySeq\":2}")));
+    seqBackfill.run();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT delivery_seq FROM execution_delivery WHERE delivery_id = ?",
+                Integer.class,
+                id))
+        .isEqualTo(2);
   }
 
   ResponseEntity<String> dropInfo(String id, String rider) {
