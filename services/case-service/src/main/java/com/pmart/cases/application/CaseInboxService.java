@@ -446,6 +446,9 @@ public class CaseInboxService {
     log.info("사건 열림 {} {} {}", c.caseId(), kind, subjectRef);
   }
 
+  /** 사고·파손 재발송의 근거 ID 머리(ADR-0069 — order-orchestration 이 `DF-<실패한 배송 ID>` 로 싣는다). */
+  static final String FAILURE_RESHIPMENT_PREFIX = "DF-";
+
   /**
    * 오배송 재발송(2026-11-16 사용자 "진행해 줘" — PC 5·PC 1 의 재발송 #39~#41 과 잇기): 재발송 배송 생성(DeliveryCreated,
    * purpose MISDELIVERY_RESHIPMENT, caseId)을 그 오배송 사건에 — refs {@code reshipmentDeliveryId}(한 번만)와
@@ -453,9 +456,6 @@ public class CaseInboxService {
    * DF-<실패한 배송 ID>} 가 오므로 그 배송의 전달 실패 사건(없으면 도움요청 사건)에 같은 방식으로 붙인다 — 닫힌 사건이어도 이력만 남기고 상태는 그대로. 재발송
    * 작업(MFC — mfc.fulfillment.v1)은 구독하지 않는다(바인딩 변경 필요 — 지금은 배송 상태로 본다).
    */
-  /** 사고·파손 재발송의 근거 ID 머리(ADR-0069 — order-orchestration 이 `DF-<실패한 배송 ID>` 로 싣는다). */
-  static final String FAILURE_RESHIPMENT_PREFIX = "DF-";
-
   private void onReshipmentCreated(EventEnvelope e, JsonNode p) {
     String caseId = text(p, "caseId");
     String reshipment = text(p, "deliveryId");
