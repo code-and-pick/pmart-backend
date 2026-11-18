@@ -82,6 +82,7 @@ GET /api/v1/deliveries/{deliveryId}/assignment-cancellations/{requestId} OPERATO
 GET /api/v1/deliveries/{deliveryId}/delivery-proof CUSTOMER
 GET /api/v1/deliveries/{deliveryId}/dispatch OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/drop-info RIDER
+GET /api/v1/deliveries/{deliveryId}/drop-location OPERATOR
 GET /api/v1/deliveries/{deliveryId}/eta CUSTOMER,OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/evidence-photos/{photoRef} CUSTOMER,OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/help-requests OPERATOR,RIDER

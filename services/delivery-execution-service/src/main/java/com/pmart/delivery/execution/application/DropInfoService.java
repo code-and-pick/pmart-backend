@@ -27,8 +27,16 @@ public class DropInfoService {
 
   private final ExecutionStore store;
   private final OrderClient order;
+  private final com.pmart.delivery.execution.infrastructure.AuditClient audit;
+  private final java.time.Clock clock;
 
-  public DropInfoService(ExecutionStore store, OrderClient order) {
+  public DropInfoService(
+      ExecutionStore store,
+      OrderClient order,
+      com.pmart.delivery.execution.infrastructure.AuditClient audit,
+      java.time.Clock clock) {
+    this.audit = audit;
+    this.clock = clock;
     this.store = store;
     this.order = order;
   }
@@ -143,6 +151,11 @@ public class DropInfoService {
           false,
           java.util.List.of());
     }
+    return addressOf(d);
+  }
+
+  /** 주문 당시 사본(오배송 다시 배송이면 실제 집 주소 + 주문 당시 수령인·연락처). */
+  private DropInfo addressOf(DeliveryRow d) {
     if (d.orderId() == null) {
       throw PmartException.notFound("DROP_INFO_NOT_FOUND", "주문이 없는 배송입니다.");
     }
@@ -173,5 +186,102 @@ public class DropInfoService {
         original.deliveryNote(),
         null,
         null);
+  }
+
+  /** 직원용 전달지 결과(주소·좌표만). */
+  public record StaffDrop(
+      String deliveryId,
+      String kind,
+      String roadAddress,
+      String detailAddress,
+      @org.jspecify.annotations.Nullable String postalCode,
+      @org.jspecify.annotations.Nullable Double lat,
+      @org.jspecify.annotations.Nullable Double lng,
+      String piiAccessLogId) {
+
+    @Override
+    public String toString() {
+      return "StaffDrop[가림]";
+    }
+  }
+
+  /** 직원용 전달지가 열리는 상태 — 배정 ~ 전달 전. */
+  public static final Set<String> STAFF_OPEN =
+      Set.of(
+          "ASSIGNED", "ARRIVED_AT_STORE", "PICKED_UP", "ARRIVED_AT_CUSTOMER", "FAILURE_REPORTED");
+
+  static final String STAFF_PURPOSE = "라이더 관제 — 진행 중 배송 전달지 확인";
+
+  /**
+   * 직원용 전달지(0.24.0, 2026-11-18 — 라이더 백오피스 관제, 사용자 "정확한 주소" + "사유 없이 + 열람 기록").
+   * RIDER_OPS·OPERATOR_ADMIN 만. 주소·좌표만 — 수령인·전화·출입은 주지 않는다. 주기 전에 audit-service 열람 기록, 안 되면 주지
+   * 않는다(503·응답 불명).
+   */
+  public StaffDrop staffDropLocation(String deliveryId, String sourceSystem) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .filter(x -> x.hasRole("RIDER_OPS") || x.hasRole("OPERATOR_ADMIN"))
+            .orElseThrow(() -> ExecutionService.forbidden("전달지는 라이더 운영·관리자만 볼 수 있습니다."));
+    DeliveryRow d =
+        store
+            .delivery(deliveryId)
+            .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
+    if (d.recovery() || d.failedReturn()) {
+      throw conflict("NO_CUSTOMER_DROP", "회수·반납 배송에는 고객 전달지가 없습니다(도착지는 MFC).");
+    }
+    if (!(d.claimReturn() ? CLAIM_RETURN_OPEN : STAFF_OPEN).contains(d.state())) {
+      throw conflict("DROP_LOCATION_CLOSED", "전달지는 배정부터 전달 전까지만 볼 수 있습니다(지금 " + d.state() + ").");
+    }
+    DropInfo a = addressOf(d);
+    String kind =
+        d.claimReturn() ? "RETURN_PICKUP" : d.redelivery() ? "REDELIVERY_DROP" : "DELIVERY_DROP";
+    String subject = order.accountId(d.orderId()).orElse("ORDER:" + d.orderId());
+    java.util.Map<String, Object> actor = new java.util.LinkedHashMap<>();
+    actor.put("actorId", p.subject());
+    actor.put("actorType", "OPERATOR");
+    actor.put("roles", p.roles());
+    actor.put("centerScope", p.centerScope());
+    java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("occurredAt", clock.instant().toString());
+    body.put("actor", actor);
+    body.put("subjectType", "CUSTOMER");
+    body.put("subjectRef", subject);
+    body.put("accessType", "VIEW");
+    body.put("fields", java.util.List.of("ADDRESS", "LOCATION"));
+    body.put("purpose", STAFF_PURPOSE);
+    body.put("screen", truncate(sourceSystem, 80) + ":rider-control");
+    body.put("caseRef", "DELIVERY:" + deliveryId);
+    body.put("recordCount", 1);
+    var rec = audit.recordPiiAccess(auditKey(p.subject(), deliveryId, clock.instant()), body);
+    return new StaffDrop(
+        deliveryId,
+        kind,
+        a.roadAddress(),
+        a.detailAddress(),
+        a.postalCode(),
+        a.lat(),
+        a.lng(),
+        rec.piiAccessLogId());
+  }
+
+  /** 같은 직원·같은 배송은 10분 칸마다 같은 키 — 관제가 다시 불러도 기록이 늘지 않는다. */
+  static String auditKey(String staffId, String deliveryId, java.time.Instant now) {
+    long bucket = now.getEpochSecond() / 600;
+    try {
+      byte[] h =
+          java.security.MessageDigest.getInstance("SHA-256")
+              .digest(
+                  (staffId + "|" + deliveryId + "|" + bucket)
+                      .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      return "drop-loc-" + java.util.HexFormat.of().formatHex(h).substring(0, 40);
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private static String truncate(@org.jspecify.annotations.Nullable String s, int max) {
+    String v = s == null || s.isBlank() ? "unknown" : s;
+    return v.length() <= max ? v : v.substring(0, max);
   }
 }

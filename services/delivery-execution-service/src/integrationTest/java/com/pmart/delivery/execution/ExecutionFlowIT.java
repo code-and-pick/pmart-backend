@@ -54,7 +54,8 @@ import tools.jackson.databind.ObjectMapper;
 @Import({TestJwtConfiguration.class, ExecutionFlowIT.MemoryPhotos.class})
 @EnableWireMock({
   @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.execution.urls.order"),
-  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.execution.urls.dispatch")
+  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.execution.urls.dispatch"),
+  @ConfigureWireMock(name = "audit", baseUrlProperties = "pmart.execution.urls.audit")
 })
 class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
@@ -99,6 +100,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("dispatch")
   WireMockServer dispatchApi;
+
+  @InjectWireMock("audit")
+  WireMockServer auditApi;
 
   RestClient http;
 
@@ -193,6 +197,98 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             .willReturn(
                 com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
     assertThat(dropInfo(id, rider).getStatusCode().value()).isEqualTo(503);
+  }
+
+  /**
+   * 직원용 전달지(0.24.0, 2026-11-18 — 라이더 백오피스 관제, 사용자 "정확한 주소" + "사유 없이 + 열람 기록"): 라이더 운영·관리자만, 배정 ~ 전달
+   * 전, 주소·좌표만(전화·출입 없음), audit 열람 기록 뒤에만, no-store.
+   */
+  @Test
+  void staffSeesDropLocationOnlyWhileInProgressAfterAuditRecord() throws Exception {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    created(id, "SHP-" + UUID.randomUUID(), order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    Map<String, Object> drop = new java.util.LinkedHashMap<>();
+    drop.put("orderId", order);
+    drop.put("roadAddress", "서울 강남구 테헤란로 1");
+    drop.put("detailAddress", "101동 1001호");
+    drop.put("receiverName", "김고객");
+    drop.put("receiverPhone", "01012345678");
+    drop.put("entranceMethod", "PASSWORD");
+    drop.put("entranceNote", "#1234");
+    drop.put("geo", Map.of("lat", 37.5, "lng", 127.03));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    mapper.writeValueAsString(drop))));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"orderId\":\"" + order + "\",\"accountId\":\"ACC-1\"}")));
+    auditApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/pii-access-logs"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"piiAccessLogId\":\"PAL-1\",\"recordedAt\":\"" + Instant.now() + "\"}")));
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    ResponseEntity<String> ok = staffGet("/deliveries/" + id + "/drop-location", ops);
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(ok.getHeaders().getCacheControl()).contains("no-store");
+    JsonNode b = body(ok);
+    assertThat(b.path("kind").asString()).isEqualTo("DELIVERY_DROP");
+    assertThat(b.path("roadAddress").asString()).isEqualTo("서울 강남구 테헤란로 1");
+    assertThat(b.path("detailAddress").asString()).isEqualTo("101동 1001호");
+    assertThat(b.path("lat").asDouble()).isEqualTo(37.5);
+    assertThat(b.path("piiAccessLogId").asString()).isEqualTo("PAL-1");
+    assertThat(ok.getBody()).doesNotContain("01012345678", "김고객", "#1234");
+    auditApi.verify(
+        com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/pii-access-logs"))
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                    "$.subjectRef",
+                    com.github.tomakehurst.wiremock.client.WireMock.equalTo("ACC-1")))
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                    "$.caseRef",
+                    com.github.tomakehurst.wiremock.client.WireMock.equalTo("DELIVERY:" + id)))
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.notContaining("테헤란로")));
+    // 상담원·센터 관리자는 403
+    assertThat(
+            staffGet(
+                    "/deliveries/" + id + "/drop-location",
+                    TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    // 기록이 안 되면 주소를 주지 않는다
+    auditApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/pii-access-logs"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.aResponse().withStatus(503)));
+    ResponseEntity<String> down = staffGet("/deliveries/" + id + "/drop-location", ops);
+    assertThat(down.getStatusCode().value()).isEqualTo(503);
+    assertThat(down.getBody()).doesNotContain("테헤란로");
+    // 끝난 배송은 닫힘
+    jdbc.update("UPDATE execution_delivery SET state = 'COMPLETED' WHERE delivery_id = ?", id);
+    ResponseEntity<String> closed = staffGet("/deliveries/" + id + "/drop-location", ops);
+    assertThat(closed.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(closed).path("code").asString()).isEqualTo("DROP_LOCATION_CLOSED");
   }
 
   ResponseEntity<String> dropInfo(String id, String rider) {
