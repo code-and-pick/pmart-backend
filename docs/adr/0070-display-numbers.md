@@ -14,6 +14,7 @@
 | 배송 | **화면용 주문번호-순번**(같은 주문의 몇 번째 배송, 1부터) | `74939255-1` 첫 배송, `74939255-2` 반납·회수·재발송 | dispatch 순번(`delivery_seq`, `DeliveryCreated.deliverySeq`) → execution·dispatch 응답 `deliveryNumber` |
 | 라이더 | **숫자 6자리**(무작위, 겹치지 않음, 바뀌지 않음) + 가린 이름 | `김*수 · 482913` | rider(`riderNumber`, 가입 때) |
 | 포장 | 라벨 숫자 6자리 | `305118` | mfc-fulfillment(있음) |
+| 직원 | 이름 · 사번 | `홍길동 · P2026-00001` | hr(사번 있음 — 2026-11-18 덧붙임). 운영자 ID(OP-…)는 처리자·결정자 칸에도 내지 않는다 |
 
 3. **화면 규칙(모든 웹·앱·시뮬레이터 공통)**
    - 목록·표·지도·알림·대화에는 **화면 번호만**. 시스템 ID 를 목록에 내지 않는다.
@@ -28,3 +29,6 @@
 - 백엔드(PC 5, 2026-11-18): rider 0.12.0(V10 `rider_number`, 직원 목록·상세·찾기 `riderNumber`·`riderIds`, 본인 프로필, 운행 중 목록), tracking 0.10.0(관제 `riderNumber`), dispatch 0.10.0(V13 `delivery_seq`, `DeliveryCreated.deliverySeq`, 배정 이력 `deliveryNumber`), execution 0.26.0(V19, 배송 조회·직원 목록·내 배달 내역 `deliveryNumber`).
 - 아직: 다른 응답에 라이더 번호를 직접 싣지는 않았다 — 배송 목록 등 `riderId` 만 있는 화면은 `GET /riders?riderIds=a,b,c`(50개)로 한 번에 붙인다. 관제 진행 중 배송에는 배송 번호가 없다(배송 상세에서).
 - 클라이언트·시뮬레이터 알림: `docs/handoff/clients/all/2026-11-18-notice-display-numbers.md`, `docs/handoff/simulator/2026-11-18-notice-display-numbers.md`.
+
+## 덧붙임 (2026-11-18)
+- 직원 표시 = 이름 · 사번(인사 백오피스는 이미 사번). 승인함·처리 대기·조치 이력의 처리자 칸도 OP-… 대신. 운영자 ID 여럿을 이름·사번으로 한 번에 바꿀 HR 조회가 없으면 PC 1(HR)에 요청.
