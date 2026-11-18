@@ -36,6 +36,11 @@ public class StaffDropController implements StaffDropApi {
                 .postalCode(d.postalCode())
                 .lat(d.lat() == null ? null : BigDecimal.valueOf(d.lat()))
                 .lng(d.lng() == null ? null : BigDecimal.valueOf(d.lng()))
+                .coordinateSource(
+                    d.coordinateSource() == null
+                        ? null
+                        : GetDeliveryDropLocationForStaff200Response.CoordinateSourceEnum.fromValue(
+                            d.coordinateSource()))
                 .piiAccessLogId(d.piiAccessLogId()));
   }
 }

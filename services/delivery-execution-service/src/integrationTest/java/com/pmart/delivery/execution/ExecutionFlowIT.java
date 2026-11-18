@@ -251,6 +251,28 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(b.path("detailAddress").asString()).isEqualTo("101동 1001호");
     assertThat(b.path("lat").asDouble()).isEqualTo(37.5);
     assertThat(b.path("piiAccessLogId").asString()).isEqualTo("PAL-1");
+    assertThat(b.path("coordinateSource").asString()).isEqualTo("ORDER_PIN");
+    // 고객이 핀 없이 저장한 주소(2026-11-18) → 배차가 지오코딩한 좌표(route-points drop)
+    drop.remove("geo");
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order + "/drop-info"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    mapper.writeValueAsString(drop))));
+    dispatchApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/deliveries/" + id + "/route-points"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"deliveryId\":\""
+                        + id
+                        + "\",\"pickup\":{\"lat\":35.15,\"lng\":129.06},\"drop\":{\"lat\":35.1612,\"lng\":129.0601}}")));
+    JsonNode geo = body(staffGet("/deliveries/" + id + "/drop-location", ops));
+    assertThat(geo.path("lat").asDouble()).isEqualTo(35.1612);
+    assertThat(geo.path("coordinateSource").asString()).isEqualTo("ADDRESS_GEOCODE");
     assertThat(ok.getBody()).doesNotContain("01012345678", "김고객", "#1234");
     auditApi.verify(
         com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(

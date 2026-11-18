@@ -65,4 +65,37 @@ public class DispatchClient {
       return OptionalInt.empty();
     }
   }
+
+  /** 배차가 준비한 좌표(픽업지·도착지). */
+  public record RoutePoints(double pickupLat, double pickupLng, double dropLat, double dropLng) {}
+
+  /**
+   * 배차 좌표(dispatch {@code GET /internal/deliveries/{id}/route-points} — 도로명주소 지오코딩, 2026-11-18 전달지
+   * 핀 대체). 아직 없거나 부르지 못하면 비어 있다.
+   */
+  public java.util.Optional<RoutePoints> routePoints(String deliveryId) {
+    try {
+      String body =
+          Downstream.call(
+              "delivery-dispatch route-points",
+              () ->
+                  dispatch
+                      .get()
+                      .uri("/api/v1/internal/deliveries/{id}/route-points", deliveryId)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = mapper.readTree(body == null ? "{}" : body);
+      if (!n.path("pickup").path("lat").isNumber() || !n.path("drop").path("lat").isNumber()) {
+        return java.util.Optional.empty();
+      }
+      return java.util.Optional.of(
+          new RoutePoints(
+              n.path("pickup").path("lat").asDouble(),
+              n.path("pickup").path("lng").asDouble(),
+              n.path("drop").path("lat").asDouble(),
+              n.path("drop").path("lng").asDouble()));
+    } catch (HttpClientErrorException | PmartException e) {
+      return java.util.Optional.empty();
+    }
+  }
 }

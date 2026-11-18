@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.24.0
+  version: 0.24.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -108,8 +108,9 @@ paths:
                   roadAddress: { type: string }
                   detailAddress: { type: string }
                   postalCode: { type: [string, 'null'] }
-                  lat: { type: [number, 'null'], description: 정확한 좌표(주문 당시 사본 — 다시 배송은 null) }
+                  lat: { type: [number, 'null'], description: '정확한 좌표 — 주문 사본 핀, 없으면 배차가 주소로 지오코딩한 좌표(0.24.1)' }
                   lng: { type: [number, 'null'] }
+                  coordinateSource: { type: [string, 'null'], enum: [ORDER_PIN, ADDRESS_GEOCODE, null], x-added-in: '2026-11-18' }
                   piiAccessLogId: { type: string, description: audit-service 열람 기록 ID }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
@@ -1365,8 +1366,9 @@ components:
         entranceMethod: { type: [string, 'null'], enum: [FREE, PASSWORD, CALL, OTHER, null], description: 'FREE 자유 출입, PASSWORD 공동현관 비밀번호, CALL 호출, OTHER 기타' }
         entranceNote: { type: [string, 'null'], description: 출입 메모(비밀번호일 수 있다) }
         deliveryNote: { type: [string, 'null'], description: 배송 요청사항 }
-        lat: { type: [number, 'null'], description: 지도 핀(참고) }
+        lat: { type: [number, 'null'], description: '지도 핀. (0.24.1, 2026-11-18) 주문 사본에 핀이 없으면 배차가 도로명주소로 지오코딩한 정확 좌표 — coordinateSource' }
         lng: { type: [number, 'null'] }
+        coordinateSource: { type: [string, 'null'], enum: [ORDER_PIN, ADDRESS_GEOCODE, null], x-added-in: '2026-11-18', description: '(0.24.1) 좌표 출처 — 고객이 찍은 핀 / 주소 지오코딩(배차 좌표). 둘 다 없으면 null' }
     HelpCategory:
       type: string
       description: 원문 §5.4 도움요청 버튼(점포 대기 STORE_WAITING·상태 정정 STATUS_CORRECTION 은 0.3.0 에 더함). 배차취소는 dispatch 배차 취소 API. DELIVERY_FAILURE(0.14.0)는 실패 등록이 여는 대화 — 도움요청 만들기로는 400

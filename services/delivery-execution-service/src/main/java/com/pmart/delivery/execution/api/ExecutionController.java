@@ -347,6 +347,7 @@ public class ExecutionController implements ExecutionApi {
   @Override
   public ResponseEntity<DropInfo> getDeliveryDropInfo(String deliveryId) {
     OrderClient.DropInfo d = dropInfos.dropInfo(deliveryId);
+    var c = dropInfos.coordinatesOf(deliveryId, d); // 핀 없으면 배차 지오코딩 좌표(2026-11-18)
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(
@@ -363,8 +364,12 @@ public class ExecutionController implements ExecutionApi {
                         : DropInfo.EntranceMethodEnum.fromValue(d.entranceMethod()))
                 .entranceNote(d.entranceNote())
                 .deliveryNote(d.deliveryNote())
-                .lat(d.lat() == null ? null : BigDecimal.valueOf(d.lat()))
-                .lng(d.lng() == null ? null : BigDecimal.valueOf(d.lng())));
+                .lat(c.lat() == null ? null : BigDecimal.valueOf(c.lat()))
+                .lng(c.lng() == null ? null : BigDecimal.valueOf(c.lng()))
+                .coordinateSource(
+                    c.source() == null
+                        ? null
+                        : DropInfo.CoordinateSourceEnum.fromValue(c.source())));
   }
 
   @Override

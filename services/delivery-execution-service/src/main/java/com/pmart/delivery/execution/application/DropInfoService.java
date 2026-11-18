@@ -27,6 +27,7 @@ public class DropInfoService {
 
   private final ExecutionStore store;
   private final OrderClient order;
+  private final com.pmart.delivery.execution.infrastructure.DispatchClient dispatch;
   private final com.pmart.delivery.execution.infrastructure.AuditClient audit;
   private final java.time.Clock clock;
 
@@ -34,7 +35,9 @@ public class DropInfoService {
       ExecutionStore store,
       OrderClient order,
       com.pmart.delivery.execution.infrastructure.AuditClient audit,
-      java.time.Clock clock) {
+      java.time.Clock clock,
+      com.pmart.delivery.execution.infrastructure.DispatchClient dispatch) {
+    this.dispatch = dispatch;
     this.audit = audit;
     this.clock = clock;
     this.store = store;
@@ -197,6 +200,7 @@ public class DropInfoService {
       @org.jspecify.annotations.Nullable String postalCode,
       @org.jspecify.annotations.Nullable Double lat,
       @org.jspecify.annotations.Nullable Double lng,
+      @org.jspecify.annotations.Nullable String coordinateSource,
       String piiAccessLogId) {
 
     @Override
@@ -254,14 +258,16 @@ public class DropInfoService {
     body.put("caseRef", "DELIVERY:" + deliveryId);
     body.put("recordCount", 1);
     var rec = audit.recordPiiAccess(auditKey(p.subject(), deliveryId, clock.instant()), body);
+    Coordinates c = coordinatesOf(deliveryId, a);
     return new StaffDrop(
         deliveryId,
         kind,
         a.roadAddress(),
         a.detailAddress(),
         a.postalCode(),
-        a.lat(),
-        a.lng(),
+        c.lat(),
+        c.lng(),
+        c.source(),
         rec.piiAccessLogId());
   }
 
@@ -283,5 +289,33 @@ public class DropInfoService {
   private static String truncate(@org.jspecify.annotations.Nullable String s, int max) {
     String v = s == null || s.isBlank() ? "unknown" : s;
     return v.length() <= max ? v : v.substring(0, max);
+  }
+
+  /** 좌표와 출처(ORDER_PIN 고객 핀 / ADDRESS_GEOCODE 배차 지오코딩). */
+  public record Coordinates(
+      @org.jspecify.annotations.Nullable Double lat,
+      @org.jspecify.annotations.Nullable Double lng,
+      @org.jspecify.annotations.Nullable String source) {}
+
+  /**
+   * 전달지 좌표(2026-11-18 — 사용자 "좌표로 핀을 찍게 해야지"): 주문 사본에 핀이 있으면 그것, 없으면 배차가 도로명주소로 지오코딩한 좌표(반품 회수는 회수지
+   * = 픽업지, 그 밖은 도착지). 둘 다 없으면 null.
+   */
+  public Coordinates coordinatesOf(String deliveryId, DropInfo info) {
+    if (info.lat() != null && info.lng() != null) {
+      return new Coordinates(info.lat(), info.lng(), "ORDER_PIN");
+    }
+    DeliveryRow d = store.delivery(deliveryId).orElse(null);
+    if (d == null) {
+      return new Coordinates(null, null, null);
+    }
+    return dispatch
+        .routePoints(deliveryId)
+        .map(
+            p ->
+                d.claimReturn()
+                    ? new Coordinates(p.pickupLat(), p.pickupLng(), "ADDRESS_GEOCODE")
+                    : new Coordinates(p.dropLat(), p.dropLng(), "ADDRESS_GEOCODE"))
+        .orElse(new Coordinates(null, null, null));
   }
 }
