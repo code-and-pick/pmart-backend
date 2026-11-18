@@ -1300,6 +1300,28 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isTrue();
   }
 
+  /** 배차 전 배송도 주문번호로 찾는다(2026-11-18) — 배송이 생길 때 order 내부 주문의 orderNumber 를 읽어 둔다. */
+  @Test
+  void unassignedDeliveryIsFoundByOrderNumber() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String number = String.valueOf(20_000_000 + (int) (Math.random() * 70_000_000));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"orderId\":\"" + order + "\",\"orderNumber\":\"" + number + "\"}")));
+    created(id, "SHP-" + UUID.randomUUID(), order);
+    awaitState(id, "UNASSIGNED");
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode found = body(staffGet("/deliveries?orderNumber=" + number, ops));
+    assertThat(found.path("items").size()).isEqualTo(1);
+    assertThat(found.path("items").get(0).path("deliveryId").asString()).isEqualTo(id);
+    assertThat(found.path("items").get(0).path("orderNumber").asString()).isEqualTo(number);
+  }
+
   ResponseEntity<String> decideWith(String id, List<String> roles, Map<String, Object> body) {
     return http.post()
         .uri("/deliveries/{id}/failure-decisions", id)

@@ -50,18 +50,21 @@ public class ExecutionEventHandler {
   private final EarningService earnings;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final com.pmart.delivery.execution.infrastructure.OrderClient orders;
 
   public ExecutionEventHandler(
       ExecutionStore store,
       PickupJudgement pickup,
       EarningService earnings,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      com.pmart.delivery.execution.infrastructure.OrderClient orders) {
     this.store = store;
     this.pickup = pickup;
     this.earnings = earnings;
     this.mapper = mapper;
     this.clock = clock;
+    this.orders = orders;
   }
 
   /**
@@ -200,6 +203,11 @@ public class ExecutionEventHandler {
             p.path("returnLines").isArray()
                 ? mapper.writeValueAsString(p.path("returnLines"))
                 : null);
+        // 주문번호(2026-11-18): 배정 사건만 싣던 값이라 배차 전 배송은 주문번호로 못 찾았다 — 생길 때 order 에서 한 번 읽는다
+        String orderId = p.path("orderId").asString("");
+        if (d.orderNumber() == null && !orderId.isBlank()) {
+          orders.orderNumber(orderId).ifPresent(n -> store.fillOrderNumber(deliveryId, n));
+        }
         List<String> pkgs = strings(p.path("packageIds"));
         if (d.shipmentId() != null
             && !pkgs.isEmpty()

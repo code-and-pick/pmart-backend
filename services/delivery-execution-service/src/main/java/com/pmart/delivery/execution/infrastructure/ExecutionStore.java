@@ -240,6 +240,15 @@ public class ExecutionStore {
   }
 
   /** DeliveryCreated 의 유형·목적(회수 배송 — DD-2). 배정 사건이 먼저 와 FORWARD 로 만들어졌어도 바로잡는다. */
+  /** 주문번호를 아직 모를 때만 채운다(2026-11-18 — 배송 생성 때 order 에서). */
+  public void fillOrderNumber(String deliveryId, String orderNumber) {
+    jdbc.update(
+        "UPDATE execution_delivery SET order_number = ? WHERE delivery_id = ? AND order_number IS"
+            + " NULL",
+        orderNumber,
+        deliveryId);
+  }
+
   public void describe(
       String deliveryId,
       @Nullable String type,

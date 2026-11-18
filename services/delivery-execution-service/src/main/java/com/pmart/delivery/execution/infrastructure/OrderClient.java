@@ -153,6 +153,27 @@ public class OrderClient {
     return Optional.ofNullable(a);
   }
 
+  /**
+   * 화면용 주문번호(8자리, order {@code GET /internal/orders/{id}} orderNumber — 2026-11-18). 배송이 생길 때 한 번
+   * 읽어 직원 배송 찾기가 배차 전에도 주문번호로 찾게 한다. 없거나 부르지 못하면 비어 있다(배정 사건이 나중에 채운다) — 사건 처리를 막지 않는다.
+   */
+  public Optional<String> orderNumber(String orderId) {
+    try {
+      String body =
+          Downstream.call(
+              "order-service order",
+              () ->
+                  order
+                      .get()
+                      .uri("/api/v1/internal/orders/{id}", orderId)
+                      .retrieve()
+                      .body(String.class));
+      return Optional.ofNullable(body == null ? null : text(mapper.readTree(body), "orderNumber"));
+    } catch (RuntimeException e) {
+      return Optional.empty();
+    }
+  }
+
   private static @Nullable String text(JsonNode n, String field) {
     return n.path(field).isString() ? n.path(field).asString() : null;
   }

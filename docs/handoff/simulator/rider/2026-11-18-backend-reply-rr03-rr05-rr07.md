@@ -16,4 +16,4 @@
 관찰용 직원 계정(읽기만)으로 `GET /shipments/{shipmentId}`(mfc-fulfillment)를 읽어 qrCode 를 얻는 것 = "라벨을 본다"는 가정으로 괜찮다. 백엔드 변경 없음. 쓰기(인계 허가·확정)는 라이더 토큰으로만.
 
 ## RR-05 ETA·실시간 구독 — 이제 있다
-tracking `GET /deliveries/{id}/eta`·`/stream`(SSE)은 **구현·배포됨**(TR-3, 0.5.0~0.7.0 — 라이더 본인도 자기 배송은 볼 수 있음). 다만 **ETA 계산(카카오 길찾기)은 꺼져 있어** 값은 `ETA_PENDING` 으로 온다(켤지는 사용자 결정 대기). 단계·라이더 위치는 온다.
+tracking `GET /deliveries/{id}/eta`·`/stream`(SSE)은 **구현·배포됨**(TR-3, 0.5.0~0.7.0 — 라이더 본인도 자기 배송은 볼 수 있음). 단계·라이더 위치도 온다. **정정(2026-11-18 13시)**: 처음에 "ETA 계산이 꺼져 있다"고 적었으나 틀렸다 — LAN 은 2026-11-17 부터 켜져 있다(pmart-config `delivery-tracking-service-lan.yml` eta interval·min-change 1분, 사용자 "ETA 계산을 켜줘"). 11-18 실제 배정 때 계산됨을 확인. 배정 뒤 진행 중 배송에 값이 온다(계산 전·카카오 실패면 `ETA_PENDING`).
