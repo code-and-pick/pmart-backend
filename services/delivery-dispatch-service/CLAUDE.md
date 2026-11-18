@@ -68,3 +68,4 @@
 - **사고 지점까지 간 거리(2026-11-18, 0.9.0 — ADR-0069)**: 내부 `GET /internal/deliveries/{id}/incident-distance?at=`(`IncidentDistance`) — 배정 라이더의 `at` 근처 위치 점(location-at), 없으면 픽업 뒤 마지막 위치 → MFC → 그 점 도로 거리. 잴 수 없으면 404(DELIVERY_NOT_FOUND·INCIDENT_POINT_NOT_FOUND·NO_MFC_COORDINATES·NO_ROUTE). execution 사고 수행료가 부른다. 좌표는 응답에 없음.
 - **화면 배송 번호(2026-11-18, 0.10.0·V13 — ADR-0070)**: `delivery.delivery_seq`(INSERT 트리거 — 주문마다 advisory lock, 기존은 생성순) → `DeliveryCreated.deliverySeq`, 배정 이력 `deliveryNumber`(주문 요약 사본 orderNumber-순번).
 - **순번 채우기(2026-11-18)**: 내부 `GET /internal/deliveries/{id}/sequence`(0.10.1) — execution 이 놓친 순번을 채운다.
+- **한집은 단독(2026-11-18 — 사용자, ADR-0058 덧붙임)**: `DeliveryRow.customerSingle()`(SINGLE·RETURN 아님), `DispatchStore.singleHolders` — 판단 주기 후보·`allowed`(한집은 맡은 것 없는 라이더만), 회수·다시 배송 후보, `AcceptRules.judge(…, single)`(한집 든 라이더·배송 든 라이더의 한집 → INELIGIBLE), 배달리스트 거르기. 알뜰끼리만 3건.

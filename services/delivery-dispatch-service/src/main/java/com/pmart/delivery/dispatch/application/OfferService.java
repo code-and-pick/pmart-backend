@@ -205,7 +205,8 @@ public class OfferService {
                               new AcceptRules.RiderSnapshot(
                                   r.acceptsNewDispatch() && !restricted,
                                   r.oneAtATime(),
-                                  store.activeDeliveries(riderId) + offers.size() - 1))
+                                  store.activeDeliveries(riderId) + offers.size() - 1,
+                                  !store.singleHolders(List.of(riderId)).isEmpty()))
                       .orElse(null);
               for (OfferRow x : offers) {
                 AcceptRules.Verdict v =
@@ -214,7 +215,8 @@ public class OfferService {
                         x.expiresAt(),
                         now,
                         snap,
-                        props.maxActiveDeliveries());
+                        props.maxActiveDeliveries(),
+                        deliveries.get(x.deliveryId()).customerSingle());
                 if (!v.ok()) {
                   if (v.late() == AcceptRules.LateReason.EXPIRED) {
                     return expiredGroup(offers, me, now);
@@ -301,8 +303,16 @@ public class OfferService {
             .getOrDefault(riderId, 0);
     Instant visibleIfWaitingSince =
         now.minus(props.listDelayPerCancellation().multipliedBy(cancels));
+    // 한집은 단독(2026-11-18): 한집을 맡고 있으면 목록 없음, 다른 배송을 맡고 있으면 한집은 안 보임
+    int mine = store.activeDeliveries(riderId);
+    if (!store.singleHolders(List.of(riderId)).isEmpty()) {
+      return new DeliveryList(List.of(), now, props.pollAfterSec());
+    }
     List<ListItem> items = new ArrayList<>();
     for (DispatchStore.ListedDelivery x : store.dispatchingWithStage()) {
+      if (mine > 0 && x.delivery().customerSingle()) {
+        continue;
+      }
       if (x.waitingSince().isAfter(visibleIfWaitingSince)) {
         continue;
       }
@@ -346,7 +356,8 @@ public class OfferService {
                       null,
                       now,
                       snapshot(rider, riderId, now),
-                      props.maxActiveDeliveries());
+                      props.maxActiveDeliveries(),
+                      d.customerSingle());
               String late = v.ok() ? null : v.late().name();
               double radius =
                   attempt
@@ -420,7 +431,8 @@ public class OfferService {
                 new AcceptRules.RiderSnapshot(
                     r.acceptsNewDispatch() && !restricted,
                     r.oneAtATime(),
-                    store.activeDeliveries(riderId)))
+                    store.activeDeliveries(riderId),
+                    !store.singleHolders(List.of(riderId)).isEmpty()))
         .orElse(null);
   }
 

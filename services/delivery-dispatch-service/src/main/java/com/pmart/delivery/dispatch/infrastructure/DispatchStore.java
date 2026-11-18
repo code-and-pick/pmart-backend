@@ -78,6 +78,11 @@ public class DispatchStore {
       @Nullable String pickupRequestId,
       @Nullable Integer deliverySeq) {
 
+    /** 고객 한집배달(SINGLE, 회수·반납 아님) — 2026-11-18 "한집은 단독". */
+    public boolean customerSingle() {
+      return "SINGLE".equals(deliveryMode()) && !"RETURN".equals(type());
+    }
+
     /** 오배송 고객 잘못 다시 배송(ADR-0065) — 잘못 둔 곳에서 실제 집으로. */
     public boolean redelivery() {
       return "MISDELIVERY_REDELIVERY".equals(purpose);
@@ -639,6 +644,22 @@ public class DispatchStore {
   }
 
   /** 라이더가 지금 맡고 있는 배송(배정 ~ 픽업 전). 픽업 뒤 수행 상태는 execution 이 정본이라 여기서는 픽업까지만 센다. */
+  /** 고객 한집배달(SINGLE — 회수·반납 RETURN 은 아님)을 지금 맡고 있는 라이더(2026-11-18 "한집은 단독"). */
+  public java.util.Set<String> singleHolders(List<String> riderIds) {
+    if (riderIds.isEmpty()) {
+      return java.util.Set.of();
+    }
+    String in = String.join(",", java.util.Collections.nCopies(riderIds.size(), "?"));
+    return new java.util.HashSet<>(
+        jdbc.queryForList(
+            "SELECT DISTINCT rider_id FROM delivery WHERE state IN ('ASSIGNED', 'PICKED_UP') AND"
+                + " delivery_mode = 'SINGLE' AND type <> 'RETURN' AND rider_id IN ("
+                + in
+                + ")",
+            String.class,
+            riderIds.toArray()));
+  }
+
   public int activeDeliveries(String riderId) {
     Integer n =
         jdbc.queryForObject(

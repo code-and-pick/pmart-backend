@@ -1045,7 +1045,10 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     String assigned = acceptedBy(r1, mfc);
     String pickedUp = acceptedBy(r1, mfc);
     jdbc.update("UPDATE delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", pickedUp);
-    String offered = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-13-" + UUID.randomUUID());
+    String offeredOrder = "ORD-" + UUID.randomUUID(); // 알뜰 — 두 건을 든 라이더도 받는다(한집은 단독, 2026-11-18)
+    bundledOrder(offeredOrder, "IT-ROAD-RS-" + offeredOrder, 37.5006, 127.0360);
+    String offered =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-13-" + UUID.randomUUID(), offeredOrder);
     engine.tick();
     String openOffer =
         jdbc.queryForObject(
@@ -1265,9 +1268,12 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** 배송 하나를 만들어 그 라이더에게 제안 → 수락(ASSIGNED). 그 MFC 의 적격 라이더는 미리 그 한 명만. */
+  /** 한 라이더가 여러 건을 맡는 시험용 — 알뜰배달 주문(2026-11-18 "한집은 단독" — 한집은 한 건씩만). */
   String acceptedBy(String rider, String mfc) {
+    String order = "ORD-" + UUID.randomUUID();
+    bundledOrder(order, "IT-ROAD-AB-" + order, 37.5006, 127.0360);
     String deliveryId =
-        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-a-" + UUID.randomUUID());
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-a-" + UUID.randomUUID(), order);
     engine.tick();
     String offerId =
         jdbc.queryForObject(
@@ -2231,6 +2237,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     String r2 = "RD-fr2-" + UUID.randomUUID();
     riders(mfc, rider(r1, "AI_RECOMMENDED", true), rider(r2, "AI_RECOMMENDED", true));
     locations(Map.of(r1, new double[] {37.5006, 127.0362}, r2, new double[] {37.5008, 127.0365}));
+    // 알뜰 주문 — 반납 배송을 든 라이더도 받을 수 있게(한집은 단독, 2026-11-18)
+    bundledOrder(order, "IT-ROAD-FR3-" + order, 37.5006, 127.0360);
     String origin3 =
         readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID(), order);
     engine.tick();

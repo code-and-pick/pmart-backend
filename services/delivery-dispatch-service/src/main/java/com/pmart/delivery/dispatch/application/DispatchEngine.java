@@ -250,10 +250,14 @@ public class DispatchEngine {
     List<String> ids =
         eligible.stream().map(Upstreams.Rider::riderId).filter(id -> !busy.contains(id)).toList();
     Map<String, Integer> active = store.activeCounts(ids);
+    java.util.Set<String> holdsSingle = store.singleHolders(ids); // 한집은 단독(2026-11-18)
     Map<String, Upstreams.Rider> byId = new HashMap<>();
     eligible.forEach(r -> byId.put(r.riderId(), r));
     Map<String, Integer> room = new HashMap<>();
     for (String id : ids) {
+      if (holdsSingle.contains(id)) {
+        continue;
+      }
       int limit = byId.get(id).oneAtATime() ? 1 : props.maxActiveDeliveries();
       int left = limit - active.getOrDefault(id, 0);
       if (left > 0) {
@@ -317,7 +321,10 @@ public class DispatchEngine {
       pickup[i] = legs[usable.get(i)].durationS();
       capacity[i] = room.get(id);
       for (int d = 0; d < nd; d++) {
-        allowed[i][d] = allowedSets.get(d).contains(id);
+        // 한집배달은 아무것도 맡지 않은 라이더에게만(2026-11-18 "한집은 단독")
+        allowed[i][d] =
+            allowedSets.get(d).contains(id)
+                && !(ready.get(d).delivery().customerSingle() && active.getOrDefault(id, 0) > 0);
       }
     }
     int[] readyIn = new int[nd];
@@ -485,7 +492,10 @@ public class DispatchEngine {
           && !skip.contains(originRider)
           && byId.containsKey(originRider)) {
         Integer busyCount = store.activeCounts(List.of(originRider)).getOrDefault(originRider, 0);
-        int limit = byId.get(originRider).oneAtATime() ? 1 : props.maxActiveDeliveries();
+        int limit =
+            store.singleHolders(List.of(originRider)).isEmpty()
+                ? (byId.get(originRider).oneAtATime() ? 1 : props.maxActiveDeliveries())
+                : 0; // 한집을 맡고 있으면 다른 배송 없음(2026-11-18)
         Upstreams.Location loc =
             upstreams.locations(List.of(originRider)).stream().findFirst().orElse(null);
         if (busyCount < limit
@@ -505,8 +515,10 @@ public class DispatchEngine {
       }
       List<String> ids = all.stream().filter(id -> !skip.contains(id)).toList();
       Map<String, Integer> active = store.activeCounts(ids);
+      java.util.Set<String> holdsSingle = store.singleHolders(ids); // 한집은 단독(2026-11-18)
       List<String> free =
           ids.stream()
+              .filter(id -> !holdsSingle.contains(id))
               .filter(
                   id ->
                       (byId.get(id).oneAtATime() ? 1 : props.maxActiveDeliveries())

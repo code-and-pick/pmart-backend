@@ -25,7 +25,12 @@ public final class AcceptRules {
 
   /** 라이더 상태(rider-service 조회 사본)와 지금 맡은 배송 수(이 서비스 기록). */
   public record RiderSnapshot(
-      boolean acceptsNewDispatch, boolean oneAtATime, int activeDeliveries) {}
+      boolean acceptsNewDispatch, boolean oneAtATime, int activeDeliveries, boolean holdsSingle) {
+
+    public RiderSnapshot(boolean acceptsNewDispatch, boolean oneAtATime, int activeDeliveries) {
+      this(acceptsNewDispatch, oneAtATime, activeDeliveries, false);
+    }
+  }
 
   private AcceptRules() {}
 
@@ -40,6 +45,20 @@ public final class AcceptRules {
       Instant now,
       @Nullable RiderSnapshot rider,
       int maxActive) {
+    return judge(deliveryState, offerExpiresAt, now, rider, maxActive, false);
+  }
+
+  /**
+   * @param single 한집배달(SINGLE) — 2026-11-18 사용자 "한집은 단독": 한집을 맡은 라이더는 다른 배송을 못 받고, 다른 배송을 맡은 라이더는
+   *     한집을 못 받는다(알뜰배달끼리만 3건까지 함께).
+   */
+  public static Verdict judge(
+      String deliveryState,
+      @Nullable Instant offerExpiresAt,
+      Instant now,
+      @Nullable RiderSnapshot rider,
+      int maxActive,
+      boolean single) {
     switch (deliveryState) {
       case "DISPATCHING" -> {}
       case "CANCELLED_BEFORE_PICKUP", "BLOCKED" -> {
@@ -58,6 +77,9 @@ public final class AcceptRules {
     int limit = rider.oneAtATime() ? 1 : maxActive;
     if (rider.activeDeliveries() >= limit) {
       return new Verdict(LateReason.INELIGIBLE);
+    }
+    if (rider.holdsSingle() || (single && rider.activeDeliveries() > 0)) {
+      return new Verdict(LateReason.INELIGIBLE); // 한집은 단독(2026-11-18)
     }
     return new Verdict(null);
   }
