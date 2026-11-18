@@ -43,7 +43,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock({
   @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
   @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
-  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url")
+  @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url"),
+  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.bff.rider-base-url")
 })
 class CaseInboxViewIT {
 
@@ -61,11 +62,14 @@ class CaseInboxViewIT {
   @InjectWireMock("order")
   WireMockServer order;
 
+  @InjectWireMock("rider")
+  WireMockServer rider;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(cases, execution, order)) {
+    for (WireMockServer w : List.of(cases, execution, order, rider)) {
       w.resetAll();
     }
     http =
@@ -240,5 +244,64 @@ class CaseInboxViewIT {
                 .path("confidence")
                 .asString())
         .isEqualTo("UNKNOWN");
+  }
+
+  /** 0.14.0(ADR-0070): 연결 배송·주문의 화면 번호와 사건이 가리키는 라이더의 번호·가린 이름(rider 한 번), rider 실패면 번호만 null. */
+  @Test
+  void linkedEntriesCarryDisplayNumbersAndRidersAreLookedUpOnce() {
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/cases"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[
+                      {"caseId":"CASE-N","kind":"DELIVERY_INCIDENT","state":"OPEN","priority":"P2","subjectType":"DELIVERY","subjectRef":"DLV-N",
+                       "refs":[{"refType":"deliveryId","refId":"DLV-N"},{"refType":"riderId","refId":"RD-7"}]},
+                      {"caseId":"CASE-M","kind":"RIDER_HELP","state":"OPEN","priority":"P1","subjectType":"DELIVERY","subjectRef":"DLV-N",
+                       "refs":[{"refType":"riderId","refId":"RD-7"}]}],
+                     "page":{"nextCursor":null}}""")));
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-N"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"deliveryId":"DLV-N","deliveryNumber":"74939255-2","state":"ASSIGNED","version":3,
+                     "orderSummary":{"orderNumber":"74939255","items":[]}}""")));
+    rider.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/riders"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"riderId":"RD-7","riderNumber":"482913","nameMasked":"김*수"}],
+                     "page":0,"size":50,"hasNext":false}""")));
+
+    Res r = inbox("");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode c = r.body().path("items").get(0);
+    JsonNode dl = c.path("linked").get(0);
+    assertThat(dl.path("displayNumber").asString()).isEqualTo("74939255-2");
+    assertThat(dl.path("orderNumber").asString()).isEqualTo("74939255");
+    assertThat(c.path("riders").get(0).path("riderId").asString()).isEqualTo("RD-7");
+    assertThat(c.path("riders").get(0).path("riderNumber").asString()).isEqualTo("482913");
+    assertThat(c.path("riders").get(0).path("nameMasked").asString()).isEqualTo("김*수");
+    assertThat(c.has("riderIds")).as("내부 칸은 내보내지 않음").isFalse();
+    rider.verify(
+        1,
+        getRequestedFor(urlPathEqualTo("/api/v1/riders"))
+            .withQueryParam("riderIds", equalTo("RD-7"))
+            .withHeader("Authorization", equalTo("Bearer " + RIDER_OPS)));
+
+    rider.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/riders"))
+            .willReturn(json(403, "{\"code\":\"FORBIDDEN\"}")));
+    Res denied = inbox("");
+    assertThat(denied.status()).isEqualTo(200);
+    JsonNode rd = denied.body().path("items").get(0).path("riders").get(0);
+    assertThat(rd.path("riderId").asString()).isEqualTo("RD-7");
+    assertThat(rd.path("riderNumber").isNull()).as("rider 를 못 읽으면 번호만 null").isTrue();
+    assertThat(denied.body().path("unavailableSources").toString()).contains("rider-service");
   }
 }

@@ -127,6 +127,33 @@ public class PackingHandoverView {
       }
     }
 
+    // 3) 0.14.0(ADR-0070): 라이더 번호·가린 이름 — 배송 배정 라이더·포장 인계 라이더를 한 번에(실패해도 화면은 그대로)
+    List<String> riderIds = new ArrayList<>();
+    for (Map<String, Object> i : items) {
+      if (i.get("riderId") instanceof String r) {
+        riderIds.add(r);
+      }
+      for (Map<String, Object> pkg : packagesOf(i)) {
+        if (pkg.get("riderId") instanceof String r) {
+          riderIds.add(r);
+        }
+      }
+    }
+    Map<String, JsonNode> riders = null;
+    if (!riderIds.isEmpty()) {
+      used.add(Source.RIDER);
+      riders = RiderDisplays.lookup(clients, token, riderIds);
+      if (riders == null) {
+        failed.add(Source.RIDER);
+      }
+    }
+    for (Map<String, Object> i : items) {
+      i.put("rider", RiderDisplays.of((String) i.get("riderId"), riders));
+      for (Map<String, Object> pkg : packagesOf(i)) {
+        pkg.put("rider", RiderDisplays.of((String) pkg.get("riderId"), riders));
+      }
+    }
+
     List<Map<String, Object>> sources = new ArrayList<>();
     List<String> unavailable = new ArrayList<>();
     for (Source s : used) {
@@ -232,6 +259,8 @@ public class PackingHandoverView {
       }
     }
     i.put("deliveryId", delivery == null ? null : text(delivery, "deliveryId"));
+    // 0.14.0(ADR-0070): 화면 배송 번호("주문번호-순번", execution 값 그대로)
+    i.put("deliveryNumber", delivery == null ? null : text(delivery, "deliveryNumber"));
     i.put(
         "delivery",
         stamped(
@@ -242,6 +271,11 @@ public class PackingHandoverView {
             ok));
     i.put("riderId", delivery == null ? null : text(delivery, "riderId"));
     return i;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Map<String, Object>> packagesOf(Map<String, Object> item) {
+    return item.get("packages") instanceof List<?> l ? (List<Map<String, Object>>) l : List.of();
   }
 
   /**

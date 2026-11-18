@@ -1,12 +1,16 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.13.0
+  version: 0.14.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **화면 번호(0.14.0, 2026-11-18 — ADR-0070)**: 목록·표에는 화면 번호를 보인다 — 주문 `orderNumber`(8자리), 배송 `deliveryNumber`("주문번호-순번", 예 74939255-2 — 옆에 type·purpose 로 종류 표시),
+    라이더 `rider`(RiderDisplay — 가린 이름 + 라이더 번호 6자리). 시스템 ID(orderId·deliveryId·riderId)는 그대로 실어 링크·상세의 "시스템 번호" 칸에 쓴다. 화면 번호는 원천 값 그대로(없으면 null —
+    옛 기록·번호 전 주문, 화면은 시스템 ID 끝 8자리를 회색으로). 라이더 번호는 rider-service `GET /riders?riderIds=`(직원 토큰, 화면 응답 하나에 50개씩 한 번) — 덤이라 실패·403(예: 센터 관리자)이면
+    번호·이름만 null 이고 unavailableSources 에 rider-service(화면은 그대로).
 servers:
   - url: /api/v1/backoffice
 security:
@@ -216,6 +220,11 @@ paths:
                             openObligations: { type: integer }
                             myLastSeenAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.10.0) 부른 직원이 이 건을 마지막으로 본 시각(case POST /cases/{id}/views) — 새 메시지 점 = HELP_REQUEST lastRiderMessageAt > myLastSeenAt' }
                             linkedRefs: { type: array, items: { type: object, properties: { kind: { type: string }, id: { type: string } } }, description: 'case refs 그대로(kind = refType)' }
+                            riders:
+                              type: array
+                              x-added-in: '2026-11-18'
+                              description: '(0.14.0, ADR-0070) 사건이 가리키는 라이더(subjectType RIDER·refs riderId) — 가린 이름·라이더 번호'
+                              items: { $ref: '#/components/schemas/RiderDisplay' }
                             linked:
                               type: array
                               x-added-in: '2026-11-16'
@@ -227,6 +236,8 @@ paths:
                                   id: { type: string }
                                   state: { type: [string, 'null'], description: '배송 state / 주문 status — 원천 값 그대로' }
                                   version: { type: [integer, 'null'] }
+                                  displayNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 번호 — DELIVERY 는 배송 번호("주문번호-순번", execution deliveryNumber), ORDER 는 주문번호 8자리, HELP_REQUEST 는 null' }
+                                  orderNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0) DELIVERY 는 그 배송의 주문번호(execution orderSummary.orderNumber), ORDER 는 displayNumber 와 같음' }
                                   lastRiderMessageAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.6.0) HELP_REQUEST 만 — 도움요청 대화의 라이더 마지막 메시지 시각(execution DE-2)' }
                                   lastSupportMessageAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.6.0) HELP_REQUEST 만 — 지원센터 마지막 메시지 시각' }
                                   source: { $ref: '#/components/schemas/SourceStamp' }
@@ -353,12 +364,15 @@ paths:
                           type: object
                           properties:
                             deliveryId: { type: string }
+                            deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 배송 번호 "주문번호-순번" — execution 값 그대로' }
                             orderId: { type: string }
+                            orderNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0) 화면 주문번호 8자리 — execution 값 그대로(배정 전 null 일 수 있음)' }
                             mfcId: { type: [string, 'null'] }
                             type: { type: [string, 'null'], description: 'FORWARD·RETURN·RESHIPMENT(0.3.0)' }
                             delivery: { $ref: '#/components/schemas/StampedState' }
                             dispatch: { $ref: '#/components/schemas/StampedState' }
                             riderId: { type: [string, 'null'] }
+                            rider: { $ref: '#/components/schemas/RiderDisplay', x-added-in: '2026-11-18', description: '(0.14.0) 배정 라이더 화면 표시 — riderId 없으면 null' }
                             createdAt: { type: [string, 'null'], format: date-time }
                             assignedAt: { type: [string, 'null'], format: date-time }
                             pickedUpAt: { type: [string, 'null'], format: date-time }
@@ -466,9 +480,12 @@ paths:
                                   handoverAuthorizedAt: { type: [string, 'null'], format: date-time }
                                   handedOverAt: { type: [string, 'null'], format: date-time }
                                   riderId: { type: [string, 'null'], description: 인계 받은 라이더 }
+                                  rider: { $ref: '#/components/schemas/RiderDisplay', x-added-in: '2026-11-18', description: '(0.14.0) 인계 받은 라이더 화면 표시' }
                             deliveryId: { type: [string, 'null'] }
+                            deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 배송 번호 — execution 값 그대로' }
                             delivery: { $ref: '#/components/schemas/StampedState' }
                             riderId: { type: [string, 'null'], description: 배송의 배정 라이더(delivery-execution) }
+                            rider: { $ref: '#/components/schemas/RiderDisplay', x-added-in: '2026-11-18', description: '(0.14.0) 배정 라이더 화면 표시' }
                       page: { $ref: '_common.yaml#/components/schemas/Page' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
@@ -653,6 +670,14 @@ paths:
 
 components:
   schemas:
+    RiderDisplay:
+      type: [object, 'null']
+      x-added-in: '2026-11-18'
+      description: '(0.14.0, ADR-0070) 라이더 화면 표시 — "김*수 · 482913". 번호·이름은 rider-service 값 그대로, 못 읽었거나 없는 라이더(탈퇴 등)면 null'
+      properties:
+        riderId: { type: string, description: 시스템 ID — 링크·상세용 }
+        riderNumber: { type: [string, 'null'], description: 라이더 번호 6자리 }
+        nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자)' }
     SourceStamp:
       type: object
       description: 원천 서비스·기준시각·신선도·확인 등급. 화면은 이 값을 숨기지 않는다.

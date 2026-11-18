@@ -189,8 +189,33 @@ public class CaseInboxView {
         linked.add(e);
       }
       i.put("linked", linked);
+      // 0.14.0(ADR-0070): 사건이 가리키는 라이더(refs riderId·대상 RIDER) — 번호·가린 이름은 아래에서 한 번에
+      List<String> riderIds = ids(c, "RIDER", Set.of("riderId"));
+      i.put("riderIds", riderIds);
       i.put("source", stamp(Source.CASE.system, now, true));
       items.add(i);
+    }
+
+    // 0.14.0(ADR-0070): 라이더 번호·가린 이름 — 화면 응답 하나에 한 번(실패해도 화면은 그대로, 번호만 null)
+    List<String> allRiders = new ArrayList<>();
+    for (Map<String, Object> i : items) {
+      allRiders.addAll(riderIdsOf(i));
+    }
+    Map<String, JsonNode> riders = null;
+    if (!allRiders.isEmpty()) {
+      used.add(Source.RIDER);
+      riders = RiderDisplays.lookup(clients, token, allRiders);
+      if (riders == null) {
+        failed.add(Source.RIDER);
+      }
+    }
+    for (Map<String, Object> i : items) {
+      List<Map<String, Object>> rs = new ArrayList<>();
+      for (String r : riderIdsOf(i)) {
+        rs.add(RiderDisplays.of(r, riders));
+      }
+      i.remove("riderIds");
+      i.put("riders", rs);
     }
 
     List<Map<String, Object>> sources = new ArrayList<>();
@@ -307,6 +332,25 @@ public class CaseInboxView {
     e.put("kind", kind);
     e.put("id", id);
     e.put("state", body == null ? null : text(body, stateField));
+    // 0.14.0(ADR-0070): 화면 번호 — 배송 "주문번호-순번"(execution deliveryNumber), 주문 8자리(배송은 orderSummary 안)
+    e.put(
+        "displayNumber",
+        body == null
+            ? null
+            : switch (kind) {
+              case "DELIVERY" -> text(body, "deliveryNumber");
+              case "ORDER" -> text(body, "orderNumber");
+              default -> null;
+            });
+    e.put(
+        "orderNumber",
+        body == null
+            ? null
+            : switch (kind) {
+              case "DELIVERY" -> text(body.path("orderSummary"), "orderNumber");
+              case "ORDER" -> text(body, "orderNumber");
+              default -> null;
+            });
     JsonNode v = body == null ? null : body.path("version");
     e.put("version", v != null && v.isNumber() ? v.asLong() : null);
     e.put("source", stamp(source.system, now, Boolean.TRUE.equals(ok)));
@@ -329,6 +373,11 @@ public class CaseInboxView {
       }
     }
     return out;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<String> riderIdsOf(Map<String, Object> item) {
+    return item.get("riderIds") instanceof List<?> l ? (List<String>) l : List.of();
   }
 
   private static List<JsonNode> listOf(JsonNode arr) {

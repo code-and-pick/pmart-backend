@@ -45,7 +45,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
   @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.bff.dispatch-base-url"),
   @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
-  @ConfigureWireMock(name = "tracking", baseUrlProperties = "pmart.bff.tracking-base-url")
+  @ConfigureWireMock(name = "tracking", baseUrlProperties = "pmart.bff.tracking-base-url"),
+  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.bff.rider-base-url")
 })
 class LiveDeliveryIT {
 
@@ -67,11 +68,14 @@ class LiveDeliveryIT {
   @InjectWireMock("tracking")
   WireMockServer tracking;
 
+  @InjectWireMock("rider")
+  WireMockServer rider;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(execution, dispatch, cases, tracking)) {
+    for (WireMockServer w : List.of(execution, dispatch, cases, tracking, rider)) {
       w.resetAll();
     }
     http =
@@ -121,7 +125,7 @@ class LiveDeliveryIT {
                 json(
                     200,
                     """
-                    {"items":[{"deliveryId":"DLV-A","orderId":"ORD-A","mfcId":"MFC-1","type":"FORWARD","riderId":"RD-1",
+                    {"items":[{"deliveryId":"DLV-A","deliveryNumber":"74939255-1","orderNumber":"74939255","orderId":"ORD-A","mfcId":"MFC-1","type":"FORWARD","riderId":"RD-1",
                                "state":"ASSIGNED","version":4,"createdAt":"2026-11-16T01:00:00Z","assignedAt":"2026-11-16T01:02:00Z"}],
                      "page":{"nextCursor":"c2"}}""")));
     dispatch.stubFor(
@@ -295,5 +299,51 @@ class LiveDeliveryIT {
                     "")
                 .status())
         .isEqualTo(400);
+  }
+
+  /** 0.14.0(ADR-0070): 화면 번호 — 배송·주문 번호는 execution 값 그대로, 라이더 번호·가린 이름은 rider 를 한 번에. */
+  @Test
+  void displayNumbersComeFromSourcesAndRiderIsLookedUpOnce() {
+    rider.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/riders"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"riderId":"RD-1","riderNumber":"482913","nameMasked":"김*수"}],
+                     "page":0,"size":50,"hasNext":false}""")));
+    Res r = live(CS, "mfcId=MFC-1&size=20");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode a = r.body().path("items").get(0);
+    assertThat(a.path("deliveryNumber").asString()).isEqualTo("74939255-1");
+    assertThat(a.path("orderNumber").asString()).isEqualTo("74939255");
+    assertThat(a.path("rider").path("riderId").asString()).isEqualTo("RD-1");
+    assertThat(a.path("rider").path("riderNumber").asString()).isEqualTo("482913");
+    assertThat(a.path("rider").path("nameMasked").asString()).isEqualTo("김*수");
+    JsonNode b = r.body().path("items").get(1);
+    assertThat(b.path("deliveryNumber").isNull()).as("번호 없는 배송 — null").isTrue();
+    assertThat(b.path("rider").isNull()).as("배정 전 — 라이더 없음").isTrue();
+    assertThat(r.body().path("unavailableSources").toString()).doesNotContain("rider-service");
+    rider.verify(
+        1,
+        getRequestedFor(urlPathEqualTo("/api/v1/riders"))
+            .withQueryParam("riderIds", equalTo("RD-1"))
+            .withHeader("Authorization", equalTo("Bearer " + CS)));
+  }
+
+  /** 0.14.0: rider 가 실패해도 화면은 그대로 — 번호·이름만 null, unavailableSources 에 rider-service. */
+  @Test
+  void riderFailureLeavesNumbersNullButKeepsTheView() {
+    rider.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/riders"))
+            .willReturn(json(503, "{\"code\":\"DEPENDENCY_UNAVAILABLE\"}")));
+    Res r = live(CS, "mfcId=MFC-1&size=20");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode a = r.body().path("items").get(0);
+    assertThat(a.path("deliveryNumber").asString()).isEqualTo("74939255-1");
+    assertThat(a.path("rider").path("riderId").asString()).isEqualTo("RD-1");
+    assertThat(a.path("rider").path("riderNumber").isNull()).isTrue();
+    assertThat(a.path("rider").path("nameMasked").isNull()).isTrue();
+    assertThat(r.body().path("unavailableSources").toString()).contains("rider-service");
   }
 }

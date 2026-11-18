@@ -206,7 +206,10 @@ public class LiveDeliveryView {
       dispatchOk = dispatchOk && !failed.contains(Source.DISPATCH); // 404(배차 없음)는 원천의 답 — DIRECT
       Map<String, Object> i = new LinkedHashMap<>();
       i.put("deliveryId", deliveryId);
+      // 0.14.0(ADR-0070): 화면 번호 — 배송 "주문번호-순번"·주문 8자리(execution 값 그대로, 없으면 null)
+      i.put("deliveryNumber", text(d, "deliveryNumber"));
       i.put("orderId", text(d, "orderId"));
+      i.put("orderNumber", text(d, "orderNumber"));
       i.put("mfcId", text(d, "mfcId"));
       i.put("type", text(d, "type"));
       i.put("delivery", stamped(text(d, "state"), d.path("version"), Source.EXECUTION, now, true));
@@ -275,6 +278,25 @@ public class LiveDeliveryView {
                   ? casesByDelivery.get(deliveryId)
                   : casesTruncated ? null : List.of()); // 다 못 읽었으면 "없음" 대신 모름(null)
       items.add(i);
+    }
+
+    // 4) 0.14.0(ADR-0070): 라이더 번호·가린 이름 — 한 번에(실패해도 화면은 그대로, 번호만 null)
+    List<String> riderIds = new ArrayList<>();
+    for (Map<String, Object> i : items) {
+      if (i.get("riderId") instanceof String r) {
+        riderIds.add(r);
+      }
+    }
+    Map<String, JsonNode> riders = null;
+    if (!riderIds.isEmpty()) {
+      used.add(Source.RIDER);
+      riders = RiderDisplays.lookup(clients, token, riderIds);
+      if (riders == null) {
+        failed.add(Source.RIDER);
+      }
+    }
+    for (Map<String, Object> i : items) {
+      i.put("rider", RiderDisplays.of((String) i.get("riderId"), riders));
     }
 
     List<Map<String, Object>> sources = new ArrayList<>();

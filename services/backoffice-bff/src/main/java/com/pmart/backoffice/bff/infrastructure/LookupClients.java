@@ -29,7 +29,9 @@ public class LookupClients {
     /** 도착 예정(TR-3, 2026-11-17 — 실시간 배송 현황). */
     TRACKING("delivery-tracking-service"),
     /** MFC 현장 상태(F-3, mfc-fulfillment 0.10.0 — 통합 조회). */
-    FULFILLMENT("mfc-fulfillment-service");
+    FULFILLMENT("mfc-fulfillment-service"),
+    /** 화면 라이더 번호·가린 이름(ADR-0070, 2026-11-18 — 직원 찾기 riderIds). */
+    RIDER("rider-service");
 
     public final String system;
 
@@ -51,7 +53,8 @@ public class LookupClients {
             Source.CASE, builder.clone().baseUrl(props.caseBaseUrl()).build(),
             Source.INQUIRY, builder.clone().baseUrl(props.caseBaseUrl()).build(),
             Source.TRACKING, builder.clone().baseUrl(props.trackingBaseUrl()).build(),
-            Source.FULFILLMENT, builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build());
+            Source.FULFILLMENT, builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build(),
+            Source.RIDER, builder.clone().baseUrl(props.riderBaseUrl()).build());
     this.mapper = mapper;
   }
 

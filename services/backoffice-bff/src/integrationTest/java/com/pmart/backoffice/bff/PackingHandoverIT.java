@@ -40,7 +40,8 @@ import tools.jackson.databind.ObjectMapper;
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({
   @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url"),
-  @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url")
+  @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
+  @ConfigureWireMock(name = "rider", baseUrlProperties = "pmart.bff.rider-base-url")
 })
 class PackingHandoverIT {
 
@@ -56,12 +57,16 @@ class PackingHandoverIT {
   @InjectWireMock("execution")
   WireMockServer execution;
 
+  @InjectWireMock("rider")
+  WireMockServer rider;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
     mfc.resetAll();
     execution.resetAll();
+    rider.resetAll();
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1/backoffice")

@@ -48,6 +48,7 @@ public class UnifiedLookupView {
   private static final List<String> ORDER_DETAIL_FIELDS =
       List.of(
           "orderId",
+          "orderNumber", // 0.14.0(ADR-0070) 화면 주문번호
           "customerId",
           "status",
           "version",
@@ -62,6 +63,7 @@ public class UnifiedLookupView {
   private static final List<String> ORDER_SUMMARY_FIELDS =
       List.of(
           "orderId",
+          "orderNumber", // 0.14.0(ADR-0070) 화면 주문번호
           "customerId",
           "status",
           "version",
@@ -78,6 +80,8 @@ public class UnifiedLookupView {
   private static final List<String> DELIVERY_FIELDS =
       List.of(
           "deliveryId",
+          "deliveryNumber", // 0.14.0(ADR-0070) 화면 배송 번호
+          "orderNumber",
           "version",
           "type",
           "orderId",
