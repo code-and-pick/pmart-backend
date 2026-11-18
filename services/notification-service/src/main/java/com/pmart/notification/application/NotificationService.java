@@ -132,6 +132,23 @@ public class NotificationService {
 
   /** delivery.delivery.v1 — 출발·완료, 오배송 다시 배송비 결제 필요(N-3, 2026-11-16). */
   public void onDeliveryEvent(EventEnvelope e) {
+    if ("DispatchOfferSent".equals(e.eventType())) {
+      // 새 배차 제안 → 라이더 폰 푸시만(2026-11-17 라이더 앱 요청 P2). 만료 뒤 늦게 온 사건은 보내지 않는다
+      JsonNode p = e.payload();
+      String riderId = text(p, "riderId");
+      String offerId = text(p, "offerId");
+      Instant expiresAt = instant(text(p, "expiresAt"));
+      if (riderId != null && offerId != null && expiresAt != null) {
+        riderPush.offer(
+            riderId,
+            offerId,
+            text(p, "deliveryId"),
+            p.path("fee").isNumber() ? p.path("fee").asLong() : null,
+            expiresAt,
+            now());
+      }
+      return;
+    }
     if ("RiderEarningRecorded".equals(e.eventType())) {
       // 지원센터 수행료 조정(2026-11-17)만 — 일반 기록·확정은 알리지 않는다. 사유는 사건에 없다
       JsonNode p = e.payload();

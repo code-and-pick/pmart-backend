@@ -27,6 +27,7 @@ class NotificationEventConsumers {
           "DeliveryCompleted",
           "RedeliveryPaymentRequired",
           "HelpRequestReplied",
+          "DispatchOfferSent", // 라이더 배차 제안 푸시(2026-11-17 — 알림함에는 안 넣음)
           "RiderEarningRecorded", // 지원센터 수행료 조정(2026-11-17) — adjustment 있을 때만 알림
           // 고객 반품 회수(2026-11-17 — purpose CLAIM_RETURN 만 알린다)
           "DeliveryCreated",

@@ -140,10 +140,69 @@ class RiderPushIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.message.token", equalTo("tok-live")))
             .withRequestBody(matchingJsonPath("$.message.notification.title"))
             .withRequestBody(
-                matchingJsonPath("$.message.data.destinationType", equalTo("HELP_REQUEST"))));
+                matchingJsonPath("$.message.data.destinationType", equalTo("HELP_REQUEST")))
+            .withRequestBody(matchingJsonPath("$.message.data.type", equalTo("HELP_REQUEST")))
+            .withRequestBody(
+                matchingJsonPath("$.message.android.notification.channel_id", equalTo("support")))
+            .withRequestBody(matchingJsonPath("$.message.android.priority", equalTo("NORMAL"))));
     // 죽은 토큰은 지움
     assertThat(devices(rider)).isEqualTo(1);
     fcm.verify(1, postRequestedFor(urlPathEqualTo("/token"))); // 접근 토큰은 캐시
+
+    // 새 배차 제안(P2): 알림함에는 안 넣고 푸시만 — HIGH·TTL·채널 dispatch_offer, 만료된 제안은 보내지 않음
+    offer(rider, "OFF-expired", Instant.now().minusSeconds(5));
+    offer(rider, "OFF-live", Instant.now().plusSeconds(60));
+    Instant until2 = Instant.now().plus(Duration.ofSeconds(30));
+    while (Instant.now().isBefore(until2)
+        && fcm.findAll(
+                postRequestedFor(urlPathMatching("/v1/projects/pmart-test/messages:send"))
+                    .withRequestBody(
+                        matchingJsonPath("$.message.data.offerId", equalTo("OFF-live"))))
+            .isEmpty()) {
+      Thread.sleep(200);
+    }
+    fcm.verify(
+        postRequestedFor(urlPathMatching("/v1/projects/pmart-test/messages:send"))
+            .withRequestBody(matchingJsonPath("$.message.data.type", equalTo("DISPATCH_OFFER")))
+            .withRequestBody(matchingJsonPath("$.message.data.offerId", equalTo("OFF-live")))
+            .withRequestBody(matchingJsonPath("$.message.android.priority", equalTo("HIGH")))
+            .withRequestBody(matchingJsonPath("$.message.android.ttl"))
+            .withRequestBody(
+                matchingJsonPath(
+                    "$.message.android.notification.channel_id", equalTo("dispatch_offer"))));
+    fcm.verify(
+        0,
+        postRequestedFor(urlPathMatching("/v1/projects/pmart-test/messages:send"))
+            .withRequestBody(matchingJsonPath("$.message.data.offerId", equalTo("OFF-expired"))));
+  }
+
+  void offer(String rider, String offerId, Instant expiresAt) {
+    String deliveryId = "DLV-OFF-" + UUID.randomUUID().toString().substring(0, 8);
+    kafka
+        .send(
+            "delivery.delivery.v1",
+            deliveryId,
+            EventEnvelopeFixtures.envelope("DispatchOfferSent")
+                .from("test")
+                .aggregate("Delivery", deliveryId, 2)
+                .payload(
+                    Map.of(
+                        "offerId",
+                        offerId,
+                        "attemptId",
+                        "ATT-1",
+                        "deliveryId",
+                        deliveryId,
+                        "riderId",
+                        rider,
+                        "expiresAt",
+                        expiresAt.toString(),
+                        "fee",
+                        3900,
+                        "sentAt",
+                        Instant.now().toString()))
+                .buildJson())
+        .join();
   }
 
   /** 그 라이더의 등록 단말 수(GET /me/push-tokens). */
