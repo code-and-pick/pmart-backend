@@ -118,6 +118,24 @@ public class CaseStore {
         .findFirst();
   }
 
+  /**
+   * 그 배송의 전달 실패·도움요청 사건 하나(잠금) — 사고·파손 재발송(ADR-0069)을 붙일 곳. 전달 실패(DELIVERY_INCIDENT)를
+   * 도움요청(RIDER_HELP)보다, 열린 것을 닫힌 것보다, 최근 것을 먼저.
+   */
+  public Optional<CaseRow> lockIncidentOfDelivery(String deliveryId) {
+    return jdbc
+        .query(
+            SELECT
+                + " WHERE subject_type = 'DELIVERY' AND subject_ref = ?"
+                + " AND case_type IN ('DELIVERY_INCIDENT', 'RIDER_HELP')"
+                + " ORDER BY (case_type = 'DELIVERY_INCIDENT') DESC, (state <> 'CLOSED') DESC,"
+                + " created_at DESC LIMIT 1 FOR UPDATE",
+            this::row,
+            deliveryId)
+        .stream()
+        .findFirst();
+  }
+
   public Optional<CaseRow> find(String caseId) {
     return jdbc.query(SELECT + " WHERE case_id = ?", this::row, caseId).stream().findFirst();
   }

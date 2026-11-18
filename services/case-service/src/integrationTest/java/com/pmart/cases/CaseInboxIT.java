@@ -2040,4 +2040,78 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     assertThat(detail.path("refs").toString()).contains("reshipmentDeliveryId", reship);
     assertThat(detail.path("history").toString()).contains("재발송 배송 " + reship);
   }
+
+  /**
+   * 사고·파손 재발송(ADR-0069, 2026-11-18): caseId 자리의 DF-<실패한 배송 ID> → 그 배송의 전달 실패 사건(도움요청 사건보다 먼저)에 refs
+   * reshipmentDeliveryId·이력 RESHIPMENT_CREATED, 상태 그대로.
+   */
+  @Test
+  void incidentReshipmentIsLinkedToTheDeliveryFailureCase() throws Exception {
+    String deliveryId = "DLV-DF-" + UUID.randomUUID().toString().substring(0, 8);
+    for (String[] x :
+        new String[][] {
+          {"REQ-1", "HELP_REQUEST", "ACCIDENT"}, {"FAIL-1", "DELIVERY_FAILURE", "DELIVERY_FAILURE"}
+        }) {
+      Map<String, Object> p = new LinkedHashMap<>();
+      p.put("incidentId", deliveryId + ":" + x[0]);
+      p.put("deliveryId", deliveryId);
+      p.put("riderId", "RD-1");
+      p.put("type", x[1]);
+      p.put("category", x[2]);
+      p.put("stage", "PICKED_UP");
+      p.put("orderId", "ORD-1");
+      p.put("mfcId", "MFC-1");
+      publish(
+          "delivery.delivery.v1",
+          "DeliveryIncidentRaised",
+          deliveryId,
+          p,
+          "delivery-execution-service");
+    }
+    await(
+        () -> count("SELECT count(*) FROM case_record WHERE subject_ref = ?", deliveryId),
+        n -> n == 2);
+    String failureCase =
+        jdbc.queryForObject(
+            "SELECT case_id FROM case_record WHERE subject_ref = ? AND case_type = ?",
+            String.class,
+            deliveryId,
+            "DELIVERY_INCIDENT");
+    String helpCase =
+        jdbc.queryForObject(
+            "SELECT case_id FROM case_record WHERE subject_ref = ? AND case_type = ?",
+            String.class,
+            deliveryId,
+            "RIDER_HELP");
+
+    String reship = "RSH-" + deliveryId;
+    Map<String, Object> created = new LinkedHashMap<>();
+    created.put("deliveryId", reship);
+    created.put("orderId", "ORD-1");
+    created.put("shipmentId", "SHP-DF");
+    created.put("type", "RESHIPMENT");
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "ADDR-REF-1");
+    created.put("purpose", "MISDELIVERY_RESHIPMENT");
+    created.put("caseId", "DF-" + deliveryId);
+    publish(
+        "delivery.delivery.v1", "DeliveryCreated", reship, created, "delivery-dispatch-service");
+
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'RESHIPMENT_CREATED'",
+                failureCase),
+        n -> n > 0);
+    JsonNode detail = send("GET", ops, "/cases/" + failureCase, null).body();
+    assertThat(detail.path("state").asString()).isEqualTo("OPEN");
+    assertThat(detail.path("refs").toString()).contains("reshipmentDeliveryId", reship);
+    assertThat(detail.path("history").toString()).contains("사고·파손으로 새 상품 재발송 — 배송 " + reship);
+    assertThat(
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'RESHIPMENT_CREATED'",
+                helpCase))
+        .as("도움요청 사건에는 붙이지 않음")
+        .isZero();
+  }
 }
