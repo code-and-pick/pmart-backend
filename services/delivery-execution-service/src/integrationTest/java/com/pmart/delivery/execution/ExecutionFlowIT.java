@@ -1758,6 +1758,14 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
     assertThat(state(id)).isEqualTo("PICKED_UP");
     JsonNode ev = outbox(id, "DeliveryStatusCorrected").path("payload");
+    // 직원 조치 이력(2026-11-18): 관리자만, 정정한 직원·전후 상태
+    String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    JsonNode acts = body(staffGet("/delivery-staff-actions?deliveryId=" + id, adm));
+    assertThat(acts.path("items").get(0).path("action").asString()).isEqualTo("STATUS_CORRECTED");
+    assertThat(acts.path("items").get(0).path("actorId").asString()).isEqualTo("OP-RO");
+    assertThat(acts.path("items").get(0).path("detail").asString())
+        .isEqualTo("ARRIVED_AT_CUSTOMER→PICKED_UP");
+    assertThat(staffGet("/delivery-staff-actions", ops).getStatusCode().value()).isEqualTo(403);
     assertThat(ev.path("from").asString()).isEqualTo("ARRIVED_AT_CUSTOMER");
     assertThat(ev.path("to").asString()).isEqualTo("PICKED_UP");
     assertThat(ev.path("operatorId").asString()).isEqualTo("OP-RO");

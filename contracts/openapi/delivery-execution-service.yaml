@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.26.0
+  version: 0.27.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1132,6 +1132,50 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/StaffHelpRequestSummary' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /delivery-staff-actions:
+    get:
+      tags: [staff-actions]
+      summary: "(2026-11-18) 직원 조치 이력 — 상태 정정·전달 실패 결정·수행료 조정·추가 배달료 결정 (관리자)"
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 "이미 기록된 조치를 모아 보기" — 라이더 백오피스가 서비스마다 부르고 시각순으로 합친다. OPERATOR_ADMIN 만(그 밖 403).
+        이 서비스에 이미 남은 기록만: 상태 정정(delivery_status_correction), 전달 실패 확정·반려(배송 failure 기록의 결정자), 수행료 조정(earning_adjustment), 추가 배달료 결정(surcharge_request). 기간 기본 최근 7일(from·to, 최대 31일), 최근 것 먼저, cursor = 건너뛸 수.
+      operationId: listDeliveryStaffActions
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: operatorId, in: query, schema: { type: string, maxLength: 64 }, description: 조치한 직원 }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: deliveryId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [at, actorId, action]
+                      properties:
+                        at: { type: string, format: date-time }
+                        actorId: { type: string, description: 조치한 직원(운영자 ID) }
+                        action: { type: string, description: 조치 종류 코드 }
+                        riderId: { type: [string, 'null'] }
+                        deliveryId: { type: [string, 'null'] }
+                        detail: { type: [string, 'null'], description: '결과·값(예 NORMAL→SUSPENDED). 사유는 직원이 쓴 글 그대로(개인정보 금지 규칙)' }
+                        reason: { type: [string, 'null'] }
+                  nextCursor: { type: [string, 'null'] }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 

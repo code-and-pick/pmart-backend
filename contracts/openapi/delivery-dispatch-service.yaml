@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.10.1
+  version: 0.11.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -369,6 +369,50 @@ paths:
                   reassignAttemptId: { type: string }
                   caseId: { type: string }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /dispatch-staff-actions:
+    get:
+      tags: [staff-actions]
+      summary: "(2026-11-18) 직원 조치 이력 — 운영자 배차 취소 (관리자)"
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 "이미 기록된 조치를 모아 보기" — 라이더 백오피스가 서비스마다 부르고 시각순으로 합친다. OPERATOR_ADMIN 만(그 밖 403).
+        이 서비스에 이미 남은 기록만: 운영자 배차 취소(assignment_cancellation — requested_by OPERATOR). 기간 기본 최근 7일(from·to, 최대 31일), 최근 것 먼저, cursor = 건너뛸 수.
+      operationId: listDispatchStaffActions
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: operatorId, in: query, schema: { type: string, maxLength: 64 }, description: 조치한 직원 }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: deliveryId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [at, actorId, action]
+                      properties:
+                        at: { type: string, format: date-time }
+                        actorId: { type: string, description: 조치한 직원(운영자 ID) }
+                        action: { type: string, description: 조치 종류 코드 }
+                        riderId: { type: [string, 'null'] }
+                        deliveryId: { type: [string, 'null'] }
+                        detail: { type: [string, 'null'], description: '결과·값(예 NORMAL→SUSPENDED). 사유는 직원이 쓴 글 그대로(개인정보 금지 규칙)' }
+                        reason: { type: [string, 'null'] }
+                  nextCursor: { type: [string, 'null'] }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /internal/deliveries:
     post:

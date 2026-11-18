@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -564,6 +564,50 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /rider-staff-actions:
+    get:
+      tags: [staff-actions]
+      summary: "(2026-11-18) 직원 조치 이력 — 계정 제한·제한 검토 결정 (관리자)"
+      x-added-in: '2026-11-18'
+      description: |
+        2026-11-18 사용자 "이미 기록된 조치를 모아 보기" — 라이더 백오피스가 서비스마다 부르고 시각순으로 합친다. OPERATOR_ADMIN 만(그 밖 403).
+        이 서비스에 이미 남은 기록만: 계정 제한 걸기·풀기(rider_restriction_history), 제한 검토 결정(rider_restriction_review). 기간 기본 최근 7일(from·to, 최대 31일), 최근 것 먼저, cursor = 건너뛸 수.
+      operationId: listRiderStaffActions
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: operatorId, in: query, schema: { type: string, maxLength: 64 }, description: 조치한 직원 }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: deliveryId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - $ref: '_common.yaml#/components/parameters/PageSize'
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [at, actorId, action]
+                      properties:
+                        at: { type: string, format: date-time }
+                        actorId: { type: string, description: 조치한 직원(운영자 ID) }
+                        action: { type: string, description: 조치 종류 코드 }
+                        riderId: { type: [string, 'null'] }
+                        deliveryId: { type: [string, 'null'] }
+                        detail: { type: [string, 'null'], description: '결과·값(예 NORMAL→SUSPENDED). 사유는 직원이 쓴 글 그대로(개인정보 금지 규칙)' }
+                        reason: { type: [string, 'null'] }
+                  nextCursor: { type: [string, 'null'] }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /internal/riders/eligible:
     get:

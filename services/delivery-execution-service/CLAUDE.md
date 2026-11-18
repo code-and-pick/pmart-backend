@@ -80,3 +80,4 @@
 - **전달지 좌표 대체(2026-11-18, 0.25.1 — 사용자 "좌표로 핀을 찍게 해야지")**: drop-info·직원 drop-location 의 lat·lng — 주문 사본 핀이 없으면 dispatch `route-points`(도로명주소 지오코딩 — 반품 회수는 픽업지, 그 밖 도착지, `DispatchClient.routePoints`) + `coordinateSource`(ORDER_PIN·ADDRESS_GEOCODE). 근본은 customer CU-2.
 - **화면 배송 번호(2026-11-18, 0.26.0·V19 — ADR-0070)**: DeliveryCreated.deliverySeq → `delivery_seq`, `DeliveryRow.deliveryNumber()` = orderNumber-순번 → 배송 조회·직원 목록·내 배달 내역 `deliveryNumber`.
 - **순번 채우기(2026-11-18)**: `SeqBackfill`(`seq-backfill-interval` 1분, 100건씩) — `delivery_seq` 가 없는 배송을 dispatch `/internal/deliveries/{id}/sequence` 로 채움(0.10.0 배포 전 배송·놓친 사건).
+- **직원 조치 이력(2026-11-18, 관리자만)**: `GET /delivery-staff-actions`(`StaffActions` — 상태 정정, 전달 실패 확정·반려, 수행료 조정, 추가 배달료 결정).

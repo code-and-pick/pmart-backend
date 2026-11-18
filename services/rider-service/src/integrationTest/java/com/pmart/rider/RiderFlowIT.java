@@ -322,6 +322,18 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
                 .retrieve()
                 .body(String.class));
     assertThat(me.path("restriction").path("state").asString()).isEqualTo("DISPATCH_RESTRICTED");
+    // 직원 조치 이력(2026-11-18, 관리자만): 방금 건 제한이 보인다
+    JsonNode acts =
+        json(
+            http.get()
+                .uri("/rider-staff-actions?riderId={r}", rider)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .body(String.class));
+    assertThat(acts.path("items").get(0).path("action").asString()).isEqualTo("RESTRICTION_SET");
+    assertThat(acts.path("items").get(0).path("detail").asString()).endsWith("DISPATCH_RESTRICTED");
     assertThat(me.path("operating").path("status").asString()).isEqualTo("ON_DUTY"); // 운행은 그대로
     assertThat(me.path("operating").path("newDispatchEnabled").asBoolean()).isFalse();
 

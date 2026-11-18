@@ -160,6 +160,42 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 json(matrix(List.of(List.of(900, 300), List.of(900, 300), List.of(900, 300))))));
   }
 
+  /** 직원 조치 이력(2026-11-18, 관리자만): 운영자 배차 취소 기록이 보인다, 라이더 운영은 403. */
+  @Test
+  void staffActionsListOperatorCancellations() {
+    String d = "DLV-sa-" + UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO assignment_cancellation (request_id, delivery_id, requested_by, actor, reason,"
+            + " reason_detail, reassign, state, previous_rider_id, created_at) VALUES (?, ?, 'OPERATOR',"
+            + " 'OP-X', 'OPERATOR', '라이더 연락 안 됨', true, 'CANCELLED_BEFORE_PICKUP', 'RD-sa', now())",
+        "req-" + d,
+        d);
+    JsonNode acts =
+        body(
+            http.get()
+                .uri("/dispatch-staff-actions?deliveryId={d}", d)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(acts.path("items").get(0).path("action").asString())
+        .isEqualTo("ASSIGNMENT_CANCELLED");
+    assertThat(acts.path("items").get(0).path("actorId").asString()).isEqualTo("OP-X");
+    assertThat(acts.path("items").get(0).path("riderId").asString()).isEqualTo("RD-sa");
+    assertThat(
+            http.get()
+                .uri("/dispatch-staff-actions")
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+  }
+
   @Test
   void aiOfferAcceptAndHandover() {
     String mfc = "MFC-D1";

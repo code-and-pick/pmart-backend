@@ -70,3 +70,4 @@
 - **순번 채우기(2026-11-18)**: 내부 `GET /internal/deliveries/{id}/sequence`(0.10.1) — execution 이 놓친 순번을 채운다.
 - **한집은 단독(2026-11-18 — 사용자, ADR-0058 덧붙임)**: `DeliveryRow.customerSingle()`(SINGLE·RETURN 아님), `DispatchStore.singleHolders` — 판단 주기 후보·`allowed`(한집은 맡은 것 없는 라이더만), 회수·다시 배송 후보, `AcceptRules.judge(…, single)`(한집 든 라이더·배송 든 라이더의 한집 → INELIGIBLE), 배달리스트 거르기. 알뜰끼리만 3건.
 - **일반배차모드 새 배달 알림(2026-11-18 — 사용자 "보냄 — 묶어서", V14 `list_notice`)**: `ListNotifier`(`list-notice-interval` 15초, `list-notice-min-gap` 1분) — 일반 모드·신규배차 켬·위치 살아 있음·제한 아님 라이더의 배달리스트에 보일 배송(반경 단계·배차취소 제외·한집은 단독) 중 지난 알림 뒤 새로 올라온 것이 있으면 `DeliveryListUpdated`(aggregate Rider → delivery.rider.v1).
+- **직원 조치 이력(2026-11-18, 관리자만)**: `GET /dispatch-staff-actions`(`StaffActions` — 운영자 배차 취소).
