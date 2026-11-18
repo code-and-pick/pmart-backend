@@ -10,6 +10,7 @@
   E. 라이더 기록(#149·#157)   직원용 수행료·운행시간(새 라이더 0), 배정 이력(새 라이더 빈 목록)
   F. 계정 제한(RS-1)         관리자 신규배차 제한(행 버전) → 관제에 제한 표시 → 풀기
   G. 배송·수행료(#149·#152)   주문번호 찾기(없는 번호 빈 목록), 추가 배달료 대기·조정 대기 200, 직원 근거 사진(#157)·상태 정정(#150) 없는 배송 404
+  (2026-11-18 더함) 라이더 번호·운행 시작·대기 시작·접속/대기 합·직원 전달지 404/409/403·화면 배송 번호
   H. 정리                    운행 종료 → 탈퇴(배송이 없어 바로 COMPLETED) — LAN 에 시험 라이더를 남기지 않는다
 
 실행: uv run --no-project --with cryptography python -I deploy/lan/checks/rider_backoffice_e2e.py [--sup]
@@ -100,6 +101,9 @@ def main():
           f"HTTP {s} {len(board.get('items', []))}명")
     if row:
         check("C 관제 — 가린 이름만", "*" in (row.get("nameMasked") or ""), "")
+        # 2026-11-18: 라이더 번호(ADR-0070)·운행 시작·대기 시작(신규배차 켬·배송 0건)
+        check("C 관제 — 라이더 번호 6자리", len(row.get("riderNumber") or "") == 6, row.get("riderNumber") or "없음")
+        check("C 관제 — 운행 시작·대기 시작", bool(row.get("onDutySince")) and bool(row.get("waitingSince")), "")
     if sup:
         s, _ = http("GET", f"/rider-locations?mfcId={MFC}", sup)
         check("C 센터 관리자 — 관제 403", s == 403, f"HTTP {s}")
@@ -110,6 +114,11 @@ def main():
     check("D 라이더 찾기 — 가입 승인 APPROVED", item.get("signupStatus") == "APPROVED", f"HTTP {s}")
     s, d = http("GET", f"/riders/{rider}", admin)
     check("D 상세 — 자동 승인(AUTO)", s == 200 and d.get("signupDecidedBy") == "AUTO", f"HTTP {s}")
+    number = d.get("riderNumber")
+    s, byn = http("GET", f"/riders?riderNumber={number}", admin)
+    check("D 라이더 번호로 찾기(ADR-0070)", s == 200 and [i.get("riderId") for i in byn.get("items", [])] == [rider], f"HTTP {s}")
+    s, byids = http("GET", f"/riders?riderIds={rider},RD-none-claude", admin)
+    check("D 여러 라이더 ID 로 한 번에", s == 200 and len(byids.get("items", [])) == 1, f"HTTP {s}")
     if "bankAccountRegistered" in d:
         check("D 상세 — 정산계좌 등록됨·은행 이름(계좌번호 없음)",
               d.get("bankAccountRegistered") is True and bool(d.get("bankName")) and "bankAccountNumber" not in d, "")
@@ -124,6 +133,9 @@ def main():
     check("E 직원용 수행료 — 새 라이더 빈 목록", s == 200 and e.get("items") == [], f"HTTP {s}")
     s, t = http("GET", f"/rider-operating-time?riderId={rider}", admin)
     check("E 직원용 운행시간 — 0초", s == 200 and t.get("totalSeconds") == 0, f"HTTP {s}")
+    check("E 접속 시간 있음·대기 ≤ 접속(2026-11-18)",
+          s == 200 and t.get("connectedSeconds") is not None and 0 <= (t.get("waitingSeconds") or 0) <= t.get("connectedSeconds"),
+          f"접속 {t.get('connectedSeconds')}초 · 대기 {t.get('waitingSeconds')}초")
     s, h = http("GET", f"/rider-assignments?riderId={rider}", admin)
     if not not_deployed("E 배정 이력(#157)", s):
         check("E 배정 이력 — 새 라이더 빈 목록", s == 200 and h.get("items") == [], f"HTTP {s}")
@@ -163,6 +175,21 @@ def main():
         check("G 직원 근거 사진 — 없는 배송 404", True, b.get("code", ""))
     else:
         not_deployed("G 직원 근거 사진(#157)", s) or check("G 직원 근거 사진 — 없는 배송 404", s == 404, f"HTTP {s} {b.get('code', '')}")
+    # 2026-11-18: 직원용 전달지 — 없는 배송 404, 끝난 배송 409, 센터 관리자 403 / 최근 배송의 화면 배송 번호
+    s, b = http("GET", "/deliveries/DLV-none-claude/drop-location", admin)
+    check("G 직원 전달지 — 없는 배송 404", s == 404, f"HTTP {s} {b.get('code', '')}")
+    s, recent = http("GET", "/deliveries?size=5", admin)
+    done = next((i for i in recent.get("items", []) if i.get("state") in ("COMPLETED", "CANCELLED")), None)
+    if done:
+        s, b = http("GET", f"/deliveries/{done['deliveryId']}/drop-location", admin)
+        check("G 직원 전달지 — 끝난 배송 409(주소 안 줌)", s == 409 and "roadAddress" not in b, f"HTTP {s} {b.get('code', '')}")
+    numbered = [i for i in recent.get("items", []) if i.get("orderNumber")]
+    check("G 화면 배송 번호 = 주문번호-순번",
+          bool(numbered) and all((i.get("deliveryNumber") or "").startswith(i["orderNumber"] + "-") for i in numbered),
+          ", ".join(i.get("deliveryNumber") or "없음" for i in numbered[:3]))
+    if sup:
+        s, _ = http("GET", "/deliveries/DLV-none-claude/drop-location", sup)
+        check("G 센터 관리자 — 직원 전달지 403", s == 403, f"HTTP {s}")
     s, b = http("POST", "/deliveries/DLV-none-claude/status-corrections", admin,
                 {"targetState": "PICKED_UP", "reason": "LAN 시험"})
     check("G 상태 정정 — 없는 배송 404", s == 404, f"HTTP {s} {b.get('code', '')}")
