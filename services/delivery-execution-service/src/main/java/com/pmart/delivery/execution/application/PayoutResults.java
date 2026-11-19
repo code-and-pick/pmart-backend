@@ -48,7 +48,24 @@ public class PayoutResults {
       int count,
       long total,
       String state,
-      @Nullable LastResult lastResult) {}
+      @Nullable LastResult lastResult,
+      int compensationCount) {}
+
+  private record Comp(String id, String state, int amount) {}
+
+  /** 그 묶음의 보상금(2026-11-19 — 이의 인정). 잠근다. */
+  private List<Comp> comps(String riderId, LocalDate payoutDate) {
+    return jdbc.query(
+        "SELECT compensation_id, settlement_state, amount FROM rider_compensation WHERE rider_id = ?"
+            + " AND payout_date = ? ORDER BY compensation_id FOR UPDATE",
+        (rs, i) ->
+            new Comp(
+                rs.getString("compensation_id"),
+                rs.getString("settlement_state"),
+                rs.getInt("amount")),
+        riderId,
+        payoutDate);
+  }
 
   private final JdbcTemplate jdbc;
   private final ExecutionStore store;
@@ -84,10 +101,12 @@ public class PayoutResults {
     LocalDate d = payoutDate != null ? payoutDate : today();
     List<Object> args = new ArrayList<>(List.of(d));
     String sql =
-        "SELECT rider_id FROM rider_earning WHERE payout_date = ? AND settlement_state IN"
-            + " ('CONFIRMED', 'PAYING', 'PAID', 'PAYMENT_FAILED')"
-            + (riderId != null ? " AND rider_id = ?" : "")
+        "SELECT rider_id FROM (SELECT rider_id FROM rider_earning WHERE payout_date = ? AND"
+            + " settlement_state IN ('CONFIRMED', 'PAYING', 'PAID', 'PAYMENT_FAILED') UNION SELECT"
+            + " rider_id FROM rider_compensation WHERE payout_date = ?) b"
+            + (riderId != null ? " WHERE rider_id = ?" : "")
             + " GROUP BY rider_id ORDER BY rider_id LIMIT 1000";
+    args.add(d);
     if (riderId != null) {
       args.add(riderId);
     }
@@ -174,12 +193,14 @@ public class PayoutResults {
               store.earningsForPayout(riderId, payoutDate).stream()
                   .filter(e -> BATCH_STATES.contains(e.settlementState()))
                   .toList();
-          if (rows.isEmpty()) {
+          List<Comp> comps = comps(riderId, payoutDate);
+          if (rows.isEmpty() && comps.isEmpty()) {
             throw PmartException.notFound("PAYOUT_NOT_FOUND", "이 라이더의 그날 지급 묶음이 없습니다.");
           }
           List<EarningRow> change =
               rows.stream().filter(e -> from.contains(e.settlementState())).toList();
-          if (change.isEmpty()) {
+          List<Comp> compChange = comps.stream().filter(c -> from.contains(c.state())).toList();
+          if (change.isEmpty() && compChange.isEmpty()) {
             throw PmartException.invalidState("바꿀 수행료가 없습니다(이미 " + to + " 이거나 지급 완료).");
           }
           Instant now = clock.instant();
@@ -189,6 +210,15 @@ public class PayoutResults {
             EarningRow after = store.earningOf(e.deliveryId(), e.riderId()).orElseThrow();
             events.earningRecorded(after, store.bumpVersion(e.deliveryId(), now), now);
             total += e.total() == null ? 0 : e.total();
+          }
+          for (Comp c : compChange) {
+            jdbc.update(
+                "UPDATE rider_compensation SET settlement_state = ?, updated_at = ? WHERE"
+                    + " compensation_id = ?",
+                to,
+                Timestamp.from(now),
+                c.id());
+            total += c.amount();
           }
           jdbc.update(
               "INSERT INTO rider_payout_result (result_id, request_key, rider_id, payout_date, result,"
@@ -201,11 +231,17 @@ public class PayoutResults {
               result,
               reference,
               reason,
-              change.size(),
+              change.size() + compChange.size(),
               total,
               actor,
               Timestamp.from(now));
-          log.info("지급 결과 {} — 라이더 {} {} {}건", result, riderId, payoutDate, change.size());
+          log.info(
+              "지급 결과 {} — 라이더 {} {} {}건(보상금 {})",
+              result,
+              riderId,
+              payoutDate,
+              change.size() + compChange.size(),
+              compChange.size());
           return batch(riderId, payoutDate).orElseThrow();
         });
   }
@@ -215,7 +251,8 @@ public class PayoutResults {
         store.earningsForPayout(riderId, payoutDate).stream()
             .filter(e -> BATCH_STATES.contains(e.settlementState()))
             .toList();
-    if (rows.isEmpty()) {
+    List<Comp> comps = comps(riderId, payoutDate);
+    if (rows.isEmpty() && comps.isEmpty()) {
       return Optional.empty();
     }
     Map<String, Integer> states = new LinkedHashMap<>();
@@ -223,6 +260,10 @@ public class PayoutResults {
     for (EarningRow e : rows) {
       states.merge(e.settlementState(), 1, Integer::sum);
       total += e.total() == null ? 0 : e.total();
+    }
+    for (Comp c : comps) {
+      states.merge(c.state(), 1, Integer::sum);
+      total += c.amount();
     }
     String state = states.size() == 1 ? states.keySet().iterator().next() : "MIXED";
     LastResult last =
@@ -243,6 +284,8 @@ public class PayoutResults {
             .stream()
             .findFirst()
             .orElse(null);
-    return Optional.of(new Batch(riderId, payoutDate, rows.size(), total, state, last));
+    return Optional.of(
+        new Batch(
+            riderId, payoutDate, rows.size() + comps.size(), total, state, last, comps.size()));
   }
 }

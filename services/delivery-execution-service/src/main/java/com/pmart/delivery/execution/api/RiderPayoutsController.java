@@ -76,7 +76,8 @@ public class RiderPayoutsController implements RiderPayoutsApi {
             .payoutDate(b.payoutDate())
             .count(b.count())
             .total((int) b.total())
-            .state(RiderPayout.StateEnum.fromValue(b.state()));
+            .state(RiderPayout.StateEnum.fromValue(b.state()))
+            .compensationCount(b.compensationCount());
     if (b.lastResult() != null) {
       var l = b.lastResult();
       v.lastResult(

@@ -39,6 +39,35 @@ public class RiderClient {
     this.mapper = mapper;
   }
 
+  /**
+   * 소명·이의 한 건(2026-11-19 보상금) — riderId·targetType·targetRef·state. 없으면 빈 값, 못 부르면 Downstream 규칙으로
+   * 실패(503).
+   */
+  public record AppealInfo(String riderId, String targetType, String targetRef, String state) {}
+
+  public Optional<AppealInfo> appeal(String appealId) {
+    try {
+      String body =
+          Downstream.call(
+              "rider-service appeal",
+              () ->
+                  rider
+                      .get()
+                      .uri("/api/v1/internal/rider-appeals/{id}", appealId)
+                      .retrieve()
+                      .body(String.class));
+      JsonNode n = mapper.readTree(body == null ? "{}" : body);
+      return Optional.of(
+          new AppealInfo(
+              n.path("riderId").asString(),
+              n.path("targetType").asString(),
+              n.path("targetRef").asString(),
+              n.path("state").asString()));
+    } catch (HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    }
+  }
+
   /** 못 부르면 비어 있다(직원 화면은 접속·대기를 null 로) — 운행시간 조회를 막지 않는다. */
   public Optional<List<DutySegment>> dutySegments(String riderId, Instant from, Instant to) {
     try {

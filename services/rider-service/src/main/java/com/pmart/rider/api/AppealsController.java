@@ -59,6 +59,11 @@ public class AppealsController implements AppealsApi {
             appeals.decide(appealId, idempotencyKey, req.getDecision().getValue(), req.getNote())));
   }
 
+  @Override
+  public ResponseEntity<RiderAppeal> getRiderAppealInternal(String appealId) {
+    return ResponseEntity.ok(view(appeals.internal(appealId)));
+  }
+
   private static RiderAppeal view(AppealService.Appeal a) {
     return new RiderAppeal()
         .appealId(a.appealId())

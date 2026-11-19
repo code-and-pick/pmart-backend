@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.29.0
+  version: 0.30.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1340,6 +1340,88 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
+  /rider-compensations:
+    post:
+      tags: [compensations]
+      summary: (0.30.0) 이의 인정 보상금 — 원래 수행료와 따로 한 줄 (라이더 운영·관리자)
+      x-added-in: '2026-11-19'
+      description: |
+        2026-11-19 사용자 "보상금 한 줄 따로"(원문 §7.1 "이후 보상·조정은 별도 기록"). 원래 수행료는 그대로 두고, 인정된 수행료 이의(rider ACCEPTED·EARNING)에
+        묶인 보상금 한 줄 — 이의 하나에 한 번(409 COMPENSATION_EXISTS). 배송·라이더는 이의에서 가져온다. 금액 1~100,000원, 사유 1~300자(라이더도 봄 — 개인정보 금지).
+        바로 확정(CONFIRMED), 지급 예정일 = 오늘(Asia/Seoul) + 3영업일 → 그날 지급 묶음(`/rider-payouts`)에 함께 들어간다. 이의가 인정 상태가 아니면 422 APPEAL_NOT_ACCEPTED,
+        rider 를 못 부르면 503. RIDER_OPS·OPERATOR_ADMIN(그 밖 403). 조치 이력 COMPENSATION_RECORDED.
+      operationId: recordRiderCompensation
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appealId, amount, reason]
+              properties:
+                appealId: { type: string, maxLength: 64 }
+                amount: { type: integer, minimum: 1, maximum: 100000 }
+                reason: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: 기록됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderCompensation' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: APPEAL_NOT_ACCEPTED
+          content:
+            application/json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+    get:
+      tags: [compensations]
+      summary: (0.30.0) 보상금 목록 (라이더 운영·관리자)
+      x-added-in: '2026-11-19'
+      operationId: listRiderCompensations
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: deliveryId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: appealId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: 최근 순 200건
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RiderCompensation' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /riders/me/compensations:
+    get:
+      tags: [compensations]
+      summary: (0.30.0) 내 보상금 — 정산 내역에 함께 (라이더 본인)
+      x-added-in: '2026-11-19'
+      description: 최근 순 200건. 지급 상태는 수행료와 같은 SettlementState(CONFIRMED·PAYING·PAID·PAYMENT_FAILED). recordedBy 는 비운다.
+      operationId: listMyCompensations
+      x-pmart-user-types: [RIDER]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/RiderCompensation' } }
+
   /internal/riders/{riderId}/withdrawal-blockers:
     get:
       tags: [internal]
@@ -1556,6 +1638,21 @@ paths:
 
 components:
   schemas:
+    RiderCompensation:
+      type: object
+      x-added-in: '2026-11-19'
+      required: [compensationId, appealId, deliveryId, riderId, amount, reason, settlementState, payoutDate, recordedAt]
+      properties:
+        compensationId: { type: string }
+        appealId: { type: string }
+        deliveryId: { type: string }
+        riderId: { type: string }
+        amount: { type: integer }
+        reason: { type: string }
+        settlementState: { $ref: '#/components/schemas/SettlementState' }
+        payoutDate: { type: string, format: date }
+        recordedBy: { type: [string, 'null'], description: 운영자 ID(직원 화면만) }
+        recordedAt: { type: string, format: date-time }
     RiderPayout:
       type: object
       x-added-in: '2026-11-18'
@@ -1563,8 +1660,9 @@ components:
       properties:
         riderId: { type: string }
         payoutDate: { type: string, format: date }
-        count: { type: integer, description: 묶음 안 수행료 수 }
-        total: { type: integer, description: 합계(원) }
+        count: { type: integer, description: 묶음 안 수행료 수(보상금 포함 — 2026-11-19) }
+        total: { type: integer, description: 합계(원, 보상금 포함) }
+        compensationCount: { type: integer, description: (2026-11-19) 그중 보상금 수 }
         state: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED, MIXED] }
         lastResult:
           type: [object, 'null']

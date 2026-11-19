@@ -881,6 +881,73 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     return null;
   }
 
+  /** 이의 인정 보상금(2026-11-19 사용자 "보상금 한 줄 따로"): 인정된 수행료 이의에만, 한 번, 지급 묶음에 함께. */
+  @Test
+  void compensationForAcceptedEarningAppeal() throws Exception {
+    String rider = "RDR-cp-" + UUID.randomUUID();
+    String delivery = "DLV-cp-" + UUID.randomUUID();
+    String ok = "RAP-ok-" + UUID.randomUUID();
+    String open = "RAP-open-" + UUID.randomUUID();
+    for (String[] a : new String[][] {{ok, "ACCEPTED"}, {open, "OPEN"}}) {
+      riderApi.stubFor(
+          com.github.tomakehurst.wiremock.client.WireMock.get(
+                  com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                      "/api/v1/internal/rider-appeals/" + a[0]))
+              .willReturn(
+                  com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                      mapper.writeValueAsString(
+                          Map.of(
+                              "appealId",
+                              a[0],
+                              "riderId",
+                              rider,
+                              "targetType",
+                              "EARNING",
+                              "targetRef",
+                              delivery,
+                              "state",
+                              a[1])))));
+    }
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String cs = TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of());
+    Map<String, Object> body = Map.of("appealId", ok, "amount", 1500, "reason", "엘리베이터 고장 확인");
+    assertThat(staffPost("/rider-compensations", cs, body).getStatusCode().value()).isEqualTo(403);
+    assertThat(
+            staffPost(
+                    "/rider-compensations",
+                    ops,
+                    Map.of("appealId", open, "amount", 1500, "reason", "x"))
+                .getBody())
+        .contains("APPEAL_NOT_ACCEPTED");
+    ResponseEntity<String> made = staffPost("/rider-compensations", ops, body);
+    assertThat(made.getStatusCode().value()).as(made.getBody()).isEqualTo(200);
+    JsonNode c = body(made);
+    assertThat(c.path("deliveryId").asString()).isEqualTo(delivery);
+    assertThat(c.path("riderId").asString()).isEqualTo(rider);
+    assertThat(c.path("settlementState").asString()).isEqualTo("CONFIRMED");
+    assertThat(staffPost("/rider-compensations", ops, body).getBody())
+        .contains("COMPENSATION_EXISTS");
+    // 라이더는 내 보상금에서 보고(직원 ID 없음), 지급 묶음에 함께 들어간다
+    JsonNode mine = body(meGet("/riders/me/compensations", rider));
+    assertThat(mine.path("items").get(0).path("amount").asInt()).isEqualTo(1500);
+    assertThat(mine.path("items").get(0).path("recordedBy").isNull()).isTrue();
+    String date = c.path("payoutDate").asString();
+    JsonNode batch =
+        body(staffGet("/rider-payouts?riderId=" + rider + "&payoutDate=" + date, ops))
+            .path("items")
+            .get(0);
+    assertThat(batch.path("total").asInt()).isEqualTo(1500);
+    assertThat(batch.path("compensationCount").asInt()).isEqualTo(1);
+    String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    assertThat(
+            body(staffGet("/delivery-staff-actions?riderId=" + rider, adm))
+                .path("items")
+                .get(0)
+                .path("action")
+                .asString())
+        .isEqualTo("COMPENSATION_RECORDED");
+  }
+
   /** 수행료 지급 결과(2026-11-18 사용자 "결과 받는 창구 + 수동 표시"): 묶음 단위, 관리자만, 실패 사유 필수, 이미 지급은 409. */
   @Test
   void payoutResultsMoveConfirmedEarningsOfOneBatch() {

@@ -147,6 +147,12 @@ public class AppealService {
         });
   }
 
+  /** 내부(execution 보상금 확인 — 2026-11-19). */
+  public Appeal internal(String appealId) {
+    return one("WHERE appeal_id = ?", appealId)
+        .orElseThrow(() -> PmartException.notFound("APPEAL_NOT_FOUND", "신청이 없습니다."));
+  }
+
   public List<Appeal> mine() {
     String riderId = rider().subject();
     return list("WHERE rider_id = ? ORDER BY submitted_at DESC LIMIT 100", riderId).stream()

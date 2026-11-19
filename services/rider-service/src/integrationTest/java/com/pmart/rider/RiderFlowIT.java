@@ -331,6 +331,15 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
             decideAppeal(earningAppeal, ops, Map.of("decision", "ACCEPTED", "note", "조정할게요"))
                 .getBody());
     assertThat(earned.path("adjustmentRequired").asBoolean()).isTrue();
+    // 내부 조회(execution 보상금 확인 — 2026-11-19)
+    JsonNode internal =
+        json(
+            http.get()
+                .uri("/internal/rider-appeals/{id}", earningAppeal)
+                .retrieve()
+                .body(String.class));
+    assertThat(internal.path("state").asString()).isEqualTo("ACCEPTED");
+    assertThat(internal.path("targetRef").asString()).isEqualTo("DLV-ap-1");
     // 라이더는 결과·설명을 보고 결정한 직원은 못 본다
     JsonNode mine =
         json(

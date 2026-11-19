@@ -246,6 +246,7 @@ GET /api/v1/rider-appeals OPERATOR
 GET /api/v1/rider-assignments OPERATOR
 GET /api/v1/rider-auth/sessions/current RIDER
 GET /api/v1/rider-auth/social-logins/{authRequestId} PUBLIC
+GET /api/v1/rider-compensations OPERATOR
 GET /api/v1/rider-complaints OPERATOR
 GET /api/v1/rider-complaints/{complaintId} OPERATOR
 GET /api/v1/rider-earnings OPERATOR
@@ -259,6 +260,7 @@ GET /api/v1/riders OPERATOR
 GET /api/v1/riders/bank-codes RIDER
 GET /api/v1/riders/me RIDER
 GET /api/v1/riders/me/appeals RIDER
+GET /api/v1/riders/me/compensations RIDER
 GET /api/v1/riders/me/deliveries RIDER
 GET /api/v1/riders/me/earnings RIDER
 GET /api/v1/riders/me/locations/latest RIDER
@@ -513,6 +515,7 @@ POST /api/v1/rider-appeals/{appealId}/decisions OPERATOR
 POST /api/v1/rider-auth/logouts RIDER
 POST /api/v1/rider-auth/social-logins PUBLIC
 POST /api/v1/rider-auth/tokens PUBLIC
+POST /api/v1/rider-compensations OPERATOR
 POST /api/v1/rider-complaints OPERATOR
 POST /api/v1/rider-earnings/{earningId}/adjustments OPERATOR
 POST /api/v1/rider-notices OPERATOR

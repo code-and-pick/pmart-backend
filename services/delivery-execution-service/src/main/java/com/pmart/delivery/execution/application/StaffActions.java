@@ -54,6 +54,9 @@ public class StaffActions {
   UNION ALL
   SELECT recorded_at, recorded_by, 'PAYOUT_' || result, rider_id, NULL, payout_date || ' ' || earning_count || '건 ' || total || '원', failure_reason
     FROM rider_payout_result
+  UNION ALL
+  SELECT recorded_at, recorded_by, 'COMPENSATION_RECORDED', rider_id, delivery_id, amount || '원 ' || appeal_id, reason
+    FROM rider_compensation
 ) a
       """;
 
