@@ -65,5 +65,5 @@ rider-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다.
 - **요청**: `riderIds` 묶음 조회(또는 그 용도의 좁은 조회)를 **MFC_SUPERVISOR·MFC_WORKER** 에게도 — 응답은 **라이더 번호·가린 이름만**(전화·이메일·주소·상태 이력 등 다른 칸 없이). 지금 응답 모양을 그대로 주기 어렵다면 `GET /riders/display-names?riderIds=` 같은 표기 전용 조회도 좋다(PC 5 가 정함).
 - **받는 쪽**: mfc-backoffice 웹(요청서 `docs/handoff/clients/mfc-backoffice/2026-11-19-request-display-numbers.md`). PDA(mfc-app)도 인계 화면에서 같은 것을 쓸 수 있다.
 - 급함: 중간(표시만 — 그 전엔 "라이더"로).
-- **상태**: 요청(PC 5).
+- **상태**: **구현(2026-11-20, PC 5 — rider 0.18.0)**: 표기 전용 `GET /riders/display-names?riderIds=`(쉼표 50개) — OPERATOR_ADMIN·RIDER_OPS·CS_AGENT·MFC_SUPERVISOR·MFC_WORKER, 응답 `items[{riderId, riderNumber, nameMasked}]`만(전화·상태·제한 없음, 없는 ID 는 빠짐, 탈퇴는 nameMasked null). 라이더 찾기·상세 `GET /riders`·`/riders/{id}` 권한은 그대로. 회신 `docs/handoff/clients/mfc-backoffice/2026-11-20-reply-rider-display-names.md`.
 

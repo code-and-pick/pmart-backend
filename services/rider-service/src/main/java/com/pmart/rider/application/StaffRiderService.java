@@ -69,6 +69,29 @@ public class StaffRiderService {
     return store.search(s, now, limit, offset).stream().map(r -> r.asOf(now)).toList();
   }
 
+  /**
+   * 화면 표기 묶음(2026-11-20 RS-MFC, ADR-0070): 라이더 운영·상담원·관리자에 더해 MFC 센터 관리자·작업자도. 응답에서 쓰는 것은 번호·가린
+   * 이름뿐이다 (컨트롤러가 그 두 칸만 내보낸다).
+   */
+  public List<Rider> displayNames(List<String> riderIds) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> forbidden("직원만 라이더 표기를 볼 수 있습니다."));
+    if (!(p.hasRole("OPERATOR_ADMIN")
+        || p.hasRole("RIDER_OPS")
+        || p.hasRole("CS_AGENT")
+        || p.hasRole("MFC_SUPERVISOR")
+        || p.hasRole("MFC_WORKER"))) {
+      throw forbidden("라이더 표기 조회 권한이 없습니다.");
+    }
+    return store.search(
+        new RiderStore.Search(null, null, null, null, null, null, false, null, riderIds),
+        clock.instant(),
+        riderIds.size(),
+        0);
+  }
+
   public Rider detail(String riderId) {
     requireStaff();
     return get(riderId);

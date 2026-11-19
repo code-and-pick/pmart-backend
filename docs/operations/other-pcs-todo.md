@@ -60,25 +60,25 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] (2026-11-19 delivery) MFC 백오피스 "배차 지연" 목록 + "배차 불가로 취소" — dispatch `GET /dispatch-delays`(0.12.0), claim CL-5. 요청 `service-requests/mfc-backoffice-staff-apis.md` 끝 절
 
 ## PC 5 — delivery 영역
-- [ ] **RS-MFC 라이더 화면 표기를 MFC 직원에게**(2026-11-19 PC 3 — `rider-service.md` RS-MFC): `GET /riders?riderIds=` 가 MFC_SUPERVISOR·MFC_WORKER 에 403 → 라이더 번호·가린 이름만 주는 조회를 열어 주기(ADR-0070, MFC 백오피스 인계 화면)
+- [x] **RS-MFC 라이더 화면 표기를 MFC 직원에게**(2026-11-19 PC 3 — `rider-service.md` RS-MFC): `GET /riders?riderIds=` 가 MFC_SUPERVISOR·MFC_WORKER 에 403 → 라이더 번호·가린 이름만 주는 조회를 열어 주기(ADR-0070, MFC 백오피스 인계 화면)
 
 - [ ] **직원 웹 UI·UX 맞추기(web/rider-backoffice)**(2026-11-19 PC 2 — 사용자 "백오피스 웹 UI·UX 를 MFC·라이더 웹에도"): 지침 `pmart-clients docs/handoff/all/2026-11-19-request-ui-ux-align.md`(통합 백오피스 PR #231 과 함께 main 에 들어옴 — 겉모습·목록·상세·움직임·탭 제목·화면 번호, 파일 경로·커밋). 모양만인 부품은 PC 2 가 `@pmart/web-ui` 로 올린 뒤 같이 쓰고, 앱 조회를 아는 것은 각 앱 사본. 회신은 `all/` 에. 로그인·세션 코드는 PC 1 만
 
 - [ ] **직원 웹 UI·UX 맞추기(web/rider-backoffice)**(2026-11-19 PC 2 — 사용자 "백오피스 웹 UI·UX 를 MFC·라이더 웹에도"): 지침 `pmart-clients docs/handoff/all/2026-11-19-request-ui-ux-align.md`(통합 백오피스 PR #231 과 함께 main 에 들어옴 — 겉모습·목록·상세·움직임·탭 제목·화면 번호, 파일 경로·커밋). 모양만인 부품은 PC 2 가 `@pmart/web-ui` 로 올린 뒤 같이 쓰고, 앱 조회를 아는 것은 각 앱 사본. **공용 부품**: 모양 부품(SearchPanel 칩 접기·StatStrip·GuideBox·AllDone·SearchSelect·ProgressSteps·motion, `motion.css`·`wing.css`)은 `@pmart/web-ui` 로 올라감(pmart-clients PR #240) — 쓰는 법 `docs/handoff/all/2026-11-19-notice-web-ui-shared-parts.md`, StatCard·StickyTitle 은 앱 사본. 회신은 `all/` 에. 로그인·세션 코드는 PC 1 만
-- [ ] **DE-7 배송 확인 목록 상태별 수**(2026-11-19 PC 2 — 백오피스 웹 숫자 띠, 요청서 `delivery-execution-service.md` DE-7): `GET /deliveries/counts`(목록과 같은 거르기, 모든 상태 0 까지, capped), 급하지 않음
+- [x] **DE-7 배송 확인 목록 상태별 수**(2026-11-19 PC 2 — 백오피스 웹 숫자 띠, 요청서 `delivery-execution-service.md` DE-7): `GET /deliveries/counts`(목록과 같은 거르기, 모든 상태 0 까지, capped), 급하지 않음
 - [x] (2026-11-19 PR — V8) **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
 
 - [x] (2026-11-19 PR — execution 0.33.0) **DE-7 배송 확인 목록 상태별 수**(2026-11-19 PC 2 — 백오피스 웹 숫자 띠, 요청서 `delivery-execution-service.md` DE-7): `GET /deliveries/counts`(목록과 같은 거르기, 모든 상태 0 까지, capped), 급하지 않음
-- [ ] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
-- [ ] **DE-6 "가고 있어요" 사건**(2026-11-19 PC 1 — 레퍼런스 3-3): delivery-execution `DeliveryHeadingToCustomer`(delivery.delivery.v1, 묶음 배달 다음 차례) — 요청서 `delivery-execution-service.md` DE-6
+- [x] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
+- [x] **DE-6 "가고 있어요" 사건**(2026-11-19 PC 1 — 레퍼런스 3-3): delivery-execution `DeliveryHeadingToCustomer`(delivery.delivery.v1, 묶음 배달 다음 차례) — 요청서 `delivery-execution-service.md` DE-6
 
-- [ ] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
+- [x] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
 - [x] (2026-11-19 PR — V23) **DE-6 "가고 있어요" 사건**(2026-11-19 PC 1 — 레퍼런스 3-3): delivery-execution `DeliveryHeadingToCustomer`(delivery.delivery.v1, 묶음 배달 다음 차례) — 요청서 `delivery-execution-service.md` DE-6
 - [x] **DE-4 배송 `packageIds` 가 인계 전에 비어 라이더가 포장 QR 을 못 찍음**(2026-11-18 PC 3, **급함** — `delivery-execution-service.md` DE-4): `ExecutionViews.delivery` 의 packageIds 를 `shipment_package` ∪ 인계 기록으로. 지금 LAN 에서 모든 인계가 막힌다
 - [x] (2026-11-19 PR — dispatch 0.12.2) **DD-5 제안 조회 `pollAfterSec: null` 이면 앱이 조회를 멈춤**(2026-11-18 PC 3 — `delivery-dispatch-service.md` DD-5): 첫 제안을 놓쳐 라이더 1명 LAN 에서 13분 지연. null 대신 긴 간격, 조회 실패는 평소 간격. 같이 보기: 라이더 앱 센터 연락처 알림 `docs/handoff/clients/rider-app/2026-11-18-notice-mfc-staff-contacts.md`
-- [ ] **DD-4 정시 배송률 지표**(2026-11-18 PC 2 — 요청서 `delivery-dispatch-service.md` DD-4, **2026-11-19 사용자 결정**: delivery-dispatch 가 배송 단위로 셈, 시간대 지난 미전달은 늦음): 날짜·센터별 due·onTime·unjudged API → bff ON_TIME_DELIVERY
+- [x] **DD-4 정시 배송률 지표**(2026-11-18 PC 2 — 요청서 `delivery-dispatch-service.md` DD-4, **2026-11-19 사용자 결정**: delivery-dispatch 가 배송 단위로 셈, 시간대 지난 미전달은 늦음): 날짜·센터별 due·onTime·unjudged API → bff ON_TIME_DELIVERY
 
-- [ ] **DD-5 제안 조회 `pollAfterSec: null` 이면 앱이 조회를 멈춤**(2026-11-18 PC 3 — `delivery-dispatch-service.md` DD-5): 첫 제안을 놓쳐 라이더 1명 LAN 에서 13분 지연. null 대신 긴 간격, 조회 실패는 평소 간격. 같이 보기: 라이더 앱 센터 연락처 알림 `docs/handoff/clients/rider-app/2026-11-18-notice-mfc-staff-contacts.md`
+- [x] **DD-5 제안 조회 `pollAfterSec: null` 이면 앱이 조회를 멈춤**(2026-11-18 PC 3 — `delivery-dispatch-service.md` DD-5): 첫 제안을 놓쳐 라이더 1명 LAN 에서 13분 지연. null 대신 긴 간격, 조회 실패는 평소 간격. 같이 보기: 라이더 앱 센터 연락처 알림 `docs/handoff/clients/rider-app/2026-11-18-notice-mfc-staff-contacts.md`
 - [x] (2026-11-19 PR — dispatch 0.13.0) **DD-4 정시 배송률 지표**(2026-11-18 PC 2 — 요청서 `delivery-dispatch-service.md` DD-4, **2026-11-19 사용자 결정**: delivery-dispatch 가 배송 단위로 셈, 시간대 지난 미전달은 늦음): 날짜·센터별 due·onTime·unjudged API → bff ON_TIME_DELIVERY
 - [ ] **라이더 앱 휴대폰 푸시(FCM) 연결**(2026-11-17 — 요청 `docs/handoff/clients/rider-app/2026-11-17-request-rider-push-fcm.md`): 서버 푸시 켜짐(Firebase `pmart-123`). 앱에 google-services.json(사용자가 PC 1 → PC 5 복사)·firebase_messaging·토큰 등록 `PUT /me/push-tokens/{deviceId}`
 - [ ] **`web/rider-backoffice`(라이더 백오피스 — 관제 포함) 맡기**(2026-11-17 사용자 "라이더 백오피스는 PC5로"): PC 1 이 뼈대·로그인·LAN 서빙(8446)을 만들었다. 계획·남은 결정 `docs/delivery/rider-backoffice-plan.md`, 앱 문서 pmart-clients `docs/apps/rider-backoffice-web.md`. 관제는 직원용 라이더 위치 API(delivery-tracking)부터. 로그인·세션 코드는 PC 1 만, 웹 공통은 PC 2 에 요청

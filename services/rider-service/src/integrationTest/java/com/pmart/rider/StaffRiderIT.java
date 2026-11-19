@@ -114,6 +114,26 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
     assertThat(get(TestJwt.rider(rider), "/riders?riderId=" + rider).getStatusCode().value())
         .isEqualTo(403);
 
+    // 화면 표기 묶음(RS-MFC 2026-11-20) — 센터 관리자·작업자도, 번호·가린 이름만
+    String worker = TestJwt.operator("wk-1", List.of("MFC_WORKER"), List.of("MFC-IT-1"));
+    for (String who : List.of(SUPERVISOR, worker, CS)) {
+      JsonNode names = json(get(who, "/riders/display-names?riderIds=" + rider + ",RD-none"));
+      assertThat(names.path("items")).hasSize(1);
+      JsonNode one = names.path("items").get(0);
+      assertThat(one.path("riderId").asString()).isEqualTo(rider);
+      assertThat(one.path("nameMasked").asString()).isEqualTo("김**더");
+      assertThat(one.path("riderNumber").asString()).matches("[1-9][0-9]{5}");
+      assertThat(one.has("phoneMasked")).isFalse();
+      assertThat(one.has("operatingStatus")).isFalse();
+    }
+    assertThat(
+            get(TestJwt.rider(rider), "/riders/display-names?riderIds=" + rider)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(get(SUPERVISOR, "/riders/display-names?riderIds=").getStatusCode().value())
+        .isEqualTo(400);
+
     JsonNode detail = json(get(OPS, "/riders/" + rider));
     assertThat(detail.path("version").asInt()).isZero();
     assertThat(detail.path("nameMasked").asString()).isEqualTo("김**더");

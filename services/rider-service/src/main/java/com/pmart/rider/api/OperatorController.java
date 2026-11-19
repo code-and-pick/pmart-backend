@@ -100,6 +100,29 @@ public class OperatorController implements OperatorApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.RiderDisplayNames> getRiderDisplayNames(
+      String riderIds) {
+    List<String> list = ids(riderIds);
+    if (list == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "riderIds 가 비었습니다.");
+    }
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.RiderDisplayNames()
+            .items(
+                staff.displayNames(list).stream()
+                    .map(
+                        r ->
+                            new com.pmart.rider.api.generated.model.RiderDisplayNamesItemsInner()
+                                .riderId(r.riderId())
+                                .riderNumber(r.riderNumber())
+                                .nameMasked(
+                                    r.name() == null || r.name().isBlank()
+                                        ? null
+                                        : RiderViews.maskName(r.name())))
+                    .toList()));
+  }
+
+  @Override
   public ResponseEntity<StaffRiderDetail> getRiderForStaff(String riderId) {
     Rider r = staff.detail(riderId);
     return ResponseEntity.ok(

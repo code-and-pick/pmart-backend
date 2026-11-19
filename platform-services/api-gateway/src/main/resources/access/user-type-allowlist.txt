@@ -272,6 +272,7 @@ GET /api/v1/rider-payouts OPERATOR
 GET /api/v1/rider-staff-actions OPERATOR
 GET /api/v1/riders OPERATOR
 GET /api/v1/riders/bank-codes RIDER
+GET /api/v1/riders/display-names OPERATOR
 GET /api/v1/riders/me RIDER
 GET /api/v1/riders/me/appeals RIDER
 GET /api/v1/riders/me/compensations RIDER

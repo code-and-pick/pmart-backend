@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -506,6 +506,27 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /riders/display-names:
+    get:
+      tags: [operator]
+      summary: (0.18.0) 라이더 화면 표기 묶음 조회 — 라이더 번호·가린 이름만 (RS-MFC)
+      x-added-in: '2026-11-20'
+      description: |
+        ADR-0070 화면 표기 `김*수 · 482913` 를 여러 화면(MFC 백오피스 포장 인계·운영판, MFC 현장 앱 인계 화면, 직원 웹 목록)이 붙일 때 쓴다.
+        권한: OPERATOR_ADMIN·RIDER_OPS·CS_AGENT·**MFC_SUPERVISOR·MFC_WORKER**(2026-11-20 RS-MFC — 센터 직원은 이 조회만, 라이더 찾기·상세는 그대로 403). 라이더·고객 403.
+        응답은 라이더 ID·라이더 번호·가린 이름(첫·끝 글자)만 — 전화·계좌·거주지·상태·제한은 없다. 없는 ID 는 빠진다(순서는 보장하지 않음). 탈퇴한 라이더는 이름이 지워져 nameMasked null.
+      operationId: getRiderDisplayNames
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderIds, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 3400 }, description: '라이더 ID 여럿(쉼표, 50개까지)' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderDisplayNames' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
   /riders/{riderId}:
     get:
       tags: [operator]
@@ -1250,6 +1271,20 @@ components:
       x-added-in: '2026-11-17'
       enum: [PENDING, APPROVED, REJECTED]
       description: '(0.9.0) 가입 승인 상태 — 사용자 2026-11-17 "승인 화면은 만들고, 일단은 바로 승인되게, 정책은 나중에": 지금은 가입하면 늘 APPROVED(자동 승인, 원문 §1.2 "즉시 운행 승인"). PENDING·REJECTED 는 정책이 정해지면'
+    RiderDisplayNames:
+      type: object
+      x-added-in: '2026-11-20'
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [riderId]
+            properties:
+              riderId: { type: string }
+              riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', description: '화면용 라이더 번호 6자리(ADR-0070)' }
+              nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자, 예 김*수). 탈퇴로 이름이 지워졌으면 null' }
     StaffRiderSearchResult:
       type: object
       x-added-in: '2026-11-15'
