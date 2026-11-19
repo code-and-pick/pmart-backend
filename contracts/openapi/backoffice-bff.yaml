@@ -562,7 +562,7 @@ paths:
                                 type: object
                                 properties:
                                   packageId: { type: string }
-                                  handoverCode: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(0.21.0, DL-2 — ADR-0070) 포장 라벨 6자리 — 목록 표기 "305118 인계". mfc-fulfillment `GET /shipments` 포장 값 그대로, 원천이 아직 안 주면 null(화면은 "포장 n")' }
+                                  handoverCode: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(0.21.0, DL-2 — ADR-0070) 포장 라벨 숫자 — mfc-fulfillment 0.23.0(2026-11-20) 부터 새 포장은 4자리(센터 안 겹치지 않음), 그 전 포장은 6자리. 목록 표기 "3051 인계". 자릿수를 가정하지 않는다. mfc-fulfillment `GET /shipments` 포장 값 그대로, 원천이 아직 안 주면 null(화면은 "포장 n")' }
                                   state: { type: [string, 'null'], description: 'PackageState 원천 값(OPEN·SEALED·HANDED_OVER)' }
                                   fenceState: { type: [string, 'null'], description: '인계 허가 상태 원천 값(NONE·HANDOVER_IN_PROGRESS·COMMITTED·EXPIRED)' }
                                   handoverAuthorizedAt: { type: [string, 'null'], format: date-time }
