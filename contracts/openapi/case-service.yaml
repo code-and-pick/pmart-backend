@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.28.0
+  version: 0.29.0
   description: |
+    **0.29.0(2026-11-19 — 백오피스 "고객" 메뉴 BF-2, 사용자 "진행해")**: 직원 `GET /inquiries?customerId=` — 그 고객의 고객 문의(상담원 접수 포함), 고객 문의를 못 보는 직원 403.
     **0.28.0(2026-11-19 — R-10, PC 5 요청·사용자 "추천대로")**: ① 라이더 도움요청·전달 실패 사건(RIDER_HELP·DELIVERY_INCIDENT, subject 배송)은 그 배송이 **전달 실패 결정 전**(execution `GET /deliveries/{id}` state FAILURE_REPORTED — 닫는 직원 토큰으로)이면 `POST /cases/{id}/closures` **409 FAILURE_DECISION_PENDING**, 배송 상태를 못 읽으면 503(확인 없이 닫지 않음), 배송 없음(404)은 막지 않음. ② execution `HelpRequestReopened` → 그 접수 건에 이력 **RIDER_REOPENED** 만(상태 그대로 — 자동 재개 없음, 2026-11-16 "재개는 사람이 손으로만" 유지).
     **0.27.0(2026-11-19 — R-9, PC 5 요청·사용자 "1,2,3 전부", 원문 Delivery §3.6)**: 사건 종류 `DISPATCH_DELAYED`(배차 지연) — dispatch `DispatchDelayed`(배송마다 한 번)를 받아 **상담원 팀(CS)** 사건, 센터 = mfcId(센터 관리자 MFC_SUPERVISOR 도 자기 센터만 보기), refs deliveryId·orderId, 배송마다 열린 것 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로. 기한 1시간(표시만 — 사용자 확정 2026-11-19, 설정으로 바꿀 수 있음). 고객 안내는 notification, 취소는 claim "배차 불가 취소"(사건이 부르지 않음).
     **0.26.0(2026-11-19 — 웹 요청 backend-list-status-counts, 사용자 "진행해")**: `GET /rider-complaints/counts` — 목록과 같은 거르기(종류 거르기 제외)로 종류별 수. 모든 종류를 0 까지 빠짐없이, 정확한 수(SQL 한 번 — capped 늘 false).
@@ -854,6 +855,7 @@ paths:
         - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: '주문 ID 완전 일치(0.5.0 — 백오피스 통합 조회)', x-added-in: '2026-11-16' }
         - { name: requesterType, in: query, schema: { $ref: '#/components/schemas/InquiryRequesterType' }, description: '운영자 거르기(0.13.0). 비우면 볼 수 있는 것 전부 — CS_AGENT 는 고객 문의, RIDER_OPS 는 라이더 문의. 볼 수 없는 종류를 고르면 403. 고객 문의를 못 보는 직원이 orderId 로 거르면 403', x-added-in: '2026-11-16' }
         - { name: deliveryIssue, in: query, schema: { $ref: '#/components/schemas/InquiryDeliveryIssue' }, description: '배송 신고 종류로 거르기(0.23.0 — 상담원이 지연 신고 DELAYED 만 보기 등). 배송 신고는 고객 문의에만 있다 — 고객 문의를 못 보는 직원이 거르면 403(orderId 와 같음). 고객은 본인 것 안에서', x-added-in: '2026-11-18' }
+        - { name: customerId, in: query, x-added-in: '2026-11-19', schema: { type: string, maxLength: 64 }, description: '(0.29.0 — 백오피스 "고객" 상세 BF-2) 직원 고객 거르기 — 그 고객의 **고객 문의**(상담원 접수 STAFF_INTAKE 포함, 라이더 문의 제외). 고객 문의를 못 보는 직원 403(orderId 와 같음). 고객·라이더 토큰은 무시(늘 본인 것)' }
       responses:
         '200':
           description: OK

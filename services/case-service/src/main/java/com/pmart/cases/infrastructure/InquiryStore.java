@@ -105,6 +105,8 @@ public class InquiryStore {
    */
   public List<InquiryRow> page(
       @Nullable String customerId,
+      /** 직원이 고객으로 거를 때(0.29.0) 상담원 접수(STAFF_INTAKE)도 — 고객 본인 목록에서는 뺀다. */
+      boolean includeStaffIntake,
       @Nullable String requesterType,
       @Nullable String status,
       @Nullable String orderId,
@@ -114,7 +116,10 @@ public class InquiryStore {
     StringBuilder sql = new StringBuilder(SELECT + " WHERE 1=1");
     List<Object> args = new ArrayList<>();
     if (customerId != null) {
-      sql.append(" AND q.customer_id = ? AND q.origin <> 'STAFF_INTAKE'");
+      sql.append(
+          includeStaffIntake
+              ? " AND q.customer_id = ?"
+              : " AND q.customer_id = ? AND q.origin <> 'STAFF_INTAKE'");
       args.add(customerId);
     }
     if (requesterType != null) {

@@ -182,6 +182,13 @@ class CsIntakesIT extends PostgresKafkaContainerSupport {
     Res byCustomer = send("GET", AGENT, "/cs-intakes?customerRef=" + me, null);
     assertThat(byCustomer.body().path("items").findValuesAsString("intakeId"))
         .containsExactly(intakeId);
+    // 0.29.0(BF-2): 직원 고객 거르기는 상담원 접수 문의도 보인다(고객 본인 목록에서는 빠짐 — 위)
+    Res inquiries = send("GET", AGENT, "/inquiries?customerId=" + me, null);
+    assertThat(inquiries.status()).as(inquiries.body().toString()).isEqualTo(200);
+    assertThat(inquiries.body().path("items").findValuesAsString("inquiryId")).contains(inquiryId);
+    assertThat(send("GET", RIDER_OPS, "/inquiries?customerId=" + me, null).status())
+        .as("고객 문의를 못 보는 직원")
+        .isEqualTo(403);
   }
 
   /** 0.19.2: 같은 키 재전송은 order 가 내려가 있어도 저장된 결과를 재생, 새 요청은 503. */

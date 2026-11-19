@@ -125,6 +125,14 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
             send("POST", admin, "/inquiries/" + id + "/replies", Map.of("body", "x"), null)
                 .status())
         .isEqualTo(403);
+    // 0.29.0(BF-2): 직원 고객 거르기 — 그 고객 것만
+    Res byCustomer = send("GET", admin, "/inquiries?customerId=" + me, null, null);
+    assertThat(byCustomer.status()).isEqualTo(200);
+    assertThat(byCustomer.body().path("items").findValuesAsString("inquiryId")).containsExactly(id);
+    assertThat(
+            send("GET", admin, "/inquiries?customerId=" + other, null, null).body().path("items"))
+        .isEmpty();
+    assertThat(send("GET", md, "/inquiries?customerId=" + me, null, null).status()).isEqualTo(403);
     Res mine = send("GET", meTok, "/inquiries", null, null);
     assertThat(mine.body().path("items").findValuesAsString("inquiryId")).containsExactly(id);
     Res others = send("GET", TestJwt.customer(other), "/inquiries", null, null);

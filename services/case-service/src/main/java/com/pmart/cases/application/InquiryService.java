@@ -190,12 +190,15 @@ public class InquiryService {
   public Page list(
       @Nullable String status,
       @Nullable String orderId,
+      /** 직원 고객 거르기(0.29.0 — 백오피스 "고객" 상세 BF-2). 고객·라이더 토큰은 무시(늘 본인). */
+      @Nullable String customerFilter,
       @Nullable String requesterType,
       @Nullable String deliveryIssue,
       @Nullable String cursor,
       int size) {
     PmartPrincipal p = principal();
     String customerId = null;
+    boolean staffIntake = false;
     String type;
     if (p.type() == PmartPrincipal.PrincipalType.CUSTOMER) {
       customerId = p.subject();
@@ -213,7 +216,9 @@ public class InquiryService {
       }
       // 주문으로 찾기는 고객 문의 — 고객 문의를 못 보는 직원은 예전처럼 403(통합 조회가 원천 불가로 표시)
       // 배송 신고(0.23.0 거르기)도 고객 문의에만 있다
-      if ((blankToNull(orderId) != null || deliveryIssue != null)
+      if ((blankToNull(orderId) != null
+              || deliveryIssue != null
+              || blankToNull(customerFilter) != null)
           && !readable.contains(InquiryRules.CUSTOMER)) {
         throw new PmartException(ErrorCode.FORBIDDEN, "고객 문의를 볼 권한이 없습니다.");
       }
@@ -221,9 +226,23 @@ public class InquiryService {
           requesterType != null
               ? requesterType
               : readable.size() == 1 ? readable.iterator().next() : null;
+      if (blankToNull(customerFilter) != null) {
+        // 고객 문의만(라이더 문의의 customer_id 는 라이더 주체) — 상담원 접수 포함
+        customerId = customerFilter.strip();
+        staffIntake = true;
+        type = InquiryRules.CUSTOMER;
+      }
     }
     List<InquiryRow> rows =
-        store.page(customerId, type, status, blankToNull(orderId), deliveryIssue, cursor, size);
+        store.page(
+            customerId,
+            staffIntake,
+            type,
+            status,
+            blankToNull(orderId),
+            deliveryIssue,
+            cursor,
+            size);
     boolean more = rows.size() > size;
     List<InquiryRow> items = more ? rows.subList(0, size) : rows;
     return new Page(List.copyOf(items), more ? items.get(items.size() - 1).inquiryId() : null);

@@ -145,11 +145,13 @@ public class InquiriesController implements InquiriesApi {
       @Nullable InquiryStatus status,
       @Nullable String orderId,
       @Nullable InquiryRequesterType requesterType,
-      @Nullable InquiryDeliveryIssue deliveryIssue) {
+      @Nullable InquiryDeliveryIssue deliveryIssue,
+      @Nullable String customerId) {
     var page =
         service.list(
             status == null ? null : status.getValue(),
             orderId,
+            customerId,
             requesterType == null ? null : requesterType.getValue(),
             deliveryIssue == null ? null : deliveryIssue.getValue(),
             cursor,
