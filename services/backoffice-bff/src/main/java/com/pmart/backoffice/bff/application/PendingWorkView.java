@@ -13,7 +13,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,6 +71,45 @@ public class PendingWorkView {
   public Map<String, Object> view() {
     Map<String, Object> out = collect();
     List<Map<String, Object>> items = (List<Map<String, Object>>) out.get("items");
+    List<Map<String, Object>> sources = (List<Map<String, Object>>) out.get("sources");
+    List<String> unavailable = (List<String>) out.get("unavailableSources");
+    Instant at = Instant.parse((String) out.get("composedAt"));
+    String token = PmartPrincipal.currentTokenValue().orElseThrow();
+
+    // 0.19.0(ADR-0070 — 사가 = "주문번호 + 흐름"): 항목의 주문번호. order `/orders/lookups/{id}` 를 주문마다 한 번(한 번
+    // 장애면 남은 주문은
+    // 부르지 않음), 404 는 없음. 실패면 번호만 null + unavailableSources order-service(목록은 그대로)
+    Set<String> orderIds = new LinkedHashSet<>();
+    for (Map<String, Object> i : items) {
+      if (i.get("orderId") instanceof String o && !o.isBlank()) {
+        orderIds.add(o);
+      }
+    }
+    Map<String, String> orderNumbers = new HashMap<>();
+    boolean orderFailed = false;
+    for (String o : orderIds) {
+      try {
+        JsonNode body =
+            lookups.get(Source.ORDER, token, "/orders/lookups/{id}", Map.of("id", o), Map.of());
+        if (text(body, "orderNumber") != null) {
+          orderNumbers.put(o, text(body, "orderNumber"));
+        }
+      } catch (HttpClientErrorException.NotFound e) {
+        // 없음
+      } catch (HttpClientErrorException | PmartException e) {
+        log.warn("처리 대기: 주문번호 조회 실패 — {}", e.getClass().getSimpleName());
+        orderFailed = true;
+        break;
+      }
+    }
+    if (orderFailed && !unavailable.contains(ORDER)) {
+      unavailable.add(ORDER);
+    }
+    for (Map<String, Object> i : items) {
+      i.put("orderNumber", orderNumbers.get((String) i.get("orderId")));
+    }
+
+    // 0.17.0(ADR-0070·HR-4): MFC 재시도한 직원 "이름 · 사번"
     List<String> ids = new ArrayList<>();
     for (Map<String, Object> i : items) {
       if (i.get("lastRetry") instanceof Map<?, ?> r && r.get("operatorId") instanceof String s) {
@@ -78,13 +119,10 @@ public class PendingWorkView {
     if (ids.isEmpty()) {
       return out;
     }
-    String token = PmartPrincipal.currentTokenValue().orElseThrow();
     Map<String, JsonNode> labels = OperatorLabels.lookup(lookups, token, ids);
-    ((List<Map<String, Object>>) out.get("sources"))
-        .add(
-            stamp(Source.HR.system, Instant.parse((String) out.get("composedAt")), labels != null));
+    sources.add(stamp(Source.HR.system, at, labels != null));
     if (labels == null) {
-      ((List<String>) out.get("unavailableSources")).add(Source.HR.system);
+      unavailable.add(Source.HR.system);
     }
     for (Map<String, Object> i : items) {
       if (i.get("lastRetry") instanceof Map<?, ?> r) {

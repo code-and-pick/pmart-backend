@@ -127,6 +127,10 @@ class PendingWorkIT {
   @Test
   void adminSeesStuckSagasAndFulfillmentIssuesOldestFirst() {
     stubSources();
+    // 0.19.0(ADR-0070): 사가·확인 필요 항목의 주문번호 — 주문마다 한 번
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-2"))
+            .willReturn(json(200, "{\"orderId\":\"ORD-2\",\"orderNumber\":\"74939255\"}")));
     assertThat(call("GET", "/views/pending-work", CS, null).status()).isEqualTo(403);
 
     Res r = call("GET", "/views/pending-work", ADMIN, null);
@@ -139,6 +143,10 @@ class PendingWorkIT {
     assertThat(items.get(1).path("refId").asString()).isEqualTo("SSG-1");
     assertThat(items.get(1).path("reasonCode").asString()).isEqualTo("WORK_ALREADY_HANDED_OVER");
     assertThat(items.get(1).path("allowedActions").toString()).isEqualTo("[\"MARK_RESOLVED\"]");
+    assertThat(items.get(1).path("orderNumber").asString())
+        .as("사가 = 주문번호 + 흐름(0.19.0)")
+        .isEqualTo("74939255");
+    assertThat(items.get(0).path("orderNumber").isNull()).as("404 — 번호 없음").isTrue();
     assertThat(r.body().path("unavailableSources")).isEmpty();
     assertThat(r.body().path("sources").toString())
         .as("MFC 목록은 설정을 켜기 전엔 부르지 않음(F-4 전)")

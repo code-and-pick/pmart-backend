@@ -109,6 +109,7 @@ public class UnifiedLookupView {
   private static final List<String> INQUIRY_FIELDS =
       List.of(
           "inquiryId",
+          "inquiryNumber", // 0.19.0 — 화면 문의 번호(case 0.25.0)
           "category",
           "orderId",
           "status",
@@ -139,6 +140,7 @@ public class UnifiedLookupView {
   private static final List<String> CASE_FIELDS =
       List.of(
           "caseId",
+          "caseNumber", // 0.19.0 — 화면 접수 번호(case 0.25.0)
           "kind",
           "state",
           "priority",

@@ -215,7 +215,7 @@ class CaseInboxViewIT {
                 json(
                     200,
                     """
-                    {"items":[{"caseId":"CASE-A","kind":"DISPATCH_FAILED","state":"ASSIGNED","priority":"P2",
+                    {"items":[{"caseId":"CASE-A","caseNumber":"C-1119-0042","kind":"DISPATCH_FAILED","state":"ASSIGNED","priority":"P2",
                      "assigneeId":"op-x","refs":[]},
                      {"caseId":"CASE-B","kind":"DISPATCH_FAILED","state":"OPEN","priority":"P2","refs":[]}],
                      "page":{"nextCursor":null}}""")));
@@ -229,6 +229,9 @@ class CaseInboxViewIT {
     Res r = inbox("");
 
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("items").get(0).path("caseNumber").asString())
+        .as("화면 접수 번호(0.19.0, case 0.25.0)")
+        .isEqualTo("C-1119-0042");
     JsonNode a = r.body().path("items").get(0).path("assignee");
     assertThat(a.path("operatorId").asString()).isEqualTo("op-x");
     assertThat(a.path("name").asString()).isEqualTo("김지원");

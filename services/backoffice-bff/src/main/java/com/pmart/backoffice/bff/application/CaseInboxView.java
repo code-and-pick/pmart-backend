@@ -122,6 +122,7 @@ public class CaseInboxView {
       i.put("state", text(c, "state"));
       i.put("priority", text(c, "priority"));
       i.put("summary", text(c, "summary"));
+      i.put("caseNumber", text(c, "caseNumber")); // 0.19.0 — 화면 접수 번호(case 0.25.0, ADR-0070)
       i.put("subjectType", text(c, "subjectType"));
       i.put("subjectRef", text(c, "subjectRef"));
       i.put("centerId", text(c, "centerId"));

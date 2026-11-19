@@ -188,12 +188,13 @@ class RecordListViewsIT {
                        "complaintType":"DAMAGE","source":"CS_AGENT","recordedBy":"op-cs","recordedAt":"2026-11-19T02:00:00Z"}],
                      "page":{"nextCursor":null}}""")));
     execution.stubFor(
-        WireMock.get(urlPathEqualTo("/api/v1/deliveries/DLV-1"))
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries"))
+            .withQueryParam("deliveryIds", equalTo("DLV-1"))
             .willReturn(
                 json(
                     200,
                     """
-                    {"deliveryId":"DLV-1","deliveryNumber":"74939255-1","orderSummary":{"orderNumber":"74939255"}}""")));
+                    {"items":[{"deliveryId":"DLV-1","deliveryNumber":"74939255-1","orderNumber":"74939255"}]}""")));
     rider.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/riders"))
             .willReturn(
@@ -222,7 +223,10 @@ class RecordListViewsIT {
     assertThat(c.path("recordedVia").asString()).isEqualTo("CS_AGENT");
     assertThat(c.has("note")).as("메모 없음").isFalse();
     assertThat(r.body().path("unavailableSources")).isEmpty();
-    execution.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/deliveries/DLV-1")));
+    execution.verify(
+        1,
+        getRequestedFor(urlPathEqualTo("/api/v1/deliveries"))
+            .withQueryParam("deliveryIds", equalTo("DLV-1")));
     rider.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/riders")));
     hr.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/hr/employee-labels")));
     cases.verify(

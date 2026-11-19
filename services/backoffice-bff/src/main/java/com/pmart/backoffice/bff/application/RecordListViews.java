@@ -161,18 +161,28 @@ public class RecordListViews {
       add(staff, text(c, "recordedBy"));
     }
 
-    // 배송 상세 하나로 배송 번호와 주문번호를 같이 읽는다(배송마다 한 번)
+    // 0.19.0: execution 0.31.0 묶음 조회 `GET /deliveries?deliveryIds=`(50개) 한 번으로 배송 번호·주문번호(전에는 배송마다
+    // 한 번)
     Map<String, JsonNode> deliveries = new HashMap<>();
     if (!deliveryIds.isEmpty()) {
       used.add(Source.EXECUTION);
-      for (String id : new LinkedHashSet<>(deliveryIds)) {
-        if (failed.contains(Source.EXECUTION)) {
-          break;
+      List<String> unique = new ArrayList<>(new LinkedHashSet<>(deliveryIds));
+      try {
+        JsonNode body =
+            clients.get(
+                Source.EXECUTION,
+                token,
+                "/deliveries",
+                Map.of(),
+                Map.of("deliveryIds", String.join(",", unique), "size", unique.size()));
+        for (JsonNode d : body.path("items")) {
+          if (text(d, "deliveryId") != null) {
+            deliveries.put(text(d, "deliveryId"), d);
+          }
         }
-        JsonNode d = one(Source.EXECUTION, token, "/deliveries/{id}", id, failed);
-        if (d != null) {
-          deliveries.put(id, d);
-        }
+      } catch (HttpClientErrorException | PmartException e) {
+        log.warn("화면 번호: {} 실패 — {}", Source.EXECUTION.system, e.getClass().getSimpleName());
+        failed.add(Source.EXECUTION);
       }
     }
     Map<String, JsonNode> riders = null;
@@ -194,7 +204,7 @@ public class RecordListViews {
     for (Map<String, Object> i : items) {
       JsonNode d = deliveries.get((String) i.get("deliveryId"));
       i.put("deliveryNumber", d == null ? null : text(d, "deliveryNumber"));
-      i.put("orderNumber", d == null ? null : text(d.path("orderSummary"), "orderNumber"));
+      i.put("orderNumber", d == null ? null : text(d, "orderNumber"));
       i.put("rider", RiderDisplays.of((String) i.get("riderId"), riders));
       i.put("recordedByLabel", OperatorLabels.of((String) i.get("recordedBy"), labels));
     }

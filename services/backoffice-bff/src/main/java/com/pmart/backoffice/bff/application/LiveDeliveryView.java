@@ -172,6 +172,7 @@ public class LiveDeliveryView {
         for (JsonNode c : caseItems) {
           Map<String, Object> brief = new LinkedHashMap<>();
           brief.put("caseId", text(c, "caseId"));
+          brief.put("caseNumber", text(c, "caseNumber")); // 0.19.0 — 화면 접수 번호(case 0.25.0)
           brief.put("kind", text(c, "kind"));
           brief.put("priority", text(c, "priority"));
           brief.put(
