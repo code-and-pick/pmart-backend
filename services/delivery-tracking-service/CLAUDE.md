@@ -42,3 +42,4 @@
 - **관제 운행 시작·대기(2026-11-18, 0.9.0)**: `ControlRider.onDutySince`(rider 값 그대로)·`waitingSince`(`RiderControlService.waitingSince` — 신규배차 켬·진행 중 0건이면 (켠 시각, `LocationStore.lastEndedOf` 마지막 끝난 배송) 중 늦은 때).
 - **관제 라이더 번호(2026-11-18, 0.10.0 — ADR-0070)**: `ControlRider.riderNumber`(rider 운행 중 목록 값 그대로).
 - **관제 배송 번호(2026-11-18, 0.11.0·V7 — ADR-0070)**: `delivery_progress.delivery_seq`(DeliveryCreated.deliverySeq)·`order_number`(DeliveryAssigned.orderNumber) 사본 → `ControlRider.activeDeliveries[].deliveryNumber`.
+- **라이더 위치 실시간(2026-11-19, 0.11.1 설명 — 사용자 "고객앱 카카오맵에 실시간")**: SSE 가 위치 시각이 바뀌면 ETA_UPDATED 로 riderLocation 을 보냄(이미 구현 — 지문에 위치 시각). 라이더 앱 배송 중 5초·고객 앱 SSE 로 마커(알림 `docs/handoff/clients/all/2026-11-19-notice-live-rider-location.md`).

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.11.0
+  version: 0.11.1
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -91,7 +91,11 @@ paths:
       x-stream-protocols: [SSE, WEBSOCKET]
       description: |
         text/event-stream 으로 DeliveryEta 갱신과 진행 단계(execution 이벤트 사본)를 푸시한다. WebSocket은 같은 경로에 Upgrade 요청으로 접속하며 메시지 본문은 동일한 StreamEvent.
-        노출 범위는 GET /eta와 같다(고객은 drop만, 라이더 좌표 비노출). 연결 끊김 시 Last-Event-ID로 재개. 배송 종료(COMPLETED/FAILED/CANCELLED) 이벤트 후 서버가 닫는다.
+        노출 범위는 GET /eta와 같다(고객은 drop만). 연결 끊김 시 Last-Event-ID로 재개. 배송 종료(COMPLETED/FAILED/CANCELLED) 이벤트 후 서버가 닫는다.
+        **라이더 위치 실시간(0.11.1 설명 — 2026-11-19 사용자 "라이더앱 GPS 위치가 고객앱 카카오맵에 실시간으로")**: `eta.riderLocation` 은 GET /eta 와 같은 범위(고객은 픽업 뒤 TO_CUSTOMER·AT_CUSTOMER,
+        직원은 배정 뒤). 볼 수 있는 위치의 단말 기록 시각(`recordedAt`)이 바뀌면 다음 조회 주기(`stream-poll-interval` 3초)에 **ETA_UPDATED** 로 새 위치를 보낸다(상태 지문에 위치 시각이 들어 있음).
+        새 위치가 오는 간격 = 라이더 앱 올리기 간격(배송 중 5초 — 라이더 앱 요청) + 최대 3초. 앱은 이 이벤트로 지도 마커를 옮기고, 끊겼을 때만 GET /eta 를 주기 조회한다.
+        한 점만(지나온 동선 없음). `riderLocation.staleSeconds` 가 크면(예 60초 넘음) 앱이 "위치 확인 중"으로 보인다.
         **구현(0.5.0, 2026-11-17 — TR-3)**: SSE 만(WebSocket 은 아직 없음). 접속 즉시 지금 상태(ETA_UPDATED), 그 뒤 서버가 몇 초마다 사본을 읽어 단계가 바뀌면 STAGE_CHANGED,
         도착 예정이 바뀌면 ETA_UPDATED, 15초마다 HEARTBEAT, DONE 이면 STREAM_END 를 보내고 닫는다(최대 연결 시간 뒤에도 닫음 — 다시 접속).
         id = 상태 지문(단계·도착 예정) — Last-Event-ID 가 지금 상태와 같으면 첫 이벤트를 건너뛴다. 권한·404 판정은 접속 때 한 번.
