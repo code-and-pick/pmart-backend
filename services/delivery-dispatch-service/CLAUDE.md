@@ -76,3 +76,4 @@
 - **회수지 출처 enum(2026-11-19, 0.12.1)**: `recovery.pickup.source` 에 RIDER_LOCATION(다른 라이더 반납, 0.7.0 부터 쓰던 값) — 계약에 빠져 배차 상세가 500 이었음(LAN 28767701-2).
 
 - **실패 확정 되돌리기(2026-11-19)**: executionEvents `DeliveryFailureReverted` → 원래 배송 CLOSED → PICKED_UP(같은 라이더), 반납 배송(받기 전)은 픽업 전 취소(FAILURE_REVERSED).
+- **DD-4 정시 배송률(2026-11-19, 0.13.0·V15)**: `GET /metrics/on-time-deliveries?from&to&mfcId`(`OnTimeMetrics`) — 약속 끝(promised_at) KST 날짜·센터별 onTime·late(약속 지났는데 정시 아님 — 전달 전·실패 포함)·unjudged(CUSTOMER_CONFIRMED·AUTO_COMPLETED — `completion_method` 사본)·pending, due = onTime + late. FORWARD·RESHIPMENT, 주문 취소 제외. OPERATOR_ADMIN 모든 센터, 그 밖 mfcId.

@@ -65,6 +65,7 @@ public class ExecutionEventHandler {
             d -> {
               if ("DeliveryCompleted".equals(e.eventType())) {
                 store.setCompletedAt(deliveryId, instant(p.path("deliveredAt"), now));
+                store.setCompletionMethod(deliveryId, p.path("method").asString(null)); // DD-4
               }
               if (!OPEN.contains(d.state())) {
                 log.info("배송 {} {} — 배차 상태 {} 그대로", deliveryId, e.eventType(), d.state());

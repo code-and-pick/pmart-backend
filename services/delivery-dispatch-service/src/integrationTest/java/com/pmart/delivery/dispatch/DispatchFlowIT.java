@@ -603,6 +603,71 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("DELIVERY_LIST");
   }
 
+  /** DD-4 정시 배송률(2026-11-19): 약속 끝 날짜·센터별 정시·늦음·판정 불가·아직, 주문 취소 제외. */
+  @Test
+  void onTimeDeliveryMetricsPerDayAndCenter() {
+    String mfc = "MFC-OT-" + UUID.randomUUID().toString().substring(0, 6);
+    java.time.Instant base = java.time.Instant.now().minusSeconds(3 * 3600);
+    String[] ids = new String[5];
+    for (int k = 0; k < 5; k++) {
+      String shipment = "SHP-" + UUID.randomUUID();
+      ids[k] = readyShipment(mfc, shipment, "PKG-ot-" + shipment);
+    }
+    // 0 정시, 1 늦게 완료, 2 고객 확인(판정 불가), 3 약속 지났는데 전달 전(늦음), 4 주문 취소(빠짐)
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ?, completed_at = ?, state = 'CLOSED' WHERE delivery_id = ?",
+        java.sql.Timestamp.from(base),
+        java.sql.Timestamp.from(base.minusSeconds(60)),
+        ids[0]);
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ?, completed_at = ?, state = 'CLOSED' WHERE delivery_id = ?",
+        java.sql.Timestamp.from(base),
+        java.sql.Timestamp.from(base.plusSeconds(600)),
+        ids[1]);
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ?, completed_at = ?, completion_method = 'CUSTOMER_CONFIRMED', state = 'CLOSED' WHERE delivery_id = ?",
+        java.sql.Timestamp.from(base),
+        java.sql.Timestamp.from(base.minusSeconds(60)),
+        ids[2]);
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?",
+        java.sql.Timestamp.from(base),
+        ids[3]);
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ?, state = 'CANCELLED_BEFORE_PICKUP', cancel_reason = 'ORDER_CANCELLED' WHERE delivery_id = ?",
+        java.sql.Timestamp.from(base),
+        ids[4]);
+    String day = base.atZone(java.time.ZoneId.of("Asia/Seoul")).toLocalDate().toString();
+    JsonNode m =
+        body(
+            http.get()
+                .uri("/metrics/on-time-deliveries?from={d}&to={d}&mfcId={m}", day, day, mfc)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .toEntity(String.class));
+    JsonNode row = m.path("items").get(0);
+    assertThat(row.path("mfcId").asString()).isEqualTo(mfc);
+    assertThat(row.path("onTime").asInt()).isEqualTo(1);
+    assertThat(row.path("late").asInt()).isEqualTo(2);
+    assertThat(row.path("due").asInt()).isEqualTo(3);
+    assertThat(row.path("unjudged").asInt()).isEqualTo(1);
+    // 그 센터 아닌 운영자 403
+    assertThat(
+            http.get()
+                .uri("/metrics/on-time-deliveries?mfcId={m}", mfc)
+                .header(
+                    "Authorization",
+                    "Bearer "
+                        + TestJwt.operator("OP-X", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER")))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+  }
+
   /** 배차 지연 목록(2026-11-19 — 원문 §3.6): 지연 안내가 난 픽업 전 배송만, 그 센터 직원·고객센터, 다른 센터 직원 403. */
   @Test
   void dispatchDelaysListsAlertedUnpickedDeliveries() {

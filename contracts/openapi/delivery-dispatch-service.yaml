@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.12.1
+  version: 0.13.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -451,6 +451,50 @@ paths:
                         promisedAt: { type: [string, 'null'], format: date-time, description: 고객 약속(주문 뒤 50분 또는 예약 끝) }
                         delayAlertedAt: { type: string, format: date-time }
                         createdAt: { type: string, format: date-time }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /metrics/on-time-deliveries:
+    get:
+      tags: [dispatch-metrics]
+      summary: (0.13.0) 정시 배송률 — 날짜·센터별 (DD-4)
+      x-added-in: '2026-11-19'
+      description: |
+        요청서 DD-4(2026-11-19 사용자 결정 — PC 2 추천대로). 배송 단위, 날짜 = 약속 끝(`promisedAt` — 한집·알뜰은 확정 + 50분, 예약은 시간대 끝)의 Asia/Seoul 날짜.
+        - 대상: 고객 배송(FORWARD·RESHIPMENT), 실패·지연 포함. 주문 취소로 없어진 배송(cancel_reason ORDER_CANCELLED)만 뺀다.
+        - onTime: 전달 완료 시각(DeliveryCompleted.deliveredAt) ≤ 약속 끝. late: 그 밖에 약속 끝이 지난 것(아직 전달 전·실패 포함 — 뒤에 전달돼도 늦음).
+        - unjudged: 완료 방법이 고객 수령 확인(CUSTOMER_CONFIRMED)·자동 완료(AUTO_COMPLETED) — 전달 시각이 실제가 아니라 분모에서 뺀다.
+        - pending: 아직 약속 끝 전이고 전달 전 — 분모에서 뺀다. due = onTime + late.
+        from·to 날짜(포함, 기본 오늘, 최대 31일). OPERATOR_ADMIN 은 모든 센터, 그 밖 운영자는 mfcId(그 센터 권한) 필수.
+      operationId: listOnTimeDeliveryMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, asOf]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [date, mfcId, due, onTime, late, unjudged, pending]
+                      properties:
+                        date: { type: string, format: date }
+                        mfcId: { type: string }
+                        due: { type: integer }
+                        onTime: { type: integer }
+                        late: { type: integer }
+                        unjudged: { type: integer }
+                        pending: { type: integer }
+                  asOf: { type: string, format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /internal/deliveries:

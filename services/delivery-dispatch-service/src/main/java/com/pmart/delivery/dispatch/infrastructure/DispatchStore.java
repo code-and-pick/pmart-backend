@@ -539,6 +539,14 @@ public class DispatchStore {
     return t == null ? null : t.toInstant();
   }
 
+  /** DD-4(2026-11-19) — 완료 방법 사본. */
+  public void setCompletionMethod(String deliveryId, @Nullable String method) {
+    jdbc.update(
+        "UPDATE delivery SET completion_method = COALESCE(completion_method, ?) WHERE delivery_id = ?",
+        method,
+        deliveryId);
+  }
+
   public void setCompletedAt(String deliveryId, Instant completedAt) {
     jdbc.update(
         "UPDATE delivery SET completed_at = COALESCE(completed_at, ?) WHERE delivery_id = ?",
