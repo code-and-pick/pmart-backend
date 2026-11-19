@@ -26,3 +26,14 @@
 - **요청**: `views/approvals`(요청자·결정자)·`views/pending-work`(최근 재시도한 사람)·접수 건함 화면(맡은 사람)의 운영자 ID 옆에 `…Label: {name, employeeNo} | null`. hr 를 못 읽으면 그 칸만 null(화면 전체를 막지 않음 — unavailableSources 에 hr).
 - 급함: 낮음(화면이 R1 을 직접 불러도 됨). 모양은 PC 2 가 정해 클라이언트에 알림.
 - **상태**: **구현(2026-11-19, bff 0.17.0 — PR #212, 배포됨)**: 모양 `OperatorLabel{operatorId, name, employeeNo}` — 승인함 `items[].requestedByLabel`, 처리 대기 `items[].lastRetry.operator`, 접수 건함 `items[].assignee`(그 뒤 0.18.0 라이더 컴플레인 `recordedByLabel`). 화면 응답 하나에 hr 한 번(50개씩), 실패면 그 칸만 null + unavailableSources hr-service(403·404 는 장애 아님). 승인 결정자(상세의 결정 이력)는 bff 화면에 없어 웹이 hr 를 직접(R1).
+
+## BF-2. 고객 화면 `views/customer` — 백오피스 "고객" 메뉴 (2026-11-19, 보낸 영역 backoffice — PC 2 자신, 설계)
+
+- **사용자 결정(2026-11-19 "응 그대로 진행해")**: 고객센터 묶음 "고객"(조회만). 원천 요청 customer **CU-4**(찾기·상세·원문)·**CU-3**(고객번호), claim **CL-7**(고객 거르기). 이 절은 PC 2 의 설계(원천이 나오면 구현).
+- **모양(안)**:
+  - `GET /views/customer-search?customerNumber=|phone=|orderNumber=` — 완전 일치 하나만(둘 이상 400). 주문번호는 order `GET /orders/lookups?orderNumber=` → customerId 로 이은 뒤 customer 상세. 결과 0~N 명(전화는 여럿일 수 있음 — 가린 값만).
+  - `GET /views/customer/{customerId}` — 머리: customer 상세(가린 이름·고객번호·가입 방식·휴대폰 확인·가입 시각·상태). 칸: 최근 주문(order `/orders/lookups?customerId=` 10건, 화면 번호 그대로), 클레임(claim CL-7 10건), 문의(case `GET /inquiries` 고객 거르기 10건 — **case 에 직원 `customerId` 거르기를 PC 2 가 더한다**), 상담원 접수(case `/cs-intakes?customerRef=`), 열린 접수 건(그 고객 주문·클레임에 걸린 것 — case refs customerId·orderId). 칸마다 `nextCursor`·원천 표시.
+  - 원천 하나가 실패하면 그 칸만 null + unavailableSources(0건으로 바꾸지 않음), customer 가 없으면 404, 403 은 그대로.
+- **역할**: CS_AGENT·OPERATOR_ADMIN(원천 판정 그대로). 원문 열람은 화면이 customer CU-4 ③ 을 직접.
+- **순서**: CU-4·CU-3 → bff·case 고객 거르기 → 웹. 그전에는 화면이 통합 조회(고객 ID → 주문)로 대신.
+- **상태**: 설계(PC 2), 원천 대기.
