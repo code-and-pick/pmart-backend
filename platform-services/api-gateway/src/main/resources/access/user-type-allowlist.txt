@@ -34,11 +34,13 @@ GET /api/v1/auth/social-logins/{authRequestId} PUBLIC
 GET /api/v1/backoffice/commands/{targetService}/{command}/{requestId} OPERATOR
 GET /api/v1/backoffice/views/approval-inbox OPERATOR
 GET /api/v1/backoffice/views/case-inbox OPERATOR
+GET /api/v1/backoffice/views/claims OPERATOR
 GET /api/v1/backoffice/views/live-delivery OPERATOR
 GET /api/v1/backoffice/views/metrics OPERATOR
 GET /api/v1/backoffice/views/packing-handover OPERATOR
 GET /api/v1/backoffice/views/pending-work OPERATOR
 GET /api/v1/backoffice/views/replenishment-status OPERATOR
+GET /api/v1/backoffice/views/rider-complaints OPERATOR
 GET /api/v1/backoffice/views/trip-control OPERATOR
 GET /api/v1/backoffice/views/unified-lookup OPERATOR
 GET /api/v1/backoffice/views/work-counts OPERATOR

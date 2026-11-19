@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.17.0
+  version: 0.18.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **0.18.0(2026-11-19 — ADR-0070 이어서, 웹 요청 backend-display-numbers-in-responses)**: 클레임 목록 `/views/claims`(주문번호)·라이더 컴플레인 목록 `/views/rider-complaints`(배송 번호·주문번호·라이더·기록한 직원) — 웹이 줄마다 번호를 묻지 않게 bff 한 번으로. case·claim 에 다른 서비스 값을 사본으로 두지 않는다.
     **0.17.0(2026-11-19 — ADR-0070 직원 표시, hr 0.8.0 HR-4)**: 처리자·요청자 칸에 `OperatorLabel`(이름 · 사번) — 승인함 `requestedByLabel`, 처리 대기 `lastRetry.operator`, 사건함 `assignee`. hr-service `GET /hr/employee-labels`(직원 토큰, 화면 응답 하나에 50개씩 한 번) — 덤이라 실패면 이름·사번만 null + unavailableSources hr-service(403·404 는 장애 아님), 운영자 ID 는 그대로(상세 "시스템 번호" 칸).
     **0.16.0(2026-11-18 — approval 0.4.0 AP-3)**: 승인함 `decidableByMe` 거르기·항목 `viewerCanDecide`·`viewerDecideBlockedReason`(approval 판정 그대로), 지금 일 건수 APPROVALS 에 key DECIDABLE_BY_ME 줄.
     **화면 번호(0.14.0, 2026-11-18 — ADR-0070)**: 목록·표에는 화면 번호를 보인다 — 주문 `orderNumber`(8자리), 배송 `deliveryNumber`("주문번호-순번", 예 74939255-2 — 옆에 type·purpose 로 종류 표시),
@@ -164,6 +165,80 @@ paths:
                         type: array
                         items: { $ref: '#/components/schemas/PendingWorkItem' }
                       truncated: { type: boolean, x-added-in: '2026-11-17', description: '(0.9.1) MFC 목록이 1,000건(200 × 5쪽)을 넘어 뒤를 읽지 않았으면 true — 센터로 나눠 보거나 오래된 것부터 처리' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /views/claims:
+    get:
+      tags: [views]
+      summary: 클레임 목록 + 주문번호 (0.18.0)
+      x-added-in: '2026-11-19'
+      description: |
+        2026-11-19 웹 요청(backend-display-numbers-in-responses, 사용자 "진행하고"): claim-service `GET /claims` 에 주문번호(order `GET /orders/lookups/{id}` 의 orderNumber)를 붙인다.
+          - 원천 목록은 **호출한 직원의 토큰**으로 그대로(보이는 범위·권한은 원천 판정). 주 원천 401 → 401, 403 → 403, 400 → 400, 그 밖 4xx 그대로, 장애는 200 + 빈 items + unavailableSources.
+          - 화면 번호는 원천 정본 값 그대로(ADR-0070). 같은 ID 는 한 번만 읽는다. 번호 원천이 실패하면 그 칸만 null + unavailableSources(0·빈칸으로 바꾸지 않음 — 화면은 "번호 확인 불가"), 404 는 없음(null — "번호 없음"). 한 번 장애인 원천은 남은 ID 에서 부르지 않는다.
+          - size 는 최대 50(번호 조회가 줄 수만큼 늘어서).
+      operationId: getClaimsView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: orderId, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string }, description: claim ClaimType 그대로 }
+        - { name: state, in: query, schema: { type: string }, description: claim ClaimState 그대로 }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/ClaimListItem' }
+                      page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /views/rider-complaints:
+    get:
+      tags: [views]
+      summary: 라이더 컴플레인 목록 + 배송 번호·주문번호·라이더·기록한 직원 (0.18.0)
+      x-added-in: '2026-11-19'
+      description: |
+        2026-11-19 웹 요청(backend-display-numbers-in-responses): case-service `GET /rider-complaints` 에 배송 번호·주문번호(execution `GET /deliveries/{id}` 하나로 deliveryNumber·orderSummary.orderNumber),
+        라이더(RiderDisplay — rider `GET /riders?riderIds=` 한 번), 기록한 직원(OperatorLabel — hr `GET /hr/employee-labels` 한 번)을 붙인다. 메모(note)는 싣지 않는다.
+        라이더 가린 이름은 case 가 들고 있지 않다(rider 가 정본 — 탈퇴 때 지워짐).
+          - 원천 목록은 **호출한 직원의 토큰**으로 그대로(보이는 범위·권한은 원천 판정). 주 원천 401 → 401, 403 → 403, 400 → 400, 그 밖 4xx 그대로, 장애는 200 + 빈 items + unavailableSources.
+          - 화면 번호는 원천 정본 값 그대로(ADR-0070). 같은 ID 는 한 번만 읽는다. 번호 원천이 실패하면 그 칸만 null + unavailableSources(0·빈칸으로 바꾸지 않음 — 화면은 "번호 확인 불가"), 404 는 없음(null — "번호 없음"). 한 번 장애인 원천은 남은 ID 에서 부르지 않는다.
+          - size 는 최대 50(번호 조회가 줄 수만큼 늘어서).
+      operationId: getRiderComplaintsView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, schema: { type: string } }
+        - { name: deliveryId, in: query, schema: { type: string } }
+        - { name: complaintType, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/RiderComplaintListItem' }
+                      page: { $ref: '_common.yaml#/components/schemas/Page' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /views/case-inbox:
@@ -708,6 +783,47 @@ paths:
 
 components:
   schemas:
+    ClaimListItem:
+      type: object
+      x-added-in: '2026-11-19'
+      description: (0.18.0) claim ClaimSummary(0.6.0) 그대로 + 주문번호
+      properties:
+        claimId: { type: [string, 'null'] }
+        orderId: { type: [string, 'null'], description: 시스템 ID — 링크·상세용 }
+        orderNumber: { type: [string, 'null'], description: 화면용 주문번호 8자리(order 값 그대로 — 없거나 못 읽으면 null) }
+        type: { type: [string, 'null'] }
+        state: { type: [string, 'null'] }
+        openedAt: { type: [string, 'null'], format: date-time }
+        reason: { type: [string, 'null'], description: claim ClaimReason 그대로(claim 0.6.0) }
+        channel: { type: [string, 'null'], description: CUSTOMER_APP·CS·OPERATOR·SYSTEM(claim 0.6.0) }
+        closedAt: { type: [string, 'null'], format: date-time }
+        refund:
+          type: [object, 'null']
+          description: claim 0.6.0 ClaimRefundSummary 그대로 — 상품 환불 요약(IN_PROGRESS 는 완료로 표시하지 않는다)
+          properties:
+            state: { type: string, description: NONE·IN_PROGRESS·COMPLETED·FAILED }
+            requestedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+            refundedAmount: { $ref: '_common.yaml#/components/schemas/Money' }
+            completedAt: { type: [string, 'null'], format: date-time }
+    RiderComplaintListItem:
+      type: object
+      x-added-in: '2026-11-19'
+      description: (0.18.0) case RiderComplaintSummary 그대로(source → recordedVia) + 화면 번호. 메모 없음
+      properties:
+        complaintId: { type: [string, 'null'] }
+        caseId: { type: [string, 'null'] }
+        inquiryId: { type: [string, 'null'] }
+        complaintType: { type: [string, 'null'] }
+        recordedVia: { type: [string, 'null'], description: case 의 source(접수 경로 — 지금 CS_AGENT). bff 원천 표시 source 와 겹치지 않게 이름만 바꿈 }
+        recordedAt: { type: [string, 'null'], format: date-time }
+        riderId: { type: [string, 'null'] }
+        rider: { $ref: '#/components/schemas/RiderDisplay' }
+        deliveryId: { type: [string, 'null'] }
+        deliveryNumber: { type: [string, 'null'], description: 화면 배송 번호(주문번호-순번, execution 값 그대로) }
+        orderId: { type: [string, 'null'] }
+        orderNumber: { type: [string, 'null'], description: 화면용 주문번호(배송 상세의 orderSummary.orderNumber) }
+        recordedBy: { type: [string, 'null'], description: 기록한 직원 운영자 ID }
+        recordedByLabel: { $ref: '#/components/schemas/OperatorLabel' }
     OperatorLabel:
       type: [object, 'null']
       x-added-in: '2026-11-19'

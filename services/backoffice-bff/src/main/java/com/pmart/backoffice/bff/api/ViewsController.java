@@ -3,10 +3,12 @@ package com.pmart.backoffice.bff.api;
 import com.pmart.backoffice.bff.api.generated.ViewsApi;
 import com.pmart.backoffice.bff.api.generated.model.GetApprovalInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetCaseInboxView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetClaimsView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetLiveDeliveryView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetMetricsView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetPackingHandoverView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetPendingWorkView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetRiderComplaintsView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetUnifiedLookupView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetWorkCountsView200Response;
 import com.pmart.backoffice.bff.application.ApprovalInboxView;
@@ -15,9 +17,11 @@ import com.pmart.backoffice.bff.application.LiveDeliveryView;
 import com.pmart.backoffice.bff.application.MetricsView;
 import com.pmart.backoffice.bff.application.PackingHandoverView;
 import com.pmart.backoffice.bff.application.PendingWorkView;
+import com.pmart.backoffice.bff.application.RecordListViews;
 import com.pmart.backoffice.bff.application.UnifiedLookupView;
 import com.pmart.backoffice.bff.application.WorkCountsView;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +45,7 @@ public class ViewsController implements ViewsApi {
   private final PackingHandoverView packingHandover;
   private final MetricsView metrics;
   private final WorkCountsView workCounts;
+  private final RecordListViews recordLists;
   private final ObjectMapper mapper;
 
   public ViewsController(
@@ -52,6 +57,7 @@ public class ViewsController implements ViewsApi {
       PackingHandoverView packingHandover,
       MetricsView metrics,
       WorkCountsView workCounts,
+      RecordListViews recordLists,
       ObjectMapper mapper) {
     this.approvalInbox = approvalInbox;
     this.pendingWork = pendingWork;
@@ -61,6 +67,7 @@ public class ViewsController implements ViewsApi {
     this.packingHandover = packingHandover;
     this.metrics = metrics;
     this.workCounts = workCounts;
+    this.recordLists = recordLists;
     this.mapper = mapper;
   }
 
@@ -155,5 +162,40 @@ public class ViewsController implements ViewsApi {
         mapper.convertValue(
             approvalInbox.view(approvalType, reviewState, centerId, size, cursor, decidableByMe),
             GetApprovalInboxView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetClaimsView200Response> getClaimsView(
+      @Nullable String orderId,
+      @Nullable String type,
+      @Nullable String state,
+      Integer size,
+      @Nullable String cursor) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            recordLists.claims(orderId, type, state, size, cursor),
+            GetClaimsView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetRiderComplaintsView200Response> getRiderComplaintsView(
+      @Nullable String riderId,
+      @Nullable String deliveryId,
+      @Nullable String complaintType,
+      @Nullable OffsetDateTime from,
+      @Nullable OffsetDateTime to,
+      Integer size,
+      @Nullable String cursor) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            recordLists.riderComplaints(
+                riderId,
+                deliveryId,
+                complaintType,
+                from == null ? null : from.toInstant().toString(),
+                to == null ? null : to.toInstant().toString(),
+                size,
+                cursor),
+            GetRiderComplaintsView200Response.class));
   }
 }
