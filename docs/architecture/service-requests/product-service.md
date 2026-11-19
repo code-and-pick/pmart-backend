@@ -22,3 +22,11 @@
   - product-content `POST /content-drafts`: productId 를 생략하면 같은 원천 키로 발행된 `ProductVersionPublished.sources` 를 받을 때 연결.
 - **확인해 줄 것**: ① 개별 입력에 `sourceSystem=backoffice-manual`(또는 정해 주는 값)을 넣어도 되는가, ② 새 상품 공개의 `ProductVersionPublished.sources` 에 그 키가 실리는가, ③ 같은 키로 두 번 제출하면 upsert(같은 초안 갱신)인지 — **오늘 LAN 상품 중복 11쌍(PC 1 에 전달함)** 과 같은 일이 생기지 않게.
 - 답에 따라 웹은 등록 흐름을 "한 번에 제출"(이어지면) 또는 "상품 승인 뒤 콘텐츠"(안 이어지면)로 만든다.
+
+## PD-4. 상품 목록 이름 검색 `q` — 백오피스 상품 조회 (2026-11-20 등록, 웹 요청 2026-11-19, 보낸 영역 backoffice — PC 2, 받는 쪽 platform PC 1)
+
+- **요청한 곳**: 백오피스 웹 `pmart-clients docs/handoff/backoffice/2026-11-19-backend-product-name-search.md`(PN-1·PN-2 — 사용자 "상품 찾을 때 상품 이름으로 검색이 안 되는지"). 지금 `GET /products` 거르기는 `categoryId`·`saleState`·`cursor`·`size` 뿐이라 화면은 **불러온 쪽(50개) 안에서만** 이름으로 거르고 "다음 쪽을 불러와 주세요"라고 안내한다.
+- **필요한 것(PN-1)**: `GET /products?q=`(선택, 1~50자) — 관리용 명칭 `internalName` 부분 일치(대소문자·띄어쓰기 무시면 좋음). 다른 거르기와 함께, 순서·커서는 지금과 같게. 가능하면 SKU 코드(`E-…`/`B-…`)·바코드로도(안 되면 화면이 지금처럼 `GET /skus/{sku}`·`GET /barcodes/{barcode}` 로 따로 찾음).
+- **선택(PN-2)**: 고객용 상품명(product-content `name`)으로도 — product·product-content 중 어느 쪽이 맡을지 알려 달라(직원용 검색이 search-service 쪽이 낫다면 그것도). 어려우면 PN-1 만으로 충분.
+- **받는 쪽**: 웹이 상품 조회 목록에 직접(bff 거치지 않음). 받기 전까지 웹은 `q` 를 추측해 보내지 않는다.
+- **상태**: 요청(PC 1 대기, 급하지 않음).
