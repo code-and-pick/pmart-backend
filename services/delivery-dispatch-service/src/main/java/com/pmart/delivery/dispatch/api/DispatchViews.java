@@ -298,6 +298,16 @@ class DispatchViews {
         .stopSequence(d.stopSeq())
         .pickedUpAt(time(d.pickedUpAt()))
         .cancelledAt(time(d.cancelledAt()))
+        // 수락한 제안의 차종(2026-11-19 MFC 시뮬레이터 R-24 — 전에는 늘 null). 제안 없이 배정됐으면 null
+        .vehicleType(
+            d.acceptedOfferId() == null
+                ? null
+                : store
+                    .offer(d.acceptedOfferId())
+                    .map(
+                        com.pmart.delivery.dispatch.infrastructure.DispatchStore.OfferRow
+                            ::vehicleType)
+                    .orElse(null))
         .version(d.assignmentVersion());
   }
 

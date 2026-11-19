@@ -369,6 +369,7 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 .toEntity(String.class));
     assertThat(view.path("state").asString()).isEqualTo("ASSIGNED");
     assertThat(view.path("assignment").path("riderId").asString()).isEqualTo(rider);
+    assertThat(view.path("assignment").path("vehicleType").asString()).isEqualTo("MOTORCYCLE");
     assertThat(
             http.get()
                 .uri("/deliveries/{id}/dispatch", deliveryId)

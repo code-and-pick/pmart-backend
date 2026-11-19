@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.11.0
+  version: 0.11.1
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -806,7 +806,7 @@ components:
         orderId: { type: string, description: '0.4.1 — 내부 조회에만(orchestration 재발송 사가)', x-added-in: '2026-11-16' }
         mfcId: { type: string, description: '0.4.1', x-added-in: '2026-11-16' }
         riderId: { type: string }
-        vehicleType: { type: string }
+        vehicleType: { type: [string, 'null'], description: '(0.11.1, 2026-11-19 MFC 시뮬레이터 R-24) 수락한 제안의 차종 — 제안 없이 배정됐으면 null' }
         state: { type: string, enum: [ASSIGNED, PICKED_UP, CANCELLED, COMPLETED] }
         assignedAt: { type: string, format: date-time }
         bundleId: { type: [string, 'null'], description: 알뜰배달 묶음, x-added-in: '2026-11-13' }
