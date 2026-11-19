@@ -1049,6 +1049,27 @@ public class ExecutionStore {
       boolean oldestFirst,
       @Nullable List<String> deliveryIds) {}
 
+  /** DE-7(2026-11-19) — 목록과 같은 거르기(state 제외)로 상태별 수. */
+  public java.util.Map<String, Long> staffCounts(DeliveryFilter f) {
+    StringBuilder sql =
+        new StringBuilder("SELECT state, count(*) AS n FROM execution_delivery WHERE TRUE");
+    List<Object> args = new java.util.ArrayList<>();
+    eq(sql, args, "order_id", f.orderId());
+    eq(sql, args, "order_number", f.orderNumber());
+    eq(sql, args, "rider_id", f.riderId());
+    eq(sql, args, "mfc_id", f.mfcId());
+    eq(sql, args, "type", f.type());
+    sql.append(" GROUP BY state");
+    java.util.Map<String, Long> out = new java.util.HashMap<>();
+    jdbc.query(
+        sql.toString(),
+        rs -> {
+          out.put(rs.getString("state"), rs.getLong("n"));
+        },
+        args.toArray());
+    return out;
+  }
+
   public List<DeliveryRow> staffDeliveries(DeliveryFilter f, int limit, int offset) {
     StringBuilder sql =
         new StringBuilder("SELECT " + DELIVERY_COLUMNS + " FROM execution_delivery WHERE TRUE");

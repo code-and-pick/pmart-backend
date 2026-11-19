@@ -83,6 +83,7 @@ GET /api/v1/customer-assistant/questions CUSTOMER
 GET /api/v1/customer-assistant/questions/{answerId} CUSTOMER
 GET /api/v1/customer-assistant/recent-orders CUSTOMER
 GET /api/v1/deliveries OPERATOR
+GET /api/v1/deliveries/counts OPERATOR
 GET /api/v1/deliveries/{deliveryId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/assignment-cancellations/{requestId} OPERATOR,RIDER
 GET /api/v1/deliveries/{deliveryId}/delivery-proof CUSTOMER

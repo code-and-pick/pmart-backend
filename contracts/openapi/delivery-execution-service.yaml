@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.32.0
+  version: 0.33.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1052,6 +1052,44 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OperatingTime' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /deliveries/counts:
+    get:
+      tags: [staff]
+      summary: (0.33.0) 직원 배송 목록 상태별 수 — 웹 숫자 띠 (DE-7)
+      x-added-in: '2026-11-19'
+      description: |
+        요청서 DE-7(백오피스 웹). 직원 `GET /deliveries` 와 같은 거르기(state 제외)로 ExecutionState 별 수 — **모든 상태를 0 까지 빠짐없이**, 계약 순서대로.
+        정확한 수라 capped 는 늘 false(모양은 case StatusCounts 와 같다). 권한도 목록과 같다(모든 센터 직원, 센터 직원은 mfcId).
+      operationId: countDeliveriesForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: orderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: orderNumber, in: query, schema: { type: string, pattern: '^[0-9]{8}$' } }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: type, in: query, schema: { type: string, enum: [FORWARD, RETURN, RESHIPMENT] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [counts, asOf]
+                properties:
+                  counts:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, count, capped]
+                      properties:
+                        key: { type: string, description: ExecutionState 값 }
+                        count: { type: integer, format: int64 }
+                        capped: { type: boolean }
+                  asOf: { type: string, format: date-time }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 

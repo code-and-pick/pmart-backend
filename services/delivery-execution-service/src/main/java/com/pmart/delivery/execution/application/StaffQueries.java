@@ -18,6 +18,11 @@ public class StaffQueries {
     this.store = store;
   }
 
+  public java.util.Map<String, Long> counts(ExecutionStore.DeliveryFilter filter) {
+    Access.requireStaffScope(filter.mfcId());
+    return store.staffCounts(filter);
+  }
+
   public List<DeliveryRow> deliveries(ExecutionStore.DeliveryFilter filter, int limit, int offset) {
     Access.requireStaffScope(filter.mfcId());
     return store.staffDeliveries(filter, limit, offset);

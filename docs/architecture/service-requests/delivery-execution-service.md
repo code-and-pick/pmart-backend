@@ -60,6 +60,7 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **받는 쪽(PC 1, 만들어 둠 — 2026-11-19)**: notification `deliveryEvents` 가 `DeliveryHeadingToCustomer` → 고객 알림 `DELIVERY_HEADING`(목적지 DELIVERY, 휴대폰 푸시 포함). 스키마 `contracts/events/DeliveryHeadingToCustomer.v1.json` 는 PC 5 가 만든다.
 
 ## DE-7. 배송 확인 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2, 받는 쪽 delivery PC 5)
+- **구현(2026-11-19 PC 5, execution 0.33.0)**: `GET /deliveries/counts` — 모든 상태 0 까지, 정확한 수라 capped false. 게이트웨이 허용 목록 포함(경로는 기존 `/deliveries/**`).
 
 - **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).
 - **필요한 것**: `GET /deliveries/counts?<목록과 같은 거르기>` — 직원 `GET /deliveries` 와 같은 거르기(orderNumber·riderId·mfcId·type 등, `state` 제외)로 `state`(ExecutionState)별 수.

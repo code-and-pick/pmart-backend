@@ -235,6 +235,44 @@ public class StaffController implements StaffApi {
     return m.values().stream().mapToLong(Long::longValue).sum();
   }
 
+  /** DE-7(2026-11-19) — 상태별 수(모든 상태 0 까지, 계약 순서). */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.CountDeliveriesForStaff200Response>
+      countDeliveriesForStaff(
+          @Nullable String orderId,
+          @Nullable String orderNumber,
+          @Nullable String riderId,
+          @Nullable String mfcId,
+          @Nullable String type) {
+    if (type != null && !TYPES.contains(type)) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "type 이 올바르지 않습니다.");
+    }
+    var counts =
+        queries.counts(
+            new ExecutionStore.DeliveryFilter(
+                blankToNull(orderId),
+                blankToNull(orderNumber),
+                blankToNull(riderId),
+                blankToNull(mfcId),
+                null,
+                type,
+                false,
+                null));
+    var out =
+        new com.pmart.delivery.execution.api.generated.model.CountDeliveriesForStaff200Response();
+    for (ExecutionState st : ExecutionState.values()) {
+      out.addCountsItem(
+          new com.pmart.delivery.execution.api.generated.model
+                  .CountDeliveriesForStaff200ResponseCountsInner()
+              .key(st.getValue())
+              .count(counts.getOrDefault(st.getValue(), 0L))
+              .capped(false));
+    }
+    out.asOf(OffsetDateTime.now(java.time.ZoneOffset.UTC));
+    return ResponseEntity.ok(out);
+  }
+
   @Override
   public ResponseEntity<SearchDeliveriesForStaff200Response> searchDeliveriesForStaff(
       @Nullable String orderId,

@@ -1710,6 +1710,20 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(found.path("items").size()).isEqualTo(1);
     assertThat(found.path("items").get(0).path("deliveryId").asString()).isEqualTo(id);
     assertThat(found.path("items").get(0).path("orderNumber").asString()).isEqualTo(number);
+    // DE-7 상태별 수(2026-11-19): 모든 상태가 0 까지, 거르기 같음
+    JsonNode counts = body(staffGet("/deliveries/counts?orderNumber=" + number, ops));
+    assertThat(counts.path("counts").size()).isEqualTo(13);
+    long unassigned = 0;
+    long total = 0;
+    for (JsonNode c : counts.path("counts")) {
+      total += c.path("count").asLong();
+      if ("UNASSIGNED".equals(c.path("key").asString())) {
+        unassigned = c.path("count").asLong();
+      }
+      assertThat(c.path("capped").asBoolean()).isFalse();
+    }
+    assertThat(unassigned).isEqualTo(1);
+    assertThat(total).isEqualTo(1);
     // 화면 번호 묶음 조회(2026-11-19): 쉼표로 이은 ID, 없는 ID 는 빠짐, 51개면 400
     JsonNode batch = body(staffGet("/deliveries?deliveryIds=" + id + ",DLV-none", ops));
     assertThat(batch.path("items").size()).isEqualTo(1);
