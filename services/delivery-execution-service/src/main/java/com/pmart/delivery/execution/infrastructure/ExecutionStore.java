@@ -964,6 +964,17 @@ public class ExecutionStore {
   }
 
   /** 도움요청 처리함으로 닫기(0.4.0 — 사건함 전까지). 이미 닫혔으면 false. */
+  /** 닫힌 도움요청 다시 열기(2026-11-19 — 결정 대기 중인 전달 불가 대화). 바꾼 경우만 true. */
+  public boolean reopenHelp(String deliveryId, String requestId) {
+    return jdbc.update(
+            "UPDATE help_request SET state = 'OPEN', resolved_at = NULL, resolved_by = NULL,"
+                + " resolution_note = NULL WHERE delivery_id = ? AND request_id = ? AND state ="
+                + " 'RESOLVED'",
+            deliveryId,
+            requestId)
+        > 0;
+  }
+
   public boolean resolveHelp(
       String deliveryId, String requestId, String by, @Nullable String note, Instant now) {
     return jdbc.update(

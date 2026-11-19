@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/HelpRequestReopened.v1.json",
+  "title": "HelpRequestReopened",
+  "description": "2026-11-19 — 결정(확정·반려) 없이 닫힌 전달 불가 도움요청에 라이더가 다시 쓰거나 재개를 요청해 도움요청이 다시 열렸다(사용자 \"연락불가 도움요청을 지원센터가 처리해버리면 반려 요청도 대화도 안 됨\"). 발행 delivery-execution. 토픽 delivery.delivery.v1. 구독 case(그 접수 건을 다시 연다 — incidentId = deliveryId:requestId). 내용은 싣지 않는다.",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "HelpRequestReopened" },
+        "aggregateType": { "const": "Delivery" },
+        "payload": {
+          "type": "object",
+          "required": ["deliveryId", "requestId", "incidentId", "riderId", "reopenedAt"],
+          "properties": {
+            "deliveryId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "requestId": { "type": "string" },
+            "incidentId": { "type": "string", "description": "DeliveryIncidentRaised.incidentId 와 같음(deliveryId:requestId)" },
+            "riderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "caseId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "reason": { "type": "string" },
+            "reopenedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

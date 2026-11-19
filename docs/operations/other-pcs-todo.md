@@ -140,6 +140,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 - [x] (2026-11-19 delivery) case R-9 배차 지연 → 고객센터 사건(`DispatchDelayed`) — **2026-11-19 구현·배포(case 0.27.0, #230), 기한 1시간 사용자 확정(#232)**
 
+- [ ] (2026-11-19 delivery) case R-10 — `HelpRequestReopened` 로 접수 건 다시 열기 + 결정 대기 전달 불가 접수 건 닫기 막기
+
 ## 사용자가 할 일 (PC 가 아니라 사람)
 
 - [ ] 다른 PC 에 비밀번호 파일 복사(필요한 PC·파일만 — `dev-on-other-pcs.md` §2)

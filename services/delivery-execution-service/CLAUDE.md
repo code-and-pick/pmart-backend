@@ -87,3 +87,4 @@
 - **이의 인정 보상금(2026-11-19, 0.30.0·V22 — 사용자 "보상금 한 줄 따로")**: `application/Compensations`·`api/CompensationsController` — `POST/GET /rider-compensations`(RIDER_OPS·OPERATOR_ADMIN), `GET /riders/me/compensations`. 원래 수행료는 그대로, rider `/internal/rider-appeals/{id}` 가 ACCEPTED·EARNING 일 때만, 이의당 한 번, 바로 CONFIRMED·지급 예정일 오늘+3영업일 → 지급 묶음(`PayoutResults`)에 함께(compensationCount). 조치 이력 COMPENSATION_RECORDED.
 - **배송 화면 번호 묶음 조회(2026-11-19, 0.31.0 — 라이더 백오피스 요청)**: 직원 `GET /deliveries?deliveryIds=a,b,c`(최대 50, 넘으면 400, 없는 ID 는 빠짐) — 목록마다 배송 상세를 부르지 않게. 직원 배송 요약에 `purpose`.
 - **반납할 사람(2026-11-19, 0.31.1 — 라이더 앱 요청)**: 배송 조회 `failure.returnBy`(SAME_RIDER·OTHER_RIDER) — OTHER_RIDER 면 원래 라이더는 returnDeliveryId 배송을 열 수 없다(404), 앱은 넘겨 주라는 안내.
+- **결정 대기 전달 불가 대화(2026-11-19, 0.31.2 — 라이더 앱 요청)**: 배송 FAILURE_REPORTED 동안 그 실패가 연 도움요청은 처리함 닫기 409 FAILURE_DECISION_PENDING. 닫혀 있어도 라이더 메시지·재개 요청이면 다시 열기(`HelpRequestService.reopenForPendingFailure`) + `HelpRequestReopened`(case R-10).

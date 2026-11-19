@@ -2703,6 +2703,49 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode queue = body(staffGet("/deliveries?state=FAILURE_REPORTED&riderId=" + rider, ops));
     assertThat(queue.path("items").get(0).path("resumeRequestedAt").asString()).isNotBlank();
 
+    // 2026-11-19: 결정 대기 중에는 처리함으로 닫지 못한다
+    ResponseEntity<String> close =
+        staffPost(
+            "/deliveries/" + id + "/help-requests/" + helpId + "/resolutions",
+            TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of()),
+            Map.of("note", "처리"));
+    assertThat(close.getBody()).contains("FAILURE_DECISION_PENDING");
+    // 사건함이 닫아 버린 경우(CaseClosed 흉내) → 라이더가 쓰면 다시 열림 + HelpRequestReopened
+    jdbc.update(
+        "UPDATE help_request SET state = 'RESOLVED', resolved_at = now(), resolved_by = 'case:x'"
+            + " WHERE delivery_id = ? AND request_id = ?",
+        id,
+        helpId);
+    assertThat(
+            post(id, "help-requests/" + helpId + "/messages", rider, Map.of("body", "고객이랑 연락됐어요"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(201);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM help_request WHERE delivery_id = ? AND request_id = ?",
+                String.class,
+                id,
+                helpId))
+        .isEqualTo("OPEN");
+    JsonNode reopened = outbox(id, "HelpRequestReopened").path("payload");
+    assertThat(reopened.path("incidentId").asString()).isEqualTo(id + ":" + helpId);
+    assertThat(reopened.toString()).doesNotContain("연락됐어요");
+    // 또 닫혀도 재개 요청이 다시 연다(이미 요청했어도)
+    jdbc.update(
+        "UPDATE help_request SET state = 'RESOLVED' WHERE delivery_id = ? AND request_id = ?",
+        id,
+        helpId);
+    assertThat(post(id, "failures/resume-requests", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM help_request WHERE delivery_id = ? AND request_id = ?",
+                String.class,
+                id,
+                helpId))
+        .isEqualTo("OPEN");
+
     // 지원센터가 반려 → 원래 단계, 재개 요청은 실패 등록 중에만
     assertThat(decide(id, "OP-1", List.of("MFC-1"), "REJECT").getStatusCode().value())
         .isEqualTo(200);

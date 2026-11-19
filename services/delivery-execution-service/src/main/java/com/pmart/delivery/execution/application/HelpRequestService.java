@@ -174,6 +174,22 @@ public class HelpRequestService {
    * 대화에 메시지 보내기(0.6.0). 라이더는 요청한 본인(사진은 이 배송에 본인이 올린 것만), 직원은 처리 권한({@link
    * Access#operatorCanDecide}). 처리된 도움요청은 409 HELP_REQUEST_CLOSED. 내용은 로그에 남기지 않는다.
    */
+  /** 이 도움요청이 지금 결정을 기다리는 전달 불가가 연 대화인지(2026-11-19). */
+  boolean pendingFailureHelp(@Nullable DeliveryRow d, String requestId) {
+    if (d == null || !"FAILURE_REPORTED".equals(d.state()) || d.failureJson() == null) {
+      return false;
+    }
+    return requestId.equals(mapper.readTree(d.failureJson()).path("requestId").asString(""));
+  }
+
+  /** 닫힌 결정 대기 대화를 다시 연다 — 열었으면 HelpRequestReopened. 호출자 트랜잭션 안. */
+  void reopenForPendingFailure(DeliveryRow d, HelpRow h, Instant now) {
+    if (store.reopenHelp(d.deliveryId(), h.requestId())) {
+      events.helpReopened(d.deliveryId(), h.requestId(), h.riderId(), h.caseId(), now, d.version());
+      log.info("배송 {} 도움요청 {} 다시 열림 — 실패 결정 대기 중 라이더 연락", d.deliveryId(), h.requestId());
+    }
+  }
+
   public Thread postMessage(
       String deliveryId,
       String requestId,
@@ -237,6 +253,13 @@ public class HelpRequestService {
                           com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "직원은 사진을 붙이지 않습니다.");
                     }
                     senderType = "SUPPORT";
+                  }
+                  if ("RESOLVED".equals(h.state())
+                      && "RIDER".equals(senderType)
+                      && pendingFailureHelp(delivery, requestId)) {
+                    // 결정 없이 닫힌 전달 불가 대화(2026-11-19) — 라이더가 쓰면 다시 연다(지원센터에 다시 뜨게)
+                    reopenForPendingFailure(delivery, h, clock.instant());
+                    h = store.lockHelp(deliveryId, requestId).orElseThrow();
                   }
                   if ("RESOLVED".equals(h.state())) {
                     throw new PmartException(
@@ -352,6 +375,15 @@ public class HelpRequestService {
           }
           if (!Access.operatorCanDecide(p, mfcId)) {
             throw ExecutionService.forbidden("도움요청을 닫을 권한이 없습니다(센터 관리자·고객센터·라이더 운영).");
+          }
+          if (pendingFailureHelp(store.delivery(deliveryId).orElse(null), requestId)) {
+            // 2026-11-19 — 결정 없이 닫으면 라이더가 반려를 요청할 곳이 없어진다
+            throw new PmartException(
+                "FAILURE_DECISION_PENDING",
+                org.springframework.http.HttpStatus.CONFLICT,
+                "전달 불가 결정(확정·반려)을 먼저 해 주세요.",
+                false,
+                java.util.List.of());
           }
           if (h.caseId() != null && !"RESOLVED".equals(h.state())) {
             // DE-CASE(2026-11-16): 사건함 사건이 붙은 도움요청은 사건함에서 닫는다(사건 닫힘 → 여기도 처리됨)

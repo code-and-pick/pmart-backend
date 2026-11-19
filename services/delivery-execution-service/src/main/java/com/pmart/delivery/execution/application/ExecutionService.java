@@ -100,6 +100,8 @@ public class ExecutionService {
 
   private final ReturnHandoverCodes handoverCodes;
 
+  private final ObjectProvider<HelpRequestService> helps;
+
   public ExecutionService(
       ExecutionStore store,
       ExecutionEvents events,
@@ -110,8 +112,10 @@ public class ExecutionService {
       ObjectMapper mapper,
       Clock clock,
       com.pmart.delivery.execution.infrastructure.OrderClient orders,
+      ObjectProvider<HelpRequestService> helps,
       ReturnHandoverCodes handoverCodes) {
     this.orders = orders;
+    this.helps = helps;
     this.handoverCodes = handoverCodes;
     this.store = store;
     this.events = events;
@@ -583,12 +587,24 @@ public class ExecutionService {
                 "전달 불가를 알린 배송만 재개를 요청할 수 있습니다(지금 " + d.state() + ").");
           }
           tools.jackson.databind.JsonNode reported = mapper.readTree(d.failureJson());
-          if (reported.path("resumeRequestedAt").isString()) {
+          String pendingHelp = reported.path("requestId").asString(null);
+          boolean reopened = false;
+          if (pendingHelp != null) {
+            // 결정 없이 닫힌 대화(2026-11-19)면 다시 연다 — 지원센터에 다시 뜨고 라이더 대화가 이어지게
+            var h = store.lockHelp(deliveryId, pendingHelp).orElse(null);
+            if (h != null && "RESOLVED".equals(h.state())) {
+              helps.getObject().reopenForPendingFailure(d, h, now);
+              reopened = true;
+            }
+          }
+          if (reported.path("resumeRequestedAt").isString() && !reopened) {
             return d.version(); // 이미 요청함
           }
           Map<String, Object> failure = new LinkedHashMap<>();
           reported.properties().forEach(en -> failure.put(en.getKey(), en.getValue()));
-          failure.put("resumeRequestedAt", now.toString());
+          if (!reported.path("resumeRequestedAt").isString()) {
+            failure.put("resumeRequestedAt", now.toString());
+          }
           store.failure(deliveryId, "FAILURE_REPORTED", mapper.writeValueAsString(failure), now);
           String helpId = reported.path("requestId").asString(null);
           if (helpId != null && store.help(deliveryId, helpId).isPresent()) {

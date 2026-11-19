@@ -109,3 +109,9 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - 취소는 사건에서 claim "배차 불가 취소"(claim-service.md CL-5)로 — 전액 환불 + 2,000원 쿠폰.
 
 - **상태: 구현(2026-11-19, case 0.27.0 — PC 2)**: 상담원 팀 사건 `DISPATCH_DELAYED`, 센터 = mfcId(센터 관리자 자기 센터 보기), refs deliveryId·orderId, 배송마다 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로 연다(팀·할 일이 다름). 기한 1시간(표시만 — 사용자 확정 2026-11-19). 취소 버튼은 웹이 claim CL-5 가 나온 뒤 연결.
+
+## R-10. 결정 대기 전달 불가 — 접수 건 닫기 막기·다시 열기 (2026-11-19, 보낸 영역 delivery — 사용자 "연락불가로 전달할 수 없다는 도움요청 넣고 나서 지원센터에서 처리해버리면 라이더가 … 반려해 달라고 해도 연락이 안 가지고 전달도 못하는 상황")
+- PC 5 구현(execution 0.31.2): 배송이 FAILURE_REPORTED 인 동안 그 전달 불가가 연 도움요청은 처리함으로 못 닫음(409 FAILURE_DECISION_PENDING). 닫혀 있어도 라이더가 대화를 쓰거나 재개를 요청하면 다시 열고 **`HelpRequestReopened`**(delivery.delivery.v1 — deliveryId·requestId·incidentId(= DeliveryIncidentRaised.incidentId)·riderId·caseId·reopenedAt) 를 낸다.
+- 요청(PC 2 case):
+  1. `HelpRequestReopened` 구독 → 그 incidentId 의 접수 건(RIDER_HELP·DELIVERY_INCIDENT)이 닫혀 있으면 다시 연다(CaseReopened — execution 은 이미 받아 IN_PROGRESS 로 맞춤). 담당 팀 그대로, 맨 위로.
+  2. 닫기 막기: 전달 불가(category DELIVERY_FAILURE)로 열린 접수 건은, 그 배송이 아직 FAILURE_REPORTED 면 닫기(`/cases/{id}/closures`)를 409(예 FAILURE_DECISION_PENDING). 배송 상태는 execution `GET /deliveries/{id}`(서비스 토큰 — state·failure.decision)로.

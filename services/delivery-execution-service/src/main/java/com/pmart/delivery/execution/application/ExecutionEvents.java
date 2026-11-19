@@ -250,6 +250,37 @@ public class ExecutionEvents {
         p);
   }
 
+  /**
+   * 닫힌 도움요청 다시 열림(2026-11-19) — 실패 결정 대기 중인 전달 불가 대화에 라이더가 다시 쓰거나 재개를 요청. case 가 접수 건을 다시 연다. 내용은
+   * 싣지 않는다. version = 지금 수행 버전(대화는 버전을 올리지 않는다).
+   */
+  public void helpReopened(
+      String deliveryId,
+      String requestId,
+      String riderId,
+      @org.jspecify.annotations.Nullable String caseId,
+      java.time.Instant at,
+      int version) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", deliveryId);
+    p.put("requestId", requestId);
+    p.put("incidentId", deliveryId + ":" + requestId);
+    p.put("riderId", riderId);
+    if (caseId != null) {
+      p.put("caseId", caseId);
+    }
+    p.put("reason", "RIDER_FOLLOW_UP_WHILE_FAILURE_PENDING");
+    p.put("reopenedAt", at.toString());
+    events.publish(
+        "HelpRequestReopened",
+        1,
+        "Delivery",
+        deliveryId,
+        version,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.RIDER, riderId),
+        p);
+  }
+
   /** 라이더 도움요청 → case-service 가 받아 지원센터 사건으로(구현 전). version = 이 사건의 수행 버전(bumpVersion). */
   public void helpRequested(
       DeliveryRow d, ExecutionStore.HelpRow h, List<String> evidenceRefs, int version) {
