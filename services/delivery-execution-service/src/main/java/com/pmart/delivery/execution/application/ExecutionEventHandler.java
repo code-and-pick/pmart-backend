@@ -321,8 +321,14 @@ public class ExecutionEventHandler {
           return;
         }
         Map<String, Integer> lines = new LinkedHashMap<>();
+        Map<String, String> skus =
+            new LinkedHashMap<>(); // 줄 → SKU(2026-11-20 — ReturnDelivered 줄 sku)
         for (JsonNode l : p.path("lines")) {
           lines.merge(l.path("orderLineId").asString(), l.path("qty").asInt(), Integer::sum);
+          String sku = l.path("sku").asString("");
+          if (!sku.isBlank()) {
+            skus.putIfAbsent(l.path("orderLineId").asString(), sku);
+          }
         }
         boolean fresh =
             store.recordHandover(
@@ -331,6 +337,7 @@ public class ExecutionEventHandler {
                 p.path("packageId").asString(),
                 p.path("riderId").asString(null),
                 mapper.writeValueAsString(lines),
+                skus.isEmpty() ? null : mapper.writeValueAsString(skus),
                 instant(p.path("handedAt"), e.occurredAt()),
                 now);
         if (fresh) {

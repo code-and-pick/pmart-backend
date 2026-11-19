@@ -67,3 +67,14 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **필요한 것**: `GET /deliveries/counts?<목록과 같은 거르기>` — 직원 `GET /deliveries` 와 같은 거르기(orderNumber·riderId·mfcId·type 등, `state` 제외)로 `state`(ExecutionState)별 수.
 - 응답 모양(웹 요청 그대로, case 0.26.0 `StatusCounts` 와 같게): `{"counts":[{"key":"<상태>","count":12,"capped":false}],"asOf":"…"}` — **모든 상태 값을 0 까지 빠짐없이**, 셀 상한을 넘으면 `capped=true`(화면 "N+"), 원천을 못 읽으면 503(화면 "?").
 - 참고: bff `views/work-counts`(0.15.0)가 지금 끝나지 않은 상태를 50건 × 10쪽까지 쪽 넘김으로 센다 — 이 수가 생기면 bff 도 이걸로 바꾼다(PC 1 검토 의견 "count API 로").
+
+## DE-8. `ReturnDelivered` 반납 줄에 SKU (2026-11-20, 보낸 영역 mfc — PC 3, MFC PDA BR-52 R13)
+- **왜**: mfc-inbound 반납 도착 대기(`GET /return-arrivals`, inbound 0.13.0)의 `lines[].sku` 가 null 이라 점원 PDA 가 상품 바코드를 대조할 수 없다.
+- **요청**: `ReturnDelivered`(CLAIM_RETURN·MISDELIVERY_RECOVERY·FAILED_DELIVERY_RETURN) 줄마다 `sku`(+ `orderLineId`·`qty`).
+- **구현(2026-11-20, PC 5 — 백엔드 PR, execution V24)**: 계약 `ReturnDelivered.v1.json` 줄에 선택 칸 `sku`.
+  - 고객 반품(CLAIM_RETURN): claim 회수 요청 줄의 sku 를 그대로(전에도 실렸다).
+  - 오배송 회수·전달 실패 반납: 원래 배송의 인계(`PackageHandedOver`) 줄 sku. 인계 사건에는 원래 sku 가 있었는데 execution 이 줄·수량만 저장했다 — V24 `package_handover.line_skus` 로 저장.
+  - **배포 전에 이미 인계된 배송**은 sku 가 없다(그 줄은 지금처럼 null).
+  - `ReturnPickedUp` 줄에도 같은 sku 가 붙는다(같은 줄 계산).
+- **상태**: 구현(PR, 병합·배포 전).
+

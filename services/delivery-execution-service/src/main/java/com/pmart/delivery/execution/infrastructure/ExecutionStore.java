@@ -119,7 +119,8 @@ public class ExecutionStore {
       String packageId,
       @Nullable String riderId,
       String linesJson,
-      Instant handedAt) {}
+      Instant handedAt,
+      @Nullable String lineSkusJson) {}
 
   public record HistoryRow(
       String state,
@@ -403,17 +404,19 @@ public class ExecutionStore {
       String packageId,
       @Nullable String riderId,
       String linesJson,
+      @Nullable String lineSkusJson,
       Instant handedAt,
       Instant now) {
     return jdbc.update(
             "INSERT INTO package_handover (handover_id, delivery_id, package_id, rider_id, lines,"
-                + " handed_at, recorded_at) VALUES (?, ?, ?, ?, ?::jsonb, ?, ?)"
+                + " line_skus, handed_at, recorded_at) VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)"
                 + " ON CONFLICT (handover_id) DO NOTHING",
             handoverId,
             deliveryId,
             packageId,
             riderId,
             linesJson,
+            lineSkusJson,
             ts(handedAt),
             ts(now))
         > 0;
@@ -421,8 +424,9 @@ public class ExecutionStore {
 
   public List<HandoverRow> handovers(String deliveryId) {
     return jdbc.query(
-        "SELECT handover_id, delivery_id, package_id, rider_id, lines::text, handed_at"
-            + " FROM package_handover WHERE delivery_id = ? ORDER BY handed_at, handover_id",
+        "SELECT handover_id, delivery_id, package_id, rider_id, lines::text, handed_at,"
+            + " line_skus::text FROM package_handover WHERE delivery_id = ?"
+            + " ORDER BY handed_at, handover_id",
         (rs, i) ->
             new HandoverRow(
                 rs.getString(1),
@@ -430,7 +434,8 @@ public class ExecutionStore {
                 rs.getString(3),
                 rs.getString(4),
                 rs.getString(5),
-                rs.getTimestamp(6).toInstant()),
+                rs.getTimestamp(6).toInstant(),
+                rs.getString(7)),
         deliveryId);
   }
 

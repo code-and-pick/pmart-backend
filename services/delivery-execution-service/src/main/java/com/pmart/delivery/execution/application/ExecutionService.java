@@ -1010,6 +1010,7 @@ public class ExecutionService {
               });
     }
     List<Map<String, Integer>> perPackage = new ArrayList<>();
+    Map<String, String> skus = new LinkedHashMap<>();
     for (HandoverRow h : lastByPackage.values()) {
       if (!shipmentPackages.isEmpty() && !shipmentPackages.contains(h.packageId())) {
         continue;
@@ -1019,8 +1020,23 @@ public class ExecutionService {
         lines.put(e.getKey(), e.getValue().asInt());
       }
       perPackage.add(lines);
+      if (h.lineSkusJson() != null) {
+        for (var e : mapper.readTree(h.lineSkusJson()).properties()) {
+          skus.putIfAbsent(e.getKey(), e.getValue().asString());
+        }
+      }
     }
-    return ExecutionRules.deliveredLines(perPackage);
+    // 줄마다 SKU(2026-11-20 PC 3 요청 — MFC 반납 바코드 대조). V24 전 인계는 sku 없이
+    List<Map<String, Object>> out = new ArrayList<>();
+    for (Map<String, Object> l : ExecutionRules.deliveredLines(perPackage)) {
+      Map<String, Object> m = new LinkedHashMap<>(l);
+      String sku = skus.get(String.valueOf(l.get("orderLineId")));
+      if (sku != null) {
+        m.put("sku", sku);
+      }
+      out.add(m);
+    }
+    return out;
   }
 
   private void requireMyPhotos(

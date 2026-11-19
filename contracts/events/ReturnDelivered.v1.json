@@ -50,6 +50,10 @@
                   },
                   "qty": {
                     "$ref": "_defs.v1.json#/$defs/PositiveQty"
+                  },
+                  "sku": {
+                    "$ref": "_defs.v1.json#/$defs/Sku",
+                    "description": "(2026-11-20, PC 3 요청 — MFC 반납 바코드 대조) 줄의 SKU. 고객 반품은 claim 회수 요청 줄 값, 오배송 회수·전달 실패 반납은 인계(PackageHandedOver) 줄 값. 2026-11-20 전 인계 줄은 없을 수 있다"
                   }
                 },
                 "additionalProperties": true

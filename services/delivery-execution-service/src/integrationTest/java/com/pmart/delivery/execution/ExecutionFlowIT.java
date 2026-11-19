@@ -1568,6 +1568,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
       assertThat(returned.path("purpose").asString()).isEqualTo("FAILED_DELIVERY_RETURN");
       assertThat(returned.path("originDeliveryId").asString()).isEqualTo(origin);
       assertThat(returned.path("lines").size()).isPositive();
+      // 줄마다 인계 때 SKU(2026-11-20 PC 3 요청 — MFC 반납 바코드 대조)
+      assertThat(returned.path("lines").get(0).path("sku").asString()).isEqualTo("E-00000001");
       assertThat(
               jdbc.queryForObject(
                   "SELECT calculable FROM rider_earning WHERE delivery_id = ?",
@@ -2376,6 +2378,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode returned = outbox(rec, "ReturnDelivered").path("payload");
     assertThat(returned.path("mfcId").asString()).isEqualTo("MFC-1");
     assertThat(returned.path("lines")).hasSize(1);
+    assertThat(returned.path("lines").get(0).path("sku").asString()).isEqualTo("E-00000001");
     Map<String, Object> earning =
         jdbc.queryForMap(
             "SELECT rider_id, calculable, total, settlement_state FROM rider_earning WHERE"
@@ -3325,7 +3328,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             "IC-" + handoverId,
             "lines",
             lines.entrySet().stream()
-                .map(e -> Map.of("orderLineId", e.getKey(), "sku", "SKU-1", "qty", e.getValue()))
+                .map(
+                    e ->
+                        Map.of("orderLineId", e.getKey(), "sku", "E-00000001", "qty", e.getValue()))
                 .toList(),
             "handedAt",
             Instant.now().toString()));
