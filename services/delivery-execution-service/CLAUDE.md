@@ -90,3 +90,4 @@
 
 - **실패 확정 되돌리기(2026-11-19, 0.32.0 — 사용자 "확정 되돌리기 기능 만들기", LAN 28767701-1)**: `POST /deliveries/{id}/failure-reversals`(`FailureReversalService`) — RIDER_OPS·OPERATOR_ADMIN, 확정 뒤 `failure-reversal-window`(30분) 안·custody RIDER·일반/재발송·반납 배송 받기 전·수행료 확정 전(그 줄 지움). 실패 등록 전 상태로, 실패 기록 decision REJECT + reversed*, `DeliveryFailureReverted`. 조치 이력 FAILURE_REVERSED.
   - **사고·파손은 막음**(사용자 2026-11-19 "사고·파손은 막기"): RIDER_INCIDENT·DAMAGED(재발송 걸리는 사유, orchestration 과 같은 기준)는 409 — 관리자가 재발송 출고를 멈춘 뒤 `reshipmentStopped: true` 일 때만(그 밖 403).
+- **DE-6 가고 있어요(2026-11-19, V23)**: DeliveryAssigned 의 bundleId·stopSequence 사본(`bundle_id`·`stop_seq`), 전달 완료(라이더·고객 확인·자동)마다 `headingNext` — 같은 라이더의 다음 차례(같은 묶음 stop_seq → 배정 순, PICKED_UP·고객 배송·안 알림)에 `DeliveryHeadingToCustomer` 한 번(버전 올리지 않음).

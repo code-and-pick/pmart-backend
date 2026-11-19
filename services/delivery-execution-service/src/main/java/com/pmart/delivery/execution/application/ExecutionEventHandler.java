@@ -242,6 +242,11 @@ public class ExecutionEventHandler {
             p.path("mfcPhone").asString(null)); // 지점 전화(2026-11-17)
         store.history(
             deliveryId, "ASSIGNED", at, "SYSTEM_EVENT", p.path("offerId").asString(null), now);
+        // DE-6(2026-11-19) — 묶음 전달 순서
+        store.bundle(
+            deliveryId,
+            p.path("bundleId").asString(null),
+            p.path("stopSequence").isInt() ? p.path("stopSequence").asInt() : null);
       }
       case "DeliveryAssignmentChanged" -> {
         int v = p.path("assignmentVersion").asInt();

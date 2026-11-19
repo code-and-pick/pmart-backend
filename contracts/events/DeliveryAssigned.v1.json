@@ -25,6 +25,8 @@
             "acceptedAt"
           ],
           "properties": {
+            "bundleId": { "type": "string", "description": "(2026-11-19 DE-6) 알뜰 묶음 ID — 묶음 배정일 때만" },
+            "stopSequence": { "type": "integer", "minimum": 1, "description": "(2026-11-19 DE-6) 묶음 안 전달 순서(1부터)" },
             "deliveryId": {
               "$ref": "_defs.v1.json#/$defs/Ref"
             },

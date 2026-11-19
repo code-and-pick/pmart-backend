@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryHeadingToCustomer.v1.json",
+  "title": "DeliveryHeadingToCustomer",
+  "description": "DE-6(2026-11-19 — 사용자 \"응 해줘\"): 한 라이더가 여러 배송을 들고 있을 때 앞 배송을 전달 완료하고 다음 전달 차례가 이 배송이 됐다. 배송당 한 번. 단건 배송은 내지 않는다. 순서 = 같은 묶음의 stopSequence, 그 밖은 배정 순. 발행 delivery-execution. 토픽 delivery.delivery.v1. 구독 notification(고객 \"주문하신 곳으로 가고 있어요\").",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "DeliveryHeadingToCustomer" },
+        "aggregateType": { "const": "Delivery" },
+        "payload": {
+          "type": "object",
+          "required": ["deliveryId", "purpose", "at"],
+          "properties": {
+            "deliveryId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "purpose": { "type": "string", "description": "DeliveryCreated.purpose(없으면 DELIVERY)" },
+            "riderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "at": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -262,6 +262,31 @@ public class ExecutionEvents {
   }
 
   /**
+   * DE-6 "주문하신 곳으로 가고 있어요"(2026-11-19) — 앞 배송을 끝내고 다음 전달 차례가 이 배송. version = 지금 수행 버전 그대로(라이더의
+   * X-Expected-Version 을 흔들지 않게 — 도움요청 답장과 같은 예외).
+   */
+  public void headingToCustomer(DeliveryRow d, Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", d.deliveryId());
+    if (d.orderId() != null) {
+      p.put("orderId", d.orderId());
+    }
+    p.put("purpose", d.purpose() == null ? "DELIVERY" : d.purpose());
+    if (d.riderId() != null) {
+      p.put("riderId", d.riderId());
+    }
+    p.put("at", at.toString());
+    events.publish(
+        "DeliveryHeadingToCustomer",
+        1,
+        "Delivery",
+        d.deliveryId(),
+        d.version(),
+        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+        p);
+  }
+
+  /**
    * 지원센터 답장(2026-11-16 — 라이더 앱 요청 §11-5): 라이더 알림함용. 메시지 내용은 싣지 않는다. version = 지금 배송 수행 버전 그대로(대화는
    * 배송 버전을 올리지 않는다 — 라이더 앱의 X-Expected-Version 이 흔들리지 않게).
    */

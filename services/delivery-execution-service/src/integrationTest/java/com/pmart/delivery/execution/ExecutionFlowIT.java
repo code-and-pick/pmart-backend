@@ -1816,6 +1816,51 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(state(other)).isEqualTo("PICKED_UP");
   }
 
+  /** DE-6(2026-11-19): 묶음 앞 배송을 끝내면 다음 차례 고객에게 "가고 있어요" 한 번, 마지막·단건은 없음. */
+  @Test
+  void completingFirstStopAnnouncesNextCustomer() {
+    String rider = "RDR-hd-" + UUID.randomUUID();
+    String a = "DLV-hd-" + UUID.randomUUID();
+    String b = "DLV-hd-" + UUID.randomUUID();
+    pickedUp(a, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    pickedUp(b, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    jdbc.update(
+        "UPDATE execution_delivery SET bundle_id = 'BND-hd', stop_seq = 1 WHERE delivery_id = ?",
+        a);
+    jdbc.update(
+        "UPDATE execution_delivery SET bundle_id = 'BND-hd', stop_seq = 2 WHERE delivery_id = ?",
+        b);
+    String takenAt = Instant.now().toString();
+    assertThat(post(a, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photo = body(upload(a, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(a, "completions", rider, completion(List.of(photo), takenAt))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    JsonNode heading = outbox(b, "DeliveryHeadingToCustomer").path("payload");
+    assertThat(heading.path("deliveryId").asString()).isEqualTo(b);
+    assertThat(heading.path("purpose").asString()).isEqualTo("DELIVERY");
+    // 마지막 배송을 끝내면 다음이 없다
+    assertThat(post(b, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photo2 = body(upload(b, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(b, "completions", rider, completion(List.of(photo2), takenAt))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE type = 'DeliveryHeadingToCustomer' AND"
+                    + " aggregateid IN (?, ?)",
+                Integer.class,
+                a,
+                b))
+        .isEqualTo(1);
+  }
+
   ResponseEntity<String> decideWith(String id, List<String> roles, Map<String, Object> body) {
     return http.post()
         .uri("/deliveries/{id}/failure-decisions", id)

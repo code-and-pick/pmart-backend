@@ -76,3 +76,4 @@
 - **회수지 출처 enum(2026-11-19, 0.12.1)**: `recovery.pickup.source` 에 RIDER_LOCATION(다른 라이더 반납, 0.7.0 부터 쓰던 값) — 계약에 빠져 배차 상세가 500 이었음(LAN 28767701-2).
 
 - **실패 확정 되돌리기(2026-11-19)**: executionEvents `DeliveryFailureReverted` → 원래 배송 CLOSED → PICKED_UP(같은 라이더), 반납 배송(받기 전)은 픽업 전 취소(FAILURE_REVERSED).
+- **배정 사건 묶음 순서(2026-11-19, DE-6)**: DeliveryAssigned 에 bundleId·stopSequence(묶음 배정일 때).

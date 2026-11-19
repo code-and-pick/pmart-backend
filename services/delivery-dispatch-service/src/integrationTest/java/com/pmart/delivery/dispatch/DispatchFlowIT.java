@@ -833,6 +833,13 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     String second = (String) offers.get(1).get("offer_id");
     JsonNode ok = body(respond(rider, second, "k-" + second, "ACCEPT"));
     assertThat(ok.path("outcome").asString()).isEqualTo("ASSIGNED");
+    // DE-6(2026-11-19): 배정 사건에 묶음 전달 순서
+    String assignedPayload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryAssigned'",
+            String.class,
+            a);
+    assertThat(assignedPayload).contains("\"bundleId\"").contains("\"stopSequence\"");
     for (String id : List.of(a, b)) {
       Map<String, Object> d =
           jdbc.queryForMap(

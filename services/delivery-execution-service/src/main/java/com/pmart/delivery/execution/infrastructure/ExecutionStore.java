@@ -691,6 +691,44 @@ public class ExecutionStore {
         earningId);
   }
 
+  /** 묶음 전달 순서 사본(DE-6, 2026-11-19 — DeliveryAssigned). */
+  public void bundle(String deliveryId, @Nullable String bundleId, @Nullable Integer stopSeq) {
+    jdbc.update(
+        "UPDATE execution_delivery SET bundle_id = ?, stop_seq = ? WHERE delivery_id = ?",
+        bundleId,
+        stopSeq,
+        deliveryId);
+  }
+
+  /**
+   * 이 라이더의 다음 전달 차례(DE-6) — 픽업했고 아직 고객에게 가기 전·알리지 않은 고객 배송 중, 방금 끝낸 배송과 같은 묶음의 다음 순서 → 그 밖은 배정 순.
+   * 없으면 빈 값.
+   */
+  public Optional<String> nextHeading(String riderId, String doneId) {
+    return jdbc
+        .queryForList(
+            "SELECT delivery_id FROM execution_delivery WHERE rider_id = ? AND delivery_id <> ? AND"
+                + " state = 'PICKED_UP' AND type <> 'RETURN' AND heading_notified_at IS NULL ORDER"
+                + " BY (bundle_id IS NOT DISTINCT FROM (SELECT b.bundle_id FROM execution_delivery b"
+                + " WHERE b.delivery_id = ?)) DESC, stop_seq NULLS LAST, assigned_at LIMIT 1",
+            String.class,
+            riderId,
+            doneId,
+            doneId)
+        .stream()
+        .findFirst();
+  }
+
+  /** 가고 있어요 한 번 표시 — 처음만 true. */
+  public boolean markHeading(String deliveryId, Instant at) {
+    return jdbc.update(
+            "UPDATE execution_delivery SET heading_notified_at = ? WHERE delivery_id = ? AND"
+                + " heading_notified_at IS NULL",
+            ts(at),
+            deliveryId)
+        > 0;
+  }
+
   public Optional<String> failedReturnOf(String originDeliveryId) {
     return jdbc
         .query(

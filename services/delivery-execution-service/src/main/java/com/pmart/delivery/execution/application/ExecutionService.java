@@ -465,6 +465,7 @@ public class ExecutionService {
           store.completed(deliveryId, c.method(), mapper.writeValueAsString(evidence), now);
           store.history(deliveryId, "COMPLETED", now, "RIDER", evidenceId, now);
           events.completed(d, delivered, c.method(), evidenceId, c.takenAt(), now);
+          headingNext(d, now);
           earnings.completed(d, now); // 수락 당시 금액 → 확정 대기(사건 버전은 따로 올린다)
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });
@@ -785,7 +786,23 @@ public class ExecutionService {
     store.completed(d.deliveryId(), method, mapper.writeValueAsString(evidence), now);
     store.history(d.deliveryId(), "COMPLETED", now, historyActor, evidenceId, now);
     events.completed(d, delivered, method, evidenceId, "DOCUMENT", now, now, actor);
+    headingNext(d, now);
     return store.delivery(d.deliveryId()).map(DeliveryRow::version).orElse(d.version() + 1);
+  }
+
+  /**
+   * DE-6(2026-11-19 사용자 "응 해줘"): 한 라이더가 여러 배송을 들고 있을 때 하나를 끝내면 다음 차례 고객에게 "가고 있어요" 한 번
+   * (DeliveryHeadingToCustomer). 단건 배송은 다음이 없어 내지 않는다 — 배송 출발 알림이 그 역할.
+   */
+  private void headingNext(DeliveryRow done, Instant now) {
+    if (done.riderId() == null) {
+      return;
+    }
+    store
+        .nextHeading(done.riderId(), done.deliveryId())
+        .flatMap(store::delivery)
+        .filter(n -> store.markHeading(n.deliveryId(), now))
+        .ifPresent(n -> events.headingToCustomer(n, now));
   }
 
   private boolean customerOwns(PmartPrincipal p, DeliveryRow d) {

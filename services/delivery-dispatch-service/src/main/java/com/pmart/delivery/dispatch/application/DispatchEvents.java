@@ -155,6 +155,11 @@ public class DispatchEvents {
       if (offer.vehicleType() != null) {
         p.put("vehicleType", offer.vehicleType());
       }
+      if (offer.bundleId() != null) {
+        // 묶음 전달 순서(DE-6, 2026-11-19) — execution 이 "다음 차례" 고객에게 가고 있어요를 낸다
+        p.put("bundleId", offer.bundleId());
+        p.put("stopSequence", offer.stopSeq());
+      }
     }
     if (before.dropDistanceM() != null) {
       p.put("distanceM", before.dropDistanceM());
