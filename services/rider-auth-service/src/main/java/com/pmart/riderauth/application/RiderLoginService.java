@@ -130,7 +130,7 @@ public class RiderLoginService {
     try {
       identity = verifier.verify(providerToken);
     } catch (GoogleIdTokenVerifier.Unavailable e) {
-      log.warn("Google 검증 불가(실패 횟수 제외): {}", e.getMessage());
+      log.warn("{} 검증 불가(실패 횟수 제외): {}", provider, e.getMessage());
       throw new PmartException(
           "PROVIDER_UNAVAILABLE",
           HttpStatus.SERVICE_UNAVAILABLE,
@@ -191,7 +191,7 @@ public class RiderLoginService {
     if (r == null) {
       return login(idempotencyKey, sourceSystem, deviceId, provider, providerToken);
     }
-    log.info("라이더 로그인: riderId={} new={}", r.riderId(), r.newAccount());
+    log.info("라이더 로그인: provider={} riderId={} new={}", provider, r.riderId(), r.newAccount());
     return r;
   }
 

@@ -41,6 +41,6 @@ public class RiderWithdrawals {
     store.revokeAllSessions(riderId, "RIDER_WITHDRAWN", now);
     store.disableAndUnlink(riderId);
     blocks.block(riderId, null, now, "ACCOUNT_DISABLED");
-    log.info("라이더 {} 탈퇴 — 세션 끊음·계정 사용 안 함·Google 연결 지움", riderId);
+    log.info("라이더 {} 탈퇴 — 세션 끊음·계정 사용 안 함·소셜 로그인 연결 지움", riderId);
   }
 }
