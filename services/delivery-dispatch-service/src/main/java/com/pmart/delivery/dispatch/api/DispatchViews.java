@@ -231,6 +231,7 @@ class DispatchViews {
             .orderId(d.orderId())
             .shipmentId(d.shipmentId())
             .mfcId(d.mfcId())
+            .dropAreaLabel(d.dropAreaLabel()) // 동 이름까지(0.13.1, R-27)
             .state(DispatchState.fromValue(d.state()))
             .packageSpec(
                 new PackageSpec()

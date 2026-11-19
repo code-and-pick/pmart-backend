@@ -379,6 +379,8 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(view.path("state").asString()).isEqualTo("ASSIGNED");
     assertThat(view.path("assignment").path("riderId").asString()).isEqualTo(rider);
     assertThat(view.path("assignment").path("vehicleType").asString()).isEqualTo("MOTORCYCLE");
+    // 그 센터 운영자도 배송지 동 이름까지(0.13.1, MFC 시뮬레이터 R-27) — 원문 주소는 없다
+    assertThat(view.path("dropAreaLabel").asString()).isEqualTo("서초구 서초동");
     assertThat(
             http.get()
                 .uri("/deliveries/{id}/dispatch", deliveryId)
