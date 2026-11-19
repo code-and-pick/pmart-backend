@@ -13,3 +13,14 @@
 - **delivery 쪽 임시 대체(PC 5, execution 0.25.1)**: drop-info·직원 drop-location 이 핀이 없으면 배차가 도로명주소로 지오코딩한 좌표를 준다(`coordinateSource` ADDRESS_GEOCODE). 배차 좌표가 준비되기 전에는 여전히 null.
 - **요청(근본)**: 고객 배송지 저장·수정 때 `geo` 가 없으면 서버가 delivery-serviceability `POST /internal/address-geocodes`(정확 일치) 결과로 채워 저장 → 주문 확정 사본(O-5)에도 좌표가 들어가게. 지오코딩 실패면 지금처럼 비워 둠(저장은 막지 않음 — 정책은 PC 1 이 정함).
 - **받는 쪽**: customer-service(platform PC 1). 사본은 order 가 확정 때 복사하므로 order 는 바꿀 것 없음.
+
+## CU-3. 고객번호 6자리 — 화면 표기 "가린 이름 · 고객번호" (2026-11-19, 보낸 영역 backoffice — PC 2, 받는 쪽 platform PC 1)
+
+- **왜**: ADR-0070 덧붙임(2026-11-19, PR #219 — 사용자 결정 "가린 이름 · 고객번호 6자리"): 백오피스 목록·표에 `CU-…` 시스템 ID 를 내지 않는다. 고객은 **가린 이름 · 숫자 6자리**(`김*수 · 482913`, 라이더 번호와 같은 방식).
+- **필요한 것**:
+  1. `customerNumber` — 숫자 6자리, 무작위, 겹치지 않음(유일 제약), 바뀌지 않음. 가입 때 매기고 **기존 고객도 채운다**(마이그레이션).
+  2. 직원 조회 응답(고객 상세·목록·주문 직원 조회에 고객이 붙는 곳)에 `customerNumber` 와 가린 이름(`nameMasked` — 첫·끝 글자, 이미 쓰는 가림 규칙).
+  3. 여러 고객 ID 로 한 번에 — 예 `GET /customers?customerIds=a,b,c`(50개, 직원 토큰) → `{customerId, customerNumber, nameMasked}`. backoffice-bff 가 통합 조회·CS 접수·클레임 화면에 붙인다(라이더 `GET /riders?riderIds=` 와 같은 모양).
+  4. 찾기: `customerNumber` 완전 일치(직원) — 화면 찾기 칸이 번호로 찾는다(ADR-0070 "찾기는 화면 표기로").
+- **개인정보**: 번호·가린 이름만. 탈퇴하면 이름은 지우는 쪽 규칙 그대로(번호는 이력 표시용으로 남겨도 됨 — PC 1 판단).
+- **받는 쪽(backoffice)**: bff 가 일괄 조회로 붙인다(case·claim 에 사본 두지 않음).
