@@ -239,6 +239,7 @@ public class StaffController implements StaffApi {
   public ResponseEntity<SearchDeliveriesForStaff200Response> searchDeliveriesForStaff(
       @Nullable String orderId,
       @Nullable String orderNumber,
+      @Nullable String deliveryIds,
       @Nullable String riderId,
       @Nullable String mfcId,
       @Nullable ExecutionState state,
@@ -246,6 +247,19 @@ public class StaffController implements StaffApi {
       String sort,
       Integer size,
       @Nullable String cursor) {
+    List<String> ids = null;
+    if (deliveryIds != null && !deliveryIds.isBlank()) {
+      ids =
+          java.util.Arrays.stream(deliveryIds.split(","))
+              .map(String::strip)
+              .filter(x -> !x.isEmpty())
+              .distinct()
+              .toList();
+      if (ids.size() > 50) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "deliveryIds 는 50개까지입니다.");
+      }
+      size = Math.max(size, ids.size());
+    }
     if (type != null && !TYPES.contains(type)) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "type 이 올바르지 않습니다.");
     }
@@ -262,7 +276,8 @@ public class StaffController implements StaffApi {
                 blankToNull(mfcId),
                 state == null ? null : state.getValue(),
                 type,
-                "OLDEST".equals(sort)),
+                "OLDEST".equals(sort),
+                ids),
             size + 1,
             offset);
     boolean more = rows.size() > size;
@@ -383,6 +398,7 @@ public class StaffController implements StaffApi {
                 ? null
                 : java.time.OffsetDateTime.parse(f.path("resumeRequestedAt").asString()))
         .deliveryId(d.deliveryId())
+        .purpose(d.purpose())
         .version(d.version())
         .type(StaffDeliverySummary.TypeEnum.fromValue(d.type()))
         .orderId(d.orderId())

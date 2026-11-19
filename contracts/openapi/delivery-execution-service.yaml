@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.30.0
+  version: 0.31.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1029,6 +1029,11 @@ paths:
       parameters:
         - { name: orderId, in: query, schema: { type: string, maxLength: 64 }, description: 주문 ID 완전 일치 }
         - { name: orderNumber, in: query, schema: { type: string, pattern: '^[0-9]{8}$' }, description: '(2026-11-17 라이더 백오피스) 화면용 주문번호 8자리 완전 일치 — 배정 사건이 실어 준 값이라 배정 전 배송은 없다', x-added-in: '2026-11-17' }
+        - name: deliveryIds
+          in: query
+          x-added-in: '2026-11-19'
+          description: '(0.31.0, 라이더 백오피스 — 화면 번호 묶음 조회, ADR-0070) 쉼표로 이은 배송 ID 최대 50개. 주면 그 배송만(없는 ID 는 빠짐, 권한 밖 센터도 빠짐), size 는 개수에 맞춘다. 51개 넘으면 400'
+          schema: { type: string, maxLength: 4000 }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 }, description: 배정 라이더 완전 일치 }
         - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/ExecutionState' } }
@@ -1768,6 +1773,7 @@ components:
       type: object
       x-added-in: '2026-11-15'
       properties:
+        purpose: { type: [string, 'null'], x-added-in: '2026-11-19', description: '배송 목적(회수·다시 배송 등 — CLAIM_RETURN·MISDELIVERY_RECOVERY·FAILED_DELIVERY_RETURN …), 일반 배송 null' }
         deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '화면 배송 번호 = 화면용 주문번호-순번(예 74939255-1 — 같은 주문의 몇 번째 배송, ADR-0070). 주문번호·순번을 모르면 null' }
         orderNumber: { type: [string, 'null'], description: '(2026-11-18 라이더 백오피스 요청 #5) 화면용 주문번호 8자리 — 배정 사건이 실어 준 값(배정 전 null)', x-added-in: '2026-11-18' }
         deliveryId: { type: string }

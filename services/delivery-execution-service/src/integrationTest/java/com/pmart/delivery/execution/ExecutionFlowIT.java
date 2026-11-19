@@ -1707,6 +1707,16 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(found.path("items").size()).isEqualTo(1);
     assertThat(found.path("items").get(0).path("deliveryId").asString()).isEqualTo(id);
     assertThat(found.path("items").get(0).path("orderNumber").asString()).isEqualTo(number);
+    // 화면 번호 묶음 조회(2026-11-19): 쉼표로 이은 ID, 없는 ID 는 빠짐, 51개면 400
+    JsonNode batch = body(staffGet("/deliveries?deliveryIds=" + id + ",DLV-none", ops));
+    assertThat(batch.path("items").size()).isEqualTo(1);
+    assertThat(batch.path("items").get(0).path("deliveryNumber").asString())
+        .isEqualTo(number + "-1");
+    String many =
+        String.join(
+            ",", java.util.stream.IntStream.range(0, 51).mapToObj(k -> "DLV-" + k).toList());
+    assertThat(staffGet("/deliveries?deliveryIds=" + many, ops).getStatusCode().value())
+        .isEqualTo(400);
   }
 
   ResponseEntity<String> decideWith(String id, List<String> roles, Map<String, Object> body) {

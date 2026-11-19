@@ -1037,7 +1037,8 @@ public class ExecutionStore {
       @Nullable String mfcId,
       @Nullable String state,
       @Nullable String type,
-      boolean oldestFirst) {}
+      boolean oldestFirst,
+      @Nullable List<String> deliveryIds) {}
 
   public List<DeliveryRow> staffDeliveries(DeliveryFilter f, int limit, int offset) {
     StringBuilder sql =
@@ -1049,6 +1050,11 @@ public class ExecutionStore {
     eq(sql, args, "mfc_id", f.mfcId());
     eq(sql, args, "state", f.state());
     eq(sql, args, "type", f.type());
+    if (f.deliveryIds() != null) {
+      // 화면 번호 묶음 조회(2026-11-19)
+      sql.append(" AND delivery_id = ANY (?)");
+      args.add(f.deliveryIds().toArray(new String[0]));
+    }
     sql.append(
         f.oldestFirst()
             ? " ORDER BY created_at, delivery_id"
