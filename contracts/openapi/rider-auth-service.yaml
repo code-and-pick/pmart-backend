@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-auth-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     라이더 로그인·토큰 발급자(ADR-0054 결정 3·E·F, ADR-0055). 라이더 앱이 Google 로그인으로 받은 OpenID Connect ID 토큰을 Google 공개키(JWKS)로
     검증하고(서명·iss·aud=라이더용 웹 클라이언트 ID·exp), Google 계정(sub)을 내부 라이더 주체 RD-… 에 연결한 뒤 PMart 라이더 토큰(typ=RIDER)을 발급한다.
@@ -17,6 +17,7 @@ tags:
   - { name: logins, description: 라이더 Google 로그인·원인증 결과 조회 }
   - { name: tokens, description: 토큰 갱신·로그아웃·현재 세션 }
   - { name: keys, description: "JWKS 공개키 — 라이더 토큰 검증용 (클러스터 내부 전용)" }
+  - { name: internal, description: 서비스 간 조회 (0.2.0) }
 
 paths:
   /rider-auth/social-logins:
@@ -45,7 +46,7 @@ paths:
               required: [provider, providerToken]
               properties:
                 provider: { $ref: '#/components/schemas/Provider' }
-                providerToken: { type: string, description: Google ID 토큰(JWT). 로그 금지 }
+                providerToken: { type: string, description: '제공자 OpenID Connect ID 토큰(JWT). GOOGLE aud = 라이더용 웹 클라이언트 ID, (0.2.0) KAKAO aud = 카카오 앱 키(OpenID Connect 켬), NAVER aud = 네이버 Client ID(인가 코드 + PKCE, scope openid). 로그 금지' }
       responses:
         '200':
           description: 로그인됨
@@ -75,7 +76,7 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/RestrictedError' }
         '501':
-          description: UNSUPPORTED_ACTION — 아직 지원하지 않는 제공자(지금은 GOOGLE 만)
+          description: UNSUPPORTED_ACTION — 지원하지 않는 제공자(0.2.0 부터 GOOGLE·KAKAO·NAVER)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -174,6 +175,32 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   # ---------- keys (JWKS). /internal 아래라 게이트웨이로 노출되지 않는다 ----------
+  /internal/riders/{riderId}/identity:
+    get:
+      tags: [internal]
+      summary: (0.2.0) 라이더 주체의 로그인 수단 — rider-service 같은 번호 안내용
+      x-added-in: '2026-11-19'
+      description: |
+        라이더 앱 요청 R3(2026-11-19 사용자 "카카오로 한 번 로그인 하면 그 번호로 신원인증 완료한 계정으로 로그인하라고 안내"). 계정 하나 = 제공자 하나(사용자 "하나만").
+        가린 이메일만(원문 없음) — 2026-11-19 이전에 만든 계정은 null. 토큰 없는 내부 호출.
+      operationId: getRiderIdentityInternal
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [riderId, provider, linkedAt]
+                properties:
+                  riderId: { type: string }
+                  provider: { $ref: '#/components/schemas/Provider' }
+                  emailMasked: { type: [string, 'null'], description: '예 a***@k***' }
+                  linkedAt: { type: string, format: date-time }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
   /internal/jwks:
     get:
       tags: [keys]
@@ -204,7 +231,7 @@ components:
             additionalProperties: true
     Provider:
       type: string
-      enum: [GOOGLE]
+      enum: [GOOGLE, KAKAO, NAVER]
     TokenPair:
       type: object
       required: [accessToken, refreshToken, accessTokenExpiresAt]

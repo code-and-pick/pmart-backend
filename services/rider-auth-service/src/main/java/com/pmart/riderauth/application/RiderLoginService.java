@@ -70,7 +70,7 @@ public class RiderLoginService {
 
   private final RiderAuthStore store;
   private final RiderTokens tokens;
-  private final GoogleIdTokenVerifier google;
+  private final com.pmart.riderauth.infrastructure.IdTokenVerifiers verifiers;
   private final RiderAuthProperties props;
   private final TransactionTemplate tx;
   private final RiderSessionCuts cuts;
@@ -79,14 +79,14 @@ public class RiderLoginService {
   public RiderLoginService(
       RiderAuthStore store,
       RiderTokens tokens,
-      GoogleIdTokenVerifier google,
+      com.pmart.riderauth.infrastructure.IdTokenVerifiers verifiers,
       RiderAuthProperties props,
       TransactionTemplate tx,
       RiderSessionCuts cuts,
       Clock clock) {
     this.store = store;
     this.tokens = tokens;
-    this.google = google;
+    this.verifiers = verifiers;
     this.props = props;
     this.tx = tx;
     this.cuts = cuts;
@@ -99,13 +99,22 @@ public class RiderLoginService {
       String deviceId,
       String provider,
       String providerToken) {
-    if (!PROVIDER_GOOGLE.equals(provider)) {
+    if (!java.util.Set.of("GOOGLE", "KAKAO", "NAVER").contains(provider)) {
       throw new PmartException(
-          ErrorCode.UNSUPPORTED_ACTION, provider + " 로그인은 지원하지 않습니다(GOOGLE 만).");
+          ErrorCode.UNSUPPORTED_ACTION, provider + " 로그인은 지원하지 않습니다(GOOGLE·KAKAO·NAVER).");
     }
-    if (props.google().clientIds().isEmpty()) {
+    if (PROVIDER_GOOGLE.equals(provider) && props.google().clientIds().isEmpty()) {
       throw PmartException.configRequired("pmart.rider-auth.google.client-ids");
     }
+    GoogleIdTokenVerifier verifier =
+        verifiers
+            .of(provider)
+            .orElseThrow(
+                () ->
+                    PmartException.configRequired(
+                        "pmart.rider-auth."
+                            + provider.toLowerCase(java.util.Locale.ROOT)
+                            + ".client-ids"));
     Optional<AuthRequestRow> earlier = store.requestByKey(sourceSystem, idempotencyKey);
     if (earlier.isPresent()) {
       return replay(earlier.get(), deviceId, sourceSystem);
@@ -119,7 +128,7 @@ public class RiderLoginService {
     // Google 검증은 트랜잭션 밖(네트워크)
     GoogleIdTokenVerifier.Identity identity;
     try {
-      identity = google.verify(providerToken);
+      identity = verifier.verify(providerToken);
     } catch (GoogleIdTokenVerifier.Unavailable e) {
       log.warn("Google 검증 불가(실패 횟수 제외): {}", e.getMessage());
       throw new PmartException(
@@ -141,6 +150,8 @@ public class RiderLoginService {
                 String candidate = "RD-" + UUID.randomUUID();
                 store.insertAccount(candidate, now);
                 if (store.insertIdentity(provider, identity.subject(), candidate, now) == 1) {
+                  // 가린 이메일만(2026-11-19 — 같은 번호 다른 제공자 안내 "카카오로 가입한 계정이 있어요 · a***@k***")
+                  store.setEmailMasked(provider, identity.subject(), maskEmail(identity.email()));
                   riderId = candidate;
                   created = true;
                 } else {
@@ -265,6 +276,18 @@ public class RiderLoginService {
   /** DB(timestamptz, 마이크로초)에 저장한 값과 응답 값이 같도록 마이크로초로 자른다. */
   private Instant now() {
     return clock.instant().truncatedTo(ChronoUnit.MICROS);
+  }
+
+  /** 이메일 가리기 — 앞 한 글자 + *** @ 도메인 첫 글자 + ***(예 a***@k***). 없으면 null. */
+  static @org.jspecify.annotations.Nullable String maskEmail(
+      @org.jspecify.annotations.Nullable String email) {
+    if (email == null || !email.contains("@")) {
+      return null;
+    }
+    String[] parts = email.split("@", 2);
+    String local = parts[0].isEmpty() ? "*" : parts[0].substring(0, 1);
+    String domain = parts[1].isEmpty() ? "*" : parts[1].substring(0, 1);
+    return local + "***@" + domain + "***";
   }
 
   static PmartException providerRejected() {

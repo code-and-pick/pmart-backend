@@ -292,4 +292,35 @@ public class RiderAuthStore {
     jdbc.update("UPDATE rider_account SET state = 'DISABLED' WHERE rider_id = ?", riderId);
     jdbc.update("DELETE FROM rider_identity WHERE rider_id = ?", riderId);
   }
+
+  /** 가린 이메일(2026-11-19). */
+  public void setEmailMasked(
+      String provider, String subject, @org.jspecify.annotations.Nullable String masked) {
+    jdbc.update(
+        "UPDATE rider_identity SET email_masked = ? WHERE provider = ? AND provider_subject = ?",
+        masked,
+        provider,
+        subject);
+  }
+
+  /** 라이더 주체의 로그인 수단(2026-11-19 — rider-service 같은 번호 안내). 계정 하나 = 제공자 하나. */
+  public record IdentityInfo(
+      String provider,
+      @org.jspecify.annotations.Nullable String emailMasked,
+      java.time.Instant linkedAt) {}
+
+  public java.util.Optional<IdentityInfo> identityOf(String riderId) {
+    return jdbc
+        .query(
+            "SELECT provider, email_masked, linked_at FROM rider_identity WHERE rider_id = ? ORDER BY"
+                + " linked_at LIMIT 1",
+            (rs, n) ->
+                new IdentityInfo(
+                    rs.getString("provider"),
+                    rs.getString("email_masked"),
+                    rs.getTimestamp("linked_at").toInstant()),
+            riderId)
+        .stream()
+        .findFirst();
+  }
 }

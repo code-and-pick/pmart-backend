@@ -58,6 +58,7 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.rider-auth.signing.ephemeral=true",
       "pmart.rider-auth.issuer=http://rider-auth.test",
       "pmart.rider-auth.google.client-ids=" + RiderSocialLoginIT.RIDER_WEB,
+      "pmart.rider-auth.kakao.client-ids=" + RiderSocialLoginIT.KAKAO_APP,
       "pmart.rider-auth.max-failures=3",
       "pmart.rider-auth.session-cut-interval=PT1H", // 시험이 check() 를 직접 부른다
       "pmart.messaging.outbox.delete-after-insert=false"
@@ -70,6 +71,7 @@ import tools.jackson.databind.ObjectMapper;
 class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
 
   static final String RIDER_WEB = "rider-web.apps.googleusercontent.com";
+  static final String KAKAO_APP = "kakao-native-app-key";
   static final String CUSTOMER_WEB = "customer-web.apps.googleusercontent.com";
   static final String RIDER_ANDROID = "rider-android.apps.googleusercontent.com";
   static final RSAKey GOOGLE_KEY = generate();
@@ -91,6 +93,17 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
       NimbusJwtDecoder d = NimbusJwtDecoder.withPublicKey(GOOGLE_KEY.toRSAPublicKey()).build();
       d.setJwtValidator(GoogleIdTokenVerifier.validator(props.google()));
       return new GoogleIdTokenVerifier(d);
+    }
+
+    /** 카카오(2026-11-19) — 시험 키로 서명, 그 밖은 카카오 규칙(iss·aud) 그대로. 네이버는 앱 키 없음 → 422. */
+    @Bean
+    @Primary
+    com.pmart.riderauth.infrastructure.IdTokenVerifiers testVerifiers(
+        RiderAuthProperties props, GoogleIdTokenVerifier google) throws Exception {
+      NimbusJwtDecoder k = NimbusJwtDecoder.withPublicKey(GOOGLE_KEY.toRSAPublicKey()).build();
+      k.setJwtValidator(GoogleIdTokenVerifier.validator(props.kakao()));
+      return new com.pmart.riderauth.infrastructure.IdTokenVerifiers(
+          java.util.Map.of("GOOGLE", google, "KAKAO", new GoogleIdTokenVerifier(k)));
     }
   }
 
@@ -142,6 +155,10 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
   }
 
   Res login(String key, String device, String token) {
+    return login(key, device, "GOOGLE", token);
+  }
+
+  Res login(String key, String device, String provider, String token) {
     return http.post()
         .uri("/rider-auth/social-logins")
         .headers(
@@ -151,7 +168,7 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
               h.set("X-Device-Id", device);
             })
         .contentType(MediaType.APPLICATION_JSON)
-        .body(Map.of("provider", "GOOGLE", "providerToken", token))
+        .body(Map.of("provider", provider, "providerToken", token))
         .exchange((q, r) -> new Res(r.getStatusCode().value(), read(r.bodyTo(byte[].class))));
   }
 
@@ -174,6 +191,39 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
         .uri("/rider-auth/sessions/current")
         .headers(h -> h.setBearerAuth(accessToken))
         .exchange((q, r) -> new Res(r.getStatusCode().value(), read(r.bodyTo(byte[].class))));
+  }
+
+  /**
+   * 카카오·네이버(2026-11-19 — 라이더 앱 요청 R1): 카카오 ID 토큰으로 새 라이더 주체, 내부 조회에 제공자·가린 이메일, 네이버는 앱 키 없으면 422.
+   */
+  @Test
+  void kakaoLoginCreatesRiderAndIdentityIsMasked() {
+    String sub = "k-" + UUID.randomUUID();
+    Res r =
+        login(
+            "k1-" + sub, "dev-" + sub, "KAKAO", idToken(sub, KAKAO_APP, "https://kauth.kakao.com"));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    String riderId = r.body().path("riderId").asString();
+    assertThat(riderId).startsWith("RD-");
+    // 구글 aud 로 만든 카카오 토큰은 거절(aud 다름)
+    Res wrongAud =
+        login(
+            "k2-" + sub,
+            "dev2-" + sub,
+            "KAKAO",
+            idToken(sub, RIDER_WEB, "https://kauth.kakao.com"));
+    assertThat(wrongAud.status()).isNotEqualTo(200);
+    Res naver =
+        login(
+            "n1-" + sub, "dev3-" + sub, "NAVER", idToken(sub, "naver-id", "https://nid.naver.com"));
+    assertThat(naver.status()).isEqualTo(422);
+    Res id =
+        http.get()
+            .uri("/internal/riders/{id}/identity", riderId)
+            .exchange((q, x) -> new Res(x.getStatusCode().value(), read(x.bodyTo(byte[].class))));
+    assertThat(id.status()).isEqualTo(200);
+    assertThat(id.body().path("provider").asString()).isEqualTo("KAKAO");
+    assertThat(id.body().path("emailMasked").asString()).isEqualTo("k***@g***");
   }
 
   /**
@@ -529,8 +579,8 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
                   h.set("X-Device-Id", "dev-x");
                 })
             .contentType(MediaType.APPLICATION_JSON)
-            .body(Map.of("provider", "KAKAO", "providerToken", "x"))
+            .body(Map.of("provider", "APPLE", "providerToken", "x"))
             .exchange((q, r) -> new Res(r.getStatusCode().value(), read(r.bodyTo(byte[].class))));
-    assertThat(kakao.status()).isEqualTo(400); // 계약 enum 밖(GOOGLE 만)
+    assertThat(kakao.status()).isEqualTo(400); // 계약 enum 밖(GOOGLE·KAKAO·NAVER 만 — 2026-11-19)
   }
 }

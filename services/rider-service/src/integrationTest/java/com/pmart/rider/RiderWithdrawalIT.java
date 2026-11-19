@@ -135,9 +135,13 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     ResponseEntity<String> again = signup(rider, phone, "again-" + rider);
     assertThat(again.getStatusCode().value()).isEqualTo(409);
     assertThat(json(again).path("code").asString()).isEqualTo("RIDER_WITHDRAWN");
-    // 같은 전화·면허로 새 주체 재가입(사용자 "재가입 허용")
+    // 같은 전화로 새 주체 재가입은 30일 막힘(2026-11-19 사용자 "30일 동안 막기"), 기한이 지나면 된다
     String fresh = "RD-wd2-" + UUID.randomUUID();
-    assertThat(signup(fresh, phone, "k-" + fresh, rider).getStatusCode().value()).isEqualTo(201);
+    ResponseEntity<String> blockedJoin = signup(fresh, phone, "k-" + fresh, rider);
+    assertThat(blockedJoin.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(blockedJoin).path("code").asString()).isEqualTo("RIDER_REJOIN_BLOCKED");
+    jdbc.update("UPDATE rider_rejoin_block SET blocked_until = now() - interval '1 minute'");
+    assertThat(signup(fresh, phone, "k2-" + fresh, rider).getStatusCode().value()).isEqualTo(201);
     // 직원 찾기에서도 빠진다
     String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
     JsonNode found =

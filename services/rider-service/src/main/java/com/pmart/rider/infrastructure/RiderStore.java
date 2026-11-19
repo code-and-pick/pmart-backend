@@ -76,6 +76,23 @@ public class RiderStore {
     return n != null && n > 0;
   }
 
+  /** 그 번호의 가입 라이더(탈퇴 전) — 같은 번호 안내(2026-11-19). */
+  public record PhoneOwner(String riderId, Instant joinedAt) {}
+
+  public Optional<PhoneOwner> phoneOwner(String phone) {
+    return jdbc
+        .query(
+            "SELECT rider_id, joined_at FROM rider WHERE phone = ? AND withdrawn_at IS NULL",
+            (rs, i) -> new PhoneOwner(rs.getString(1), rs.getTimestamp(2).toInstant()),
+            phone)
+        .stream()
+        .findFirst();
+  }
+
+  public void markPhoneVerified(String riderId) {
+    jdbc.update("UPDATE rider SET phone_verified = true WHERE rider_id = ?", riderId);
+  }
+
   public boolean phoneTaken(String phone) {
     Integer n =
         jdbc.queryForObject("SELECT count(*) FROM rider WHERE phone = ?", Integer.class, phone);

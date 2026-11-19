@@ -105,7 +105,8 @@ public class SignupController implements SignupApi {
                                 Map.of(
                                     "consentType", c.getConsentType(), "version", c.getVersion()))
                         .toList(),
-                body.getLicenseNumber()));
+                body.getLicenseNumber(),
+                body.getPhoneVerificationId()));
     return ResponseEntity.status(HttpStatus.CREATED).body(RiderViews.profile(r));
   }
 

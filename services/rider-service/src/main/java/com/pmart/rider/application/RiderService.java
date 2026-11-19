@@ -51,7 +51,36 @@ public class RiderService {
       @Nullable String residenceDetail,
       List<Area> areas,
       List<Map<String, String>> consents,
-      @Nullable String licenseNumber) {}
+      @Nullable String licenseNumber,
+      @Nullable String phoneVerificationId) {
+
+    public Signup(
+        @Nullable String name,
+        String phone,
+        String vehicleType,
+        @Nullable String bankCode,
+        @Nullable String bankAccountNumber,
+        @Nullable String bankHolderName,
+        @Nullable String residenceRoad,
+        @Nullable String residenceDetail,
+        List<Area> areas,
+        List<Map<String, String>> consents,
+        @Nullable String licenseNumber) {
+      this(
+          name,
+          phone,
+          vehicleType,
+          bankCode,
+          bankAccountNumber,
+          bankHolderName,
+          residenceRoad,
+          residenceDetail,
+          areas,
+          consents,
+          licenseNumber,
+          null);
+    }
+  }
 
   public record ProfileChange(
       @Nullable String vehicleType,
@@ -81,6 +110,7 @@ public class RiderService {
       Rider.Restriction current, int version, List<RiderStore.RestrictionRow> items) {}
 
   private final RiderStore store;
+  private final org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones;
   private final RequestIdempotency idempotency;
   private final EventPublisher events;
   private final ObjectMapper json;
@@ -95,7 +125,9 @@ public class RiderService {
       ObjectMapper json,
       Clock clock,
       LicenseHasher licenses,
-      com.pmart.rider.infrastructure.AddressClient addresses) {
+      com.pmart.rider.infrastructure.AddressClient addresses,
+      org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones) {
+    this.phones = phones;
     this.addresses = addresses;
     this.licenses = licenses;
     this.store = store;
@@ -133,6 +165,12 @@ public class RiderService {
                         false,
                         List.of());
                   }
+                  // 같은 번호의 다른 계정·탈퇴 30일(2026-11-19 — R3·R4), 번호 확인(R2 — 설정 required 면 필수)
+                  phones.getObject().requireJoinable(riderId, cmd.phone());
+                  boolean verified =
+                      phones
+                          .getObject()
+                          .requireForSignup(riderId, cmd.phone(), cmd.phoneVerificationId());
                   if (store.phoneTaken(cmd.phone())) {
                     throw duplicate("같은 전화번호로 가입한 라이더가 있습니다.");
                   }
@@ -182,6 +220,9 @@ public class RiderService {
                             license == null ? null : LicenseRules.mask(license)));
                   } catch (DuplicateKeyException e) {
                     throw duplicate("이미 가입한 라이더이거나 같은 전화번호가 있습니다.");
+                  }
+                  if (verified) {
+                    store.markPhoneVerified(riderId);
                   }
                   return riderId;
                 })

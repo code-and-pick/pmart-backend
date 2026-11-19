@@ -30,7 +30,9 @@ public record RiderAuthProperties(
     int maxFailures,
     Duration restriction,
     Google google,
-    String audience) {
+    String audience,
+    @org.jspecify.annotations.Nullable Google kakao,
+    @org.jspecify.annotations.Nullable Google naver) {
 
   /** PMart API 용 토큰의 기본 {@code aud}. */
   public static final String DEFAULT_AUDIENCE = "pmart-api";
@@ -47,6 +49,17 @@ public record RiderAuthProperties(
     maxFailures = maxFailures <= 0 ? 5 : maxFailures;
     restriction = restriction == null ? Duration.ofMinutes(10) : restriction;
     google = google == null ? new Google(null, null, null) : google;
+    // 카카오·네이버(2026-11-19 — 라이더 앱 요청, 고객 ADR-0071 과 같은 흐름): 공개키·발급자는 제공자 고정값, 앱 키(aud)만 설정
+    kakao =
+        new Google(
+            kakao == null ? null : kakao.clientIds(),
+            "https://kauth.kakao.com/.well-known/jwks.json",
+            List.of("https://kauth.kakao.com"));
+    naver =
+        new Google(
+            naver == null ? null : naver.clientIds(),
+            "https://nid.naver.com/oauth2/jwks",
+            List.of("https://nid.naver.com"));
     audience = audience == null || audience.isBlank() ? DEFAULT_AUDIENCE : audience;
   }
 

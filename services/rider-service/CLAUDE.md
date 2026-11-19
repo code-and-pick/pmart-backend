@@ -22,7 +22,7 @@
 
 ## 상태
 2026-11-13 DD-1 첫 묶음(계약 0.2.0, V2): 가입·본인 프로필·운행 상태·배차 설정·내부 적격 라이더/라이더 조회 구현. 탈퇴는 2026-11-17 구현(아래).
-- 주체 = 라이더 토큰 sub(RD-…, rider-auth-service). 가입은 전화번호 중복만(면허·주민번호 안 받음 — 사용자 결정 2026-11-10 RS-2), 본인확인 없음(사용자 2026-11-13 '나중에'), 즉시 운행 승인(원문 §1.2). 첫 가입 배차 모드 AI_RECOMMENDED(원문 §2.2).
+- 주체 = 라이더 토큰 sub(RD-…, rider-auth-service). 가입은 전화번호 중복(면허·주민번호 안 받음 — 사용자 결정 2026-11-10 RS-2), 번호 확인은 2026-11-19 OCTOMO(아래 — 설정 required 로 켬), 즉시 운행 승인(원문 §1.2). 첫 가입 배차 모드 AI_RECOMMENDED(원문 §2.2).
 - 운행 상태 `domain/OperatingRules`: OFF_DUTY 면 신규배차 꺼짐, SUSPENDED·TERMINATED 운행 시작 403, DISPATCH_RESTRICTED 는 신규배차 ON 403, 기준 MFC 는 배달지역 안(비우면 첫 MFC). 변경마다 `RiderStateChanged`(delivery.rider.v1, mfcId 포함).
 - 버전 하나(행 version)가 프로필·운행·설정의 X-Expected-Version 기준.
 - 적격 라이더 = 운행 중·신규배차 ON·NORMAL·배달지역에 mfcId. 반경은 거르지 않는다(dispatch 가 tracking 위치로 직선 반경 — 사용자 2026-11-13). 용량·주류·연속 거절은 비움.
@@ -47,3 +47,4 @@
 - **직원 조치 이력(2026-11-18, 0.14.0 — 사용자 "이미 기록된 조치를 모아 보기", 관리자만)**: `GET /rider-staff-actions`(`StaffActions` — 계정 제한 걸기·풀기, 제한 검토 결정) — OPERATOR_ADMIN, 기간 기본 7일·최대 31일.
 - **소명·이의 신청(2026-11-18, 0.15.0·V11 — 사용자 "앱에서 신청 → 백오피스 결정", 원문 §9.6)**: `application/AppealService`·`api/AppealsController` — 라이더 `POST/GET /riders/me/appeals`(대상 RESTRICTION=지금 제한, EARNING=deliveryId, 대상마다 한 번), 직원 `GET /rider-appeals`·`POST /rider-appeals/{id}/decisions`(RIDER_OPS·OPERATOR_ADMIN, UPHELD·ACCEPTED, 설명 필수). 제한 인정이면 바로 정상으로(changeRestriction), 수행료 인정은 adjustmentRequired. 사건 RiderAppealDecided(설명 없음), 조치 이력 APPEAL_DECIDED.
 - **소명 내부 조회(2026-11-19, 0.16.0)**: `GET /internal/rider-appeals/{appealId}` — execution 보상금 확인.
+- **휴대폰 번호 확인·재가입 막기(2026-11-19, 0.17.0·V12 — 사용자 "옥토모", 라이더 앱 요청 R2~R4)**: `PhoneVerificationService`·`api/PhoneVerificationsController` — `POST /riders/me/phone-verifications {phone}`·`…/{id}/confirmations {phone}`·`GET …/{id}`(고객과 같은 MO 방식, `infrastructure/OctomoClient` 고객 것 그대로, 번호 원문 없이 해시). 시작·가입 때 그 번호의 다른 라이더 → 409 IDENTITY_ALREADY_REGISTERED(details provider·emailMasked — rider-auth 내부 `RiderAuthClient`, `pmart.rider.rider-auth-base-url` 기본 `http://rider-auth-service:8510` — joinedAt), 탈퇴 번호 `rejoin-block`(기본 30일 — 사용자 결정) 안 → 409 RIDER_REJOIN_BLOCKED(until, `rider_rejoin_block` 해시, 탈퇴 때 기록). 가입 `phoneVerificationId` — `pmart.rider.phone-verification.required` true 면 필수(422 PHONE_NOT_VERIFIED, 확인 뒤 1시간 안), 주면 `phone_verified` true. OCTOMO 설정이 없으면 시작·확인 422.

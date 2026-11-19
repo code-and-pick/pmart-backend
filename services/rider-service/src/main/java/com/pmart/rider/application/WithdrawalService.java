@@ -44,6 +44,7 @@ public class WithdrawalService {
       @Nullable Instant completedAt) {}
 
   private final RiderStore store;
+  private final org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones;
   private final ExecutionClient execution;
   private final EventPublisher events;
   private final TransactionTemplate tx;
@@ -54,7 +55,9 @@ public class WithdrawalService {
       ExecutionClient execution,
       EventPublisher events,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones) {
+    this.phones = phones;
     this.store = store;
     this.execution = execution;
     this.events = events;
@@ -90,6 +93,8 @@ public class WithdrawalService {
                 store.upsertWithdrawal(riderId, requestId, "REJECTED", blockers, reason, now, null);
                 return new Withdrawal(requestId, "REJECTED", List.copyOf(blockers), now, null);
               }
+              // 탈퇴 번호 30일 재가입 막기(2026-11-19 사용자 결정) — 번호를 지우기 전에 해시로 남긴다
+              store.find(riderId).ifPresent(me -> phones.getObject().blockRejoin(me.phone(), now));
               store.withdraw(riderId, now);
               store.recordDuty(riderId, true, true, false, false, now); // 열린 운행 구간 닫기
               store.upsertWithdrawal(riderId, requestId, "COMPLETED", List.of(), reason, now, now);

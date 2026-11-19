@@ -52,6 +52,11 @@ public class GoogleIdTokenVerifier {
     this.decoder = decoder;
   }
 
+  /** 운영: 그 제공자(구글·카카오·네이버 — 2026-11-19) JWKS 를 쓰는 검증기. 이름은 처음 쓰던 그대로. */
+  public static GoogleIdTokenVerifier forOidc(RiderAuthProperties.Google oidc) {
+    return forGoogle(oidc);
+  }
+
   /** 운영: Google JWKS 를 쓰는 검증기. */
   public static GoogleIdTokenVerifier forGoogle(RiderAuthProperties.Google google) {
     NimbusJwtDecoder d = NimbusJwtDecoder.withJwkSetUri(google.jwkSetUri()).build();

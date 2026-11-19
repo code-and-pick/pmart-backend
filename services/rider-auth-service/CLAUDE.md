@@ -12,7 +12,7 @@
 
 ## 데이터
 - 스키마 변경은 `src/main/resources/db/migration/V*.sql` 로만. 적용된 파일 수정 금지(V1 은 2026-11-10 LAN 배치 전).
-- Google 토큰·이메일·이름은 저장하지 않는다 — Google `sub` 와 내부 라이더 주체 `RD-…` 연결만. refresh token 은 SHA-256 만.
+- 제공자 토큰·이메일 원문·이름은 저장하지 않는다 — 제공자 `sub` 와 내부 라이더 주체 `RD-…` 연결 + 가린 이메일(2026-11-19)만. refresh token 은 SHA-256 만.
 
 ## 실행
 ```bash
@@ -40,3 +40,4 @@
 - **정지 라이더 로그인 끊기(2026-11-15, ADR-0054 ⑤ 라이더 정지 — 사용자 "추천대로": 진행 중 배송이 끝난 뒤 끊기, 신규배차 제한은 끊지 않음)**: `application/RiderSessionCuts`, V2 `rider_session_cut`. `RiderRestricted` SUSPENDED·TERMINATED → PENDING(aggregateVersion = 라이더 행 버전, 낮거나 같으면 버림), 그 밖 → LIFTED. `sweep`(`pmart.rider-auth.session-cut-interval` 1분)이 PENDING 마다 dispatch `GET /internal/riders/{id}/active-deliveries`(`infrastructure/DispatchClient`, `pmart.rider-auth.dispatch-base-url` 기본 `http://delivery-dispatch-service:8404`, 트랜잭션 밖)를 보고 비었으면 잠금 아래 다시 확인 → 모든 세션 REVOKED(`RIDER_RESTRICTED`) + `SubjectBlocked`(주체 전체) → DONE. 기한(`to`)이 지났으면 끊지 않고 LIFTED. dispatch 장애면 다음 점검에. **DONE 이고 제한이 유효하면 새 로그인 403 ACCOUNT_NOT_AVAILABLE**(로그인·같은 키 재전송 둘 다). PENDING 동안은 로그인 된다(픽업한 배송 마무리). 처음 켜기 전 소비 그룹 시작 위치 = latest(지난 제한은 rider-service 상태가 이미 막음).
 - 주체 비활성(`rider_account.state=DISABLED`)을 바꾸는 API 는 아직 없다.
 - **탈퇴(2026-11-17)**: `RiderWithdrawn`(rider, delivery.rider.v1 — 같은 `riderEvents` 바인딩) → `RiderWithdrawals`: 바로 모든 세션 끊기(revoke_reason RIDER_WITHDRAWN) + `SubjectBlocked`(ACCOUNT_DISABLED — 이미 나간 access token 도 401) + 계정 DISABLED + **Google 연결(`rider_identity`) 지움** — 같은 Google 계정의 다음 로그인은 새 라이더 주체(사용자 "재가입 허용"). 진행 중 배송이 있으면 rider-service 가 탈퇴를 막으므로 기다리지 않는다.
+- **카카오·네이버(2026-11-19, 0.2.0·V3 — 라이더 앱 요청 R1, 고객 ADR-0071 과 같은 흐름)**: `IdTokenVerifiers`(GOOGLE·KAKAO·NAVER) — 카카오 iss `https://kauth.kakao.com`·JWKS 고정, aud = `pmart.rider-auth.kakao.client-ids`(앱 키), 네이버 iss `https://nid.naver.com`, aud = `pmart.rider-auth.naver.client-ids`. 앱 키가 없으면 그 제공자만 422 CONFIG_REQUIRED. 계정 하나 = 제공자 하나(사용자 "하나만"). 연결 때 **가린 이메일만**(`rider_identity.email_masked`, 예 a***@k***) — 같은 번호 안내용, 원문 없음. 내부 `GET /internal/riders/{id}/identity`(provider·emailMasked·linkedAt).
