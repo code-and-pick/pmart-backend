@@ -174,6 +174,37 @@ public class OrderClient {
     }
   }
 
+  /**
+   * 주문 줄 → SKU(order {@code GET /internal/orders/{id}} lines — 2026-11-20). V24 전 인계라 인계 줄 SKU 를
+   * 저장하지 않은 배송의 반납·완료 줄에 SKU 를 채울 때만 쓴다. 못 읽으면 빈 맵(사건을 막지 않는다 — 그 줄은 SKU 없이).
+   */
+  public java.util.Map<String, String> lineSkus(String orderId) {
+    java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+    try {
+      String body =
+          Downstream.call(
+              "order-service order",
+              () ->
+                  order
+                      .get()
+                      .uri("/api/v1/internal/orders/{id}", orderId)
+                      .retrieve()
+                      .body(String.class));
+      if (body != null) {
+        for (JsonNode l : mapper.readTree(body).path("lines")) {
+          String id = text(l, "orderLineId");
+          String sku = text(l, "sku");
+          if (id != null && sku != null) {
+            out.putIfAbsent(id, sku);
+          }
+        }
+      }
+    } catch (RuntimeException e) {
+      return java.util.Map.of();
+    }
+    return out;
+  }
+
   private static @Nullable String text(JsonNode n, String field) {
     return n.path(field).isString() ? n.path(field).asString() : null;
   }

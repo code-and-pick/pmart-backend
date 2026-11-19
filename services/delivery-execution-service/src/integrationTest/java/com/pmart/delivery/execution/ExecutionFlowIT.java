@@ -1532,6 +1532,31 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
           .as(reason)
           .isEqualTo(customer);
 
+      boolean legacy = !customer; // V24 전 인계처럼 SKU 를 저장하지 않은 배송 → 주문 줄에서 채움(2026-11-20)
+      if (legacy) {
+        jdbc.update("UPDATE package_handover SET line_skus = NULL WHERE delivery_id = ?", origin);
+        String lineId =
+            jdbc.queryForObject(
+                "SELECT k FROM package_handover, jsonb_object_keys(lines) k WHERE delivery_id = ?"
+                    + " LIMIT 1",
+                String.class,
+                origin);
+        orderApi.stubFor(
+            com.github.tomakehurst.wiremock.client.WireMock.get(
+                    com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                        "/api/v1/internal/orders/" + order))
+                .willReturn(
+                    com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                        mapper.writeValueAsString(
+                            Map.of(
+                                "orderId",
+                                order,
+                                "accountId",
+                                "ACC-1",
+                                "lines",
+                                List.of(Map.of("orderLineId", lineId, "sku", "E-00000002")))))));
+      }
+
       // dispatch 가 만든 반납 배송(같은 라이더 바로 배정)
       String back = "DLV-" + UUID.randomUUID();
       Map<String, Object> created = new java.util.LinkedHashMap<>();
@@ -1569,7 +1594,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
       assertThat(returned.path("originDeliveryId").asString()).isEqualTo(origin);
       assertThat(returned.path("lines").size()).isPositive();
       // 줄마다 인계 때 SKU(2026-11-20 PC 3 요청 — MFC 반납 바코드 대조)
-      assertThat(returned.path("lines").get(0).path("sku").asString()).isEqualTo("E-00000001");
+      assertThat(returned.path("lines").get(0).path("sku").asString())
+          .isEqualTo(legacy ? "E-00000002" : "E-00000001");
       assertThat(
               jdbc.queryForObject(
                   "SELECT calculable FROM rider_earning WHERE delivery_id = ?",

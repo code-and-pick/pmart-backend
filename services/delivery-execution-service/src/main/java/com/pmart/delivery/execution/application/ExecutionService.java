@@ -993,6 +993,10 @@ public class ExecutionService {
    * 배송이 전달한 줄·수량 — 포장마다 마지막 인계만(다시 인계한 포장·재배차 전 라이더 인계를 두 번 세지 않는다 — PC 1 재검토 ③). 인계 기록은 인계 시각 순이라
    * 같은 포장의 뒤 기록이 앞 기록을 덮는다. 출고 포장 목록을 알면 그 포장만.
    */
+  /** 사건 계약 _defs Sku 형식. */
+  private static final java.util.regex.Pattern SKU =
+      java.util.regex.Pattern.compile("^[EB]-[0-9]{8}$");
+
   private List<Map<String, Object>> deliveredLines(DeliveryRow d) {
     Map<String, HandoverRow> lastByPackage = new LinkedHashMap<>();
     for (HandoverRow h : store.handovers(d.deliveryId())) {
@@ -1026,12 +1030,19 @@ public class ExecutionService {
         }
       }
     }
-    // 줄마다 SKU(2026-11-20 PC 3 요청 — MFC 반납 바코드 대조). V24 전 인계는 sku 없이
+    // 줄마다 SKU(2026-11-20 PC 3 요청 — MFC 반납 바코드 대조). V24 전 인계(저장된 SKU 없음)는 주문 줄에서 채운다 —
+    // 사건 계약 형식(E-/B- 8자리)에 맞는 값만(발행 검사에 걸려 반납·완료가 막히지 않게), 못 읽으면 그 줄은 SKU 없이.
+    List<Map<String, Object>> merged = ExecutionRules.deliveredLines(perPackage);
+    boolean missing =
+        merged.stream().anyMatch(l -> !skus.containsKey(String.valueOf(l.get("orderLineId"))));
+    if (missing && d.orderId() != null) {
+      orders.lineSkus(d.orderId()).forEach(skus::putIfAbsent);
+    }
     List<Map<String, Object>> out = new ArrayList<>();
-    for (Map<String, Object> l : ExecutionRules.deliveredLines(perPackage)) {
+    for (Map<String, Object> l : merged) {
       Map<String, Object> m = new LinkedHashMap<>(l);
       String sku = skus.get(String.valueOf(l.get("orderLineId")));
-      if (sku != null) {
+      if (sku != null && SKU.matcher(sku).matches()) {
         m.put("sku", sku);
       }
       out.add(m);

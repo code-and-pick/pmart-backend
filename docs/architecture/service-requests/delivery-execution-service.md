@@ -76,5 +76,5 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
   - 오배송 회수·전달 실패 반납: 원래 배송의 인계(`PackageHandedOver`) 줄 sku. 인계 사건에는 원래 sku 가 있었는데 execution 이 줄·수량만 저장했다 — V24 `package_handover.line_skus` 로 저장.
   - **배포 전에 이미 인계된 배송**은 sku 가 없다(그 줄은 지금처럼 null).
   - `ReturnPickedUp` 줄에도 같은 sku 가 붙는다(같은 줄 계산).
-- **상태**: 구현(PR, 병합·배포 전).
+- **상태**: 구현·LAN 배포(#266, 85bae351). 후속(2026-11-20, 사용자 "해결해"): V24 전 인계(저장된 SKU 없음)는 order `GET /internal/orders/{id}` lines 에서 줄 SKU 를 채운다 — 계약 형식(E-/B- 8자리)만, order 를 못 읽으면 그 줄만 SKU 없이(반납·완료는 막지 않음).
 
