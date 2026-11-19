@@ -2392,6 +2392,18 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT pickup_source FROM delivery WHERE delivery_id = ?", String.class, back3))
         .isEqualTo("RIDER_LOCATION");
+    // 배차 상세가 이 출처를 계약 enum 으로 낸다(2026-11-19 — 빠져 있어 500 이었음)
+    assertThat(
+            http.get()
+                .uri("/deliveries/{id}/dispatch", back3)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of()))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
 
     // 상품이 매장(custody STORE)이면 라이더 할 일 없음
     String origin2 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID());

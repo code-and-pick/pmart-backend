@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.31.0
+  version: 0.31.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1906,6 +1906,7 @@ components:
             helpRequestId: { type: string, description: '함께 열린 지원센터 대화(도움요청) ID(0.14.0) — 이 배포 전 실패 등록은 없음', x-added-in: '2026-11-17' }
             resumeRequestedAt: { type: string, format: date-time, description: '라이더 전달 재개 요청 시각(0.14.0)', x-added-in: '2026-11-17' }
             returnDeliveryId: { type: [string, 'null'], description: '(0.15.0) 확정 뒤 상품이 라이더 손(custody RIDER)이면 같은 라이더에게 바로 배정된 반납 배송(purpose FAILED_DELIVERY_RETURN) — 만들어지기 전·STORE 면 null', x-added-in: '2026-11-17' }
+            returnBy: { type: [string, 'null'], enum: [SAME_RIDER, OTHER_RIDER, null], x-added-in: '2026-11-19', description: '(0.31.1, 라이더 앱 요청) 상품이 라이더 손일 때 MFC 반납할 사람 — SAME_RIDER 면 returnDeliveryId 가 이 라이더에게 배정된 반납 배송, OTHER_RIDER 면 다른 라이더가 받으러 오는 배송(원래 라이더는 그 배송을 열 수 없음 — 404, 앱은 "받으러 오는 라이더에게 넘겨 주세요"). 확정 전·STORE 면 null' }
         incidents:
           type: array
           description: 이 배송의 도움요청(0.3.0)

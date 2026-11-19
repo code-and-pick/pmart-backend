@@ -152,6 +152,12 @@ class ExecutionViews {
               .helpRequestId(f.path("requestId").asString(null))
               .resumeRequestedAt(instantOf(f.path("resumeRequestedAt")))
               .returnDeliveryId(v.returnDeliveryId())
+              // 반납할 사람(2026-11-19 라이더 앱 요청) — OTHER_RIDER 면 원래 라이더는 반납 배송을 열 수 없다
+              .returnBy(
+                  f.path("returnBy").isString()
+                      ? DeliveryExecutionFailure.ReturnByEnum.fromValue(
+                          f.path("returnBy").asString())
+                      : null)
               .custody(
                   f.path("custody").isString()
                       ? DeliveryExecutionFailure.CustodyEnum.fromValue(f.path("custody").asString())

@@ -1611,6 +1611,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode failed = outbox(origin, "DeliveryFailed").path("payload");
     assertThat(failed.path("reason").asString()).isEqualTo("RIDER_INCIDENT");
     assertThat(failed.path("returnBy").asString()).isEqualTo("OTHER_RIDER");
+    // 배송 조회에도 반납할 사람(2026-11-19 — 라이더 앱이 OTHER_RIDER 면 반납 배송으로 넘어가지 않게)
+    assertThat(view(origin, r1).path("failure").path("returnBy").asString())
+        .isEqualTo("OTHER_RIDER");
     assertThat(failed.path("deliveryType").asString()).isEqualTo("FORWARD");
     Map<String, Object> earning =
         jdbc.queryForMap(
