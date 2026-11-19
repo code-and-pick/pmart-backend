@@ -39,6 +39,13 @@ public class OrderClient {
   }
 
   private final RestClient order;
+
+  /**
+   * 줄 SKU 보충 전용 — 짧은 대기(연결 1초·응답 2초). 라이더 반납·완료 처리(DB 트랜잭션 안) 중에 부르므로 order 가 느려도 오래 붙잡지 않고 SKU 없이
+   * 진행한다(2026-11-20).
+   */
+  private final RestClient quick;
+
   private final ObjectMapper mapper;
 
   public OrderClient(
@@ -46,6 +53,11 @@ public class OrderClient {
       ObjectMapper mapper,
       @Value("${pmart.execution.urls.order:http://order-service:8201}") String baseUrl) {
     this.order = builder.clone().baseUrl(baseUrl).build();
+    org.springframework.http.client.SimpleClientHttpRequestFactory f =
+        new org.springframework.http.client.SimpleClientHttpRequestFactory();
+    f.setConnectTimeout(java.time.Duration.ofSeconds(1));
+    f.setReadTimeout(java.time.Duration.ofSeconds(2));
+    this.quick = builder.clone().baseUrl(baseUrl).requestFactory(f).build();
     this.mapper = mapper;
   }
 
@@ -185,7 +197,7 @@ public class OrderClient {
           Downstream.call(
               "order-service order",
               () ->
-                  order
+                  quick
                       .get()
                       .uri("/api/v1/internal/orders/{id}", orderId)
                       .retrieve()
