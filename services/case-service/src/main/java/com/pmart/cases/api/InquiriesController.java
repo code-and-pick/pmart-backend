@@ -239,6 +239,7 @@ public class InquiriesController implements InquiriesApi {
   private static InquirySummary summary(InquiryRow r) {
     var s = new InquirySummary();
     s.setInquiryId(r.inquiryId());
+    s.setInquiryNumber(r.inquiryNumber());
     s.setCategory(InquiryCategory.fromValue(r.category()));
     s.setOrderId(r.orderId());
     s.setTitle(r.title());
@@ -260,6 +261,7 @@ public class InquiriesController implements InquiriesApi {
     InquiryRow r = v.inquiry();
     var d = new Inquiry();
     d.setInquiryId(r.inquiryId());
+    d.setInquiryNumber(r.inquiryNumber());
     d.setCaseId(r.caseId());
     if (InquiryRules.RIDER.equals(r.requesterType())) {
       d.setRiderId(r.customerId());

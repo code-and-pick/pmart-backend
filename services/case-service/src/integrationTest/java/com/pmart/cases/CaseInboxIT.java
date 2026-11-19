@@ -12,6 +12,7 @@ import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -169,6 +170,15 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
     JsonNode item = list.body().path("items").get(0);
     String caseId = item.path("caseId").asString();
     assertThat(item.path("kind").asString()).isEqualTo("RIDER_HELP");
+    // 0.25.0(ADR-0070): 화면 접수 번호 C-MMDD-일련 — DB 가 한국 날짜마다 매김, 그 번호로 찾기
+    String number = item.path("caseNumber").asString();
+    assertThat(number).matches("C-[0-9]{4}-[0-9]{4,}");
+    assertThat(
+            send("GET", ops, "/cases?caseNumber=" + number, null)
+                .body()
+                .path("items")
+                .findValuesAsString("caseId"))
+        .contains(item.path("caseId").asString());
     assertThat(item.path("priority").asString()).as("사고 — 긴급").isEqualTo("P1");
     assertThat(item.path("assigneeGroup").asString()).isEqualTo("DELIVERY_OPS");
     assertThat(item.path("centerId").asString()).isEqualTo("MFC-1");
@@ -2113,5 +2123,45 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
                 helpCase))
         .as("도움요청 사건에는 붙이지 않음")
         .isZero();
+  }
+
+  /** 0.25.0(ADR-0070): 같은 한국 날짜의 접수 번호는 1씩 늘고 겹치지 않는다(DB 카운터 — 동시에 열려도). */
+  @Test
+  void caseNumbersIncreaseWithinTheDayWithoutDuplicates() throws Exception {
+    List<String> deliveries = new ArrayList<>();
+    for (int k = 0; k < 5; k++) {
+      String d = "DLV-NUM-" + UUID.randomUUID().toString().substring(0, 8);
+      deliveries.add(d);
+      Map<String, Object> p = new LinkedHashMap<>();
+      p.put("incidentId", d + ":REQ-1");
+      p.put("deliveryId", d);
+      p.put("riderId", "RD-1");
+      p.put("type", "HELP_REQUEST");
+      p.put("category", "OTHER");
+      p.put("stage", "PICKED_UP");
+      p.put("mfcId", "MFC-1");
+      publish("delivery.delivery.v1", "DeliveryIncidentRaised", d, p, "delivery-execution-service");
+    }
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_record WHERE subject_ref = ANY (?)",
+                (Object) deliveries.toArray(new String[0])),
+        n -> n == 5);
+    List<String> numbers =
+        jdbc.queryForList(
+            "SELECT case_number FROM case_record WHERE subject_ref = ANY (?)",
+            String.class,
+            (Object) deliveries.toArray(new String[0]));
+    assertThat(numbers)
+        .hasSize(5)
+        .doesNotHaveDuplicates()
+        .allMatch(n -> n.matches("C-[0-9]{4}-[0-9]{4,}"));
+    Integer dup =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM (SELECT case_number_day, case_number FROM case_record"
+                + " WHERE case_number IS NOT NULL GROUP BY 1, 2 HAVING count(*) > 1) x",
+            Integer.class);
+    assertThat(dup).as("같은 날 같은 번호 없음").isZero();
   }
 }

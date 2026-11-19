@@ -165,6 +165,7 @@ public class CsIntakeService {
                             null,
                             InquiryRules.CUSTOMER,
                             null,
+                            null,
                             null));
                   }
                   Consent c = cmd.consent();

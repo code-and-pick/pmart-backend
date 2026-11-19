@@ -45,7 +45,9 @@ public class CaseStore {
       @Nullable Instant closedAt,
       @Nullable String closedBy,
       @Nullable String resolution,
-      @Nullable String closureSummary) {}
+      @Nullable String closureSummary,
+      /** 화면 접수 번호 C-MMDD-일련(ADR-0070, V20 — DB 트리거가 매김). 넣을 때는 null. */
+      @Nullable String caseNumber) {}
 
   public record HistoryRow(
       Instant at,
@@ -65,6 +67,8 @@ public class CaseStore {
       @Nullable String priority,
       @Nullable String subjectRef,
       @Nullable String assigneeGroup,
+      /** 화면 접수 번호 완전 일치(0.25.0). */
+      @Nullable String caseNumber,
       boolean unassigned,
       boolean overdue,
       Instant now,
@@ -312,6 +316,7 @@ public class CaseStore {
     eq(sql, args, "assignee_id", f.assigneeId());
     eq(sql, args, "priority", f.priority());
     eq(sql, args, "subject_ref", f.subjectRef());
+    eq(sql, args, "case_number", f.caseNumber());
     eq(sql, args, "assignee_group", f.assigneeGroup());
     if (f.unassigned()) {
       sql.append(" AND assignee_id IS NULL");
@@ -339,7 +344,8 @@ public class CaseStore {
   private static final String SELECT =
       "SELECT case_id, case_type, state, priority, subject_type, subject_ref, center_id, assignee_id,"
           + " assignee_group, sla_due_at, summary, refs::text AS refs, source_event_id, version,"
-          + " created_at, updated_at, closed_at, closed_by, resolution, closure_summary FROM case_record";
+          + " created_at, updated_at, closed_at, closed_by, resolution, closure_summary, case_number"
+          + " FROM case_record";
 
   private CaseRow row(ResultSet rs, int i) throws SQLException {
     String refs = rs.getString("refs");
@@ -363,7 +369,8 @@ public class CaseStore {
         instant(rs, "closed_at"),
         rs.getString("closed_by"),
         rs.getString("resolution"),
-        rs.getString("closure_summary"));
+        rs.getString("closure_summary"),
+        rs.getString("case_number"));
   }
 
   /** 사건 payload 의 refs 모양. */

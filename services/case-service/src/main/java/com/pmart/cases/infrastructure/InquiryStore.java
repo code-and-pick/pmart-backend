@@ -33,7 +33,9 @@ public class InquiryStore {
       @Nullable String callerRelation,
       String requesterType,
       @Nullable String deliveryId,
-      @Nullable String deliveryIssue) {}
+      @Nullable String deliveryIssue,
+      /** 화면 문의 번호 Q-MMDD-일련(ADR-0070, V20 — DB 트리거가 매김). 넣을 때는 null. */
+      @Nullable String inquiryNumber) {}
 
   public record ReplyRow(
       String replyId, String authorType, String authorId, String body, Instant createdAt) {}
@@ -46,7 +48,7 @@ public class InquiryStore {
   private static final String SELECT =
       "SELECT q.inquiry_id, q.case_id, q.customer_id, q.category, q.order_id, q.title, q.body,"
           + " q.origin, q.status, q.created_at, q.answered_at, q.version, q.requester_type,"
-          + " q.delivery_id, q.delivery_issue, i.channel,"
+          + " q.delivery_id, q.delivery_issue, q.inquiry_number, i.channel,"
           + " i.caller_relation FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
           + " q.inquiry_id";
 
@@ -258,6 +260,7 @@ public class InquiryStore {
         rs.getString("caller_relation"),
         rs.getString("requester_type"),
         rs.getString("delivery_id"),
-        rs.getString("delivery_issue"));
+        rs.getString("delivery_issue"),
+        rs.getString("inquiry_number"));
   }
 }

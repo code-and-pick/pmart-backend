@@ -204,6 +204,7 @@ public class CasesController implements CasesApi {
       @Nullable String subjectRef,
       @Nullable AssigneeGroup assigneeGroup,
       @Nullable Boolean unassigned,
+      @Nullable String caseNumber,
       @Nullable Boolean overdue,
       Integer size,
       @Nullable String cursor) {
@@ -217,6 +218,7 @@ public class CasesController implements CasesApi {
                 priority == null ? null : priority.getValue(),
                 blankToNull(subjectRef),
                 assigneeGroup == null ? null : assigneeGroup.getValue(),
+                blankToNull(caseNumber),
                 Boolean.TRUE.equals(unassigned),
                 Boolean.TRUE.equals(overdue)),
             cursor,
@@ -362,6 +364,7 @@ public class CasesController implements CasesApi {
   private CaseSummary summary(CaseRow c, int openObligations) {
     return new CaseSummary()
         .caseId(c.caseId())
+        .caseNumber(c.caseNumber())
         .kind(CaseKind.fromValue(c.kind()))
         .state(CaseState.fromValue(c.state()))
         .priority(c.priority() == null ? null : Priority.fromValue(c.priority()))
@@ -386,6 +389,7 @@ public class CasesController implements CasesApi {
     ModelCase m =
         new ModelCase()
             .caseId(c.caseId())
+            .caseNumber(c.caseNumber())
             .kind(CaseKind.fromValue(c.kind()))
             .state(CaseState.fromValue(c.state()))
             .priority(c.priority() == null ? null : Priority.fromValue(c.priority()))

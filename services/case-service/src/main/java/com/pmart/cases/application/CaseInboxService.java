@@ -67,6 +67,7 @@ public class CaseInboxService {
       @Nullable String priority,
       @Nullable String subjectRef,
       @Nullable String assigneeGroup,
+      @Nullable String caseNumber,
       boolean unassigned,
       boolean overdue) {}
 
@@ -436,6 +437,7 @@ public class CaseInboxService {
             null,
             null,
             null,
+            null,
             null);
     if (!store.insert(c, dedupeKey, e.eventType())) {
       log.info("사건 중복 — {} 무시", dedupeKey);
@@ -620,6 +622,7 @@ public class CaseInboxService {
                           null,
                           null,
                           null,
+                          null,
                           null);
                   store.insert(c, key, null);
                   store.history(c.caseId(), now, p.subject(), "OPENED", null, "OPEN", "오배송 확인");
@@ -671,6 +674,7 @@ public class CaseInboxService {
                 q.priority(),
                 q.subjectRef(),
                 q.assigneeGroup(),
+                q.caseNumber(),
                 q.unassigned(),
                 q.overdue(),
                 now(),

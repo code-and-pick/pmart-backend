@@ -106,6 +106,9 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
     assertThat(created.body().path("status").asString()).isEqualTo("RECEIVED");
     assertThat(created.body().path("origin").asString()).isEqualTo("INQUIRY_PAGE");
     assertThat(created.body().path("caseId").asString()).startsWith("CASE-");
+    assertThat(created.body().path("inquiryNumber").asString())
+        .as("화면 문의 번호 Q-MMDD-일련(ADR-0070, 0.25.0)")
+        .matches("Q-[0-9]{4}-[0-9]{4,}");
 
     // 본인만 보고, 남은 404, 상담원 아닌 운영자는 403
     assertThat(send("GET", meTok, "/inquiries/" + id, null, null).status()).isEqualTo(200);

@@ -169,7 +169,8 @@ public class InquiryService {
                           null,
                           requesterType,
                           blankToNull(cmd.deliveryId()),
-                          cmd.deliveryIssue()));
+                          cmd.deliveryIssue(),
+                          null));
                   attach(id, customerId, cmd.photoIds(), 0);
                   log.info(
                       "inquiry received id={} requester={} category={}",

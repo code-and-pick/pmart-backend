@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.24.2
+  version: 0.25.0
   description: |
+    **0.25.0(2026-11-19 — ADR-0070 덧붙임, 사용자 "날짜+일련")**: 화면 표기 — 접수 건 `caseNumber`(C-MMDD-0042), 문의 `inquiryNumber`(Q-MMDD-0012). 한국 날짜·종류마다 1부터(9999 넘으면 5자리), DB 가 매김(V20 — 지금 있는 행도 날짜마다 생성순으로 채움). 해가 바뀌면 같은 번호가 다시 나올 수 있다(번호 + 날짜로 유일) — 목록·표에는 이 번호, caseId·inquiryId 는 상세의 "시스템 번호" 칸. `GET /cases?caseNumber=` 로 찾기.
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
     사건 상태: OPEN / ASSIGNED / ACTION_PENDING / MONITORING / RESOLUTION_REVIEW / CLOSED / REOPENED. **시간 경과 자동 종결 없음** — 종결은 모든 Obligation 해소 후 명시적 closures 명령으로만.
@@ -68,6 +69,7 @@ paths:
         - { name: subjectRef, in: query, schema: { type: string, description: orderId / deliveryId / claimId 등 } }
         - { name: assigneeGroup, in: query, schema: { $ref: '#/components/schemas/AssigneeGroup' }, x-added-in: '2026-11-16' }
         - { name: unassigned, in: query, schema: { type: boolean }, description: 'true = 아무도 안 집은 것만(팀 공용 목록, 0.4.0)', x-added-in: '2026-11-16' }
+        - { name: caseNumber, in: query, x-added-in: '2026-11-19', schema: { type: string, maxLength: 16 }, description: '(0.25.0) 화면 접수 번호 완전 일치(C-1119-0042) — 해가 다른 같은 번호가 있으면 모두' }
         - { name: overdue, in: query, schema: { type: boolean }, description: 'true = 처리 기한(slaDueAt) 넘긴 열린 사건만(0.4.0)', x-added-in: '2026-11-16' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
@@ -1532,6 +1534,7 @@ components:
       type: object
       properties:
         caseId: { type: string }
+        caseNumber: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(0.25.0, ADR-0070) 화면 접수 번호 C-MMDD-일련(한국 날짜). 문의 사건(CS_INQUIRY·RIDER_INQUIRY)은 null — 문의는 inquiryNumber' }
         parentCaseId: { type: [string, 'null'] }
         kind: { $ref: '#/components/schemas/CaseKind' }
         state: { $ref: '#/components/schemas/CaseState' }
@@ -1717,6 +1720,7 @@ components:
       required: [inquiryId, category, status, createdAt, version]
       properties:
         inquiryId: { type: string }
+        inquiryNumber: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(0.25.0, ADR-0070) 화면 문의 번호 Q-MMDD-일련(한국 날짜)' }
         category: { $ref: '#/components/schemas/InquiryCategory' }
         orderId: { type: string, nullable: true }
         title: { type: string, nullable: true }
