@@ -14,7 +14,7 @@
 | 라이더 컴플레인 | case `GET /rider-complaints/counts?riderId&deliveryId&from&to` → complaintType 별 | PC 2 | **구현(case 0.26.0, PR)** — 정확한 수라 capped 늘 false |
 | 상품 조회 | product `GET /products/counts` | PC 1 | 요청 PD-1 |
 | 주문 조회 | order `GET /orders/lookups/counts` | PC 1 | 요청 O-9 |
-| 클레임 | claim `GET /claims/counts`(state, 가능하면 type) | PC 1 | 요청 CL-5 |
+| 클레임 | claim `GET /claims/counts`(state, 가능하면 type) | PC 1 | 요청 CL-6 |
 | 배송 확인 | execution `GET /deliveries/counts` | PC 5 | 요청 DE-7 |
 
 - 클레임·라이더 컴플레인 목록은 bff `views/*` 를 쓰지만 수는 원천을 직접 부른다(라이더 컴플레인 = case).

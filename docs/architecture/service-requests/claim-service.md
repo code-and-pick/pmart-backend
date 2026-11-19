@@ -85,7 +85,7 @@
   4. 찾기: 주문번호로 클레임 찾기(직원) — 있으면 좋음.
 - **받는 쪽(backoffice)**: bff `views/claims` 가 `claimLabel`(주문번호 + 종류 + 순번)을 만들어 준다(종류 이름은 화면이).
 
-## CL-5. 클레임 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
+## CL-6. 클레임 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
 
 - **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).
 - **필요한 것**: `GET /claims/counts?<목록과 같은 거르기>` — `GET /claims` 와 같은 거르기(orderId 등, `state` 제외)로 `state`(ClaimState)별 수, 가능하면 `type`(ClaimType)별도(예 `?by=type` 또는 응답에 두 묶음).
