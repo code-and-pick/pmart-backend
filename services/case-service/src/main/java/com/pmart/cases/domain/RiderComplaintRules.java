@@ -14,6 +14,9 @@ public final class RiderComplaintRules {
   /** 신고·오배송·파손(RiderComplaintRecorded 와 같은 값). */
   public static final Set<String> TYPES = Set.of("REPORT", "MISDELIVERY", "DAMAGE");
 
+  /** 계약 enum 순서(0.26.0 종류별 수 — 늘 같은 순서로). */
+  public static final List<String> TYPE_ORDER = List.of("REPORT", "MISDELIVERY", "DAMAGE");
+
   /** 상담원 접수 경로(사건 payload source). */
   public static final String SOURCE_CS_AGENT = "CS_AGENT";
 

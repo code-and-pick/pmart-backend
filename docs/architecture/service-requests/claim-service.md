@@ -84,3 +84,10 @@
   3. 응답: `GET /claims`·`GET /claims/{id}`·환불 목록에 순번. 주문번호(8자리)는 order 가 정본 — claim 이 사본을 둘지는 claim 판단(bff `views/claims` 는 이미 order 에서 붙인다, 0.18.0).
   4. 찾기: 주문번호로 클레임 찾기(직원) — 있으면 좋음.
 - **받는 쪽(backoffice)**: bff `views/claims` 가 `claimLabel`(주문번호 + 종류 + 순번)을 만들어 준다(종류 이름은 화면이).
+
+## CL-5. 클레임 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).
+- **필요한 것**: `GET /claims/counts?<목록과 같은 거르기>` — `GET /claims` 와 같은 거르기(orderId 등, `state` 제외)로 `state`(ClaimState)별 수, 가능하면 `type`(ClaimType)별도(예 `?by=type` 또는 응답에 두 묶음).
+- 응답 모양(웹 요청 그대로, case 0.26.0 `StatusCounts` 와 같게): `{"counts":[{"key":"<상태>","count":12,"capped":false}],"asOf":"…"}` — **모든 상태 값을 0 까지 빠짐없이**, 셀 상한을 넘으면 `capped=true`(화면 "N+"), 원천을 못 읽으면 503(화면 "?").
+- **받는 쪽**: 웹 클레임 목록은 bff `views/claims`(0.18.0)를 쓰지만 수는 claim 이 정확히 센다 — 웹이 claim 을 직접 부른다(bff 로 묶지 않음).

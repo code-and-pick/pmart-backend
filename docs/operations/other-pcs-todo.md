@@ -56,6 +56,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] **MB-2 품질 사고 — 사용자 결정 대기**(2026-11-19 PC 1 기록): PC 3 가 남긴 질문 5개(`docs/handoff/clients/mfc-backoffice/2026-11-18-reply-lists-and-roles.md` §3)를 `docs/business/flows/pending-user-decisions.md` §2 MB-2 에 옮김 — 답이 나오면 PC 3 가 mfc-quality 에 구현
 
 ## PC 5 — delivery 영역
+- [ ] **DE-7 배송 확인 목록 상태별 수**(2026-11-19 PC 2 — 백오피스 웹 숫자 띠, 요청서 `delivery-execution-service.md` DE-7): `GET /deliveries/counts`(목록과 같은 거르기, 모든 상태 0 까지, capped), 급하지 않음
 - [ ] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
 - [ ] **DE-6 "가고 있어요" 사건**(2026-11-19 PC 1 — 레퍼런스 3-3): delivery-execution `DeliveryHeadingToCustomer`(delivery.delivery.v1, 묶음 배달 다음 차례) — 요청서 `delivery-execution-service.md` DE-6
 - [x] **DE-4 배송 `packageIds` 가 인계 전에 비어 라이더가 포장 QR 을 못 찍음**(2026-11-18 PC 3, **급함** — `delivery-execution-service.md` DE-4): `ExecutionViews.delivery` 의 packageIds 를 `shipment_package` ∪ 인계 기록으로. 지금 LAN 에서 모든 인계가 막힌다

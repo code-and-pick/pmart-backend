@@ -7,6 +7,8 @@ import com.pmart.cases.api.generated.model.RecordRiderComplaintRequest;
 import com.pmart.cases.api.generated.model.RiderComplaint;
 import com.pmart.cases.api.generated.model.RiderComplaintSummary;
 import com.pmart.cases.api.generated.model.RiderComplaintType;
+import com.pmart.cases.api.generated.model.StatusCounts;
+import com.pmart.cases.api.generated.model.StatusCountsCountsInner;
 import com.pmart.cases.application.RiderComplaintService;
 import com.pmart.cases.infrastructure.RiderComplaintStore.ComplaintRow;
 import com.pmart.cases.infrastructure.RiderComplaintStore.Filter;
@@ -68,6 +70,36 @@ public class RiderComplaintsController implements RiderComplaintsApi {
     p.setNextCursor(page.nextCursor());
     p.setSize(page.items().size());
     out.setPage(p);
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<StatusCounts> countRiderComplaints(
+      @Nullable String riderId,
+      @Nullable String deliveryId,
+      @Nullable OffsetDateTime from,
+      @Nullable OffsetDateTime to) {
+    var counts =
+        service.countsByType(
+            new Filter(
+                riderId,
+                deliveryId,
+                null,
+                from == null ? null : from.toInstant(),
+                to == null ? null : to.toInstant()));
+    var out = new StatusCounts();
+    out.setCounts(
+        counts.entrySet().stream()
+            .map(
+                e -> {
+                  var row = new StatusCountsCountsInner();
+                  row.setKey(e.getKey());
+                  row.setCount(e.getValue());
+                  row.setCapped(false);
+                  return row;
+                })
+            .toList());
+    out.setAsOf(OffsetDateTime.now(java.time.ZoneOffset.UTC));
     return ResponseEntity.ok(out);
   }
 

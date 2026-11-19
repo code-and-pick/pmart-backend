@@ -146,6 +146,17 @@ public class RiderComplaintService {
     return new Page(List.copyOf(items), more ? items.get(items.size() - 1).complaintId() : null);
   }
 
+  /** 종류별 수(0.26.0, 웹 숫자 띠) — 권한은 목록과 같다. 모든 종류를 0 까지(정해진 순서), 정확한 수. */
+  public Map<String, Long> countsByType(Filter filter) {
+    requireRole(RiderComplaintRules.READ_ROLES, "라이더 컴플레인 조회");
+    Map<String, Long> found = store.countsByType(filter);
+    Map<String, Long> out = new LinkedHashMap<>();
+    for (String type : RiderComplaintRules.TYPE_ORDER) {
+      out.put(type, found.getOrDefault(type, 0L));
+    }
+    return out;
+  }
+
   public ComplaintRow get(String complaintId) {
     requireRole(RiderComplaintRules.READ_ROLES, "라이더 컴플레인 조회");
     return store.find(complaintId).orElseThrow(() -> notFound(complaintId));

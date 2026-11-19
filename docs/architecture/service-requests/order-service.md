@@ -69,3 +69,10 @@
 - 근거 표: `customer_order`(status·mfc_id·approved_amount·confirmed_at, 색인 `ix_customer_order_confirmed`·`ix_customer_order_mfc`), `customer_order_line`(sku·quantity·cancelled_before_ship_qty·line_amount·discount_share).
 - **구현(2026-11-18, PC 1 — order 0.13.0)**: OPERATOR_ADMIN 만 `GET /orders/metrics/summary?from&to&mfcId`(상태별 건수, 결제 승인 금액 합·건수)·`GET /orders/metrics/top-products?from&to&mfcId&limit`(SKU 별 확정 − 출고 전 취소 수량·금액, 기본 10·최대 50). 확정 시각 한국 날짜, 93일 이하, 환불 안 뺌. 시험 `OrderMetricsRulesTest`·`StaffOrderLookupIT`.
 
+
+## O-9. 주문 조회 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
+
+- **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).
+- **필요한 것**: `GET /orders/lookups/counts?<목록과 같은 거르기>` — `GET /orders/lookups` 와 같은 거르기(기간 createdFrom·createdTo·mfcId·customerId 등, `status` 제외)로 `status`(OrderStatus)별 수.
+- 응답 모양(웹 요청 그대로, case 0.26.0 `StatusCounts` 와 같게): `{"counts":[{"key":"<상태>","count":12,"capped":false}],"asOf":"…"}` — **모든 상태 값을 0 까지 빠짐없이**, 셀 상한을 넘으면 `capped=true`(화면 "N+"), 원천을 못 읽으면 503(화면 "?").
+- **웹 질문**: 주문 수에 셀 상한이 필요하면 그 값(화면 "N+") — order 가 정해 적어 줌(기간 31일 상한 안이면 정확히 세도 되는지).

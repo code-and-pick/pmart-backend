@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.25.0
+  version: 0.26.0
   description: |
+    **0.26.0(2026-11-19 — 웹 요청 backend-list-status-counts, 사용자 "진행해")**: `GET /rider-complaints/counts` — 목록과 같은 거르기(종류 거르기 제외)로 종류별 수. 모든 종류를 0 까지 빠짐없이, 정확한 수(SQL 한 번 — capped 늘 false).
     **0.25.0(2026-11-19 — ADR-0070 덧붙임, 사용자 "날짜+일련")**: 화면 표기 — 접수 건 `caseNumber`(C-MMDD-0042), 문의 `inquiryNumber`(Q-MMDD-0012). 한국 날짜·종류마다 1부터(9999 넘으면 5자리), DB 가 매김(V20 — 지금 있는 행도 날짜마다 생성순으로 채움). 해가 바뀌면 같은 번호가 다시 나올 수 있다(번호 + 날짜로 유일) — 목록·표에는 이 번호, caseId·inquiryId 는 상세의 "시스템 번호" 칸. `GET /cases?caseNumber=` 로 찾기.
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
     비정본: 도메인 사고·클레임·수불 정본(각 서비스), 알림(notification), 지급(회계).
@@ -1464,6 +1465,29 @@ paths:
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /rider-complaints/counts:
+    get:
+      tags: [rider-complaints]
+      summary: 라이더 컴플레인 종류별 수 (목록 맨 위 숫자 띠, 0.26.0)
+      x-added-in: '2026-11-19'
+      description: |
+        2026-11-19 웹 요청(backend-list-status-counts): 목록 `GET /rider-complaints` 와 **같은 거르기**(riderId·deliveryId·from·to — 종류 거르기 제외)로 종류별 수.
+        종류(RiderComplaintType)를 0 까지 **빠짐없이** 준다(빠진 것을 0 으로 짐작하지 않게). 이 서비스 표를 SQL 한 번으로 세서 정확 — `capped` 는 늘 false.
+        권한은 목록과 같다(CS_AGENT·OPERATOR_ADMIN·RIDER_OPS).
+      operationId: countRiderComplaints
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, schema: { type: string } }
+        - { name: deliveryId, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatusCounts' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
   /rider-complaints/{complaintId}:
     get:
       tags: [rider-complaints]
@@ -1674,6 +1698,22 @@ components:
             resultNote: { type: [string, 'null'], x-added-in: '2026-11-17' }
             resultBy: { type: [string, 'null'], x-added-in: '2026-11-17' }
             version: { type: integer, x-added-in: '2026-11-17' }
+    StatusCounts:
+      type: object
+      x-added-in: '2026-11-19'
+      description: (0.26.0) 목록 상태별 수 — 웹 숫자 띠 공통 모양(key·count·capped, asOf)
+      required: [counts, asOf]
+      properties:
+        counts:
+          type: array
+          items:
+            type: object
+            required: [key, count, capped]
+            properties:
+              key: { type: string, description: 상태(여기서는 RiderComplaintType) 값 }
+              count: { type: integer, format: int64 }
+              capped: { type: boolean, description: 셀 수 있는 상한을 넘었으면 true(화면 "N+") }
+        asOf: { type: string, format: date-time }
     RiderComplaintType:
       type: string
       enum: [REPORT, MISDELIVERY, DAMAGE]

@@ -58,3 +58,10 @@ delivery-execution-service 는 아직 스캐폴딩(모든 엔드포인트 501)�
 - **필요한 것**: `DeliveryHeadingToCustomer`(토픽 **delivery.delivery.v1**, aggregate Delivery) — 한 라이더가 여러 배송을 들고 있을 때(알뜰·묶음), **앞 배송이 전달 완료(DeliveryCompleted)되고 다음 전달 차례가 이 배송이 될 때 한 번**. 단건 배송(픽업 = 바로 이 고객으로)은 내지 않는다 — 배송 출발 알림이 그 역할.
   - payload: `deliveryId`, `orderId`, `purpose`, `at`. 순서는 execution 이 아는 전달 순서(경로)대로.
 - **받는 쪽(PC 1, 만들어 둠 — 2026-11-19)**: notification `deliveryEvents` 가 `DeliveryHeadingToCustomer` → 고객 알림 `DELIVERY_HEADING`(목적지 DELIVERY, 휴대폰 푸시 포함). 스키마 `contracts/events/DeliveryHeadingToCustomer.v1.json` 는 PC 5 가 만든다.
+
+## DE-7. 배송 확인 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2, 받는 쪽 delivery PC 5)
+
+- **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).
+- **필요한 것**: `GET /deliveries/counts?<목록과 같은 거르기>` — 직원 `GET /deliveries` 와 같은 거르기(orderNumber·riderId·mfcId·type 등, `state` 제외)로 `state`(ExecutionState)별 수.
+- 응답 모양(웹 요청 그대로, case 0.26.0 `StatusCounts` 와 같게): `{"counts":[{"key":"<상태>","count":12,"capped":false}],"asOf":"…"}` — **모든 상태 값을 0 까지 빠짐없이**, 셀 상한을 넘으면 `capped=true`(화면 "N+"), 원천을 못 읽으면 503(화면 "?").
+- 참고: bff `views/work-counts`(0.15.0)가 지금 끝나지 않은 상태를 50건 × 10쪽까지 쪽 넘김으로 센다 — 이 수가 생기면 bff 도 이걸로 바꾼다(PC 1 검토 의견 "count API 로").

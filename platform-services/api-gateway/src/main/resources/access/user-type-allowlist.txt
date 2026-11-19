@@ -252,6 +252,7 @@ GET /api/v1/rider-auth/sessions/current RIDER
 GET /api/v1/rider-auth/social-logins/{authRequestId} PUBLIC
 GET /api/v1/rider-compensations OPERATOR
 GET /api/v1/rider-complaints OPERATOR
+GET /api/v1/rider-complaints/counts OPERATOR
 GET /api/v1/rider-complaints/{complaintId} OPERATOR
 GET /api/v1/rider-earnings OPERATOR
 GET /api/v1/rider-earnings/adjustment-queue OPERATOR

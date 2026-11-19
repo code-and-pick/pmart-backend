@@ -6,6 +6,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -86,6 +87,38 @@ public class RiderComplaintStore {
    *
    * @return size+1 개까지 — 호출 쪽이 다음 쪽 여부를 판단
    */
+  /** 종류별 수(0.26.0) — 목록과 같은 거르기, 종류 거르기는 무시. 없는 종류는 빠진다(부르는 쪽이 0 으로 채움). */
+  public Map<String, Long> countsByType(Filter f) {
+    StringBuilder sql =
+        new StringBuilder("SELECT complaint_type, count(*) AS n FROM rider_complaint WHERE 1=1");
+    List<Object> args = new ArrayList<>();
+    if (f.riderId() != null) {
+      sql.append(" AND rider_id = ?");
+      args.add(f.riderId());
+    }
+    if (f.deliveryId() != null) {
+      sql.append(" AND delivery_id = ?");
+      args.add(f.deliveryId());
+    }
+    if (f.from() != null) {
+      sql.append(" AND recorded_at >= ?");
+      args.add(Timestamp.from(f.from()));
+    }
+    if (f.to() != null) {
+      sql.append(" AND recorded_at < ?");
+      args.add(Timestamp.from(f.to()));
+    }
+    sql.append(" GROUP BY complaint_type");
+    Map<String, Long> out = new java.util.LinkedHashMap<>();
+    jdbc.query(
+        sql.toString(),
+        rs -> {
+          out.put(rs.getString("complaint_type"), rs.getLong("n"));
+        },
+        args.toArray());
+    return out;
+  }
+
   public List<ComplaintRow> page(Filter f, @Nullable String cursor, int size) {
     StringBuilder sql = new StringBuilder("SELECT " + COLS + " FROM rider_complaint WHERE 1=1");
     List<Object> args = new ArrayList<>();

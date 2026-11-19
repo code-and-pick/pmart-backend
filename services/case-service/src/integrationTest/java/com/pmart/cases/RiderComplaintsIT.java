@@ -322,6 +322,7 @@ class RiderComplaintsIT extends PostgresKafkaContainerSupport {
     // 조회: MD 불가
     assertThat(get(md, "/rider-complaints").status()).isEqualTo(403);
     assertThat(get(md, "/rider-complaints/RCP-x").status()).isEqualTo(403);
+    assertThat(get(md, "/rider-complaints/counts").status()).as("종류별 수도 목록과 같은 권한").isEqualTo(403);
     // 거절된 요청은 dispatch 를 부르지 않는다
     dispatch.verify(
         0,
@@ -392,5 +393,35 @@ class RiderComplaintsIT extends PostgresKafkaContainerSupport {
             UUID.randomUUID().toString());
     assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
     return r.body().path("complaintId").asString();
+  }
+
+  /** 0.26.0(웹 숫자 띠): 목록과 같은 거르기로 종류별 수 — 모든 종류를 0 까지, 종류 거르기는 무시, capped false. */
+  @Test
+  void countsByTypeUseListFiltersAndListEveryType() {
+    String rider = id("RD");
+    String agent = TestJwt.operator("cs-cnt", List.of("CS_AGENT"), List.of());
+    for (String type : List.of("DAMAGE", "DAMAGE", "REPORT")) {
+      String delivery = id("DLV");
+      assigned(delivery, rider);
+      Res r =
+          send(
+              "POST",
+              agent,
+              "/rider-complaints",
+              Map.of("deliveryId", delivery, "complaintType", type),
+              UUID.randomUUID().toString());
+      assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    }
+
+    Res counts = get(agent, "/rider-complaints/counts?riderId=" + rider + "&complaintType=REPORT");
+
+    assertThat(counts.status()).as(counts.body().toString()).isEqualTo(200);
+    JsonNode rows = counts.body().path("counts");
+    assertThat(rows.findValuesAsString("key")).containsExactly("REPORT", "MISDELIVERY", "DAMAGE");
+    assertThat(rows.get(0).path("count").asLong()).isEqualTo(1);
+    assertThat(rows.get(1).path("count").asLong()).as("0 도 빠짐없이").isZero();
+    assertThat(rows.get(2).path("count").asLong()).as("종류 거르기는 무시").isEqualTo(2);
+    assertThat(rows.get(0).path("capped").asBoolean(true)).isFalse();
+    assertThat(counts.body().path("asOf").asString()).isNotBlank();
   }
 }
