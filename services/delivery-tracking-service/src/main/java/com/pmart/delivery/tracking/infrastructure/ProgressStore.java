@@ -49,6 +49,25 @@ public class ProgressStore {
         deliveryId);
   }
 
+  /** 배송 목적 사본(TR-4, 2026-11-19 — DeliveryCreated.purpose). */
+  public void purpose(String deliveryId, String purpose) {
+    jdbc.update(
+        "UPDATE delivery_progress SET purpose = COALESCE(purpose, ?) WHERE delivery_id = ?",
+        purpose,
+        deliveryId);
+  }
+
+  /** (orderId, purpose) — 곧 도착 사건용. */
+  public java.util.Optional<String[]> orderAndPurpose(String deliveryId) {
+    return jdbc
+        .query(
+            "SELECT order_id, purpose FROM delivery_progress WHERE delivery_id = ?",
+            (rs, i) -> new String[] {rs.getString("order_id"), rs.getString("purpose")},
+            deliveryId)
+        .stream()
+        .findFirst();
+  }
+
   public void created(
       String deliveryId,
       @Nullable String orderId,

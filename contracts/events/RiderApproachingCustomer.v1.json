@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderApproachingCustomer.v1.json",
+  "title": "RiderApproachingCustomer",
+  "description": "TR-4(2026-11-19 — 사용자 \"응 해줘\", 300m): 픽업 뒤 라이더 마지막 위치가 전달지 좌표 approach-distance-m 안에 처음 들어왔다. 배송당 한 번(나갔다 들어와도 한 번). 발행 delivery-tracking. 토픽 delivery.tracking.v1. 구독 notification(고객 \"라이더님이 곧 도착해요\" — purpose 가 고객 배송일 때만). 거리는 직선. 라이더 좌표는 싣지 않는다.",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "RiderApproachingCustomer" },
+        "aggregateType": { "const": "Delivery" },
+        "payload": {
+          "type": "object",
+          "required": ["deliveryId", "purpose", "distanceM", "at"],
+          "properties": {
+            "deliveryId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "purpose": { "type": "string", "description": "DeliveryCreated.purpose 사본(없으면 DELIVERY)" },
+            "distanceM": { "type": "integer", "minimum": 0 },
+            "at": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

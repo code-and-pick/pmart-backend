@@ -107,6 +107,9 @@ public class ProgressService {
       if (p.path("deliverySeq").isInt()) {
         store.label(deliveryId, p.path("deliverySeq").asInt(), null);
       }
+      if (text(p, "purpose") != null) {
+        store.purpose(deliveryId, text(p, "purpose"));
+      }
       return;
     }
     if ("DeliveryAssigned".equals(e.eventType()) && text(p, "orderNumber") != null) {

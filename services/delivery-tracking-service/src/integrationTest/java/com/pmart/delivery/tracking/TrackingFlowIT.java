@@ -1105,6 +1105,73 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         delivery);
   }
 
+  /** TR-4 곧 도착(2026-11-19 — 300m): 픽업 뒤 전달지 300m 안에 처음 들어오면 배송당 한 번, 좌표 없음. */
+  @Test
+  void riderApproachingCustomerOncePerDelivery() {
+    String delivery = "DLV-ap-" + UUID.randomUUID();
+    String rider = "RD-ap-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryCreated",
+        delivery,
+        Map.of(
+            "deliveryId", delivery, "orderId", "ORD-ap", "mfcId", "MFC-1", "purpose", "DELIVERY"));
+    deliveryEvent(
+        "DeliveryAssigned",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "riderId",
+            rider,
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    deliveryEvent(
+        "PickupCompleted",
+        delivery,
+        Map.of("deliveryId", delivery, "riderId", rider, "pickedUpAt", Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND picked_up_at IS NOT NULL");
+    jdbc.update(
+        "UPDATE rider_active_delivery SET drop_lat = 35.1600, drop_lng = 129.0600, pickup_lat ="
+            + " 35.1500, pickup_lng = 129.0500 WHERE delivery_id = ?",
+        delivery);
+    // 1km 넘게 떨어져 있으면 없음
+    upload(
+        rider, "k1-" + rider, List.of(point(35.1700, 129.0600, 10, Instant.now().minusSeconds(2))));
+    sleepMs(2500);
+    assertThat(approachCount(delivery)).isZero();
+    // 약 110m — 알림 한 번
+    upload(
+        rider, "k2-" + rider, List.of(point(35.1610, 129.0600, 10, Instant.now().minusSeconds(1))));
+    awaitCount(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = '"
+            + delivery
+            + "' AND type = 'RiderApproachingCustomer'");
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type ="
+                + " 'RiderApproachingCustomer'",
+            String.class,
+            delivery);
+    assertThat(payload).contains("\"purpose\": \"DELIVERY\"").doesNotContain("35.16");
+    // 다시 가까이 와도 한 번
+    upload(rider, "k3-" + rider, List.of(point(35.1601, 129.0600, 10, Instant.now())));
+    sleepMs(2500);
+    assertThat(approachCount(delivery)).isEqualTo(1);
+  }
+
+  private int approachCount(String delivery) {
+    return jdbc.queryForObject(
+        "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
+            + " 'RiderApproachingCustomer'",
+        Integer.class,
+        delivery);
+  }
+
   /** 실패 확정 되돌리기(2026-11-19): 실패로 DONE 이 된 단계를 되돌린 상태로, 위치 감시도 다시. */
   @Test
   void failureReversalReopensProgressAndWatch() {

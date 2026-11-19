@@ -27,6 +27,7 @@ delivery-tracking-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 
 
 ## TR-4. 곧 도착 사건 — 라이더가 고객 도착지 300m 안 (2026-11-19, platform PC 1 → delivery PC 5)
+- **구현(2026-11-19 PC 5, V8)**: `ApproachWatch` — 직선 거리(카카오 쓰지 않음), 배송당 한 번, 설정 `pmart.tracking.approach-distance-m`(없으면 꺼짐 — **pmart-config 에 300 필요, PC 1**), 검사 10초. 스키마 `contracts/events/RiderApproachingCustomer.v1.json`.
 - **요청한 곳**: notification(고객 휴대폰 알림 "라이더님이 곧 도착해요!" — 고객 앱 레퍼런스 `10. 알림/3-4`). 업무 문서 근거: `Delivery-business-logic.md` 10.3 "일정 거리 안에 도착하면 곧 도착합니다 알림 자동 전송", Commerce 알림 "준비/출발/곧 도착/완료".
 - **사용자 결정(2026-11-19 "응 해줘")**: 거리 **300m**(PC 1 추천값).
 - **필요한 것**: `RiderApproachingCustomer`(토픽 **delivery.tracking.v1**, aggregate Delivery, 키 deliveryId) — 픽업 뒤(PickupCompleted) 진행 중 배송에서 라이더 마지막 위치(정상 품질)가 **전달지 좌표 300m 안**에 처음 들어올 때 **배송당 한 번**(다시 나갔다 들어와도 한 번). 거리 기준은 설정값으로(없으면 내지 않음 — CONFIG_REQUIRED).

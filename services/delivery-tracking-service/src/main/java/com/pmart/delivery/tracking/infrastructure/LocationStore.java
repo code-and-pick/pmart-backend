@@ -325,6 +325,41 @@ public class LocationStore {
   }
 
   /** 완료·실패·픽업 전 취소 — 닫는다(늦게 온 배정 사건이 다시 열지 않게 행은 남김). */
+  /** 곧 도착 후보(TR-4) — 감시 중·픽업 뒤·아직 안 알림. */
+  public record ApproachRow(
+      String deliveryId,
+      String riderId,
+      @Nullable Double dropLat,
+      @Nullable Double dropLng,
+      @Nullable Double pickupLat,
+      @Nullable Double pickupLng) {}
+
+  public List<ApproachRow> approachCandidates(int limit) {
+    return jdbc.query(
+        "SELECT delivery_id, rider_id, drop_lat, drop_lng, pickup_lat, pickup_lng FROM"
+            + " rider_active_delivery WHERE state = 'ACTIVE' AND picked_up_at IS NOT NULL AND"
+            + " approach_notified_at IS NULL ORDER BY delivery_id LIMIT ?",
+        (rs, i) ->
+            new ApproachRow(
+                rs.getString("delivery_id"),
+                rs.getString("rider_id"),
+                (Double) rs.getObject("drop_lat"),
+                (Double) rs.getObject("drop_lng"),
+                (Double) rs.getObject("pickup_lat"),
+                (Double) rs.getObject("pickup_lng")),
+        limit);
+  }
+
+  /** 곧 도착 알림 표시 — 처음 한 번만 true. */
+  public boolean markApproached(String deliveryId, Instant at) {
+    return jdbc.update(
+            "UPDATE rider_active_delivery SET approach_notified_at = ? WHERE delivery_id = ? AND"
+                + " approach_notified_at IS NULL AND state = 'ACTIVE'",
+            Timestamp.from(at),
+            deliveryId)
+        > 0;
+  }
+
   /** 실패 확정 되돌리기(2026-11-19) — 실패로 끝낸 감시를 다시(같은 라이더·배정). 라이더를 모르던 줄(끝 사건이 먼저 온 것)은 그대로. */
   public void reopenDelivery(String deliveryId, Instant at) {
     jdbc.update(
