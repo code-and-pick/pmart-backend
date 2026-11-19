@@ -33,6 +33,8 @@ class CaseEventConsumers {
         e -> {
           if (RECOVERY_TYPES.contains(e.eventType())) {
             cases.onRecoveryProgress(e);
+          } else if ("DispatchDelayed".equals(e.eventType())) {
+            cases.onDispatchDelayed(e);
           } else if ("DispatchFailed".equals(e.eventType())) {
             cases.onDispatchFailed(e);
           } else {
@@ -81,6 +83,7 @@ class CaseEventConsumers {
       Set.of(
           "DeliveryIncidentRaised",
           "DispatchFailed",
+          "DispatchDelayed",
           "DeliveryCreated",
           "ReturnPickedUp",
           "ReturnDelivered");

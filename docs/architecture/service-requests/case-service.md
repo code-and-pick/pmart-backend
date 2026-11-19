@@ -107,3 +107,5 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - 근거: 원문 Delivery §3.6 "배차지연시간이 일정기준(20분)을 넘으면 MFC관리자·고객센터에 안내". dispatch 는 `DispatchDelayed`(delivery.delivery.v1 — deliveryId·orderId·mfcId·delayedMinutes·threshold·detectedAt, 배송마다 한 번)를 내는데 **구독자가 없었다**(74분 지연에도 아무 안내 없음 — 사용자 지적).
 - 요청: `DispatchDelayed` → 고객센터(CS) 사건 `DISPATCH_DELAYED`(배송마다 하나 — 열린 `DISPATCH_FAILED` 가 있으면 그 사건에 이력만도 됨, case 가 정함). 사건에 mfcId(센터 관리자도 보게 — DD-MFC), 고객이 전화하면 상담원이 바로 찾게 주문 연결. 고객 안내는 notification 이 이미 보냄(`DISPATCH_DELAYED` — 아래).
 - 취소는 사건에서 claim "배차 불가 취소"(claim-service.md CL-5)로 — 전액 환불 + 2,000원 쿠폰.
+
+- **상태: 구현(2026-11-19, case 0.27.0 — PC 2)**: 상담원 팀 사건 `DISPATCH_DELAYED`, 센터 = mfcId(센터 관리자 자기 센터 보기), refs deliveryId·orderId, 배송마다 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로 연다(팀·할 일이 다름). 기한 기본 1시간(표시만, 설정). 취소 버튼은 웹이 claim CL-5 가 나온 뒤 연결.

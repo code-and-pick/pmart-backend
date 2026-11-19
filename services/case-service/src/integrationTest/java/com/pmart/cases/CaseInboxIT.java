@@ -2164,4 +2164,59 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
             Integer.class);
     assertThat(dup).as("같은 날 같은 번호 없음").isZero();
   }
+
+  /**
+   * R-9(0.27.0): 배차 지연 → 상담원 팀 사건 DISPATCH_DELAYED — 배송마다 하나(두 번 와도), 센터 = mfcId, refs 주문, 상담원이 집고
+   * 지원센터에게는 안 보이고 센터 관리자는 자기 센터만 본다.
+   */
+  @Test
+  void dispatchDelayOpensCsCaseVisibleToCenterSupervisor() throws Exception {
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String delivery = "DLV-DD-" + suffix;
+    String center = "MFC-DD-" + suffix;
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", delivery);
+    p.put("orderId", "ORD-DD-" + suffix);
+    p.put("mfcId", center);
+    p.put("delayedMinutes", 74);
+    p.put("threshold", 20);
+    p.put("detectedAt", "2026-11-19T03:00:00Z");
+    publish("delivery.delivery.v1", "DispatchDelayed", delivery, p, "delivery-dispatch-service");
+    publish("delivery.delivery.v1", "DispatchDelayed", delivery, p, "delivery-dispatch-service");
+
+    await(
+        () -> count("SELECT count(*) FROM case_record WHERE subject_ref = ?", delivery),
+        n -> n > 0);
+    Thread.sleep(1000);
+    assertThat(count("SELECT count(*) FROM case_record WHERE subject_ref = ?", delivery))
+        .as("배송마다 하나")
+        .isEqualTo(1);
+
+    Res asCs = send("GET", cs, "/cases?subjectRef=" + delivery, null);
+    assertThat(asCs.status()).isEqualTo(200);
+    JsonNode c = asCs.body().path("items").get(0);
+    assertThat(c.path("kind").asString()).isEqualTo("DISPATCH_DELAYED");
+    assertThat(c.path("assigneeGroup").asString()).isEqualTo("CS");
+    assertThat(c.path("centerId").asString()).isEqualTo(center);
+    assertThat(c.path("caseNumber").asString()).matches("C-[0-9]{4}-[0-9]{4,}");
+    assertThat(c.path("summary").asString()).contains("74분");
+    assertThat(c.path("refs").toString()).contains("ORD-DD-" + suffix);
+    String caseId = c.path("caseId").asString();
+
+    assertThat(send("GET", ops, "/cases?subjectRef=" + delivery, null).body().path("items"))
+        .as("지원센터에게는 안 보임")
+        .isEmpty();
+    String sup = TestJwt.operator("op-sup-dd", List.of("MFC_SUPERVISOR"), List.of(center));
+    assertThat(send("GET", sup, "/cases?subjectRef=" + delivery, null).body().path("items").size())
+        .as("센터 관리자 — 자기 센터 보기")
+        .isEqualTo(1);
+    String other = TestJwt.operator("op-sup-dd2", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER"));
+    assertThat(send("GET", other, "/cases?subjectRef=" + delivery, null).body().path("items"))
+        .isEmpty();
+    assertThat(
+            send("POST", cs, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-cs-1"))
+                .status())
+        .as("상담원이 집는다")
+        .isEqualTo(200);
+  }
 }

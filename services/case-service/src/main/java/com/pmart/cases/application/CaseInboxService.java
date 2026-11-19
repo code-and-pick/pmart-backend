@@ -149,6 +149,41 @@ public class CaseInboxService {
         "INCIDENT:" + incidentId);
   }
 
+  /**
+   * R-9(2026-11-19 — 원문 Delivery §3.6 "배차지연시간이 일정기준을 넘으면 MFC관리자·고객센터에 안내", 사용자 "1,2,3 전부"):
+   * dispatch {@code DispatchDelayed}(배송마다 한 번) → 상담원 팀 사건 DISPATCH_DELAYED. 센터 = mfcId(센터 관리자도 자기
+   * 센터만 보기), 주문을 refs 로(고객 전화 때 주문으로 찾기). 같은 배송에 열린 배차 실패(DISPATCH_FAILED — 지원센터)가 있어도 따로 연다 — 팀이
+   * 다르다(지원센터는 배차, 상담원은 고객 안내·취소). 같은 배송으로 열린 지연 사건이 있으면 그대로(dedupe). 고객 안내는 notification, 취소는 claim
+   * "배차 불가 취소"(사건은 부르지 않음).
+   */
+  public void onDispatchDelayed(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String deliveryId = text(p, "deliveryId");
+    if (deliveryId == null) {
+      throw new IllegalArgumentException("deliveryId 없음"); // 계약 위반 → DLT
+    }
+    List<Ref> refs = new ArrayList<>();
+    refs.add(new Ref("deliveryId", deliveryId));
+    addRef(refs, "orderId", text(p, "orderId"));
+    int minutes = p.path("delayedMinutes").asInt(0);
+    String summary =
+        "배차 지연 — 약속보다 "
+            + minutes
+            + "분 늦음, 고객 안내·취소 문의 대비(기준 "
+            + p.path("threshold").asInt(0)
+            + "분)";
+    openFromEvent(
+        e,
+        CaseRules.DISPATCH_DELAYED,
+        "P2",
+        "DELIVERY",
+        deliveryId,
+        text(p, "mfcId"),
+        summary,
+        refs,
+        "DISPATCH_DELAYED:" + deliveryId);
+  }
+
   /** R-6: 배달 중 위치 끊김 → RIDER_LOCATION_STALE. 같은 라이더·배송으로 열린 사건이 있으면 이력(재발)만. */
   public void onLocationStale(EventEnvelope e) {
     JsonNode p = e.payload();

@@ -41,6 +41,9 @@ public final class CaseRules {
   public static final String DISPATCH_FAILED = "DISPATCH_FAILED";
   public static final String RETURN_RECOVERY_FAILED = "RETURN_RECOVERY_FAILED";
 
+  /** 배차 지연(R-9, 2026-11-19 — 원문 Delivery §3.6, 사용자 "1,2,3 전부") — 상담원 팀, 센터 관리자도 보기. */
+  public static final String DISPATCH_DELAYED = "DISPATCH_DELAYED";
+
   public static final String GROUP_DELIVERY_OPS = "DELIVERY_OPS";
   public static final String GROUP_ORDER_OPS = "ORDER_OPS";
 
@@ -54,7 +57,7 @@ public final class CaseRules {
   public static final Set<String> ORDER_KINDS = Set.of(RECONCILIATION, PAYMENT_UNKNOWN);
 
   /** 상담원 팀 사건(R-8) — CS_AGENT 가 집고 닫는다, 관리자는 모두, 지원센터에는 안 보임. */
-  public static final Set<String> CS_KINDS = Set.of(RETURN_RECOVERY_FAILED);
+  public static final Set<String> CS_KINDS = Set.of(RETURN_RECOVERY_FAILED, DISPATCH_DELAYED);
 
   /** 상담원이 보는 종류 = 배송 쪽(보기만) + 상담원 팀. */
   public static final Set<String> CS_AGENT_KINDS = union(DELIVERY_KINDS, CS_KINDS);
@@ -66,7 +69,7 @@ public final class CaseRules {
   /** 센터 관리자 — 자기 센터(토큰 centers)의 배차 실패 사건만 보기(2026-11-16 사용자 "추천대로", 배송 원문 §3.6). */
   public static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
 
-  public static final Set<String> MFC_SUPERVISOR_KINDS = Set.of(DISPATCH_FAILED);
+  public static final Set<String> MFC_SUPERVISOR_KINDS = Set.of(DISPATCH_FAILED, DISPATCH_DELAYED);
 
   public static final List<String> CREATE_MISDELIVERY_ROLES = List.of(CS_AGENT, RIDER_OPS, ADMIN);
 
@@ -83,7 +86,8 @@ public final class CaseRules {
           RECONCILIATION, Duration.ofHours(1),
           PAYMENT_UNKNOWN, Duration.ofHours(1),
           DISPATCH_FAILED, Duration.ofMinutes(10),
-          RETURN_RECOVERY_FAILED, Duration.ofHours(1));
+          RETURN_RECOVERY_FAILED, Duration.ofHours(1),
+          DISPATCH_DELAYED, Duration.ofHours(1));
 
   public static String group(String kind) {
     if (DELIVERY_KINDS.contains(kind)) {
@@ -162,7 +166,8 @@ public final class CaseRules {
           DISPATCH_FAILED,
           RECONCILIATION,
           PAYMENT_UNKNOWN,
-          RETURN_RECOVERY_FAILED);
+          RETURN_RECOVERY_FAILED,
+          DISPATCH_DELAYED);
 
   private static Set<String> union(Set<String> a, Set<String> b) {
     var s = new java.util.HashSet<>(a);
