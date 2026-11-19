@@ -136,9 +136,9 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] **백오피스 고객센터 "주문 취소"**(2026-11-18 PC 1 — claim 0.4.0, 상품준비 전 주문 전체 취소, CS_AGENT·OPERATOR_ADMIN): 주문 상세 버튼(CONFIRMED 만), 사유·본인 확인 필수(반품과 같은 칸), PREPARING 뒤 안내 문구 — handoff `docs/handoff/clients/backoffice/2026-11-18-request-cs-order-cancel.md`
 - [ ] **R-8 반품 회수 실패 → 상담원 재연락 사건 + 백오피스 반품 접수 화면**(2026-11-17 PC 1 — CL-1): case 가 `ReturnRecoveryFailed`(order.claim.v1) 구독 → 고객센터 사건(요청서 `case-service.md` R-8). 백오피스 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN)·회수 조치(`POST /claims/{id}/recovery-actions`) — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`. **백엔드 사건 구현 2026-11-17(case 0.22.0, PR — pmart-config 바인딩 `claimEvents` PC 1)**, 남은 것: 웹 화면(반품 접수·회수 조치·사건함 상담원 팀 종류)
 - [ ] **직원 웹 앱 바꾸기 메뉴(앱 런처 ⋮⋮⋮)**(2026-11-17 사용자 "지금 직원용 백오피스 4개", "같은 탭", "다 보여지는 방식" — 요청 `docs/handoff/clients/all/2026-11-17-request-app-launcher.md`): `web/ui` 에 `AppLauncher`(네 앱 모두에게 같게, 역할로 거르지 않음, 같은 탭 `<a href>`, 주소 = 지금 호스트 이름 + 포트 443·8444·8445·8446 / localhost 5173~5176) + `web/backoffice`·`web/hr-backoffice` 머리줄. 로그인·세션 코드는 건드리지 않음. 네 앱 빌드·시험 모두. PC 3·5 는 병합 뒤 한 줄씩
-- [ ] **BF-1 화면 응답에 운영자 이름·사번**(2026-11-19 PC 1 — 원 요청 backoffice operator-display-names R2, 선택): 원천 hr-service 0.8.0 `GET /hr/employee-labels`. `docs/architecture/service-requests/backoffice-bff.md` BF-1
+- [x] **BF-1 화면 응답에 운영자 이름·사번**(2026-11-19 PC 1 — 원 요청 backoffice operator-display-names R2, 선택): 원천 hr-service 0.8.0 `GET /hr/employee-labels`. `docs/architecture/service-requests/backoffice-bff.md` BF-1 — **2026-11-19 구현(bff 0.17.0, #212)**
 
-- [ ] (2026-11-19 delivery) case R-9 배차 지연 → 고객센터 사건(`DispatchDelayed`)
+- [x] (2026-11-19 delivery) case R-9 배차 지연 → 고객센터 사건(`DispatchDelayed`) — **2026-11-19 구현·배포(case 0.27.0, #230), 기한 1시간 사용자 확정(#232)**
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 

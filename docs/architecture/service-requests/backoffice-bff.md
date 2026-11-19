@@ -25,4 +25,4 @@
 - **원천**: hr-service `GET /api/v1/hr/employee-labels?operatorIds=…`(직원 토큰 — bff 는 받은 토큰 그대로 전파, 1~50개, 퇴사자 포함, 모르는 ID 는 빠짐 → 화면 "확인 불가"). 줄 `{operatorId, name, employeeNo}`. 이름은 로그 금지.
 - **요청**: `views/approvals`(요청자·결정자)·`views/pending-work`(최근 재시도한 사람)·접수 건함 화면(맡은 사람)의 운영자 ID 옆에 `…Label: {name, employeeNo} | null`. hr 를 못 읽으면 그 칸만 null(화면 전체를 막지 않음 — unavailableSources 에 hr).
 - 급함: 낮음(화면이 R1 을 직접 불러도 됨). 모양은 PC 2 가 정해 클라이언트에 알림.
-- **상태**: 요청(PC 2).
+- **상태**: **구현(2026-11-19, bff 0.17.0 — PR #212, 배포됨)**: 모양 `OperatorLabel{operatorId, name, employeeNo}` — 승인함 `items[].requestedByLabel`, 처리 대기 `items[].lastRetry.operator`, 접수 건함 `items[].assignee`(그 뒤 0.18.0 라이더 컴플레인 `recordedByLabel`). 화면 응답 하나에 hr 한 번(50개씩), 실패면 그 칸만 null + unavailableSources hr-service(403·404 는 장애 아님). 승인 결정자(상세의 결정 이력)는 bff 화면에 없어 웹이 hr 를 직접(R1).
