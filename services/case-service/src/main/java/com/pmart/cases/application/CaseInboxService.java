@@ -5,6 +5,7 @@ import com.pmart.cases.infrastructure.CaseStore;
 import com.pmart.cases.infrastructure.CaseStore.CaseRow;
 import com.pmart.cases.infrastructure.CaseStore.Ref;
 import com.pmart.cases.infrastructure.DispatchClient;
+import com.pmart.cases.infrastructure.ExecutionClient;
 import com.pmart.cases.infrastructure.ObligationStore;
 import com.pmart.common.messaging.EventEnvelope;
 import com.pmart.common.messaging.EventPublisher;
@@ -93,14 +94,18 @@ public class CaseInboxService {
   private final CaseProperties props;
   private final Clock clock;
 
+  private final ExecutionClient execution;
+
   public CaseInboxService(
       CaseStore store,
       EventPublisher events,
       RequestIdempotency idempotency,
       DispatchClient dispatch,
+      ExecutionClient execution,
       ObligationStore obligations,
       CaseProperties props,
       Clock clock) {
+    this.execution = execution;
     this.store = store;
     this.events = events;
     this.idempotency = idempotency;
@@ -795,6 +800,7 @@ public class CaseInboxService {
     if (summary == null || summary.isBlank()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "summary(처리 내용)가 필요합니다.");
     }
+    requireFailureDecided(visible(p, caseId));
     idempotency.execute(
         new RequestKey(sourceSystem, requestId, "closeCase:" + caseId, p.subject()),
         List.of(resolution, summary),
@@ -1059,6 +1065,75 @@ public class CaseInboxService {
       return configured.get(kind);
     }
     return CaseRules.DEFAULT_SLA.getOrDefault(kind, Duration.ofHours(4));
+  }
+
+  /**
+   * R-10(2026-11-19 — PC 5 요청, 사용자 "연락불가로 전달할 수 없다는 도움요청 넣고 나서 지원센터에서 처리해버리면 …"): 라이더 도움요청·전달 실패
+   * 사건(RIDER_HELP·DELIVERY_INCIDENT, subject 배송)은 그 배송이 아직 전달 실패 결정 전(execution state
+   * FAILURE_REPORTED)이면 닫지 못한다 — 409 FAILURE_DECISION_PENDING. execution 은 직원 토큰으로 한 번(멱등 트랜잭션 밖에서
+   * 먼저). 배송이 없으면(404) 막지 않고, 못 읽으면(장애·권한) 닫지 않는다(503 — 확인 못 한 채 닫지 않게). 이미 닫힌 사건은 그대로(멱등 재전송).
+   */
+  private void requireFailureDecided(CaseRow c) {
+    if ("CLOSED".equals(c.state())
+        || !"DELIVERY".equals(c.subjectType())
+        || c.subjectRef() == null
+        || !(CaseRules.RIDER_HELP.equals(c.kind())
+            || CaseRules.DELIVERY_INCIDENT.equals(c.kind()))) {
+      return;
+    }
+    ExecutionClient.DeliveryState d = execution.state(c.subjectRef());
+    if (!d.found()) {
+      return;
+    }
+    if (!d.readable()) {
+      throw PmartException.dependencyUnavailable(
+          "배송 상태를 확인할 수 없어 닫지 않았습니다 — 잠시 뒤 다시 하세요.",
+          new IllegalStateException("execution 401·403"));
+    }
+    if ("FAILURE_REPORTED".equals(d.state())) {
+      throw new PmartException(
+          "FAILURE_DECISION_PENDING",
+          HttpStatus.CONFLICT,
+          "라이더가 등록한 전달 실패가 아직 결정 전입니다 — 실패 확정·반려를 먼저 하고 닫으세요.",
+          false,
+          List.of());
+    }
+  }
+
+  /**
+   * R-10 (나)(2026-11-19 사용자 "추천대로" — 자동 재개는 하지 않는다, 2026-11-16 "재개는 사람이 손으로만" 유지): 라이더가 닫힌 도움요청을 다시
+   * 열면(execution {@code HelpRequestReopened}) 그 도움요청의 접수 건에 이력 RIDER_REOPENED 만 남기고 updated_at 을
+   * 올린다(목록에서 바뀐 건으로 보이게). 접수 건이 닫혀 있어도 상태는 그대로 — 지원센터가 이력을 보고 직접 다시 처리하기. 찾는 순서: payload caseId,
+   * 없으면 incidentId 의 가장 최근 사건. 없으면 로그만.
+   */
+  public void onHelpRequestReopened(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String caseId = text(p, "caseId");
+    String incidentId = text(p, "incidentId");
+    var found =
+        caseId != null
+            ? store.lock(caseId)
+            : incidentId == null
+                ? java.util.Optional.<CaseRow>empty()
+                : store.lockLatestByDedupe("INCIDENT:" + incidentId);
+    if (found.isEmpty()) {
+      log.warn("도움요청 다시 열림 — 접수 건 없음, 무시");
+      return;
+    }
+    CaseRow c = found.get();
+    Instant now = now();
+    store.touch(c.caseId(), now);
+    store.history(
+        c.caseId(),
+        now,
+        SYSTEM,
+        "RIDER_REOPENED",
+        null,
+        null,
+        "CLOSED".equals(c.state())
+            ? "라이더가 도움요청을 다시 열었어요 — 처리 끝난 건이라 확인 뒤 필요하면 다시 처리하기"
+            : "라이더가 도움요청을 다시 열었어요");
+    log.info("도움요청 다시 열림 — 사건 {} ({})", c.caseId(), c.state());
   }
 
   /** 의무(0.8.0)가 쓴다 — 지금 직원이 볼 수 있는 사건(없거나 못 보면 404). */

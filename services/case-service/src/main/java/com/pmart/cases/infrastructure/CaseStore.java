@@ -140,6 +140,17 @@ public class CaseStore {
         .findFirst();
   }
 
+  /** 같은 dedupe_key 의 가장 최근 사건(닫힌 것 포함, 잠금) — 라이더가 도움요청을 다시 열 때(R-10). */
+  public Optional<CaseRow> lockLatestByDedupe(String dedupeKey) {
+    return jdbc
+        .query(
+            SELECT + " WHERE dedupe_key = ? ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+            this::row,
+            dedupeKey)
+        .stream()
+        .findFirst();
+  }
+
   public Optional<CaseRow> find(String caseId) {
     return jdbc.query(SELECT + " WHERE case_id = ?", this::row, caseId).stream().findFirst();
   }

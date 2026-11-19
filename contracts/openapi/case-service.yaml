@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.27.0
+  version: 0.28.0
   description: |
+    **0.28.0(2026-11-19 — R-10, PC 5 요청·사용자 "추천대로")**: ① 라이더 도움요청·전달 실패 사건(RIDER_HELP·DELIVERY_INCIDENT, subject 배송)은 그 배송이 **전달 실패 결정 전**(execution `GET /deliveries/{id}` state FAILURE_REPORTED — 닫는 직원 토큰으로)이면 `POST /cases/{id}/closures` **409 FAILURE_DECISION_PENDING**, 배송 상태를 못 읽으면 503(확인 없이 닫지 않음), 배송 없음(404)은 막지 않음. ② execution `HelpRequestReopened` → 그 접수 건에 이력 **RIDER_REOPENED** 만(상태 그대로 — 자동 재개 없음, 2026-11-16 "재개는 사람이 손으로만" 유지).
     **0.27.0(2026-11-19 — R-9, PC 5 요청·사용자 "1,2,3 전부", 원문 Delivery §3.6)**: 사건 종류 `DISPATCH_DELAYED`(배차 지연) — dispatch `DispatchDelayed`(배송마다 한 번)를 받아 **상담원 팀(CS)** 사건, 센터 = mfcId(센터 관리자 MFC_SUPERVISOR 도 자기 센터만 보기), refs deliveryId·orderId, 배송마다 열린 것 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로. 기한 1시간(표시만 — 사용자 확정 2026-11-19, 설정으로 바꿀 수 있음). 고객 안내는 notification, 취소는 claim "배차 불가 취소"(사건이 부르지 않음).
     **0.26.0(2026-11-19 — 웹 요청 backend-list-status-counts, 사용자 "진행해")**: `GET /rider-complaints/counts` — 목록과 같은 거르기(종류 거르기 제외)로 종류별 수. 모든 종류를 0 까지 빠짐없이, 정확한 수(SQL 한 번 — capped 늘 false).
     **0.25.0(2026-11-19 — ADR-0070 덧붙임, 사용자 "날짜+일련")**: 화면 표기 — 접수 건 `caseNumber`(C-MMDD-0042), 문의 `inquiryNumber`(Q-MMDD-0012). 한국 날짜·종류마다 1부터(9999 넘으면 5자리), DB 가 매김(V20 — 지금 있는 행도 날짜마다 생성순으로 채움). 해가 바뀌면 같은 번호가 다시 나올 수 있다(번호 + 날짜로 유일) — 목록·표에는 이 번호, caseId·inquiryId 는 상세의 "시스템 번호" 칸. `GET /cases?caseNumber=` 로 찾기.
@@ -254,6 +255,7 @@ paths:
       description: |
         귀책·비용 결정을 기록한다(지급은 회계). CloseSnapshot 을 남긴다. 시간 경과 자동 종결은 없다.
         0.4.0(2026-11-16): 그 종류의 팀(배송 쪽 = RIDER_OPS)·OPERATOR_ADMIN. 다른 사람이 집은 사건은 OPERATOR_ADMIN 만. liability 는 지금 저장하지 않는다. 결과는 사건 상세(200).
+        0.28.0(2026-11-19 R-10): 라이더 도움요청·전달 실패 사건은 그 배송이 전달 실패 결정 전(FAILURE_REPORTED)이면 409 FAILURE_DECISION_PENDING(실패 확정·반려를 먼저), 배송 상태를 못 읽으면 503.
         0.8.0(2026-11-16): 열린 의무(OPEN·PARTIALLY_RESOLVED)가 있으면 409 OPEN_OBLIGATIONS — 의무를 해소하거나 관리자가 면제·실패로 끝낸 뒤 닫는다(업무 원문 §5.3 "상담 종료와 의무 종결은 구분").
       operationId: closeCase
       x-pmart-user-types: [OPERATOR]
@@ -1622,6 +1624,7 @@ components:
                       원천 사건: RECURRED(열린 동안 같은 일이 또 생김)·RECOVERY_CREATED·RECOVERY_PICKED_UP·RECOVERY_RETURNED(오배송 회수 배송 생성·수거·반납)·RESHIPMENT_CREATED(오배송 재발송 배송 생성)·CLAIM_CLOSED(반품 끝남 — 사건은 열린 채, 0.24.1).
                       후속 처리·행위: OBLIGATION_CREATED·OBLIGATION_ATTEMPTED·OBLIGATION_RESOLVED, ACTION_REQUESTED·ACTION_RESULT_RECORDED.
                       접수·문의: CS_INTAKE_LINKED(상담원 접수를 이 사건에 연결)·INQUIRY_CLOSED(문의 닫힘).
+                      라이더: RIDER_REOPENED(0.28.0 — 라이더가 도움요청을 다시 열었음, 닫힌 건이어도 상태 그대로 — 사람이 보고 다시 처리하기).
                   fromState: { type: string }
                   toState: { type: string }
                   note: { type: string }

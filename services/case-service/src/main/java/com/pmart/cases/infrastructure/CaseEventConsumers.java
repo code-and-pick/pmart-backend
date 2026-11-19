@@ -33,6 +33,8 @@ class CaseEventConsumers {
         e -> {
           if (RECOVERY_TYPES.contains(e.eventType())) {
             cases.onRecoveryProgress(e);
+          } else if ("HelpRequestReopened".equals(e.eventType())) {
+            cases.onHelpRequestReopened(e);
           } else if ("DispatchDelayed".equals(e.eventType())) {
             cases.onDispatchDelayed(e);
           } else if ("DispatchFailed".equals(e.eventType())) {
@@ -84,6 +86,7 @@ class CaseEventConsumers {
           "DeliveryIncidentRaised",
           "DispatchFailed",
           "DispatchDelayed",
+          "HelpRequestReopened",
           "DeliveryCreated",
           "ReturnPickedUp",
           "ReturnDelivered");

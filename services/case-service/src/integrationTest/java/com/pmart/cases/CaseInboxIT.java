@@ -48,10 +48,14 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.cases.delivery-dispatch-base-url=${dispatch.url}",
+      "pmart.cases.delivery-execution-base-url=${execution.url}",
       "pmart.test.context=case-inbox"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock({@ConfigureWireMock(name = "dispatch", baseUrlProperties = "dispatch.url")})
+@EnableWireMock({
+  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "dispatch.url"),
+  @ConfigureWireMock(name = "execution", baseUrlProperties = "execution.url")
+})
 class CaseInboxIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
@@ -61,6 +65,10 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("dispatch")
   WireMockServer dispatch;
+
+  /** R-10: 닫을 때 배송 상태 — 스텁이 없으면 404(배송 없음 → 막지 않음). */
+  @InjectWireMock("execution")
+  WireMockServer execution;
 
   final String ops = TestJwt.operator("op-ops-1", List.of("RIDER_OPS"), List.of());
   final String ops2 = TestJwt.operator("op-ops-2", List.of("RIDER_OPS"), List.of());
@@ -2218,5 +2226,88 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
                 .status())
         .as("상담원이 집는다")
         .isEqualTo(200);
+  }
+
+  /**
+   * R-10(2026-11-19): 전달 실패 결정 전(배송 FAILURE_REPORTED)이면 그 배송의 전달 실패·도움요청 사건은 닫지 못한다(409
+   * FAILURE_DECISION_PENDING). 결정 뒤에는 닫힌다. 닫힌 뒤 라이더가 도움요청을 다시 열면(HelpRequestReopened) 이력만 — 상태
+   * 그대로(자동 재개 없음, 사용자 "추천대로").
+   */
+  @Test
+  void failurePendingBlocksCloseAndRiderReopenOnlyLeavesHistory() throws Exception {
+    String deliveryId = "DLV-R10-" + UUID.randomUUID().toString().substring(0, 8);
+    String incidentId = deliveryId + ":FAIL-1";
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("incidentId", incidentId);
+    p.put("deliveryId", deliveryId);
+    p.put("riderId", "RD-1");
+    p.put("type", "DELIVERY_FAILURE");
+    p.put("category", "DELIVERY_FAILURE");
+    p.put("stage", "PICKED_UP");
+    p.put("mfcId", "MFC-1");
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryIncidentRaised",
+        deliveryId,
+        p,
+        "delivery-execution-service");
+    await(
+        () -> count("SELECT count(*) FROM case_record WHERE subject_ref = ?", deliveryId),
+        n -> n > 0);
+    String caseId =
+        jdbc.queryForObject(
+            "SELECT case_id FROM case_record WHERE subject_ref = ?", String.class, deliveryId);
+    assertThat(
+            send("POST", ops, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-ops-1"))
+                .status())
+        .isEqualTo(200);
+    Map<String, Object> close = Map.of("resolution", "RESOLVED", "summary", "고객 연락 안 됨 — 실패 처리");
+
+    execution.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/deliveries/" + deliveryId))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"deliveryId\":\"" + deliveryId + "\",\"state\":\"FAILURE_REPORTED\"}")));
+    Res blocked = send("POST", ops, "/cases/" + caseId + "/closures", close);
+    assertThat(blocked.status()).as(blocked.body().toString()).isEqualTo(409);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("FAILURE_DECISION_PENDING");
+    execution.verify(
+        com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/deliveries/" + deliveryId))
+            .withHeader(
+                "Authorization",
+                com.github.tomakehurst.wiremock.client.WireMock.equalTo("Bearer " + ops)));
+
+    execution.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/deliveries/" + deliveryId))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"deliveryId\":\"" + deliveryId + "\",\"state\":\"FAILED\"}")));
+    Res closed = send("POST", ops, "/cases/" + caseId + "/closures", close);
+    assertThat(closed.status()).as(closed.body().toString()).isEqualTo(200);
+
+    Map<String, Object> r = new LinkedHashMap<>();
+    r.put("deliveryId", deliveryId);
+    r.put("requestId", "FAIL-1");
+    r.put("incidentId", incidentId);
+    r.put("riderId", "RD-1");
+    r.put("caseId", caseId);
+    r.put("reopenedAt", "2026-11-19T06:00:00Z");
+    publish(
+        "delivery.delivery.v1", "HelpRequestReopened", deliveryId, r, "delivery-execution-service");
+    await(
+        () ->
+            count(
+                "SELECT count(*) FROM case_history WHERE case_id = ? AND action = 'RIDER_REOPENED'",
+                caseId),
+        n -> n > 0);
+    assertThat(send("GET", ops, "/cases/" + caseId, null).body().path("state").asString())
+        .as("자동 재개 없음 — 지원센터가 직접")
+        .isEqualTo("CLOSED");
   }
 }
