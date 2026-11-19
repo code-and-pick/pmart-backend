@@ -33,6 +33,8 @@ public class MetricsView {
 
   private static final Logger log = LoggerFactory.getLogger(MetricsView.class);
   static final String CASE_SLA = "CASE_SLA";
+  static final String SHORTAGE_RATE = "SHORTAGE_RATE";
+  static final List<String> SHORT_REASONS = List.of("SHORT", "DAMAGED", "BLOCKED");
 
   private final LookupClients clients;
   private final Clock clock;
@@ -54,13 +56,16 @@ public class MetricsView {
     String token =
         PmartPrincipal.currentTokenValue()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자 토큰이 필요합니다."));
+    if (SHORTAGE_RATE.equals(metric)) {
+      return shortageRate(token, from, to, centerId, granularity);
+    }
     if (!CASE_SLA.equals(metric)) {
       throw new PmartException(
           "NOT_IMPLEMENTED",
           HttpStatus.NOT_IMPLEMENTED,
           "PAYMENT_UNKNOWN".equals(metric)
               ? "결제 결과 불명은 지표로 만들지 않습니다 — 처리 대기·사건함에서 보세요."
-              : "아직 정의·원천이 없는 지표입니다(지금은 CASE_SLA 만).",
+              : "아직 정의·원천이 없는 지표입니다(지금은 CASE_SLA·SHORTAGE_RATE).",
           false,
           List.of());
     }
@@ -76,7 +81,7 @@ public class MetricsView {
     try {
       sla = clients.get(Source.CASE, token, "/cases/metrics/sla", Map.of(), q);
     } catch (HttpClientErrorException e) {
-      throw rejected(e);
+      throw rejected(e, "접수 건");
     } catch (PmartException e) {
       // 주 원천이 없으면 빈 목록(0건)으로 보이지 않게 503 — 0건과 모름을 섞지 않는다(BO-28)
       log.warn("지표: case-service 실패 — {}", e.code());
@@ -156,11 +161,112 @@ public class MetricsView {
     return out;
   }
 
+  /**
+   * 결품률(0.20.0, 2026-11-19 — PC 3 F-10 mfc-fulfillment 0.19.0 `GET /metrics/picking-lines`). 사용자
+   * 결정(2026-11-18): **줄 단위·사유별** — numerator = 결품이 보고된 줄(shortLines), denominator = 피킹을 시작한
+   * 줄(pickedLines, 원래 주문 작업만), 날짜·센터마다. 사유별 점(segment.reason = SHORT·DAMAGED·BLOCKED)은 같은 분모에 그 사유
+   * 줄 수 — 한 줄에 사유가 둘이면 둘 다 세서 합이 전체보다 클 수 있다. totals 는 사유 없는 점(전체)만 더한다. 날짜 단위만(시간 단위는 400), 기간은 원천
+   * 상한(92일). 판정 불가 개념이 없어 unjudged 0.
+   */
+  private Map<String, Object> shortageRate(
+      String token,
+      LocalDate from,
+      LocalDate to,
+      @Nullable String centerId,
+      @Nullable String granularity) {
+    if (granularity != null && !"DAY".equals(granularity)) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "결품률은 날짜 단위(DAY)만 있습니다.");
+    }
+    Instant now = clock.instant();
+    Map<String, Object> q = new LinkedHashMap<>();
+    q.put("from", from.toString());
+    q.put("to", to.toString());
+    if (centerId != null && !centerId.isBlank()) {
+      q.put("mfcId", centerId.strip());
+    }
+    JsonNode body;
+    try {
+      body = clients.get(Source.FULFILLMENT, token, "/metrics/picking-lines", Map.of(), q);
+    } catch (HttpClientErrorException e) {
+      throw rejected(e, "MFC 피킹");
+    } catch (PmartException e) {
+      log.warn("지표: mfc-fulfillment 실패 — {}", e.code());
+      throw new PmartException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE, "MFC 피킹 원천에 닿지 않았습니다 — 잠시 뒤 다시 보세요.");
+    }
+    String asOf = text(body, "asOf");
+    Instant sourceAt = asOf == null ? now : Instant.parse(asOf);
+    List<Map<String, Object>> points = new ArrayList<>();
+    Map<String, long[]> totals = new LinkedHashMap<>(); // 날짜 → {결품 줄, 피킹 줄}
+    for (JsonNode r : body.path("items")) {
+      String bucket = text(r, "date");
+      String mfc = text(r, "mfcId");
+      long picked = r.path("pickedLines").asLong(0);
+      long shortLines = r.path("shortLines").asLong(0);
+      points.add(shortPoint(bucket, mfc, null, shortLines, picked, sourceAt));
+      for (String reason : SHORT_REASONS) {
+        points.add(
+            shortPoint(
+                bucket,
+                mfc,
+                reason,
+                r.path("shortLinesByReason").path(reason).asLong(0),
+                picked,
+                sourceAt));
+      }
+      long[] t = totals.computeIfAbsent(bucket, k -> new long[2]);
+      t[0] += shortLines;
+      t[1] += picked;
+    }
+    List<Map<String, Object>> totalRows = new ArrayList<>();
+    totals.forEach(
+        (b, t) -> {
+          Map<String, Object> m = new LinkedHashMap<>();
+          m.put("bucket", b);
+          m.put("numerator", t[0]);
+          m.put("denominator", t[1]);
+          m.put("ratio", ratio(t[0], t[1]));
+          m.put("unjudged", 0L);
+          totalRows.add(m);
+        });
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("composedAt", now.toString());
+    out.put("sources", List.of(stamp(Source.FULFILLMENT.system, sourceAt, true)));
+    out.put("unavailableSources", List.of());
+    out.put("metric", SHORTAGE_RATE);
+    out.put("timeZone", "Asia/Seoul");
+    out.put("points", points);
+    out.put("totals", totalRows);
+    out.put("currentOverdue", null); // 접수 건 지표에만
+    return out;
+  }
+
+  private static Map<String, Object> shortPoint(
+      @Nullable String bucket,
+      @Nullable String mfcId,
+      @Nullable String reason,
+      long numerator,
+      long denominator,
+      Instant sourceAt) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("bucket", bucket);
+    p.put("numerator", numerator);
+    p.put("denominator", denominator);
+    p.put("ratio", ratio(numerator, denominator));
+    p.put("unjudged", 0L);
+    Map<String, Object> seg = new LinkedHashMap<>();
+    seg.put("mfcId", mfcId);
+    seg.put("reason", reason);
+    p.put("segment", seg);
+    p.put("source", stamp(Source.FULFILLMENT.system, sourceAt, true));
+    return p;
+  }
+
   static @Nullable Double ratio(long numerator, long denominator) {
     return denominator <= 0 ? null : (double) numerator / denominator;
   }
 
-  private static PmartException rejected(HttpClientErrorException e) {
+  private static PmartException rejected(HttpClientErrorException e, String what) {
     int sc = e.getStatusCode().value();
     if (sc == 401) {
       return new PmartException(
@@ -186,6 +292,6 @@ public class MetricsView {
       return new PmartException(ErrorCode.VALIDATION_FAILED, detail);
     }
     return new PmartException(
-        "CASE_SOURCE_REJECTED", HttpStatus.valueOf(sc), "접수 건 원천이 거절했습니다.", false, List.of());
+        "SOURCE_REJECTED", HttpStatus.valueOf(sc), what + " 원천이 거절했습니다.", false, List.of());
   }
 }

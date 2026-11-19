@@ -39,7 +39,10 @@ import tools.jackson.databind.ObjectMapper;
       "spring.autoconfigure.exclude=org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock({@ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url")})
+@EnableWireMock({
+  @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
+  @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url")
+})
 class MetricsViewIT {
 
   static final String ADMIN = TestJwt.operator("op-admin", List.of("OPERATOR_ADMIN"), List.of());
@@ -50,11 +53,15 @@ class MetricsViewIT {
   @InjectWireMock("case")
   WireMockServer cases;
 
+  @InjectWireMock("mfc")
+  WireMockServer mfc;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
     cases.resetAll();
+    mfc.resetAll();
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1/backoffice")
@@ -178,5 +185,56 @@ class MetricsViewIT {
     assertThat(pay.status()).isEqualTo(501);
     assertThat(pay.body().path("detail").asString()).contains("처리 대기");
     cases.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/cases/metrics/sla")));
+  }
+
+  /** 0.20.0(PC 3 F-10): 결품률 — 줄 단위, 날짜·센터 점 + 사유별 점, totals 는 전체 점만, 시간 단위 400, 원천 장애 503. */
+  @Test
+  void shortageRateUsesPickingLinesByDayCenterAndReason() {
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/picking-lines"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"asOf":"2026-11-19T03:00:00Z","items":[
+                      {"date":"2026-11-18","mfcId":"MFC-1","pickedLines":40,"shortLines":4,"shortLinesByReason":{"SHORT":3,"DAMAGED":1,"BLOCKED":1}},
+                      {"date":"2026-11-18","mfcId":"MFC-2","pickedLines":10,"shortLines":0,"shortLinesByReason":{"SHORT":0,"DAMAGED":0,"BLOCKED":0}}]}""")));
+
+    Res r = metrics("metric=SHORTAGE_RATE&from=2026-11-18&to=2026-11-18&centerId=MFC-1");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("metric").asString()).isEqualTo("SHORTAGE_RATE");
+    JsonNode points = r.body().path("points");
+    assertThat(points.size()).as("센터 2 × (전체 + 사유 3)").isEqualTo(8);
+    JsonNode all = points.get(0);
+    assertThat(all.path("segment").path("mfcId").asString()).isEqualTo("MFC-1");
+    assertThat(all.path("segment").path("reason").isNull()).isTrue();
+    assertThat(all.path("numerator").asLong()).isEqualTo(4);
+    assertThat(all.path("denominator").asLong()).isEqualTo(40);
+    assertThat(all.path("ratio").asDouble()).isEqualTo(0.1);
+    assertThat(points.get(1).path("segment").path("reason").asString()).isEqualTo("SHORT");
+    assertThat(points.get(1).path("numerator").asLong()).isEqualTo(3);
+    JsonNode total = r.body().path("totals").get(0);
+    assertThat(total.path("numerator").asLong()).as("사유별은 더하지 않음").isEqualTo(4);
+    assertThat(total.path("denominator").asLong()).isEqualTo(50);
+    assertThat(r.body().path("currentOverdue").isNull()).isTrue();
+    mfc.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/metrics/picking-lines"))
+            .withHeader(
+                "Authorization",
+                com.github.tomakehurst.wiremock.client.WireMock.equalTo("Bearer " + ADMIN))
+            .withQueryParam(
+                "mfcId", com.github.tomakehurst.wiremock.client.WireMock.equalTo("MFC-1")));
+
+    assertThat(
+            metrics("metric=SHORTAGE_RATE&from=2026-11-18&to=2026-11-18&granularity=HOUR").status())
+        .as("날짜 단위만")
+        .isEqualTo(400);
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/picking-lines"))
+            .willReturn(aResponse().withStatus(503)));
+    assertThat(metrics("metric=SHORTAGE_RATE&from=2026-11-18&to=2026-11-18").status())
+        .as("원천 장애는 0건이 아니라 503")
+        .isEqualTo(503);
   }
 }
