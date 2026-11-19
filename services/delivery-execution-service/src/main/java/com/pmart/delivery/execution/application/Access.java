@@ -27,9 +27,10 @@ final class Access {
    * OPERATOR_ADMIN, CS_AGENT, RIDER_OPS(BOD-1). 센터 소속이어도 작업자(MFC_WORKER 등)는 안 된다.
    */
   static boolean operatorCanDecide(PmartPrincipal p, @Nullable String mfcId) {
+    // 2026-11-19 사용자 "라이더 백오피스만": 라이더·배송 일(전달 실패 결정·도움요청 닫기)은 라이더 운영·관리자만.
+    // 상담원(통합 백오피스)·센터 관리자(MFC 백오피스)는 보기만 — 한 일에 처리 주인 하나(두 화면에서 엇갈린 결정을 막는다)
     return p.type() == PmartPrincipal.PrincipalType.OPERATOR
-        && (allCenters(p)
-            || (mfcId != null && p.hasRole("MFC_SUPERVISOR") && p.canAccessCenter(mfcId)));
+        && (p.hasRole("OPERATOR_ADMIN") || p.hasRole("RIDER_OPS"));
   }
 
   /**

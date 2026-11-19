@@ -93,3 +93,4 @@
 - **DE-6 가고 있어요(2026-11-19, V23)**: DeliveryAssigned 의 bundleId·stopSequence 사본(`bundle_id`·`stop_seq`), 전달 완료(라이더·고객 확인·자동)마다 `headingNext` — 같은 라이더의 다음 차례(같은 묶음 stop_seq → 배정 순, PICKED_UP·고객 배송·안 알림)에 `DeliveryHeadingToCustomer` 한 번(버전 올리지 않음).
 
 - **결정 대기 전달 불가 대화(2026-11-19, 0.31.2 — 라이더 앱 요청)**: 배송 FAILURE_REPORTED 동안 그 실패가 연 도움요청은 처리함 닫기 409 FAILURE_DECISION_PENDING. 닫혀 있어도 라이더 메시지·재개 요청이면 다시 열기(`HelpRequestService.reopenForPendingFailure`) + `HelpRequestReopened`(case R-10).
+- **처리 주인 하나(2026-11-19, 0.31.3 — 사용자 "라이더 백오피스만")**: `Access.operatorCanDecide` = RIDER_OPS·OPERATOR_ADMIN 만 — 전달 실패 확정·반려, 도움요청 처리함 닫기. 상담원·센터 관리자는 보기만(403).

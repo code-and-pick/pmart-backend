@@ -672,8 +672,14 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 id))
         .isZero();
-    // 다른 센터 관리자 403, 같은 센터 작업자 403(관리자만 — 2026-11-14), 반려 → 원래 상태(고객 도착 전이면 PICKED_UP)로
-    assertThat(decide(id, "OP-X", List.of("MFC-OTHER"), "REJECT").getStatusCode().value())
+    // 2026-11-19 사용자 "라이더 백오피스만": 같은 센터 관리자·상담원·작업자 403, 라이더 운영만 반려 → 원래 상태(고객 도착 전이면 PICKED_UP)로
+    assertThat(
+            decide(id, "OP-X", List.of("MFC_SUPERVISOR"), List.of("MFC-1"), "REJECT")
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(
+            decide(id, "OP-CS", List.of("CS_AGENT"), List.of(), "REJECT").getStatusCode().value())
         .isEqualTo(403);
     assertThat(
             decide(id, "OP-W", List.of("MFC_WORKER"), List.of("MFC-1"), "REJECT")
@@ -3256,7 +3262,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   ResponseEntity<String> decide(String id, String operator, List<String> centers, String decision) {
-    return decide(id, operator, List.of("MFC_SUPERVISOR"), centers, decision);
+    return decide(id, operator, List.of("RIDER_OPS"), centers, decision); // 2026-11-19 라이더 운영만
   }
 
   ResponseEntity<String> decide(
