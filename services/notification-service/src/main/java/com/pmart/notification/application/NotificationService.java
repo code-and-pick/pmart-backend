@@ -255,6 +255,19 @@ public class NotificationService {
           notify(e, null, orderId, Notices.incidentReshipment(orderId), "");
         }
       }
+      // 배차 지연(2026-11-19 — 원문 §3.6 "고객에게 지연 사유와 지연예상시간을 안내", 사용자 "1,2,3 전부"). dispatch 가 배송마다 한 번
+      // 낸다
+      case "DispatchDelayed" -> {
+        JsonNode p = e.payload();
+        notify(
+            e,
+            null,
+            orderId,
+            Notices.dispatchDelayed(
+                orderId,
+                p.path("delayedMinutes").isNumber() ? p.path("delayedMinutes").asInt() : null),
+            "");
+      }
       case "RedeliveryPaymentRequired" ->
           notify(
               e,

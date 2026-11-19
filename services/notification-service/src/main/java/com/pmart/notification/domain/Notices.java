@@ -246,6 +246,24 @@ public final class Notices {
    * 배송 지연 가능 안내(CP-1, 2026-11-16 — 결정 2026-11-15 "이미 잡힌 주문은 유지하고 지연될 수 있다고 안내, 고객이 원하면 취소·시간대 변경").
    * 시간대 변경은 아직 없어 취소만 안내한다(고객 취소는 상품 준비 전까지). 도착 시간대가 있으면 Asia/Seoul 로 적는다.
    */
+  /**
+   * 배차 지연(2026-11-19 — 원문 §3.6 "지연 사유와 지연예상시간"). 사유 = 배달 기사를 찾는 중. 분은 dispatch 예상(약속보다 늦을 분 — 5분
+   * 단위로 올림). 취소는 고객센터(배차 불가 취소는 전액 환불 + 쿠폰 — MFC·고객센터가 처리).
+   */
+  public static Notice dispatchDelayed(String orderId, @Nullable Integer delayedMinutes) {
+    String late =
+        delayedMinutes == null || delayedMinutes <= 0
+            ? "늦어질 것 같아요"
+            : "약 " + ((delayedMinutes + 4) / 5 * 5) + "분 늦어질 것 같아요";
+    return new Notice(
+        "DISPATCH_DELAYED",
+        DELIVERY,
+        "배송이 늦어지고 있어요",
+        "주문하신 상품을 배달할 기사를 찾고 있어 약속한 시간보다 " + late + ". 기다리기 어려우시면 고객센터로 취소를 요청해 주세요. 취소하면 전액 환불돼요.",
+        "ORDER",
+        orderId);
+  }
+
   public static Notice mayBeDelayed(
       String orderId,
       java.time.@Nullable Instant arrivalStart,

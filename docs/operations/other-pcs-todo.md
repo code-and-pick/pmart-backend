@@ -55,6 +55,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
   - [ ] **F-12 출하대기 랙 스캔 → 포장 재고 위치**(2026-11-19 PC 1 — MFC 시뮬레이터 R-20 = PDA BR-52 R20, 11-14 "다음 차례 후보" 뒤 미착수): `service-requests/mfc-fulfillment-service.md` F-12, 회신은 `docs/handoff/simulator/mfc/`
   - [ ] **MB-2 품질 사고 — 사용자 결정 대기**(2026-11-19 PC 1 기록): PC 3 가 남긴 질문 5개(`docs/handoff/clients/mfc-backoffice/2026-11-18-reply-lists-and-roles.md` §3)를 `docs/business/flows/pending-user-decisions.md` §2 MB-2 에 옮김 — 답이 나오면 PC 3 가 mfc-quality 에 구현
 
+- [ ] (2026-11-19 delivery) MFC 백오피스 "배차 지연" 목록 + "배차 불가로 취소" — dispatch `GET /dispatch-delays`(0.12.0), claim CL-5. 요청 `service-requests/mfc-backoffice-staff-apis.md` 끝 절
+
 ## PC 5 — delivery 영역
 - [ ] **TR-4 곧 도착 사건**(2026-11-19 PC 1 — 고객 앱 알림 레퍼런스 3-4, 사용자 결정 300m): delivery-tracking `RiderApproachingCustomer`(delivery.tracking.v1) — 요청서 `delivery-tracking-service.md` TR-4. notification 받는 쪽은 PC 1 이 만들어 둠
 - [ ] **DE-6 "가고 있어요" 사건**(2026-11-19 PC 1 — 레퍼런스 3-3): delivery-execution `DeliveryHeadingToCustomer`(delivery.delivery.v1, 묶음 배달 다음 차례) — 요청서 `delivery-execution-service.md` DE-6
@@ -133,6 +135,8 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [ ] **R-8 반품 회수 실패 → 상담원 재연락 사건 + 백오피스 반품 접수 화면**(2026-11-17 PC 1 — CL-1): case 가 `ReturnRecoveryFailed`(order.claim.v1) 구독 → 고객센터 사건(요청서 `case-service.md` R-8). 백오피스 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN)·회수 조치(`POST /claims/{id}/recovery-actions`) — handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`. **백엔드 사건 구현 2026-11-17(case 0.22.0, PR — pmart-config 바인딩 `claimEvents` PC 1)**, 남은 것: 웹 화면(반품 접수·회수 조치·사건함 상담원 팀 종류)
 - [ ] **직원 웹 앱 바꾸기 메뉴(앱 런처 ⋮⋮⋮)**(2026-11-17 사용자 "지금 직원용 백오피스 4개", "같은 탭", "다 보여지는 방식" — 요청 `docs/handoff/clients/all/2026-11-17-request-app-launcher.md`): `web/ui` 에 `AppLauncher`(네 앱 모두에게 같게, 역할로 거르지 않음, 같은 탭 `<a href>`, 주소 = 지금 호스트 이름 + 포트 443·8444·8445·8446 / localhost 5173~5176) + `web/backoffice`·`web/hr-backoffice` 머리줄. 로그인·세션 코드는 건드리지 않음. 네 앱 빌드·시험 모두. PC 3·5 는 병합 뒤 한 줄씩
 - [ ] **BF-1 화면 응답에 운영자 이름·사번**(2026-11-19 PC 1 — 원 요청 backoffice operator-display-names R2, 선택): 원천 hr-service 0.8.0 `GET /hr/employee-labels`. `docs/architecture/service-requests/backoffice-bff.md` BF-1
+
+- [ ] (2026-11-19 delivery) case R-9 배차 지연 → 고객센터 사건(`DispatchDelayed`)
 
 ## 사용자가 할 일 (PC 가 아니라 사람)
 

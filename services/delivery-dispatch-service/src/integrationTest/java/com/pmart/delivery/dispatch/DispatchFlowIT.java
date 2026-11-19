@@ -603,6 +603,54 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("DELIVERY_LIST");
   }
 
+  /** 배차 지연 목록(2026-11-19 — 원문 §3.6): 지연 안내가 난 픽업 전 배송만, 그 센터 직원·고객센터, 다른 센터 직원 403. */
+  @Test
+  void dispatchDelaysListsAlertedUnpickedDeliveries() {
+    String mfc = "MFC-DL-" + UUID.randomUUID().toString().substring(0, 6);
+    String shipment = "SHP-" + UUID.randomUUID();
+    String deliveryId = readyShipment(mfc, shipment, "PKG-DL-" + shipment);
+    jdbc.update(
+        "UPDATE delivery SET delay_alerted_at = now(), promised_at = now() - interval '30 minutes'"
+            + " WHERE delivery_id = ?",
+        deliveryId);
+    String sup = TestJwt.operator("OP-SUP", List.of("MFC_SUPERVISOR"), List.of(mfc));
+    JsonNode list =
+        body(
+            http.get()
+                .uri("/dispatch-delays?mfcId={m}", mfc)
+                .header("Authorization", "Bearer " + sup)
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(list.path("items")).hasSize(1);
+    assertThat(list.path("items").get(0).path("deliveryId").asString()).isEqualTo(deliveryId);
+    assertThat(list.path("items").get(0).path("orderId").asString()).isNotBlank();
+    assertThat(
+            http.get()
+                .uri("/dispatch-delays?mfcId={m}", mfc)
+                .header(
+                    "Authorization",
+                    "Bearer "
+                        + TestJwt.operator("OP-X", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER")))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    // 픽업하면 빠진다
+    jdbc.update("UPDATE delivery SET state = 'PICKED_UP' WHERE delivery_id = ?", deliveryId);
+    assertThat(
+            body(http.get()
+                    .uri("/dispatch-delays")
+                    .header(
+                        "Authorization",
+                        "Bearer " + TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()))
+                    .retrieve()
+                    .toEntity(String.class))
+                .path("items")
+                .toString())
+        .doesNotContain(deliveryId);
+  }
+
   @Test
   void rejectionRetriesSameRiderThenFails() {
     String mfc = "MFC-D3";

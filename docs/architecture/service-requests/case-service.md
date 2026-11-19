@@ -102,3 +102,8 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **case 가 할 것(PC 2)**: 구독 → 고객센터(CS_AGENT) 사건(예 종류 `RETURN_RECOVERY_FAILED`, 대상 = claimId·orderId·고객) — 같은 클레임은 열린 사건 하나, 또 실패하면 이력. 사건 화면에서 claim 조회(`GET /claims/{id}`)·위 조치로 이어지게. 클레임이 다시 IN_PROGRESS·CLOSED·CANCELLED 가 되면(사건 `ClaimClosed` 또는 claim 조회) 닫을지는 PC 2 가 정한다(자동 종결 규칙은 사건함 공통 결정을 따른다).
 - **구현(2026-11-17, case 0.22.0 — PC 2, 사용자 "상담원 팀"·"1시간"·"사람이 닫기")**: 구독 `claimEvents`(order.claim.v1, `ReturnRecoveryFailed` 만 — pmart-config `case-service.yml` 바인딩 PC 1) → 사건 `RETURN_RECOVERY_FAILED`(subjectType CLAIM·subjectRef claimId·centerId mfcId, P2, 기한 1시간 표시만). 새 팀 **CS** = 상담원(CS_AGENT)이 보고 집고 닫는다(관리자 모두, 지원센터·센터 관리자에게 안 보임, 이관·교대 인계 대상 아님). 클레임마다 열린 사건 하나 — 또 실패하면 RECURRED 이력, 닫은 뒤 실패하면 새 사건(previousCaseId). **자동 종결 없음**(클레임이 IN_PROGRESS·CANCELLED·CLOSED 가 돼도 사람이 닫는다 — 조치는 행위 요청 기록으로 남길 수 있다). refs claimId·orderId·customerId·lastDeliveryId.
 - **백오피스 화면(PC 2)**: 고객센터 메뉴에 반품 접수(`POST /claims` type RETURN — 본인 확인 방법·회사 잘못 사유 선택)와 회수 조치. handoff `docs/handoff/clients/all/2026-11-17-request-return-recovery.md`.
+
+## R-9. 배차 지연 → 고객센터 사건 (2026-11-19, 보낸 영역 delivery — 사용자 "1,2,3 전부")
+- 근거: 원문 Delivery §3.6 "배차지연시간이 일정기준(20분)을 넘으면 MFC관리자·고객센터에 안내". dispatch 는 `DispatchDelayed`(delivery.delivery.v1 — deliveryId·orderId·mfcId·delayedMinutes·threshold·detectedAt, 배송마다 한 번)를 내는데 **구독자가 없었다**(74분 지연에도 아무 안내 없음 — 사용자 지적).
+- 요청: `DispatchDelayed` → 고객센터(CS) 사건 `DISPATCH_DELAYED`(배송마다 하나 — 열린 `DISPATCH_FAILED` 가 있으면 그 사건에 이력만도 됨, case 가 정함). 사건에 mfcId(센터 관리자도 보게 — DD-MFC), 고객이 전화하면 상담원이 바로 찾게 주문 연결. 고객 안내는 notification 이 이미 보냄(`DISPATCH_DELAYED` — 아래).
+- 취소는 사건에서 claim "배차 불가 취소"(claim-service.md CL-5)로 — 전액 환불 + 2,000원 쿠폰.

@@ -103,6 +103,7 @@ GET /api/v1/delivery-options CUSTOMER,GUEST
 GET /api/v1/delivery-staff-actions OPERATOR
 GET /api/v1/delivery-stats OPERATOR
 GET /api/v1/device-consents PUBLIC
+GET /api/v1/dispatch-delays OPERATOR
 GET /api/v1/dispatch-requests/{requestId} OPERATOR
 GET /api/v1/dispatch-staff-actions OPERATOR
 GET /api/v1/disposal-approvals OPERATOR

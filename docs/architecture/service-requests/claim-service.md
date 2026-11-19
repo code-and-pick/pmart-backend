@@ -84,3 +84,11 @@
   3. 응답: `GET /claims`·`GET /claims/{id}`·환불 목록에 순번. 주문번호(8자리)는 order 가 정본 — claim 이 사본을 둘지는 claim 판단(bff `views/claims` 는 이미 order 에서 붙인다, 0.18.0).
   4. 찾기: 주문번호로 클레임 찾기(직원) — 있으면 좋음.
 - **받는 쪽(backoffice)**: bff `views/claims` 가 `claimLabel`(주문번호 + 종류 + 순번)을 만들어 준다(종류 이름은 화면이).
+
+## CL-5. 배차 불가 취소 — 전액 환불 + 2,000원 쿠폰 (2026-11-19, 보낸 영역 delivery — 사용자 "1,2,3 전부", "쿠폰 금액은 2000원", "취소는 주문 취소 및 전액 환불")
+- 근거: 원문 Delivery §3.6 "배차 불가로 B마트에서 취소해야 할 시 환불 및 쿠폰으로 보상". 지금 직원 취소(0.4.0)는 CS_AGENT·OPERATOR_ADMIN·**상품준비 전**만이라, 포장까지 끝나 라이더를 기다리는 주문(배차 지연이 생기는 때)은 취소할 길이 없다.
+- 요청:
+  1. 사유 `DISPATCH_UNAVAILABLE`(배차 불가) 직원 전체 취소 — **픽업(인계) 전이면 상품준비 뒤에도**(PREPARING·포장 끝). 누가: 그 센터 `MFC_SUPERVISOR`(MFC 백오피스)·CS_AGENT·OPERATOR_ADMIN. 흐름은 시스템 취소와 같게(CancellationRequested → S3 현장 중지·배차 취소 → OrderCancelled → **원 승인액 전액 환불** — 봉투값·배달팁 포함). 이미 인계됐으면 422(회수는 반품 흐름).
+  2. 취소가 확정되면 **2,000원 쿠폰** 발급(promotion — 고객 계정, 회사 사유 보상. 유효기간·최소 주문금액은 promotion 이 정하되 사용자에게 확인). 같은 주문 한 번.
+  3. 고객 알림: 기존 주문 취소·환불 알림 + 쿠폰 안내(notification — 사유 DISPATCH_UNAVAILABLE 이면 "배달 기사를 찾지 못해 주문을 취소했어요. 전액 환불되고 2,000원 쿠폰을 드렸어요").
+- 찾기: dispatch `GET /dispatch-delays?mfcId=`(0.12.0, PC 5 — 지연 안내가 난 픽업 전 배송) 에서 MFC 백오피스가 고르고 이 취소를 부른다.

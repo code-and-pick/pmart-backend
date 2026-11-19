@@ -550,6 +550,41 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
         .containsExactlyInAnyOrder("반품 회수 기사를 배정하고 있어요", "반품 상품을 회수하지 못했어요", "반품 상품을 회수했어요");
   }
 
+  /** 배차 지연(2026-11-19 — 원문 §3.6): DispatchDelayed → 고객 알림함 "배송이 늦어지고 있어요", 분은 5분 단위 올림. */
+  @Test
+  void dispatchDelayNotifiesCustomer() throws Exception {
+    String me = "ACC-ntf-" + UUID.randomUUID().toString().substring(0, 8);
+    String orderId = "ORD-NTF-" + UUID.randomUUID().toString().substring(0, 8);
+    stubOrder(orderId, me);
+    String token = TestJwt.customer(me);
+    publish(
+        "delivery.delivery.v1",
+        "DispatchDelayed",
+        "Delivery",
+        "DLV-D-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-D-" + orderId,
+            "orderId",
+            orderId,
+            "mfcId",
+            "MFC-1",
+            "delayedMinutes",
+            23,
+            "threshold",
+            20,
+            "detectedAt",
+            Instant.now().toString()));
+    Res inbox =
+        await(
+            () -> send("GET", token, "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 1);
+    var n = inbox.body().path("items").get(0);
+    assertThat(n.path("templateKey").asString()).isEqualTo("DISPATCH_DELAYED");
+    assertThat(n.path("title").asString()).isEqualTo("배송이 늦어지고 있어요");
+    assertThat(n.path("body").asString()).contains("약 25분");
+  }
+
   /** N-4(2026-11-19, ADR-0069): 사고·파손 전달 실패만 재발송 안내 — 고객 부재·오배송 다시 배송은 알리지 않는다. */
   @Test
   void incidentFailureNotifiesReshipment() throws Exception {

@@ -40,3 +40,8 @@
 
 - `AssignmentsController` javadoc 의 "계획 501" 은 낡은 문구 — 실제로 구현돼 있다.
 - 공급 요청은 계약 0.9.0 `/supply-requests` 로 구현돼 있다(메뉴 문서에 경로가 빠져 있었음 — PC 1 이 고침).
+
+## 배차 지연 목록·배차 불가 취소 (2026-11-19, 보낸 영역 delivery — 사용자 "1,2,3 전부")
+- 원문 Delivery §3.6 — MFC 관리자에게 배차 지연 안내, 배차 불가면 취소(전액 환불 + 2,000원 쿠폰).
+- 데이터(PC 5 구현, dispatch 0.12.0): `GET /dispatch-delays?mfcId=` — 지연 안내가 난 픽업 전 배송(deliveryId·orderId·state·riderId·promisedAt·delayAlertedAt). 그 센터 운영자(mfcId 필수)·관리자·CS·RIDER_OPS.
+- 요청(PC 3 MFC 백오피스): 대시보드·메뉴에 "배차 지연" 목록(주문번호·배송 번호 — ADR-0070, 약속 시각 대비 몇 분 지났는지, 배정 여부) + 행마다 **"배차 불가로 취소"** 버튼 → claim CL-5(사유 DISPATCH_UNAVAILABLE, MFC_SUPERVISOR). 확인 창에 "주문 전체 취소 · 전액 환불 · 고객에게 2,000원 쿠폰".

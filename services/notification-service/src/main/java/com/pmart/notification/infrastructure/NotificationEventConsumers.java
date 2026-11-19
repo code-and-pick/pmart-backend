@@ -26,6 +26,7 @@ class NotificationEventConsumers {
           "PickupCompleted",
           "DeliveryCompleted",
           "RedeliveryPaymentRequired",
+          "DispatchDelayed", // 배차 지연 고객 안내(2026-11-19 — 원문 §3.6, 사용자 "1,2,3 전부")
           "HelpRequestReplied",
           "DispatchOfferSent", // 라이더 배차 제안 푸시(2026-11-17 — 알림함에는 안 넣음)
           "RiderEarningRecorded", // 지원센터 수행료 조정(2026-11-17) — adjustment 있을 때만 알림

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.11.1
+  version: 0.12.0
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -412,6 +412,45 @@ paths:
                         reason: { type: [string, 'null'] }
                   nextCursor: { type: [string, 'null'] }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /dispatch-delays:
+    get:
+      tags: [dispatch-delays]
+      summary: (0.12.0) 배차 지연 배송 — 픽업 전, 약속보다 늦을 것으로 본 배송 (MFC·고객센터)
+      x-added-in: '2026-11-19'
+      description: |
+        2026-11-19 사용자 "1,2,3 전부"(원문 §3.6 "배차지연시간이 일정기준을 넘으면 MFC관리자·고객센터에 안내", "배차 불가로 취소해야 할 시 환불 및 쿠폰").
+        DispatchDelayed 를 낸 배송(delayAlertedAt 있음) 중 아직 픽업 전(CREATED·DISPATCHING·ASSIGNED)인 것, 약속 시각이 이른 것부터. 그 센터 운영자(mfcId 필수)·OPERATOR_ADMIN·CS_AGENT·RIDER_OPS.
+        MFC 백오피스는 여기서 "배차 불가 취소"(claim — 전액 환불 + 쿠폰)로 간다. 주문번호·배송 번호는 orderId 로(order·execution 화면 번호 조회).
+      operationId: listDispatchDelays
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: 최대 200건
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [deliveryId, orderId, mfcId, state, delayAlertedAt]
+                      properties:
+                        deliveryId: { type: string }
+                        orderId: { type: string }
+                        mfcId: { type: string }
+                        deliverySeq: { type: [integer, 'null'] }
+                        state: { type: string, enum: [CREATED, DISPATCHING, ASSIGNED] }
+                        riderId: { type: [string, 'null'], description: 배정됐으면 }
+                        promisedAt: { type: [string, 'null'], format: date-time, description: 고객 약속(주문 뒤 50분 또는 예약 끝) }
+                        delayAlertedAt: { type: string, format: date-time }
+                        createdAt: { type: string, format: date-time }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /internal/deliveries:
