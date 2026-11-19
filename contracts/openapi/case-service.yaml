@@ -3,7 +3,7 @@ info:
   title: case-service
   version: 0.27.0
   description: |
-    **0.27.0(2026-11-19 — R-9, PC 5 요청·사용자 "1,2,3 전부", 원문 Delivery §3.6)**: 사건 종류 `DISPATCH_DELAYED`(배차 지연) — dispatch `DispatchDelayed`(배송마다 한 번)를 받아 **상담원 팀(CS)** 사건, 센터 = mfcId(센터 관리자 MFC_SUPERVISOR 도 자기 센터만 보기), refs deliveryId·orderId, 배송마다 열린 것 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로. 기한 기본 1시간(표시만 — 값은 설정). 고객 안내는 notification, 취소는 claim "배차 불가 취소"(사건이 부르지 않음).
+    **0.27.0(2026-11-19 — R-9, PC 5 요청·사용자 "1,2,3 전부", 원문 Delivery §3.6)**: 사건 종류 `DISPATCH_DELAYED`(배차 지연) — dispatch `DispatchDelayed`(배송마다 한 번)를 받아 **상담원 팀(CS)** 사건, 센터 = mfcId(센터 관리자 MFC_SUPERVISOR 도 자기 센터만 보기), refs deliveryId·orderId, 배송마다 열린 것 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로. 기한 1시간(표시만 — 사용자 확정 2026-11-19, 설정으로 바꿀 수 있음). 고객 안내는 notification, 취소는 claim "배차 불가 취소"(사건이 부르지 않음).
     **0.26.0(2026-11-19 — 웹 요청 backend-list-status-counts, 사용자 "진행해")**: `GET /rider-complaints/counts` — 목록과 같은 거르기(종류 거르기 제외)로 종류별 수. 모든 종류를 0 까지 빠짐없이, 정확한 수(SQL 한 번 — capped 늘 false).
     **0.25.0(2026-11-19 — ADR-0070 덧붙임, 사용자 "날짜+일련")**: 화면 표기 — 접수 건 `caseNumber`(C-MMDD-0042), 문의 `inquiryNumber`(Q-MMDD-0012). 한국 날짜·종류마다 1부터(9999 넘으면 5자리), DB 가 매김(V20 — 지금 있는 행도 날짜마다 생성순으로 채움). 해가 바뀌면 같은 번호가 다시 나올 수 있다(번호 + 날짜로 유일) — 목록·표에는 이 번호, caseId·inquiryId 는 상세의 "시스템 번호" 칸. `GET /cases?caseNumber=` 로 찾기.
     Case/SubCase·Obligation·ActionRequest·EvidenceReference·ShiftHandover/CloseSnapshot(BO-27)·CS 접수·MFC 문제함(WK-12)·라이더 도움요청·귀책/비용 결정 기록의 정본. (docs/architecture/service-map.md §8, ADR-0004)
