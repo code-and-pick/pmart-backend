@@ -225,6 +225,7 @@ public class PackingHandoverView {
     for (JsonNode p : s.path("packages")) {
       Map<String, Object> m = new LinkedHashMap<>();
       m.put("packageId", text(p, "packageId"));
+      m.put("handoverCode", text(p, "handoverCode")); // 0.21.0 DL-2 — 포장 라벨 6자리(원천 값 그대로, 없으면 null)
       m.put("state", text(p, "state"));
       m.put("fenceState", text(p, "fenceState"));
       m.put("handoverAuthorizedAt", text(p, "handoverAuthorizedAt"));

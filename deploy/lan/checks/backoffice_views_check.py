@@ -5,7 +5,7 @@
 배포 전 기능(404·501)은 "배포 전"이라 적고 넘어간다(실패로 세지 않는다). 계약상 501 인 화면(보충 현황·운행 관제·CASE_SLA 밖 지표)은 501 이 정상.
 
   A. 관리자(claude-dev, OPERATOR_ADMIN)   처리 대기·사건함·통합 조회·실시간 배송·포장 인계·승인함 200, 조건 오류 400·422
-  B. 지표(bff 0.13.0)                    CASE_SLA 200(분모 0 → ratio null, unjudged 칸), 93일 넘는 기간 400, 다른 지표 501
+  B. 지표(bff 0.13.0·0.21.0)              CASE_SLA 200(분모 0 → ratio null, unjudged 칸), 93일 넘는 기간 400, 정시 배송률 200(배포 전이면 501 — 배포 전으로 셈), 간선 정시율 501
   C. 명령 결과 조회(bff 0.12.0)           targetRef 없음 400, handover-retry 422
   D. 아직 없는 화면                       보충 현황·운행 관제 501
   E. (--cs) 상담원 계정                  토큰의 역할을 읽어 CS_AGENT 이고 관리자가 아니면 처리 대기·지표 403, 사건함·통합 조회 200
@@ -122,7 +122,10 @@ def metrics(admin):
     s, _ = get(f"/views/metrics?metric=CASE_SLA&from={long_from}&to={today.isoformat()}", admin)
     check("B 지표 — 93일 넘는 기간 400", s == 400, f"HTTP {s}")
     s, b = get(f"/views/metrics?metric=ON_TIME_DELIVERY&from={week}&to={today.isoformat()}", admin)
-    check("B 지표 — 정시 배송률 501", s == 501, f"HTTP {s} {b.get('code')}")
+    if not not_deployed("B 지표 — 정시 배송률", s):
+        check("B 지표 — 정시 배송률 200(bff 0.21.0)", s == 200 and b.get("metric") == "ON_TIME_DELIVERY", f"HTTP {s}, 줄 {len(b.get('points', []))}")
+    s, b = get(f"/views/metrics?metric=TRANSPORT_ON_TIME&from={week}&to={today.isoformat()}", admin)
+    check("B 지표 — 간선 정시율 501(원천 없음)", s == 501, f"HTTP {s} {b.get('code')}")
 
 
 def command_result(admin):

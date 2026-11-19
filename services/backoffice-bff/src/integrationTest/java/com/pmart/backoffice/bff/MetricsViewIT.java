@@ -41,7 +41,8 @@ import tools.jackson.databind.ObjectMapper;
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({
   @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
-  @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url")
+  @ConfigureWireMock(name = "mfc", baseUrlProperties = "pmart.bff.mfc-fulfillment-base-url"),
+  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "pmart.bff.dispatch-base-url")
 })
 class MetricsViewIT {
 
@@ -56,12 +57,16 @@ class MetricsViewIT {
   @InjectWireMock("mfc")
   WireMockServer mfc;
 
+  @InjectWireMock("dispatch")
+  WireMockServer dispatch;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
     cases.resetAll();
     mfc.resetAll();
+    dispatch.resetAll();
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1/backoffice")
@@ -178,7 +183,7 @@ class MetricsViewIT {
 
   @Test
   void otherMetricsAreNotImplemented() {
-    Res r = metrics("metric=ON_TIME_DELIVERY&from=2026-11-17&to=2026-11-18");
+    Res r = metrics("metric=TRANSPORT_ON_TIME&from=2026-11-17&to=2026-11-18");
     assertThat(r.status()).isEqualTo(501);
     assertThat(r.body().path("code").asString()).isEqualTo("NOT_IMPLEMENTED");
     Res pay = metrics("metric=PAYMENT_UNKNOWN&from=2026-11-17&to=2026-11-18");
@@ -197,7 +202,7 @@ class MetricsViewIT {
                     200,
                     """
                     {"asOf":"2026-11-19T03:00:00Z","items":[
-                      {"date":"2026-11-18","mfcId":"MFC-1","pickedLines":40,"shortLines":4,"shortLinesByReason":{"SHORT":3,"DAMAGED":1,"BLOCKED":1}},
+                      {"date":"2026-11-18","mfcId":"MFC-1","pickedLines":40,"shortLines":4,"shortLinesByReason":{"SHORT":3,"DAMAGED":1,"BLOCKED":1,"SPOILED":1}},
                       {"date":"2026-11-18","mfcId":"MFC-2","pickedLines":10,"shortLines":0,"shortLinesByReason":{"SHORT":0,"DAMAGED":0,"BLOCKED":0}}]}""")));
 
     Res r = metrics("metric=SHORTAGE_RATE&from=2026-11-18&to=2026-11-18&centerId=MFC-1");
@@ -205,7 +210,10 @@ class MetricsViewIT {
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
     assertThat(r.body().path("metric").asString()).isEqualTo("SHORTAGE_RATE");
     JsonNode points = r.body().path("points");
-    assertThat(points.size()).as("센터 2 × (전체 + 사유 3)").isEqualTo(8);
+    assertThat(points.size())
+        .as("MFC-1 전체 + 사유 4(변질 칸 있음), MFC-2 전체 + 사유 3(변질 칸 없음 — 0 으로 만들지 않음)")
+        .isEqualTo(9);
+    assertThat(points.get(4).path("segment").path("reason").asString()).isEqualTo("SPOILED");
     JsonNode all = points.get(0);
     assertThat(all.path("segment").path("mfcId").asString()).isEqualTo("MFC-1");
     assertThat(all.path("segment").path("reason").isNull()).isTrue();
@@ -235,6 +243,53 @@ class MetricsViewIT {
             .willReturn(aResponse().withStatus(503)));
     assertThat(metrics("metric=SHORTAGE_RATE&from=2026-11-18&to=2026-11-18").status())
         .as("원천 장애는 0건이 아니라 503")
+        .isEqualTo(503);
+  }
+
+  /** 0.21.0(PC 5 DD-4): 정시 배송률 — 분모 = due(정시 + 늦음), 판정 불가·약속 전은 따로, 날짜 합계, 원천 400 그대로·장애 503. */
+  @Test
+  void onTimeDeliveryKeepsPendingAndUnjudgedOutOfDenominator() {
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/on-time-deliveries"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"asOf":"2026-11-19T03:00:00Z","items":[
+                      {"date":"2026-11-18","mfcId":"MFC-1","due":10,"onTime":8,"late":2,"unjudged":1,"pending":0},
+                      {"date":"2026-11-18","mfcId":"MFC-2","due":0,"onTime":0,"late":0,"unjudged":0,"pending":3}]}""")));
+
+    Res r = metrics("metric=ON_TIME_DELIVERY&from=2026-11-18&to=2026-11-18");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode a = r.body().path("points").get(0);
+    assertThat(a.path("numerator").asLong()).isEqualTo(8);
+    assertThat(a.path("denominator").asLong()).isEqualTo(10);
+    assertThat(a.path("ratio").asDouble()).isEqualTo(0.8);
+    assertThat(a.path("unjudged").asLong()).isEqualTo(1);
+    assertThat(a.path("segment").path("mfcId").asString()).isEqualTo("MFC-1");
+    JsonNode b = r.body().path("points").get(1);
+    assertThat(b.path("ratio").isNull()).as("분모 0 — N/A").isTrue();
+    assertThat(b.path("pending").asLong()).isEqualTo(3);
+    JsonNode t = r.body().path("totals").get(0);
+    assertThat(t.path("denominator").asLong()).isEqualTo(10);
+    assertThat(t.path("pending").asLong()).isEqualTo(3);
+    dispatch.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/metrics/on-time-deliveries"))
+            .withHeader(
+                "Authorization",
+                com.github.tomakehurst.wiremock.client.WireMock.equalTo("Bearer " + ADMIN)));
+
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/on-time-deliveries"))
+            .willReturn(json(400, "{\"code\":\"VALIDATION_FAILED\",\"detail\":\"기간은 31일까지\"}")));
+    Res bad = metrics("metric=ON_TIME_DELIVERY&from=2026-10-01&to=2026-11-18");
+    assertThat(bad.status()).isEqualTo(400);
+    assertThat(bad.body().path("detail").asString()).contains("31일");
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/on-time-deliveries"))
+            .willReturn(aResponse().withStatus(503)));
+    assertThat(metrics("metric=ON_TIME_DELIVERY&from=2026-11-18&to=2026-11-18").status())
         .isEqualTo(503);
   }
 }

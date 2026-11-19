@@ -252,4 +252,39 @@ class WorkCountsViewIT {
   void onlyAdminSeesCounts() {
     assertThat(counts(CS).status()).isEqualTo(403);
   }
+
+  /**
+   * 0.21.0(PC 5 DE-7): 배송 상태별 수를 counts 한 번으로 — 쪽 넘김 없음, 끝나지 않은 상태만·0 은 줄 없음, capped 면
+   * complete=false.
+   */
+  @Test
+  void deliveryCountsUseCountsEndpointWhenAvailable() {
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/counts"))
+            .atPriority(1)
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"counts":[{"key":"UNASSIGNED","count":7,"capped":false},{"key":"ASSIGNED","count":0,"capped":false},
+                      {"key":"PICKED_UP","count":120,"capped":true},{"key":"DELIVERED","count":900,"capped":false}],
+                     "asOf":"2026-11-19T03:00:00Z"}""")));
+
+    Res r = counts(ADMIN);
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode un = find(r.body(), "DELIVERIES", "ACTIVE", "UNASSIGNED");
+    assertThat(un.path("value").asLong()).isEqualTo(7);
+    assertThat(un.path("complete").asBoolean()).isTrue();
+    assertThat(find(r.body(), "DELIVERIES", "ACTIVE", "PICKED_UP").path("complete").asBoolean())
+        .isFalse();
+    assertThat(find(r.body(), "DELIVERIES", "ACTIVE", "ASSIGNED")).as("0 은 줄 없음").isNull();
+    assertThat(find(r.body(), "DELIVERIES", "ACTIVE", "DELIVERED")).as("끝난 상태는 세지 않음").isNull();
+    execution.verify(
+        0,
+        com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
+                urlPathEqualTo("/api/v1/deliveries"))
+            .withQueryParam(
+                "state", com.github.tomakehurst.wiremock.client.WireMock.matching(".*")));
+  }
 }

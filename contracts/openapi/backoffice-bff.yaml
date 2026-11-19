@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.20.0
+  version: 0.21.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **0.21.0(2026-11-19 — PC 5 DD-4·DE-7)**: 지표 `ON_TIME_DELIVERY`(정시 배송률 — dispatch `GET /metrics/on-time-deliveries`, 점·합계에 `pending`), 지금 일 건수 DELIVERIES 를 execution `GET /deliveries/counts` 한 번으로(정확, 원천 404 면 예전 쪽 넘김). 포장 인계 현황 `packages[].handoverCode`(DL-2 — 포장 라벨 6자리, 원천 값 그대로). 결품률 사유에 SPOILED(변질, 원천에 칸이 있을 때만 — BF-MFC-S).
     **0.20.0(2026-11-19 — PC 3 F-10)**: 지표 `SHORTAGE_RATE`(결품률) — mfc-fulfillment `GET /metrics/picking-lines`, 줄 단위·사유별(`segment.mfcId`·`segment.reason`). 501 은 ON_TIME_DELIVERY·TRANSPORT_ON_TIME·UNPLANNED_RATE·PAYMENT_UNKNOWN.
     **0.19.0(2026-11-19 — ADR-0070 덧붙임, case 0.25.0)**: 사건함 `items[].caseNumber`·실시간 배송 `openCases[].caseNumber`(C-MMDD-일련), 통합 조회 사건·문의 summary 에 caseNumber·inquiryNumber, 처리 대기 `items[].orderNumber`(사가 = "주문번호 + 흐름" — order 를 주문마다 한 번, 실패면 null + unavailableSources). 라이더 컴플레인 목록의 배송 번호는 execution 0.31.0 묶음 조회(`deliveryIds`) 한 번으로.
     **0.18.0(2026-11-19 — ADR-0070 이어서, 웹 요청 backend-display-numbers-in-responses)**: 클레임 목록 `/views/claims`(주문번호)·라이더 컴플레인 목록 `/views/rider-complaints`(배송 번호·주문번호·라이더·기록한 직원) — 웹이 줄마다 번호를 묻지 않게 bff 한 번으로. case·claim 에 다른 서비스 값을 사본으로 두지 않는다.
@@ -561,6 +562,7 @@ paths:
                                 type: object
                                 properties:
                                   packageId: { type: string }
+                                  handoverCode: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(0.21.0, DL-2 — ADR-0070) 포장 라벨 6자리 — 목록 표기 "305118 인계". mfc-fulfillment `GET /shipments` 포장 값 그대로, 원천이 아직 안 주면 null(화면은 "포장 n")' }
                                   state: { type: [string, 'null'], description: 'PackageState 원천 값(OPEN·SEALED·HANDED_OVER)' }
                                   fenceState: { type: [string, 'null'], description: '인계 허가 상태 원천 값(NONE·HANDOVER_IN_PROGRESS·COMMITTED·EXPIRED)' }
                                   handoverAuthorizedAt: { type: [string, 'null'], format: date-time }
@@ -587,7 +589,7 @@ paths:
         - group **CASES**(case `GET /cases/metrics` — 정확): key OPEN·UNASSIGNED·OVERDUE, segment = 사건 종류. **OBLIGATIONS**: key OPEN·OVERDUE, segment = 담당 팀. **SHIFT_HANDOVERS**: key PENDING(수락 전 교대 인계서). **INQUIRIES**: key AWAITING_ANSWER, segment = CUSTOMER·RIDER(상담원 접수 제외).
         - group **PENDING_WORK**(`/views/pending-work` 와 같은 모음): key COUNT, segment = kind. 그 화면의 MFC 목록이 쪽 상한에 걸리면(truncated) complete=false.
         - group **APPROVALS**(approval-service `GET /approvals` 를 직원 토큰으로 쪽 넘김): key REVIEW_PENDING·EVIDENCE_REQUIRED, segment = 승인 종류. 상태마다 200건 × 10쪽까지 — 넘으면 complete=false. REVIEW_PENDING·EVIDENCE_REQUIRED 줄은 **심사 대기 전부**(누가 심사하든). **key DECIDABLE_BY_ME**(0.16.0, AP-3) = 지금 보는 사람이 지금 결정할 수 있는 것만(approval `decidableByMe=true` — 판정은 approval), segment = 승인 종류, 같은 200건 × 10쪽 상한.
-        - group **DELIVERIES**(delivery-execution `GET /deliveries?state=` 쪽 넘김): key ACTIVE, segment = 끝나지 않은 배송 상태(실시간 배송 현황과 같은 9개). 상태마다 50건 × 10쪽까지 — 넘으면 complete=false. **늦은 배송 수는 없다**(배송마다 도착 예정을 읽어야 해서 — 실시간 배송 현황에서).
+        - group **DELIVERIES**(0.21.0 — delivery-execution `GET /deliveries/counts` 한 번, 정확 — PC 5 DE-7): key ACTIVE, segment = 끝나지 않은 배송 상태(실시간 배송 현황과 같은 9개), capped 면 complete=false. 원천이 아직 없으면(404) 예전처럼 `GET /deliveries?state=` 50건 × 10쪽까지 쪽 넘김(넘으면 complete=false). 0건 상태는 줄이 없다. **늦은 배송 수는 없다**(지표 ON_TIME_DELIVERY 에서).
         `complete=false` 면 value 는 "적어도 이만큼" — 화면은 "N건 이상"으로. 원천이 실패하면 그 묶음 줄 없이 unavailableSources(0건으로 바꾸지 않음), 화면은 200.
       operationId: getWorkCountsView
       x-pmart-user-types: [OPERATOR]
@@ -613,8 +615,8 @@ paths:
       summary: 지표 (분모 보존; 비율은 분자/분모를 함께 반환)
       description: |
         0.13.0(2026-11-18 사용자 "일단 그렇게 하고" — 추천안): 업무 원문 BO-28(분모를 줄여 비율을 올리지 않는다, 분모 0 은 N/A, 승인된 정의만).
-        **지금 되는 것은 CASE_SLA·SHORTAGE_RATE(0.20.0)**. 그 밖 지표는 **501 NOT_IMPLEMENTED**:
-        ON_TIME_DELIVERY(DD-4 결정됨 — delivery-dispatch 구현 뒤), TRANSPORT_ON_TIME·UNPLANNED_RATE(원천 서비스 없음),
+        **지금 되는 것은 CASE_SLA·SHORTAGE_RATE(0.20.0)·ON_TIME_DELIVERY(0.21.0)**. 그 밖 지표는 **501 NOT_IMPLEMENTED**:
+        TRANSPORT_ON_TIME·UNPLANNED_RATE(원천 서비스 없음),
         PAYMENT_UNKNOWN(만들지 않음 — 처리 대기·사건함 PAYMENT_UNKNOWN 으로 본다).
         CASE_SLA(원천 case `GET /cases/metrics/sla`): 기간 안에 **닫힌** 사건함 건을 닫은 한국 시각(Asia/Seoul)으로 묶는다. 닫은 시각 = 마지막으로 닫은 시각, 기한 = 그때 기한(다시 처리하기 때 새로 정해짐).
         numerator = 기한 안에 닫힌 건, denominator = 기한이 있던 닫힌 건, `unjudged` = 기한이 없던 닫힌 건(판정 불가 — 숨기지 않고 따로), ratio = 분모 0 이면 null.
@@ -623,7 +625,8 @@ paths:
         기간: from·to 한국 날짜(포함), DAY 93일·HOUR 7일까지(넘으면 400). centerId 는 사건의 센터.
         **SHORTAGE_RATE(0.20.0, 2026-11-19 — PC 3 F-10 mfc-fulfillment 0.19.0 `GET /metrics/picking-lines`)**: 사용자 결정(2026-11-18) 줄 단위·사유별. numerator = 결품이 보고된 줄(shortLines), denominator = 그날 피킹을 시작한 주문 줄(pickedLines, 원래 주문 작업만 — 재발송 제외), 날짜 = 피킹 시작 한국 날짜.
         `points` 는 날짜·센터(`segment.mfcId`)마다 전체(`segment.reason` null) 한 점 + 사유(SHORT·DAMAGED·BLOCKED)별 점 — 같은 분모, 한 줄에 사유가 둘이면 둘 다 세서 사유별 합이 전체보다 클 수 있다. `totals` 는 전체 점만 더한다. unjudged 는 0(판정 불가 개념 없음), currentOverdue 는 null.
-        DAY 만(HOUR 는 400), 기간은 원천 상한 92일(넘으면 원천 400 그대로). centerId → 원천 mfcId(본사 관리자는 모든 센터, 그 밖은 원천 판정). 원천 장애는 503(0건으로 보이지 않게).
+        **ON_TIME_DELIVERY(0.21.0, 2026-11-19 — PC 5 DD-4 dispatch 0.13.0 `GET /metrics/on-time-deliveries`)**: 사용자 결정 DD-4(dispatch 가 배송 단위로, 약속 시간대가 지난 미전달은 늦음). numerator = onTime(전달 ≤ 약속 끝), denominator = due(= onTime + late — 늦음에 전달 전·실패 포함), `unjudged` = 고객 수령 확인·자동 완료(전달 시각이 실제가 아님 — 분모에서 뺌), `pending` = 아직 약속 전(분모에서 뺌). 날짜 = 약속 끝 한국 날짜, `points` 는 날짜·센터(`segment.mfcId`), `totals` 는 날짜 합. DAY 만, 원천 31일 상한·4xx 그대로, 장애 503. OPERATOR_ADMIN 은 모든 센터, 그 밖은 centerId(→ mfcId) 필수(원천 판정).
+        SHORTAGE_RATE 는 DAY 만(HOUR 는 400), 기간은 원천 상한 92일(넘으면 원천 400 그대로). centerId → 원천 mfcId(본사 관리자는 모든 센터, 그 밖은 원천 판정). 원천 장애는 503(0건으로 보이지 않게).
       operationId: getMetricsView
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -662,8 +665,9 @@ paths:
                                 kind: { type: string }
                                 assigneeGroup: { type: [string, 'null'] }
                                 mfcId: { type: [string, 'null'], x-added-in: '2026-11-19', description: (SHORTAGE_RATE) 센터 }
-                                reason: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(SHORTAGE_RATE) 결품 사유 SHORT·DAMAGED·BLOCKED — null 이면 그 센터·날짜 전체. 사유별 점의 합은 전체보다 클 수 있다(한 줄에 사유 둘)' }
+                                reason: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(SHORTAGE_RATE) 결품 사유 SHORT·DAMAGED·BLOCKED·SPOILED(변질 — BF-MFC-S, mfc-fulfillment 0.22.0 뒤 원천에 칸이 있을 때만) — null 이면 그 센터·날짜 전체. 사유별 점의 합은 전체보다 클 수 있다(한 줄에 사유 둘)' }
                             unjudged: { type: [integer, 'null'], x-added-in: '2026-11-18', description: 판정 불가(CASE_SLA — 기한이 없던 닫힌 건, 분모에 안 들어감) — 0.13.0 }
+                            pending: { type: [integer, 'null'], x-added-in: '2026-11-19', description: '(0.21.0, ON_TIME_DELIVERY) 아직 약속 전이라 판정하지 않은 배송 — 분모에 안 들어감. 다른 지표는 null' }
                       totals:
                         type: array
                         x-added-in: '2026-11-18'
@@ -677,6 +681,7 @@ paths:
                             denominator: { type: integer }
                             ratio: { type: [number, 'null'] }
                             unjudged: { type: [integer, 'null'] }
+                            pending: { type: [integer, 'null'], x-added-in: '2026-11-19' }
                       timeZone: { type: string, x-added-in: '2026-11-18', description: 묶음 기준 시간대(Asia/Seoul) — 0.13.0 }
                       currentOverdue:
                         type: [array, 'null']

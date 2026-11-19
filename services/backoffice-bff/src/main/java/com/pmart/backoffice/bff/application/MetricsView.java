@@ -34,7 +34,11 @@ public class MetricsView {
   private static final Logger log = LoggerFactory.getLogger(MetricsView.class);
   static final String CASE_SLA = "CASE_SLA";
   static final String SHORTAGE_RATE = "SHORTAGE_RATE";
-  static final List<String> SHORT_REASONS = List.of("SHORT", "DAMAGED", "BLOCKED");
+  static final String ON_TIME_DELIVERY = "ON_TIME_DELIVERY";
+  static final List<String> SHORT_REASONS = List.of("SHORT", "DAMAGED", "BLOCKED", "SPOILED");
+
+  /** 원천에 칸이 있을 때만 점을 내는 사유(BF-MFC-S — mfc-fulfillment 0.22.0 변질, 선택 칸). 없는 칸을 0 으로 보이지 않게. */
+  static final java.util.Set<String> OPTIONAL_REASONS = java.util.Set.of("SPOILED");
 
   private final LookupClients clients;
   private final Clock clock;
@@ -59,13 +63,16 @@ public class MetricsView {
     if (SHORTAGE_RATE.equals(metric)) {
       return shortageRate(token, from, to, centerId, granularity);
     }
+    if (ON_TIME_DELIVERY.equals(metric)) {
+      return onTimeDelivery(token, from, to, centerId, granularity);
+    }
     if (!CASE_SLA.equals(metric)) {
       throw new PmartException(
           "NOT_IMPLEMENTED",
           HttpStatus.NOT_IMPLEMENTED,
           "PAYMENT_UNKNOWN".equals(metric)
               ? "결제 결과 불명은 지표로 만들지 않습니다 — 처리 대기·사건함에서 보세요."
-              : "아직 정의·원천이 없는 지표입니다(지금은 CASE_SLA·SHORTAGE_RATE).",
+              : "아직 정의·원천이 없는 지표입니다(지금은 CASE_SLA·SHORTAGE_RATE·ON_TIME_DELIVERY).",
           false,
           List.of());
     }
@@ -205,6 +212,9 @@ public class MetricsView {
       long shortLines = r.path("shortLines").asLong(0);
       points.add(shortPoint(bucket, mfc, null, shortLines, picked, sourceAt));
       for (String reason : SHORT_REASONS) {
+        if (OPTIONAL_REASONS.contains(reason) && !r.path("shortLinesByReason").has(reason)) {
+          continue;
+        }
         points.add(
             shortPoint(
                 bucket,
@@ -238,6 +248,89 @@ public class MetricsView {
     out.put("points", points);
     out.put("totals", totalRows);
     out.put("currentOverdue", null); // 접수 건 지표에만
+    return out;
+  }
+
+  /**
+   * 정시 배송률(0.21.0, 2026-11-19 — PC 5 DD-4 dispatch 0.13.0 `GET /metrics/on-time-deliveries`, 사용자 결정
+   * DD-4: dispatch 가 배송 단위로, 시간대 지난 미전달은 늦음). numerator = onTime, denominator = due(= onTime +
+   * late), unjudged = 고객 확인·자동 완료(분모에서 뺌), pending = 아직 약속 전(분모에서 뺌 — 따로 보인다). 날짜 = 약속 끝 한국 날짜, 센터별
+   * 점 + 날짜 합계. DAY 만, 원천 31일 상한·4xx 그대로, 장애 503.
+   */
+  private Map<String, Object> onTimeDelivery(
+      String token,
+      LocalDate from,
+      LocalDate to,
+      @Nullable String centerId,
+      @Nullable String granularity) {
+    if (granularity != null && !"DAY".equals(granularity)) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "정시 배송률은 날짜 단위(DAY)만 있습니다.");
+    }
+    Instant now = clock.instant();
+    Map<String, Object> q = new LinkedHashMap<>();
+    q.put("from", from.toString());
+    q.put("to", to.toString());
+    if (centerId != null && !centerId.isBlank()) {
+      q.put("mfcId", centerId.strip());
+    }
+    JsonNode body;
+    try {
+      body = clients.get(Source.DISPATCH, token, "/metrics/on-time-deliveries", Map.of(), q);
+    } catch (HttpClientErrorException e) {
+      throw rejected(e, "배차");
+    } catch (PmartException e) {
+      log.warn("지표: delivery-dispatch 실패 — {}", e.code());
+      throw new PmartException(ErrorCode.DEPENDENCY_UNAVAILABLE, "배차 원천에 닿지 않았습니다 — 잠시 뒤 다시 보세요.");
+    }
+    String asOf = text(body, "asOf");
+    Instant sourceAt = asOf == null ? now : Instant.parse(asOf);
+    List<Map<String, Object>> points = new ArrayList<>();
+    Map<String, long[]> totals = new LinkedHashMap<>(); // 날짜 → {정시, 분모, 판정 불가, 약속 전}
+    for (JsonNode r : body.path("items")) {
+      String bucket = text(r, "date");
+      long onTime = r.path("onTime").asLong(0);
+      long due = r.path("due").asLong(0);
+      long unjudged = r.path("unjudged").asLong(0);
+      long pending = r.path("pending").asLong(0);
+      Map<String, Object> p = new LinkedHashMap<>();
+      p.put("bucket", bucket);
+      p.put("numerator", onTime);
+      p.put("denominator", due);
+      p.put("ratio", ratio(onTime, due));
+      p.put("unjudged", unjudged);
+      p.put("pending", pending);
+      Map<String, Object> seg = new LinkedHashMap<>();
+      seg.put("mfcId", text(r, "mfcId"));
+      p.put("segment", seg);
+      p.put("source", stamp(Source.DISPATCH.system, sourceAt, true));
+      points.add(p);
+      long[] t = totals.computeIfAbsent(bucket, k -> new long[4]);
+      t[0] += onTime;
+      t[1] += due;
+      t[2] += unjudged;
+      t[3] += pending;
+    }
+    List<Map<String, Object>> totalRows = new ArrayList<>();
+    totals.forEach(
+        (b, t) -> {
+          Map<String, Object> m = new LinkedHashMap<>();
+          m.put("bucket", b);
+          m.put("numerator", t[0]);
+          m.put("denominator", t[1]);
+          m.put("ratio", ratio(t[0], t[1]));
+          m.put("unjudged", t[2]);
+          m.put("pending", t[3]);
+          totalRows.add(m);
+        });
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("composedAt", now.toString());
+    out.put("sources", List.of(stamp(Source.DISPATCH.system, sourceAt, true)));
+    out.put("unavailableSources", List.of());
+    out.put("metric", ON_TIME_DELIVERY);
+    out.put("timeZone", "Asia/Seoul");
+    out.put("points", points);
+    out.put("totals", totalRows);
+    out.put("currentOverdue", null);
     return out;
   }
 

@@ -90,7 +90,7 @@ class PackingHandoverIT {
                        "pick":{"state":"COMPLETED"},"pack":{"state":"COMPLETED"},
                        "packageCounts":{"total":3,"sealed":2,"handedOver":1},
                        "packages":[
-                         {"packageId":"PK-1","state":"HANDED_OVER","fenceState":"COMMITTED","handoverAuthorizedAt":"2026-11-17T01:30:00Z",
+                         {"packageId":"PK-1","handoverCode":"305118","state":"HANDED_OVER","fenceState":"COMMITTED","handoverAuthorizedAt":"2026-11-17T01:30:00Z",
                           "handedOverAt":"2026-11-17T01:31:00Z","riderId":"RD-9"},
                          {"packageId":"PK-2","state":"SEALED","fenceState":"NONE"},
                          {"packageId":"PK-3","state":"SEALED","fenceState":"NONE"}]}],
@@ -158,6 +158,10 @@ class PackingHandoverIT {
     assertThat(b.path("handedOverQty").path("qty").asInt()).isEqualTo(1);
     assertThat(b.path("remainingPackages").asInt()).as("§3.7 남은 포장").isEqualTo(2);
     assertThat(b.path("packages").get(0).path("riderId").asString()).isEqualTo("RD-9");
+    assertThat(b.path("packages").get(0).path("handoverCode").asString())
+        .as("DL-2 포장 라벨 6자리")
+        .isEqualTo("305118");
+    assertThat(b.path("packages").get(1).path("handoverCode").isNull()).as("원천에 없으면 null").isTrue();
     assertThat(b.path("packages").get(1).path("handedOverAt").isNull()).isTrue();
     assertThat(b.path("deliveryId").asString()).as("재발송은 RESHIPMENT 배송").isEqualTo("DLV-2");
     assertThat(b.path("delivery").path("state").asString()).isEqualTo("ARRIVED_AT_STORE");

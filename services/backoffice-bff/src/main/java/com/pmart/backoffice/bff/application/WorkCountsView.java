@@ -218,6 +218,30 @@ public class WorkCountsView {
       List<String> unavailable) {
     String sys = Source.EXECUTION.system;
     List<Map<String, Object>> rows = new ArrayList<>();
+    // 0.21.0(PC 5 DE-7 execution 0.33.0): 상태별 수를 한 번에 — 정확한 수(capped 면 complete=false). 원천이 아직
+    // 없으면(404)
+    // 예전 쪽 넘김으로(PC 1 검토 "count API 로 바꾸길")
+    try {
+      JsonNode body =
+          clients.get(Source.EXECUTION, token, "/deliveries/counts", Map.of(), Map.of());
+      for (JsonNode c : body.path("counts")) {
+        String state = text(c, "key");
+        long n = c.path("count").asLong(0);
+        if (state != null && LiveDeliveryView.ACTIVE_STATES.contains(state) && n > 0) {
+          rows.add(row("DELIVERIES", "ACTIVE", state, n, !c.path("capped").asBoolean(false), sys));
+        }
+      }
+      counts.addAll(rows);
+      sources.add(stamp(sys, now, true));
+      return;
+    } catch (HttpClientErrorException.NotFound e) {
+      // execution 0.33.0 배포 전 — 아래 쪽 넘김
+    } catch (HttpClientErrorException | PmartException e) {
+      log.warn("일 건수: 배송 상태별 수 실패 — {}", e.getClass().getSimpleName());
+      unavailable.add(sys);
+      sources.add(stamp(sys, now, false));
+      return;
+    }
     try {
       for (String state : LiveDeliveryView.ACTIVE_STATES) {
         long n = 0;
