@@ -89,6 +89,12 @@ public class PushTokenStore {
         Math.max(0, max - 1));
   }
 
+  /** 주인의 모든 단말(2026-11-19 — 라이더 탈퇴). 지운 수. */
+  public int deleteOwner(String ownerType, String ownerId) {
+    return jdbc.update(
+        "DELETE FROM push_token WHERE owner_type = ? AND owner_id = ?", ownerType, ownerId);
+  }
+
   public int delete(String ownerType, String ownerId, String deviceId) {
     return jdbc.update(
         "DELETE FROM push_token WHERE owner_type = ? AND owner_id = ? AND device_id = ?",

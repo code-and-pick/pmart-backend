@@ -62,3 +62,4 @@
 - **배차 지연 고객 안내(2026-11-19 — 원문 §3.6, 사용자 "1,2,3 전부")**: deliveryEvents `DispatchDelayed` → 고객 알림함 `DISPATCH_DELAYED`(DELIVERY, 목적지 ORDER — "배송이 늦어지고 있어요 … 약 N분(5분 단위 올림)", 취소는 고객센터·전액 환불). 휴대폰 푸시는 `fcm.customer-templates` 에 DISPATCH_DELAYED(시험 사본 고침, **pmart-config 는 PC 1**).
 - **취소 알림 사유별(2026-11-19, CL-5)**: `OrderCancelled.cancelReason`(없으면 reason)로 `Notices.orderCancelled` — DISPATCH_UNAVAILABLE "배달 기사를 찾지 못해 주문이 취소되었어요 / …전액 환불돼요", OUT_OF_STOCK 품절 문구(전에는 reason 이 늘 CANCEL_BEFORE_SHIP 이라 안 나감). 쿠폰 문구는 promotion 이 생기면. 시험 `NoticesTest.cancelNoticeByReason`.
 - **실패 확정 되돌리기 정정(2026-11-19)**: deliveryEvents `DeliveryFailureReverted` — 재발송 안내 기준(`DeliveryFailureRules`, originalReason)이면 고객 알림함 `DELIVERY_FAILURE_REVERTED` "배송을 이어서 진행해요".
+- **라이더 탈퇴 → 단말 토큰 지움(2026-11-19 — 사용자 "응")**: riderEvents 필터에 `RiderWithdrawn` → `PushTokenService.forgetRider`(그 라이더 push_token 모두 삭제, 알림함은 남김). 탈퇴한 폰으로 지급 완료 같은 푸시가 가지 않게.

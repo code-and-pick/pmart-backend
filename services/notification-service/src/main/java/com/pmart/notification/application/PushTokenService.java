@@ -37,6 +37,9 @@ public class PushTokenService {
   private static final int TOKEN_MAX = 4096;
   private static final int APP_VERSION_MAX = 32;
 
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(PushTokenService.class);
+
   private final PushTokenStore store;
   private final NotificationProperties props;
   private final Clock clock;
@@ -115,5 +118,17 @@ public class PushTokenService {
 
   private Instant now() {
     return clock.instant().truncatedTo(ChronoUnit.MICROS);
+  }
+
+  /**
+   * 라이더 탈퇴(2026-11-19 — 사용자 "응", rider {@code RiderWithdrawn}): 그 라이더의 단말 푸시 토큰을 모두 지운다 — 탈퇴한 폰으로
+   * 지급 완료 같은 알림이 가지 않게. 알림함 줄은 남는다(그 주체로 다시 로그인할 수 없다). 멱등(다시 와도 지울 것이 없을 뿐).
+   */
+  public int forgetRider(String riderId) {
+    int n = store.deleteOwner("RIDER", riderId);
+    if (n > 0) {
+      log.info("라이더 탈퇴 — 단말 푸시 토큰 {}개 지움", n);
+    }
+    return n;
   }
 }

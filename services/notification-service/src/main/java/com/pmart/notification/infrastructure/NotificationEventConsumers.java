@@ -77,14 +77,28 @@ class NotificationEventConsumers {
 
   /** delivery.rider.v1 — 계정 제한·해제(라이더 알림함, 2026-11-16 §11-5). */
   @Bean
-  PmartEventConsumer riderEvents(EventConsumers consumers, NotificationService n) {
-    // RiderAppealDecided(소명·이의 결정, #211) — 필터에 없으면 처리기까지 오지 않는다
+  PmartEventConsumer riderEvents(
+      EventConsumers consumers,
+      NotificationService n,
+      com.pmart.notification.application.PushTokenService pushTokens) {
+    // RiderAppealDecided(소명·이의 결정, #211)·RiderWithdrawn(탈퇴 — 단말 토큰 지움, 2026-11-19) — 필터에 없으면 처리기까지
+    // 오지 않는다
     return consumers.of(
         e ->
             "RiderRestricted".equals(e.eventType())
                 || "DeliveryListUpdated".equals(e.eventType())
-                || "RiderAppealDecided".equals(e.eventType()),
-        n::onRiderEvent);
+                || "RiderAppealDecided".equals(e.eventType())
+                || "RiderWithdrawn".equals(e.eventType()),
+        e -> {
+          if ("RiderWithdrawn".equals(e.eventType())) {
+            String rider = e.payload().path("riderId").asString("");
+            if (!rider.isBlank()) {
+              pushTokens.forgetRider(rider);
+            }
+            return;
+          }
+          n.onRiderEvent(e);
+        });
   }
 
   /**

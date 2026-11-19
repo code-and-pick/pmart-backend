@@ -585,6 +585,30 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     assertThat(n.path("body").asString()).contains("약 25분");
   }
 
+  /** 라이더 탈퇴(2026-11-19): RiderWithdrawn → 그 라이더의 단말 푸시 토큰을 모두 지운다(Kafka 소비 경로 그대로). */
+  @Test
+  void riderWithdrawalForgetsPushTokens() throws Exception {
+    String rider = "RD-wd-" + UUID.randomUUID().toString().substring(0, 8);
+    String jwt = TestJwt.rider(rider);
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("token", "fcm-" + UUID.randomUUID());
+    body.put("platform", "ANDROID");
+    body.put("appVersion", "1.0.0");
+    assertThat(send("PUT", jwt, "/me/push-tokens/dev-1", body).status()).isIn(200, 201);
+    assertThat(send("GET", jwt, "/me/push-tokens", null).body().path("items").size()).isEqualTo(1);
+    publish(
+        "delivery.rider.v1",
+        "RiderWithdrawn",
+        "Rider",
+        rider,
+        m("riderId", rider, "withdrawnAt", Instant.now().toString()));
+    Res after =
+        await(
+            () -> send("GET", jwt, "/me/push-tokens", null),
+            r -> r.body().path("items").size() == 0);
+    assertThat(after.body().path("items")).isEmpty();
+  }
+
   /** N-4(2026-11-19, ADR-0069): 사고·파손 전달 실패만 재발송 안내 — 고객 부재·오배송 다시 배송은 알리지 않는다. */
   @Test
   void incidentFailureNotifiesReshipment() throws Exception {
