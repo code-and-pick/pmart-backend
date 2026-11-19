@@ -27,7 +27,13 @@ public class RiderControlService {
       @Nullable Long staleSinceSeconds,
       boolean stale,
       List<LocationStore.Active> active,
-      @Nullable Instant waitingSince) {}
+      @Nullable Instant waitingSince,
+      boolean locationShared) {}
+
+  /** 위치 공유(2026-11-19 사용자 "신규배차도 끄고 배송 중인 것도 없으면 위치 공유가 안 되어야") — 진행 중 배송이 있거나 신규배차를 켠 라이더만. */
+  static boolean shares(boolean newDispatchEnabled, boolean hasActive) {
+    return newDispatchEnabled || hasActive;
+  }
 
   public record Board(List<Item> items, Instant asOf) {}
 
@@ -67,20 +73,22 @@ public class RiderControlService {
         onDuty.stream()
             .map(
                 r -> {
-                  LocationStore.Latest l = latest.get(r.riderId());
+                  List<LocationStore.Active> mine = active.getOrDefault(r.riderId(), List.of());
+                  boolean shared = shares(r.newDispatchEnabled(), !mine.isEmpty());
+                  LocationStore.Latest l = shared ? latest.get(r.riderId()) : null;
                   Long since =
                       l == null
                           ? null
                           : Math.max(0, Duration.between(l.receivedAt(), now).toSeconds());
-                  boolean stale = l == null || since > staleAfter.toSeconds();
-                  List<LocationStore.Active> mine = active.getOrDefault(r.riderId(), List.of());
+                  boolean stale = shared && (l == null || since > staleAfter.toSeconds());
                   return new Item(
                       r,
                       l,
                       since,
                       stale,
                       mine,
-                      waitingSince(r.availableSince(), mine.isEmpty(), lastEnded.get(r.riderId())));
+                      waitingSince(r.availableSince(), mine.isEmpty(), lastEnded.get(r.riderId())),
+                      shared);
                 })
             .toList();
     return new Board(items, now);

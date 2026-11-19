@@ -44,6 +44,7 @@ public class ControlController implements ControlApi {
     r.setNameMasked(i.rider().nameMasked());
     r.setVehicleType(i.rider().vehicleType());
     r.setNewDispatchEnabled(i.rider().newDispatchEnabled());
+    r.setLocationShared(i.locationShared());
     r.setRestriction(i.rider().restriction());
     r.setOnDutySince(time(i.rider().onDutySince()));
     r.setWaitingSince(time(i.waitingSince()));

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.11.1
+  version: 0.12.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -123,6 +123,8 @@ paths:
       x-added-in: '2026-11-17'
       description: |
         2026-11-17 라이더 백오피스 관제(사용자 "추천대로 전부"): 보는 사람은 라이더 운영(RIDER_OPS)·관리자(OPERATOR_ADMIN)만(센터 관리자는 다음 단계), 그 밖 403.
+        **위치 공유(0.12.0, 2026-11-19 사용자 "신규배차도 끄고 배송 중인 것도 없으면 위치 공유가 안 되어야")**: 진행 중 배송이 있거나 신규배차를 켠 라이더만 `location` 을 준다.
+        쉬는 중(운행 중이지만 신규배차 끔 + 배송 0건)이면 라이더는 목록에 나오되 `location` null·`locationShared` false(서버에 점이 있어도 안 보임).
         **운행 중인 라이더의 현재 위치만** — 라이더 목록은 rider-service 내부(`/internal/riders/on-duty`, 운행 중·배달지역에 mfcId)에서 매번 고르므로
         운행을 끈 라이더는 나오지 않는다. 이동 이력은 주지 않는다(이력 열람은 사유·기록이 필요 — 다음 단계). 화면은 10초마다 다시 부른다(SSE 는 다음).
         위치가 아직 없는 라이더도 나온다(location null). `stale` = 위치가 없거나 마지막 수신이 끊김 기준(`pmart.tracking.stale-after`, 3분)보다 오래됨.
@@ -269,6 +271,7 @@ components:
         nameMasked: { type: [string, 'null'] }
         vehicleType: { type: [string, 'null'] }
         newDispatchEnabled: { type: boolean }
+        locationShared: { type: boolean, x-added-in: '2026-11-19', description: '(0.12.0) 위치 공유 중 — 진행 중 배송이 있거나 신규배차 켬. false 면 쉬는 중이라 location 을 주지 않는다' }
         restriction: { type: [string, 'null'], description: 'rider AccountRestriction — NORMAL 이 아니면 계정 제한' }
         onDutySince: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-18', description: '(0.9.0) 지금 운행 구간 시작(rider — 신규배차 켜고 끄기로는 안 바뀜)' }
         waitingSince:

@@ -168,7 +168,16 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     String r1 = "RD-ctl-" + UUID.randomUUID();
     String r2 = "RD-ctl-" + UUID.randomUUID();
     String off = "RD-ctl-" + UUID.randomUUID();
+    String resting = "RD-ctl-" + UUID.randomUUID(); // 운행 중·신규배차 끔·배송 0건 = 쉬는 중(2026-11-19)
     Instant now = Instant.now();
+    assertThat(
+            upload(
+                    resting,
+                    "k-" + resting,
+                    List.of(point(35.1587, 129.0622, 10, now.minusSeconds(5))))
+                .getStatusCode()
+                .value())
+        .isEqualTo(202);
     assertThat(
             upload(r1, "k-" + r1, List.of(point(35.1585, 129.0620, 10, now.minusSeconds(5))))
                 .getStatusCode()
@@ -218,6 +227,16 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                                         java.util.Map.of(
                                             "status", "ON_DUTY", "newDispatchEnabled", false),
                                         "restriction",
+                                        "NORMAL"),
+                                    java.util.Map.of(
+                                        "riderId",
+                                        resting,
+                                        "vehicleType",
+                                        "BICYCLE",
+                                        "operating",
+                                        java.util.Map.of(
+                                            "status", "ON_DUTY", "newDispatchEnabled", false),
+                                        "restriction",
                                         "NORMAL")))))));
     // r2 가 배송 하나 — 화면 배송 번호(ADR-0070) = 배정 사건 주문번호 + 생성 사건 순번
     String dlv = "DLV-ctl-" + UUID.randomUUID();
@@ -252,9 +271,18 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(res.getStatusCode().value()).as(res.getBody()).isEqualTo(200);
     assertThat(res.getHeaders().getCacheControl()).contains("no-store");
     JsonNode items = json(res.getBody()).path("items");
-    assertThat(items.size()).isEqualTo(2);
-    JsonNode a = items.get(0).path("riderId").asString().equals(r1) ? items.get(0) : items.get(1);
-    JsonNode b = a == items.get(0) ? items.get(1) : items.get(0);
+    assertThat(items.size()).isEqualTo(3);
+    java.util.Map<String, JsonNode> byId = new java.util.HashMap<>();
+    items.forEach(n -> byId.put(n.path("riderId").asString(), n));
+    JsonNode a = byId.get(r1);
+    JsonNode b = byId.get(r2);
+    // 쉬는 중이면 위치를 주지 않는다(서버에 점이 있어도)
+    JsonNode c = byId.get(resting);
+    assertThat(c.path("locationShared").asBoolean()).isFalse();
+    assertThat(c.path("location").isNull() || c.path("location").isMissingNode()).isTrue();
+    assertThat(c.path("stale").asBoolean()).isFalse();
+    assertThat(a.path("locationShared").asBoolean()).isTrue();
+    assertThat(b.path("locationShared").asBoolean()).isTrue(); // 신규배차 끔이어도 배송 중이면 공유
     assertThat(a.path("nameMasked").asString()).isEqualTo("김*수");
     assertThat(a.path("riderNumber").asString()).isEqualTo("482913"); // 화면용 라이더 번호(ADR-0070)
     assertThat(a.path("location").path("lat").asDouble()).isEqualTo(35.1585);

@@ -43,3 +43,4 @@
 - **관제 라이더 번호(2026-11-18, 0.10.0 — ADR-0070)**: `ControlRider.riderNumber`(rider 운행 중 목록 값 그대로).
 - **관제 배송 번호(2026-11-18, 0.11.0·V7 — ADR-0070)**: `delivery_progress.delivery_seq`(DeliveryCreated.deliverySeq)·`order_number`(DeliveryAssigned.orderNumber) 사본 → `ControlRider.activeDeliveries[].deliveryNumber`.
 - **라이더 위치 실시간(2026-11-19, 0.11.1 설명 — 사용자 "고객앱 카카오맵에 실시간")**: SSE 가 위치 시각이 바뀌면 ETA_UPDATED 로 riderLocation 을 보냄(이미 구현 — 지문에 위치 시각). 라이더 앱 배송 중 5초·고객 앱 SSE 로 마커(알림 `docs/handoff/clients/all/2026-11-19-notice-live-rider-location.md`).
+- **관제 위치 공유(2026-11-19, 0.12.0 — 사용자 "신규배차도 끄고 배송 중인 것도 없으면 위치 공유가 안 되어야")**: `RiderControlService.shares` — 진행 중 배송이 있거나 신규배차 켬일 때만 `location`, 쉬는 중이면 null·`locationShared` false·stale false. 라이더 앱도 그때 올리지 않게 요청.
