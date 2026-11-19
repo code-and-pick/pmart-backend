@@ -111,6 +111,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 결과는 클라이언트 저장소 handoff 로 회신(백엔드는 읽기만).
 
 ## PC 4 — rag 영역(사용자 확정 2026-11-13, **2026-11-15 인수인계 — 시작해도 됨**)
+- [ ] **AI-1 업무 도우미 질문 원문 저장**(2026-11-19 PC 2 — 백오피스 웹 요청, 요청서 `docs/architecture/service-requests/ai-assistant-service.md` AI-1): ADR-0036 결정 필요 3(질문 원문 저장·보존 기간)이 **사용자 결정 뒤** `store-question` 켜기·본인 지우기. 결정 전에는 시작하지 않음
 - [ ] **RAG 구조 개편 취소 알림(2026-11-19 사용자 "개편 일단 취소할거야")**: `docs/rag/planning/2026-11-18-es-hybrid-restructure-plan.md`·`…-es-restructure-decisions.md` 는 취소로 표시함(PC 1). RAG 전용 ES·1,024토큰 청킹·RRF 작업은 시작하지 않는다 — 지금 구현(pgvector) 그대로. 확인하면 이 줄을 지운다
 
 - [ ] 공통 절 전부
