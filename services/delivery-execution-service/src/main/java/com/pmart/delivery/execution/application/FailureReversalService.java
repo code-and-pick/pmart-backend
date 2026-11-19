@@ -33,6 +33,19 @@ public class FailureReversalService {
   private static final Logger log = LoggerFactory.getLogger(FailureReversalService.class);
   private static final Set<String> RETURN_NOT_TAKEN = Set.of("UNASSIGNED", "ASSIGNED", "CANCELLED");
   private static final Set<String> UNSETTLED = Set.of("ESTIMATED", "PENDING_CONFIRMATION");
+  private static final Set<String> RESHIP_REASONS = Set.of("RIDER_INCIDENT", "DAMAGED");
+
+  /**
+   * 이 실패 확정이 새 상품 재발송을 걸었는지 — order-orchestration {@code
+   * ReshipmentRules.reshipsOnFailure}·notification {@code DeliveryFailureRules} 와 같은 기준(사고·파손, 일반
+   * 배송 또는 오배송 재발송 배송).
+   */
+  static boolean reships(
+      String deliveryType, @org.jspecify.annotations.Nullable String purpose, String reason) {
+    return RESHIP_REASONS.contains(reason)
+        && ("FORWARD".equals(deliveryType)
+            || ("RESHIPMENT".equals(deliveryType) && "MISDELIVERY_RESHIPMENT".equals(purpose)));
+  }
 
   private final ExecutionStore store;
   private final ExecutionEvents events;
@@ -63,6 +76,20 @@ public class FailureReversalService {
 
   public ExecutionService.Applied reverse(
       String deliveryId, String requestId, String source, String reason) {
+    return reverse(deliveryId, requestId, source, reason, false);
+  }
+
+  /**
+   * @param reshipmentStopped 사고·파손 확정(새 상품 재발송이 이미 시작됨)을 되돌릴 때 — 관리자(OPERATOR_ADMIN)가 재발송 출고를
+   *     MFC·주문 쪽에서 멈췄다고 확인한 때만 true(사용자 2026-11-19 "사고·파손은 막기", LAN 28767701-1 은 "원래 라이더가 전달하고 재발송은
+   *     취소")
+   */
+  public ExecutionService.Applied reverse(
+      String deliveryId,
+      String requestId,
+      String source,
+      String reason,
+      boolean reshipmentStopped) {
     PmartPrincipal p =
         PmartPrincipal.current()
             .filter(
@@ -77,7 +104,13 @@ public class FailureReversalService {
     return idempotency
         .execute(
             new RequestKey(source, requestId, "reverseDeliveryFailure", p.subject()),
-            Map.of("deliveryId", deliveryId, "reasonLength", why.length()),
+            Map.of(
+                "deliveryId",
+                deliveryId,
+                "reasonLength",
+                why.length(),
+                "reshipmentStopped",
+                reshipmentStopped),
             ExecutionService.Applied.class,
             () -> {
               Instant now = clock.instant();
@@ -102,6 +135,15 @@ public class FailureReversalService {
               }
               if (!"RIDER".equals(failure.path("custody").asString(""))) {
                 throw notReversible("상품이 라이더에게 없습니다(매장 보관).");
+              }
+              // 사고·파손은 확정과 함께 새 상품 재발송이 끝까지 간다(order-orchestration — 1초 안) → 되돌리면 고객이 두 번 받는다
+              if (reships(d.type(), d.purpose(), failure.path("reason").asString(""))) {
+                if (!reshipmentStopped) {
+                  throw notReversible("사고·파손 확정은 새 상품 재발송이 이미 진행됐습니다(재발송을 먼저 멈춰야 합니다).");
+                }
+                if (!p.hasRole("OPERATOR_ADMIN")) {
+                  throw ExecutionService.forbidden("재발송을 멈춘 사고·파손 되돌리기는 관리자만 할 수 있습니다.");
+                }
               }
               String ret = store.failedReturnOf(deliveryId).orElse(null);
               if (ret != null) {

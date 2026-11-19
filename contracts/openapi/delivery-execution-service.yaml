@@ -398,6 +398,8 @@ paths:
         - 상품이 라이더 손(custody RIDER) — 매장으로 돌아갔으면 이어 전달할 수 없다
         - 반납 배송(failure.returnDeliveryId)이 있으면 아직 받기 전(UNASSIGNED·ASSIGNED) — 받았거나 반납했으면 안 됨
         - 실패로 만든 수행료가 아직 확정 전(ESTIMATED·PENDING_CONFIRMATION)이고 지원센터 조정이 없음 — 그 수행료 줄은 지운다(완료하면 새로 생김)
+        - **사고·파손(RIDER_INCIDENT·DAMAGED — 새 상품 재발송이 걸리는 사유)은 거절**(사용자 2026-11-19 "사고·파손은 막기" — 재발송이 확정과 함께 끝까지 가서 되돌리면 두 번 받는다).
+          예외: 관리자(OPERATOR_ADMIN)가 재발송 출고를 MFC·주문 쪽에서 멈춘 뒤 `reshipmentStopped: true` 로 확인할 때만(그 밖 역할 403).
         결과: 배송은 실패 등록 전 상태(보통 PICKED_UP·ARRIVED_AT_CUSTOMER)로, 실패 기록은 decision REJECT + reversedAt·reversedBy·reversalReason(라이더 앱은 반려처럼 전달을 이어감).
         사건 `DeliveryFailureReverted`(delivery.delivery.v1) → dispatch(원래 배송 다시 열고 반납 배송 취소), tracking(진행 단계 되돌림·위치 감시 다시),
         order-orchestration(사고·파손 재발송 사가 — 작업 시작 전이면 취소, PC 1), order(배송 연결 되돌림, PC 1), notification(재발송 안내를 받은 고객에게 정정).
@@ -417,6 +419,7 @@ paths:
               required: [reason]
               properties:
                 reason: { type: string, minLength: 2, maxLength: 300, description: '되돌리는 까닭(예 반려하려다 확정을 잘못 누름). 개인정보 금지' }
+                reshipmentStopped: { type: boolean, default: false, description: '사고·파손 확정일 때 — 재발송 출고를 이미 멈췄음을 관리자가 확인(아니면 409)' }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }

@@ -25,6 +25,11 @@ public class FailureReversalsController implements FailureReversalsApi {
       ReverseDeliveryFailureRequest body) {
     return ResponseEntity.ok(
         ExecutionViews.applied(
-            reversals.reverse(deliveryId, idempotencyKey, xSourceSystem, body.getReason())));
+            reversals.reverse(
+                deliveryId,
+                idempotencyKey,
+                xSourceSystem,
+                body.getReason(),
+                Boolean.TRUE.equals(body.getReshipmentStopped()))));
   }
 }

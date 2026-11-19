@@ -1763,7 +1763,12 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .value())
         .isEqualTo(403);
     String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
-    ResponseEntity<String> ok = staffPost(uri, ops, body);
+    // 사고 확정은 새 상품 재발송이 이미 걸려 막힌다(사용자 "사고·파손은 막기") — 재발송을 멈췄다는 확인은 관리자만
+    assertThat(staffPost(uri, ops, body).getBody()).contains("FAILURE_NOT_REVERSIBLE");
+    Map<String, Object> stopped = Map.of("reason", "재발송 출고 중지 확인", "reshipmentStopped", true);
+    assertThat(staffPost(uri, ops, stopped).getStatusCode().value()).isEqualTo(403);
+    String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    ResponseEntity<String> ok = staffPost(uri, adm, stopped);
     assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
     assertThat(state(origin)).isEqualTo("PICKED_UP");
     assertThat(
@@ -1773,19 +1778,39 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode ev = outbox(origin, "DeliveryFailureReverted").path("payload");
     assertThat(ev.path("restoredState").asString()).isEqualTo("PICKED_UP");
     assertThat(ev.path("originalReason").asString()).isEqualTo("RIDER_INCIDENT");
-    assertThat(ev.toString()).doesNotContain("잘못 누름");
+    assertThat(ev.toString()).doesNotContain("출고 중지");
     // 라이더 앱에는 반려처럼 — 전달을 이어 간다
     JsonNode v = view(origin, r1);
     assertThat(v.path("state").asString()).isEqualTo("PICKED_UP");
     assertThat(v.path("failure").path("decision").asString()).isEqualTo("REJECT");
     // 다시 되돌리기는 409, 조치 이력에 남음
-    assertThat(staffPost(uri, ops, body).getBody()).contains("FAILURE_NOT_REVERSIBLE");
+    assertThat(staffPost(uri, adm, stopped).getBody()).contains("FAILURE_NOT_REVERSIBLE");
     JsonNode acts =
         body(
             staffGet(
                 "/delivery-staff-actions?deliveryId=" + origin,
                 TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of())));
     assertThat(acts.path("items").get(0).path("action").asString()).isEqualTo("FAILURE_REVERSED");
+
+    // 재발송이 걸리지 않는 사유(고객 연락 안 됨)는 라이더 운영이 그냥 되돌린다
+    String other = "DLV-" + UUID.randomUUID();
+    pickedUp(other, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), r1);
+    assertThat(
+            decideWith(
+                    other,
+                    List.of("RIDER_OPS"),
+                    Map.of(
+                        "decision", "CONFIRM",
+                        "custody", "RIDER",
+                        "reason", "UNREACHABLE",
+                        "note", "잘못 누름"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    ResponseEntity<String> plain =
+        staffPost("/deliveries/" + other + "/failure-reversals", ops, body);
+    assertThat(plain.getStatusCode().value()).as(plain.getBody()).isEqualTo(200);
+    assertThat(state(other)).isEqualTo("PICKED_UP");
   }
 
   ResponseEntity<String> decideWith(String id, List<String> roles, Map<String, Object> body) {
