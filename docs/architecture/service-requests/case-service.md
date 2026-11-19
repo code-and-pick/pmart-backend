@@ -115,3 +115,4 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - 요청(PC 2 case):
   1. `HelpRequestReopened` 구독 → 그 incidentId 의 접수 건(RIDER_HELP·DELIVERY_INCIDENT)이 닫혀 있으면 다시 연다(CaseReopened — execution 은 이미 받아 IN_PROGRESS 로 맞춤). 담당 팀 그대로, 맨 위로.
   2. 닫기 막기: 전달 불가(category DELIVERY_FAILURE)로 열린 접수 건은, 그 배송이 아직 FAILURE_REPORTED 면 닫기(`/cases/{id}/closures`)를 409(예 FAILURE_DECISION_PENDING). 배송 상태는 execution `GET /deliveries/{id}`(서비스 토큰 — state·failure.decision)로.
+- **상태: 구현(2026-11-19, case 0.28.0 — PC 2 #240, main 28707d99)**. 사용자 "둘다 너 추천대로": ② 닫기 막기는 요청대로(RIDER_HELP·DELIVERY_INCIDENT, execution `GET /deliveries/{id}` 를 닫는 직원 토큰으로 — FAILURE_REPORTED 면 409 FAILURE_DECISION_PENDING, 못 읽으면 503). ① 은 **자동 재개하지 않고** `HelpRequestReopened` → 이력 RIDER_REOPENED 만(상태 그대로 — 2026-11-16 "재개는 사람이 손으로만" 유지, 지원센터가 보고 다시 처리하기).
