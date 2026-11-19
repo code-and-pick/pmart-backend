@@ -97,10 +97,12 @@ public class OfferService {
     for (OfferRow o : rows.subList(0, Math.min(limit, rows.size()))) {
       store.delivery(o.deliveryId()).ifPresent(d -> items.add(new OfferView(o, d)));
     }
-    Integer poll =
-        upstreams.rider(riderId).filter(Upstreams.Rider::acceptsNewDispatch).isPresent()
-            ? props.pollAfterSec()
-            : null;
+    // DD-5(2026-11-19): null 로 끊지 않는다 — 앱이 멈추면 다음 제안을 놓친다(LAN 13분 지연). 받을 제안이 있거나 신규배차를 받을 수
+    // 있으면 짧게, 지금 못 받는 상태(운행 끔·신규배차 끔·제한)나 rider 조회 실패면 길게 — 상태가 바뀌면 앱이 바로 다시 부른다
+    boolean live =
+        !items.isEmpty()
+            || upstreams.rider(riderId).filter(Upstreams.Rider::acceptsNewDispatch).isPresent();
+    Integer poll = live ? props.pollAfterSec() : props.idlePollAfterSec();
     return new MyOffers(
         items, now, poll, rows.size() > limit ? String.valueOf(offset + limit) : null);
   }

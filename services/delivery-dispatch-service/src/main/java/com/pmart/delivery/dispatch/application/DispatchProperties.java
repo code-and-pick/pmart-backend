@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param lateWeight 출하 대기보다 늦게 도착하는 초에 주는 가중(설계값 — 원문 §3.1 "포장이 끝날 즈음 도착")
  * @param solverTimeLimit 한 번 계산 상한
  * @param pollAfterSec 라이더 앱 폴링 권장(초) — 계약 잠정 5초
+ * @param idlePollAfterSec 지금 제안을 못 받는 상태일 때 폴링 권장(초, DD-5 2026-11-19 — null 로 끊지 않는다) — 기본 30초
  * @param delayAlertAfter 예상 전달이 약속 시각보다 이만큼 넘게 늦으면 DispatchDelayed(사용자 2026-11-13 "안내기준보다 20분 더
  *     늦춰지면")
  * @param cancellationWindow 최근 배차취소를 세는 기간(7일 — 사용자 확인 2026-11-13)
@@ -51,6 +52,7 @@ public record DispatchProperties(
     @Nullable Integer lateWeight,
     @Nullable Duration solverTimeLimit,
     @Nullable Integer pollAfterSec,
+    @Nullable Integer idlePollAfterSec,
     @Nullable Duration bundleMaxExtra,
     @Nullable Duration delayAlertAfter,
     @Nullable Duration deliveryPromise,
@@ -78,6 +80,7 @@ public record DispatchProperties(
     lateWeight = lateWeight == null ? 2 : lateWeight;
     solverTimeLimit = solverTimeLimit == null ? Duration.ofSeconds(2) : solverTimeLimit;
     pollAfterSec = pollAfterSec == null ? 5 : pollAfterSec;
+    idlePollAfterSec = idlePollAfterSec == null ? 30 : idlePollAfterSec;
     bundleMaxExtra = bundleMaxExtra == null ? Duration.ofMinutes(50) : bundleMaxExtra;
     ai = ai == null ? new Ai(null, null) : ai;
     delayAlertAfter = delayAlertAfter == null ? Duration.ofMinutes(20) : delayAlertAfter;

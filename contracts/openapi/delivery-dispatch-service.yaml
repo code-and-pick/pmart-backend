@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.12.1
+  version: 0.12.2
   description: |
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -127,7 +127,9 @@ paths:
                     minimum: 1
                     description: |
                       다음 조회까지 권장 대기(초). 서버 설정값이며 잠정 기본 5초다(부하 시험 후 조정).
-                      null 이면 지금은 제안을 받을 수 없는 상태(운행 종료·신규배차 OFF·하나씩 배달 진행 중·계정 제한)이므로 상태가 바뀔 때까지 폴링을 멈춘다.
+                      **(0.12.2, DD-5 2026-11-19) 더는 null 을 주지 않는다** — 앱이 멈춰 첫 제안을 놓친 사례(LAN 13분 지연). 받을 제안이 있거나 신규배차를 받을 수 있으면
+                      `poll-after-sec`(5초), 지금 못 받는 상태(운행 종료·신규배차 OFF·하나씩 배달 진행 중·계정 제한)나 라이더 상태 조회 실패면 `idle-poll-after-sec`(30초).
+                      옛 앱이 null 을 만나면 멈추던 동작은 그대로 두어도 서버가 null 을 주지 않으니 안전하다(타입은 호환을 위해 nullable 유지).
                     x-added-in: '2026-10-24'
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }

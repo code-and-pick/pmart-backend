@@ -311,6 +311,15 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(offer.path("summary").path("bagCount").asInt()).isEqualTo(2);
     assertThat(offer.path("remainingSec").asInt()).isBetween(1, 60);
     assertThat(mine.path("pollAfterSec").asInt()).isEqualTo(5);
+    // DD-5(2026-11-19): 제안을 못 받는 라이더(조회 실패 포함)도 null 이 아니라 긴 간격 — 앱이 멈추지 않게
+    JsonNode idle =
+        body(
+            http.get()
+                .uri("/offers")
+                .header("Authorization", "Bearer " + TestJwt.rider("RD-idle-" + UUID.randomUUID()))
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(idle.path("pollAfterSec").asInt()).isEqualTo(30);
 
     // 남의 제안 403, 상세를 열면 viewedAt
     assertThat(
