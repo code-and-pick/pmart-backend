@@ -658,6 +658,31 @@ class NotificationsIT extends PostgresKafkaContainerSupport {
     assertThat(inbox.body().path("items")).hasSize(1);
     assertThat(inbox.body().path("items").get(0).path("templateKey").asString())
         .isEqualTo("DELIVERY_INCIDENT_RESHIPMENT");
+    // 실패 확정 되돌리기(2026-11-19) — 재발송 안내를 받은 사고 건만 정정 알림
+    publish(
+        "delivery.delivery.v1",
+        "DeliveryFailureReverted",
+        "Delivery",
+        "DLV-C-" + orderId,
+        m(
+            "deliveryId",
+            "DLV-C-" + orderId,
+            "orderId",
+            orderId,
+            "deliveryType",
+            "FORWARD",
+            "originalReason",
+            "RIDER_INCIDENT",
+            "restoredState",
+            "PICKED_UP",
+            "revertedAt",
+            Instant.now().toString()));
+    Res after =
+        await(
+            () -> send("GET", token, "/me/notifications?size=20", null),
+            r -> r.body().path("items").size() >= 2);
+    assertThat(after.body().path("items").get(0).path("templateKey").asString())
+        .isEqualTo("DELIVERY_FAILURE_REVERTED");
     assertThat(inbox.body().path("items").get(0).path("title").asString())
         .isEqualTo("배송 중 문제가 생겨 새 상품으로 다시 보내 드려요");
   }

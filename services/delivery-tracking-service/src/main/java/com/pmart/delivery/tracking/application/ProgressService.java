@@ -42,6 +42,7 @@ public class ProgressService {
           "ReturnPickedUp",
           "RiderArrivedAtCustomer",
           "DeliveryStatusCorrected", // 운영자 상태 정정(2026-11-17) — 뒤로도 맞춘다
+          "DeliveryFailureReverted", // 실패 확정 되돌리기(2026-11-19) — 끝(DONE)에서 다시 진행 중으로
           "DeliveryCompleted",
           "ReturnDelivered",
           "DeliveryFailed",
@@ -110,6 +111,15 @@ public class ProgressService {
     }
     if ("DeliveryAssigned".equals(e.eventType()) && text(p, "orderNumber") != null) {
       store.label(deliveryId, null, text(p, "orderNumber")); // 화면 배송 번호(ADR-0070)
+    }
+    if ("DeliveryFailureReverted".equals(e.eventType())) {
+      // 실패 확정 되돌리기(2026-11-19): 실패로 끝낸 단계를 되돌린 수행 상태로(끝에서도 되돌린다)
+      String stage = ProgressRules.stageOfState(text(p, "restoredState"));
+      String current = store.lockStage(deliveryId).orElse(null);
+      if (stage != null && current != null) {
+        store.setStage(deliveryId, stage, null, text(p, "mfcId"), now);
+      }
+      return;
     }
     if ("DeliveryStatusCorrected".equals(e.eventType())) {
       String stage = ProgressRules.stageOfState(text(p, "to"));

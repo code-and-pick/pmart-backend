@@ -325,6 +325,15 @@ public class LocationStore {
   }
 
   /** 완료·실패·픽업 전 취소 — 닫는다(늦게 온 배정 사건이 다시 열지 않게 행은 남김). */
+  /** 실패 확정 되돌리기(2026-11-19) — 실패로 끝낸 감시를 다시(같은 라이더·배정). 라이더를 모르던 줄(끝 사건이 먼저 온 것)은 그대로. */
+  public void reopenDelivery(String deliveryId, Instant at) {
+    jdbc.update(
+        "UPDATE rider_active_delivery SET state = 'ACTIVE', updated_at = ? WHERE delivery_id = ?"
+            + " AND state = 'CLOSED' AND rider_id <> ''",
+        Timestamp.from(at),
+        deliveryId);
+  }
+
   public void closeDelivery(String deliveryId, Instant at) {
     jdbc.update(
         "INSERT INTO rider_active_delivery (delivery_id, rider_id, assignment_version, state, since,"

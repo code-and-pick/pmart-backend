@@ -1077,6 +1077,65 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
         delivery);
   }
 
+  /** 실패 확정 되돌리기(2026-11-19): 실패로 DONE 이 된 단계를 되돌린 상태로, 위치 감시도 다시. */
+  @Test
+  void failureReversalReopensProgressAndWatch() {
+    String delivery = "DLV-rv-" + UUID.randomUUID();
+    String rider = "RD-rv-" + UUID.randomUUID();
+    deliveryEvent(
+        "DeliveryAssigned",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "riderId",
+            rider,
+            "mfcId",
+            "MFC-1",
+            "assignmentVersion",
+            1,
+            "acceptedAt",
+            Instant.now().toString()));
+    deliveryEvent(
+        "PickupCompleted",
+        delivery,
+        Map.of("deliveryId", delivery, "riderId", rider, "pickedUpAt", Instant.now().toString()));
+    deliveryEvent(
+        "DeliveryFailed",
+        delivery,
+        Map.of("deliveryId", delivery, "reason", "RIDER_INCIDENT", "custody", "RIDER"));
+    awaitCount(
+        "SELECT count(*) FROM delivery_progress WHERE delivery_id = '"
+            + delivery
+            + "' AND stage = 'DONE'");
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND state = 'CLOSED'");
+    deliveryEvent(
+        "DeliveryFailureReverted",
+        delivery,
+        Map.of(
+            "deliveryId",
+            delivery,
+            "deliveryType",
+            "FORWARD",
+            "originalReason",
+            "RIDER_INCIDENT",
+            "restoredState",
+            "PICKED_UP",
+            "revertedAt",
+            Instant.now().toString()));
+    awaitCount(
+        "SELECT count(*) FROM delivery_progress WHERE delivery_id = '"
+            + delivery
+            + "' AND stage = 'TO_CUSTOMER' AND outcome IS NULL");
+    awaitCount(
+        "SELECT count(*) FROM rider_active_delivery WHERE delivery_id = '"
+            + delivery
+            + "' AND state = 'ACTIVE'");
+  }
+
   private void deliveryEvent(String type, String deliveryId, Map<String, Object> payload) {
     String json =
         EventEnvelopeFixtures.envelope(type)

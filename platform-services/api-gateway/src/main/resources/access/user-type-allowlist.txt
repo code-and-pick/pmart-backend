@@ -384,6 +384,7 @@ POST /api/v1/deliveries/{deliveryId}/completions RIDER
 POST /api/v1/deliveries/{deliveryId}/customer-arrivals RIDER
 POST /api/v1/deliveries/{deliveryId}/evidence-photos RIDER
 POST /api/v1/deliveries/{deliveryId}/failure-decisions OPERATOR
+POST /api/v1/deliveries/{deliveryId}/failure-reversals OPERATOR
 POST /api/v1/deliveries/{deliveryId}/failures RIDER
 POST /api/v1/deliveries/{deliveryId}/failures/resume-requests RIDER
 POST /api/v1/deliveries/{deliveryId}/help-requests RIDER

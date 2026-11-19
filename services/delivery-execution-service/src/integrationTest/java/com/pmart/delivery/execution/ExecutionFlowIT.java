@@ -1719,6 +1719,75 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(400);
   }
 
+  /** 실패 확정 되돌리기(2026-11-19 — LAN 28767701-1): 직접 확정(사고) 뒤 라이더 운영이 되돌림 → PICKED_UP, 수행료 지움, 사건. */
+  @Test
+  void staffReversesMistakenFailureConfirmation() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String r1 = "RDR-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, r1);
+    dispatchApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/deliveries/" + origin + "/incident-distance"))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"deliveryId\":\""
+                        + origin
+                        + "\",\"distanceM\":900,\"source\":\"LAST_LOCATION\",\"recordedAt\":\""
+                        + Instant.now()
+                        + "\"}")));
+    assertThat(
+            decideWith(
+                    origin,
+                    List.of("RIDER_OPS"),
+                    Map.of(
+                        "decision", "CONFIRM",
+                        "custody", "RIDER",
+                        "returnBy", "OTHER_RIDER",
+                        "reason", "RIDER_INCIDENT",
+                        "note", "잘못 누름"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    assertThat(state(origin)).isEqualTo("FAILED");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_earning WHERE delivery_id = ?", Integer.class, origin))
+        .isEqualTo(1);
+    String uri = "/deliveries/" + origin + "/failure-reversals";
+    Map<String, Object> body = Map.of("reason", "반려하려다 확정을 잘못 누름");
+    assertThat(
+            staffPost(uri, TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of()), body)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    ResponseEntity<String> ok = staffPost(uri, ops, body);
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    assertThat(state(origin)).isEqualTo("PICKED_UP");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_earning WHERE delivery_id = ?", Integer.class, origin))
+        .isZero();
+    JsonNode ev = outbox(origin, "DeliveryFailureReverted").path("payload");
+    assertThat(ev.path("restoredState").asString()).isEqualTo("PICKED_UP");
+    assertThat(ev.path("originalReason").asString()).isEqualTo("RIDER_INCIDENT");
+    assertThat(ev.toString()).doesNotContain("잘못 누름");
+    // 라이더 앱에는 반려처럼 — 전달을 이어 간다
+    JsonNode v = view(origin, r1);
+    assertThat(v.path("state").asString()).isEqualTo("PICKED_UP");
+    assertThat(v.path("failure").path("decision").asString()).isEqualTo("REJECT");
+    // 다시 되돌리기는 409, 조치 이력에 남음
+    assertThat(staffPost(uri, ops, body).getBody()).contains("FAILURE_NOT_REVERSIBLE");
+    JsonNode acts =
+        body(
+            staffGet(
+                "/delivery-staff-actions?deliveryId=" + origin,
+                TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of())));
+    assertThat(acts.path("items").get(0).path("action").asString()).isEqualTo("FAILURE_REVERSED");
+  }
+
   ResponseEntity<String> decideWith(String id, List<String> roles, Map<String, Object> body) {
     return http.post()
         .uri("/deliveries/{id}/failure-decisions", id)

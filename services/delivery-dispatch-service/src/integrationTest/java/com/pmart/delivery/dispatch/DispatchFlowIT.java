@@ -2393,6 +2393,43 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT pickup_source FROM delivery WHERE delivery_id = ?", String.class, back3))
         .isEqualTo("RIDER_LOCATION");
 
+    // 실패 확정 되돌리기(2026-11-19): 원래 배송 다시 PICKED_UP(같은 라이더), 반납 배송(제안 중)은 픽업 전 취소
+    executionEvent(
+        "DeliveryFailureReverted",
+        origin3,
+        Map.of(
+            "deliveryId",
+            origin3,
+            "deliveryType",
+            "FORWARD",
+            "originalReason",
+            "RIDER_INCIDENT",
+            "restoredState",
+            "PICKED_UP",
+            "returnDeliveryId",
+            back3,
+            "revertedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + back3
+            + "' AND state = 'CANCELLED_BEFORE_PICKUP'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, origin3))
+        .isEqualTo("PICKED_UP");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT rider_id FROM delivery WHERE delivery_id = ?", String.class, origin3))
+        .isEqualTo(r3rider);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type ="
+                    + " 'DeliveryCancelledBeforePickup'",
+                Integer.class,
+                back3))
+        .isEqualTo(1);
+
     // 상품이 매장(custody STORE)이면 라이더 할 일 없음
     String origin2 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID());
     executionEvent(

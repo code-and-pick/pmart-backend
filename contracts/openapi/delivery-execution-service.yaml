@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.31.0
+  version: 0.32.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -382,6 +382,44 @@ paths:
                 note: { type: string, maxLength: 300, description: 라이더 메모(선택 — 대화에 함께 남는다) }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /deliveries/{deliveryId}/failure-reversals:
+    post:
+      tags: [failure-reversals]
+      summary: (0.32.0) 전달 실패 확정 되돌리기 — 잘못 누른 확정을 짧은 시간 안에 (라이더 운영·관리자)
+      x-added-in: '2026-11-19'
+      description: |
+        2026-11-19 사용자 "확정 되돌리기 기능 만들기"(LAN 28767701-1 — 반려하려다 직접 확정이 눌림). RIDER_OPS·OPERATOR_ADMIN(그 밖 403), 사유 2~300자.
+        되돌리는 조건(아니면 409 FAILURE_NOT_REVERSIBLE, detail 에 까닭):
+        - 지금 FAILED 이고 실패 결정이 CONFIRM, 일반·재발송 배송(회수·반납 배송 아님), 확정 뒤 `pmart.execution.failure-reversal-window`(기본 30분) 안
+        - 상품이 라이더 손(custody RIDER) — 매장으로 돌아갔으면 이어 전달할 수 없다
+        - 반납 배송(failure.returnDeliveryId)이 있으면 아직 받기 전(UNASSIGNED·ASSIGNED) — 받았거나 반납했으면 안 됨
+        - 실패로 만든 수행료가 아직 확정 전(ESTIMATED·PENDING_CONFIRMATION)이고 지원센터 조정이 없음 — 그 수행료 줄은 지운다(완료하면 새로 생김)
+        결과: 배송은 실패 등록 전 상태(보통 PICKED_UP·ARRIVED_AT_CUSTOMER)로, 실패 기록은 decision REJECT + reversedAt·reversedBy·reversalReason(라이더 앱은 반려처럼 전달을 이어감).
+        사건 `DeliveryFailureReverted`(delivery.delivery.v1) → dispatch(원래 배송 다시 열고 반납 배송 취소), tracking(진행 단계 되돌림·위치 감시 다시),
+        order-orchestration(사고·파손 재발송 사가 — 작업 시작 전이면 취소, PC 1), order(배송 연결 되돌림, PC 1), notification(재발송 안내를 받은 고객에게 정정).
+        조치 이력(delivery-staff-actions)에 FAILURE_REVERSED. 같은 Idempotency-Key 는 같은 결과.
+      operationId: reverseDeliveryFailure
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 2, maxLength: 300, description: '되돌리는 까닭(예 반려하려다 확정을 잘못 누름). 개인정보 금지' }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }

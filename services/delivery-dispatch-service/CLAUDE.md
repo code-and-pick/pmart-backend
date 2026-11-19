@@ -73,3 +73,4 @@
 - **직원 조치 이력(2026-11-18, 관리자만)**: `GET /dispatch-staff-actions`(`StaffActions` — 운영자 배차 취소).
 - **배차 상세 차종(2026-11-19, 0.11.1 — MFC 시뮬레이터 R-24)**: `assignment.vehicleType` = 수락한 제안의 차종(`DispatchViews.assignment`), 제안 없으면 null.
 - **배차 지연 목록(2026-11-19, 0.12.0 — 원문 §3.6)**: `GET /dispatch-delays?mfcId=`(`DispatchDelays`) — delay_alerted_at 있고 픽업 전(CREATED·DISPATCHING·ASSIGNED), 약속 이른 순. 그 센터 운영자(mfcId 필수)·관리자·CS·RIDER_OPS. MFC 백오피스 → claim CL-5 배차 불가 취소.
+- **실패 확정 되돌리기(2026-11-19)**: executionEvents `DeliveryFailureReverted` → 원래 배송 CLOSED → PICKED_UP(같은 라이더), 반납 배송(받기 전)은 픽업 전 취소(FAILURE_REVERSED).

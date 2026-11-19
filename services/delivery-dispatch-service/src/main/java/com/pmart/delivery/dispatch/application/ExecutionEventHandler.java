@@ -31,7 +31,8 @@ public class ExecutionEventHandler {
           "DeliveryFailed",
           "ReturnPickedUp",
           "ReturnDelivered",
-          "ReturnPickupFailed"); // 고객 반품 회수 실패(CL-1, 2026-11-17) — 배차 끝, 다시 시도는 반품 쪽이 새 요청으로
+          "ReturnPickupFailed", // 고객 반품 회수 실패(CL-1, 2026-11-17) — 배차 끝, 다시 시도는 반품 쪽이 새 요청으로
+          "DeliveryFailureReverted"); // 실패 확정 되돌리기(2026-11-19) — 원래 배송 다시 열고 반납 배송 취소
 
   private static final Logger log = LoggerFactory.getLogger(ExecutionEventHandler.class);
   private static final Set<String> OPEN = Set.of("ASSIGNED", "PICKED_UP");
@@ -40,10 +41,13 @@ public class ExecutionEventHandler {
   private final Clock clock;
 
   private final DispatchEvents events;
+  private final DeliveryTransitions transitions;
 
-  public ExecutionEventHandler(DispatchStore store, DispatchEvents events, Clock clock) {
+  public ExecutionEventHandler(
+      DispatchStore store, DispatchEvents events, DeliveryTransitions transitions, Clock clock) {
     this.store = store;
     this.events = events;
+    this.transitions = transitions;
     this.clock = clock;
   }
 
@@ -51,6 +55,10 @@ public class ExecutionEventHandler {
     JsonNode p = e.payload();
     String deliveryId = p.path("deliveryId").asString();
     Instant now = clock.instant();
+    if ("DeliveryFailureReverted".equals(e.eventType())) {
+      reverted(deliveryId, p, now);
+      return;
+    }
     store
         .lockDelivery(deliveryId)
         .ifPresent(
@@ -102,6 +110,41 @@ public class ExecutionEventHandler {
         "ATT-" + java.util.UUID.randomUUID(), id, "AUTO", otherRider ? d.riderId() : null, now);
     events.created(store.delivery(id).orElseThrow(), List.of());
     log.info("전달 실패 {} → 반납 배송 {}(라이더 {} 에게 바로 배정 예정)", d.deliveryId(), id, d.riderId());
+  }
+
+  /**
+   * 실패 확정 되돌리기(2026-11-19 — 사용자 "확정 되돌리기 기능 만들기"). 실패로 닫은 원래 배송을 같은 라이더·같은 배정으로 다시 PICKED_UP, 그 실패로
+   * 만든 반납 배송은 아직 받기 전이면 픽업 전 취소(DeliveryCancelledBeforePickup — execution·라이더 앱이 거둔다). execution 이
+   * 반납을 받기 전에만 되돌림을 허락한다.
+   */
+  private void reverted(String deliveryId, JsonNode p, Instant now) {
+    store
+        .lockDelivery(deliveryId)
+        .ifPresent(
+            d -> {
+              if ("CLOSED".equals(d.state()) && d.riderId() != null) {
+                store.setState(deliveryId, "PICKED_UP", null, now);
+                log.info("배송 {} 실패 확정 되돌림 — 다시 PICKED_UP(라이더 {})", deliveryId, d.riderId());
+              }
+            });
+    String ret =
+        p.path("returnDeliveryId").isString()
+            ? p.path("returnDeliveryId").asString()
+            : "DLV-"
+                + java.util.UUID.nameUUIDFromBytes(
+                    ("failed-return:" + deliveryId)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    store
+        .lockDelivery(ret)
+        .ifPresent(
+            r -> {
+              if (Set.of("CREATED", "DISPATCHING", "ASSIGNED", "DISPATCH_FAILED")
+                      .contains(r.state())
+                  && !r.handoverStarted()) {
+                transitions.cancelBeforePickup(r, "FAILURE_REVERSED", now);
+                log.info("반납 배송 {} 취소 — 원래 배송 {} 실패 확정 되돌림", ret, deliveryId);
+              }
+            });
   }
 
   private static Instant instant(JsonNode n, Instant fallback) {

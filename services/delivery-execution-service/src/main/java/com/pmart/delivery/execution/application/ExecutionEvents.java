@@ -223,6 +223,45 @@ public class ExecutionEvents {
   }
 
   /**
+   * 전달 실패 확정 되돌리기(2026-11-19). 구독 dispatch·tracking·order·order-orchestration·notification. 사유 글은
+   * 싣지 않는다.
+   */
+  public void failureReverted(
+      DeliveryRow before,
+      String originalReason,
+      String restoredState,
+      @org.jspecify.annotations.Nullable String returnDeliveryId,
+      String operatorId,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deliveryId", before.deliveryId());
+    if (before.orderId() != null) {
+      p.put("orderId", before.orderId());
+    }
+    if (before.riderId() != null) {
+      p.put("riderId", before.riderId());
+    }
+    if (before.mfcId() != null) {
+      p.put("mfcId", before.mfcId());
+    }
+    p.put("deliveryType", before.type());
+    if (before.purpose() != null) {
+      p.put("purpose", before.purpose());
+    }
+    p.put("originalReason", originalReason);
+    p.put("restoredState", restoredState);
+    if (returnDeliveryId != null) {
+      p.put("returnDeliveryId", returnDeliveryId);
+    }
+    p.put("revertedAt", at.toString());
+    publish(
+        "DeliveryFailureReverted",
+        before,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, operatorId),
+        p);
+  }
+
+  /**
    * 지원센터 답장(2026-11-16 — 라이더 앱 요청 §11-5): 라이더 알림함용. 메시지 내용은 싣지 않는다. version = 지금 배송 수행 버전 그대로(대화는
    * 배송 버전을 올리지 않는다 — 라이더 앱의 X-Expected-Version 이 흔들리지 않게).
    */

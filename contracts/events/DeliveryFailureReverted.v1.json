@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/DeliveryFailureReverted.v1.json",
+  "title": "DeliveryFailureReverted",
+  "description": "2026-11-19 — 운영자가 잘못 누른 전달 실패 확정을 되돌렸다(사용자 \"확정 되돌리기 기능 만들기\"). 발행 delivery-execution. 토픽 delivery.delivery.v1. 구독 delivery-dispatch(원래 배송 다시 열고 반납 배송 취소), delivery-tracking(진행 단계 되돌림), order(배송 연결 되돌림), order-orchestration(사고·파손 재발송 사가 취소), notification(재발송 안내 정정). 배송은 restoredState 로 다시 진행 중 — 같은 라이더가 전달을 이어 간다. 사유 글은 싣지 않는다.",
+  "allOf": [
+    { "$ref": "_envelope.v1.json" },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": { "const": "DeliveryFailureReverted" },
+        "aggregateType": { "const": "Delivery" },
+        "payload": {
+          "type": "object",
+          "required": ["deliveryId", "deliveryType", "originalReason", "restoredState", "revertedAt"],
+          "properties": {
+            "deliveryId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "orderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "riderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "mfcId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "deliveryType": { "type": "string" },
+            "purpose": { "type": "string" },
+            "originalReason": { "type": "string", "description": "되돌린 실패의 사유 코드(DeliveryFailed.reason)" },
+            "restoredState": { "type": "string", "description": "되돌아간 수행 상태(PICKED_UP·ARRIVED_AT_CUSTOMER)" },
+            "returnDeliveryId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "취소할 반납 배송(있으면)" },
+            "revertedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

@@ -258,6 +258,14 @@ public class NotificationService {
           notify(e, null, orderId, Notices.incidentReshipment(orderId), "");
         }
       }
+      // 실패 확정 되돌리기(2026-11-19): 재발송 안내(N-4)를 보냈던 실패였으면 "원래 배송을 이어 가요"로 정정 — 같은 기준
+      case "DeliveryFailureReverted" -> {
+        JsonNode p = e.payload();
+        if (DeliveryFailureRules.noticeReshipment(
+            text(p, "deliveryType"), text(p, "purpose"), text(p, "originalReason"))) {
+          notify(e, null, orderId, Notices.failureReverted(orderId), "");
+        }
+      }
       // 배차 지연(2026-11-19 — 원문 §3.6 "고객에게 지연 사유와 지연예상시간을 안내", 사용자 "1,2,3 전부"). dispatch 가 배송마다 한 번
       // 낸다
       case "DispatchDelayed" -> {

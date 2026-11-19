@@ -46,6 +46,10 @@ public class StaffActions {
          failure->>'reason', failure->>'decisionNote'
     FROM execution_delivery WHERE failure IS NOT NULL AND failure->>'decidedBy' IS NOT NULL
   UNION ALL
+  SELECT CAST(failure->>'reversedAt' AS timestamptz), failure->>'reversedBy', 'FAILURE_REVERSED', rider_id, delivery_id,
+         failure->>'reason', failure->>'reversalReason'
+    FROM execution_delivery WHERE failure IS NOT NULL AND failure->>'reversedBy' IS NOT NULL
+  UNION ALL
   SELECT adjusted_at, adjusted_by, 'EARNING_ADJUSTED', rider_id, delivery_id, fault || ' ' || decision || ' ' || amount || '원', reason
     FROM earning_adjustment
   UNION ALL

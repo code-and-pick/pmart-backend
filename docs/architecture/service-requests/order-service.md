@@ -76,3 +76,11 @@
 - **필요한 것**: `GET /orders/lookups/counts?<목록과 같은 거르기>` — `GET /orders/lookups` 와 같은 거르기(기간 createdFrom·createdTo·mfcId·customerId 등, `status` 제외)로 `status`(OrderStatus)별 수.
 - 응답 모양(웹 요청 그대로, case 0.26.0 `StatusCounts` 와 같게): `{"counts":[{"key":"<상태>","count":12,"capped":false}],"asOf":"…"}` — **모든 상태 값을 0 까지 빠짐없이**, 셀 상한을 넘으면 `capped=true`(화면 "N+"), 원천을 못 읽으면 503(화면 "?").
 - **웹 질문**: 주문 수에 셀 상한이 필요하면 그 값(화면 "N+") — order 가 정해 적어 줌(기간 31일 상한 안이면 정확히 세도 되는지).
+
+## O-10. 전달 실패 확정 되돌리기 — order 배송 연결·orchestration 재발송 사가 (2026-11-19, 보낸 영역 delivery — 사용자 "확정 되돌리기 기능 만들기")
+- 계기: LAN 28767701-1 — 백오피스가 반려하려다 "지원센터 직접 실패 처리"(사고·다른 라이더 반납)가 눌려 확정됨. 상품은 원래 라이더 손, 사용자는 그 라이더가 그대로 전달하길 원함.
+- PC 5 구현(execution 0.32.0): `POST /deliveries/{id}/failure-reversals` — 확정 뒤 30분 안·상품 라이더 손·반납 받기 전·수행료 확정 전이면 배송을 실패 등록 전 상태(PICKED_UP 등)로 되돌리고 **`DeliveryFailureReverted`**(delivery.delivery.v1 — deliveryId·orderId·riderId·deliveryType·purpose·originalReason·restoredState·returnDeliveryId·revertedAt). dispatch(원래 배송 다시 열기·반납 배송 취소)·tracking·notification(재발송 안내 정정)은 PC 5 가 같은 PR 에서 맞춤.
+- 요청(PC 1):
+  1. **order-orchestration**: `DeliveryFailed`(RIDER_INCIDENT·DAMAGED)로 시작한 새 상품 재발송 사가 — 같은 배송의 `DeliveryFailureReverted` 가 오면 **MFC 재발송 작업 시작 전이면 취소**(작업 지시 취소·재고 복귀). 이미 시작·출고됐으면 어떻게 할지 정해 주세요(PC 5 추천: 이미 피킹이 시작됐으면 재발송은 그대로 두고 상담원 사건 — 고객이 두 번 받는 것은 막아야 함).
+  2. **order**: 배송 연결(`DeliveryLinkRules` — DeliveryFailed 를 FAILED 단계 3) — `DeliveryFailureReverted` 면 그 배송을 다시 진행 중(PICKED_UP 단계)으로. 단계 순위로 막히지 않게.
+- 순서 주의: 같은 배송 키라 DeliveryFailed → DeliveryFailureReverted 순서는 보장된다. 재발송 사가가 아직 시작 전이면 시작하지 않게(되돌림 먼저 본 경우).

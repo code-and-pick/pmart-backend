@@ -682,6 +682,15 @@ public class ExecutionStore {
 
   /** 실패 등록·결정 기록과 상태를 함께 바꾼다. */
   /** 이 배송의 전달 실패 반납 배송(dispatch 가 만든 뒤 DeliveryCreated 가 와야 있다). */
+  /** 실패 확정 되돌리기(2026-11-19) — 실패로 만든 확정 전 수행료 줄을 지운다(완료하면 새로 생긴다). 지운 수. */
+  public int deleteUnsettledEarning(String earningId) {
+    return jdbc.update(
+        "DELETE FROM rider_earning WHERE earning_id = ? AND settlement_state IN ('ESTIMATED',"
+            + " 'PENDING_CONFIRMATION') AND NOT EXISTS (SELECT 1 FROM earning_adjustment a WHERE"
+            + " a.earning_id = rider_earning.earning_id)",
+        earningId);
+  }
+
   public Optional<String> failedReturnOf(String originDeliveryId) {
     return jdbc
         .query(
