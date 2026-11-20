@@ -41,7 +41,7 @@ public class ExecutionEventHandler {
           "DeliveryCancelledBeforePickup");
 
   public static final Set<String> FULFILLMENT_TYPES =
-      Set.of("ShipmentReady", "PackingFinished", "PackageHandedOver");
+      Set.of("ShipmentReady", "PackingFinished", "PackageHandedOver", "PackageInvalidated");
 
   private static final Logger log = LoggerFactory.getLogger(ExecutionEventHandler.class);
 
@@ -313,6 +313,30 @@ public class ExecutionEventHandler {
         store.putShipmentPackages(shipmentId, mapper.writeValueAsString(ids), now);
         for (String deliveryId : store.deliveriesOfShipment(shipmentId)) {
           pickup.judge(deliveryId, now);
+        }
+      }
+      case "PackageInvalidated" -> {
+        // 2026-11-20(주문 23631583): 재포장으로 옛 포장 무효 — 포장 목록에서 새 포장으로 바꿔 보고 픽업을 다시 판정한다.
+        // 처리하지 않던 때는 옛 포장이 목록에 남아 새 포장을 인계해도 픽업 완료가 되지 않았다
+        String packageId = p.path("packageId").asString("");
+        if (packageId.isBlank()) {
+          return;
+        }
+        List<String> next = strings(p.path("newPackageIds"));
+        if (next.isEmpty()) {
+          String one = p.path("newPackageId").asString("");
+          if (!one.isBlank()) {
+            next = List.of(one);
+          }
+        }
+        String shipmentId = p.path("shipmentId").asString(null);
+        Instant at = instantOr(p.path("invalidatedAt").asString(null), now);
+        store.invalidatePackage(packageId, shipmentId, next, at, now);
+        log.info("포장 {} 무효(재포장) → 새 포장 {}개", packageId, next.size());
+        if (shipmentId != null && !shipmentId.isBlank()) {
+          for (String deliveryId : store.deliveriesOfShipment(shipmentId)) {
+            pickup.judge(deliveryId, now);
+          }
         }
       }
       case "PackageHandedOver" -> {

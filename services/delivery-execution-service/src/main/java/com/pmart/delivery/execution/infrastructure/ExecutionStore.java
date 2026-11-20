@@ -147,9 +147,12 @@ public class ExecutionStore {
 
   private final JdbcTemplate jdbc;
 
-  public ExecutionStore(JdbcTemplate jdbc) {
+  public ExecutionStore(JdbcTemplate jdbc, tools.jackson.databind.ObjectMapper mapper) {
     this.jdbc = jdbc;
+    this.mapper = mapper;
   }
+
+  private final tools.jackson.databind.ObjectMapper mapper;
 
   // ---- 배송
 
@@ -387,14 +390,84 @@ public class ExecutionStore {
         ts(now));
   }
 
+  /**
+   * 출고의 지금 포장 목록(JSON 배열). 재포장으로 무효된 포장은 새 포장으로 바꿔 돌려준다(2026-11-20 — {@link #invalidatePackage}).
+   */
   public Optional<String> shipmentPackages(String shipmentId) {
-    return jdbc
-        .queryForList(
-            "SELECT package_ids::text FROM shipment_package WHERE shipment_id = ?",
-            String.class,
-            shipmentId)
-        .stream()
-        .findFirst();
+    Optional<String> raw =
+        jdbc
+            .queryForList(
+                "SELECT package_ids::text FROM shipment_package WHERE shipment_id = ?",
+                String.class,
+                shipmentId)
+            .stream()
+            .findFirst();
+    if (raw.isEmpty()) {
+      return raw;
+    }
+    List<String> ids = new java.util.ArrayList<>();
+    for (tools.jackson.databind.JsonNode n : mapper.readTree(raw.get())) {
+      ids.add(n.asString());
+    }
+    java.util.Map<String, List<String>> replaced = new java.util.HashMap<>();
+    jdbc.query(
+        "SELECT package_id, new_package_ids::text FROM invalidated_package WHERE package_id IN"
+            + " (SELECT jsonb_array_elements_text(package_ids) FROM shipment_package WHERE"
+            + " shipment_id = ?) OR shipment_id = ?",
+        rs -> {
+          List<String> next = new java.util.ArrayList<>();
+          for (tools.jackson.databind.JsonNode n : mapper.readTree(rs.getString(2))) {
+            next.add(n.asString());
+          }
+          replaced.put(rs.getString(1), next);
+        },
+        shipmentId,
+        shipmentId);
+    if (replaced.isEmpty()) {
+      return raw;
+    }
+    return Optional.of(mapper.writeValueAsString(currentPackages(ids, replaced)));
+  }
+
+  /** 무효 포장을 새 포장으로(여러 번 재포장돼도 끝까지 — 고리는 막는다), 순서 유지·중복 없음. */
+  static List<String> currentPackages(
+      List<String> ids, java.util.Map<String, List<String>> replaced) {
+    java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+    java.util.ArrayDeque<String> todo = new java.util.ArrayDeque<>(ids);
+    java.util.Set<String> seen = new java.util.HashSet<>();
+    while (!todo.isEmpty()) {
+      String id = todo.pollFirst();
+      if (!seen.add(id)) {
+        continue;
+      }
+      List<String> next = replaced.get(id);
+      if (next == null) {
+        out.add(id);
+      } else {
+        for (int i = next.size() - 1; i >= 0; i--) {
+          todo.addFirst(next.get(i));
+        }
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /** 재포장으로 무효된 포장(PackageInvalidated, 2026-11-20). 같은 포장은 한 번. */
+  public void invalidatePackage(
+      String packageId,
+      @Nullable String shipmentId,
+      List<String> newPackageIds,
+      Instant invalidatedAt,
+      Instant now) {
+    jdbc.update(
+        "INSERT INTO invalidated_package (package_id, shipment_id, new_package_ids,"
+            + " invalidated_at, recorded_at) VALUES (?, ?, ?::jsonb, ?, ?) ON CONFLICT (package_id)"
+            + " DO NOTHING",
+        packageId,
+        shipmentId,
+        mapper.writeValueAsString(newPackageIds),
+        ts(invalidatedAt),
+        ts(now));
   }
 
   /** 같은 handoverId 는 한 번. 새로 남겼으면 true. */

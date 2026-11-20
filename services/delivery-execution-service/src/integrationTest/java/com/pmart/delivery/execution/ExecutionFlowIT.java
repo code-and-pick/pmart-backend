@@ -3256,6 +3256,89 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     send("delivery.delivery.v1", "DeliveryAssigned", "Delivery", id, p);
   }
 
+  /**
+   * 재포장 무효(2026-11-20, 주문 23631583): ShipmentReady 뒤 옛 포장이 무효(PackageInvalidated, 두 번 재포장)되면 포장 목록은
+   * 새 포장으로 — 새 포장만 인계해도 픽업 완료. 무효 사건이 목록보다 먼저 와도 같다.
+   */
+  @Test
+  void invalidatedPackageIsReplacedForPickup() throws Exception {
+    String id = "DLV-" + UUID.randomUUID();
+    String shipment = "SHP-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    String p1 = "PKG-1-" + id;
+    String p2 = "PKG-2-" + id;
+    String p3 = "PKG-3-" + id;
+    String p4 = "PKG-4-" + id;
+    created(id, shipment, order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+    shipmentReady(shipment, order, List.of(p1, p2));
+    invalidated(p1, shipment, order, p3);
+    invalidated(p3, shipment, order, p4);
+    handedOver(id, shipment, order, rider, p2, "HO-2-" + id, Map.of("L-1", 1));
+    handedOver(id, shipment, order, rider, p4, "HO-4-" + id, Map.of("L-2", 1));
+    awaitState(id, "PICKED_UP");
+    List<String> pkgs = new java.util.ArrayList<>();
+    view(id, rider).path("packageIds").forEach(n -> pkgs.add(n.asString()));
+    assertThat(pkgs).containsExactlyInAnyOrder(p2, p4);
+
+    // 무효 사건이 목록보다 먼저 와도
+    String id2 = "DLV-" + UUID.randomUUID();
+    String shipment2 = "SHP-" + UUID.randomUUID();
+    String q1 = "PKG-1-" + id2;
+    String q2 = "PKG-2-" + id2;
+    created(id2, shipment2, order);
+    assigned(id2, order, rider, 1);
+    awaitState(id2, "ASSIGNED");
+    invalidated(q1, shipment2, order, q2);
+    handedOver(id2, shipment2, order, rider, q2, "HO-q2-" + id2, Map.of("L-1", 1));
+    shipmentReady(shipment2, order, List.of(q1));
+    awaitState(id2, "PICKED_UP");
+  }
+
+  void shipmentReady(String shipment, String order, List<String> packageIds) {
+    send(
+        "mfc.fulfillment.v1",
+        "ShipmentReady",
+        "Shipment",
+        shipment,
+        Map.of(
+            "orderId",
+            order,
+            "shipmentId",
+            shipment,
+            "mfcId",
+            "MFC-1",
+            "readyAt",
+            Instant.now().toString(),
+            "packages",
+            packageIds.stream().map(p -> Map.of("packageId", p)).toList()));
+  }
+
+  void invalidated(String pkg, String shipment, String order, String newPkg) {
+    send(
+        "mfc.fulfillment.v1",
+        "PackageInvalidated",
+        "Package",
+        pkg,
+        Map.of(
+            "packageId",
+            pkg,
+            "newPackageId",
+            newPkg,
+            "shipmentId",
+            shipment,
+            "orderId",
+            order,
+            "mfcId",
+            "MFC-1",
+            "reason",
+            "REPACK",
+            "invalidatedAt",
+            Instant.now().toString()));
+  }
+
   /** 배정 → 목록(포장 1개) → 인계 → PICKED_UP 까지. */
   void pickedUp(String id, String shipment, String order, String rider) {
     created(id, shipment, order);

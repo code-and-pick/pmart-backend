@@ -96,3 +96,5 @@
 - **처리 주인 하나(2026-11-19, 0.31.3 — 사용자 "라이더 백오피스만")**: `Access.operatorCanDecide` = RIDER_OPS·OPERATOR_ADMIN 만 — 전달 실패 확정·반려, 도움요청 처리함 닫기. 상담원·센터 관리자는 보기만(403).
 
 - **DE-7 상태별 수(2026-11-19, 0.33.0)**: 직원 `GET /deliveries/counts`(목록과 같은 거르기, state 제외) — ExecutionState 13개 모두 0 까지, capped 늘 false.
+
+- **재포장 무효 포장(2026-11-20, V25 — 사용자 보고 주문 23631583)**: `fulfillmentEvents` 가 `PackageInvalidated` 도 받아 `invalidated_package`(포장 → 새 포장들)에 남기고 그 출고 배송을 다시 픽업 판정. `ExecutionStore.shipmentPackages` 가 읽을 때 무효 포장을 새 포장으로 바꿔 준다(여러 번 재포장도 끝까지, 순서 유지·중복 없음) — 픽업 판정·배송 조회 `packageIds`·전달 줄 계산이 모두 이 목록. 무효 사건이 목록(ShipmentReady)보다 먼저 와도 된다. 전에는 처리하지 않아(events.md 에는 구독자로 적혀 있었음) 옛 포장이 목록에 남고 새 포장을 인계해도 PICKED_UP 이 되지 않았다(라이더 앱 "QR 픽업 예정", dispatch 는 인계 시작으로 보고 배차 취소 422). 이 배포 전에 지나간 무효 사건은 다시 오지 않는다.
