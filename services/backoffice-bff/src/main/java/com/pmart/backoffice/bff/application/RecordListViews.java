@@ -59,20 +59,47 @@ public class RecordListViews {
   /** 클레임 목록 + 주문번호. 클레임 원천 claim-service {@code GET /claims}(직원 토큰). */
   public Map<String, Object> claims(
       @Nullable String orderId,
+      @Nullable String orderNumber,
+      @Nullable String customerId,
       @Nullable String type,
       @Nullable String state,
       @Nullable Integer size,
       @Nullable String cursor) {
     String token = token();
     Instant now = clock.instant();
+    Set<Source> used = EnumSet.of(Source.CLAIM);
+    Set<Source> failed = EnumSet.noneOf(Source.class);
+    Map<String, String> orderNumbers = new HashMap<>();
+    // 0.23.0(CL-4): 주문번호 → order 의 orderId(주문번호는 전체에서 겹치지 않음). 없으면 claim 을 부르지 않는다.
+    if (orderNumber != null && !orderNumber.isBlank()) {
+      if (orderId != null && !orderId.isBlank()) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "주문 ID 와 주문번호 중 하나만 넣어 주세요.");
+      }
+      used.add(Source.ORDER);
+      JsonNode found =
+          primary(
+              Source.ORDER,
+              token,
+              "/orders/lookups",
+              Map.of("orderNumber", orderNumber, "size", 1),
+              failed,
+              "주문");
+      JsonNode first = found == null ? null : found.path("items").path(0);
+      if (first == null || text(first, "orderId") == null) {
+        return out(now, used, failed, new ArrayList<>(), null);
+      }
+      orderId = text(first, "orderId");
+      if (text(first, "orderNumber") != null) {
+        orderNumbers.put(orderId, text(first, "orderNumber"));
+      }
+    }
     Map<String, Object> q = new LinkedHashMap<>();
     put(q, "orderId", orderId);
+    put(q, "customerId", customerId);
     put(q, "type", type);
     put(q, "state", state);
     q.put("size", clamp(size));
     put(q, "cursor", cursor);
-    Set<Source> used = EnumSet.of(Source.CLAIM);
-    Set<Source> failed = EnumSet.noneOf(Source.class);
     JsonNode page = primary(Source.CLAIM, token, "/claims", q, failed, "클레임");
 
     List<Map<String, Object>> items = new ArrayList<>();
@@ -80,6 +107,8 @@ public class RecordListViews {
     for (JsonNode c : page == null ? List.<JsonNode>of() : listOf(page.path("items"))) {
       Map<String, Object> i = new LinkedHashMap<>();
       i.put("claimId", text(c, "claimId"));
+      // claim 0.10.0(CL-4) 같은 주문·같은 종류 안 순번 그대로 — 표기는 화면이 종류 이름과 조합
+      i.put("claimSeq", c.path("claimSeq").isNumber() ? c.path("claimSeq").asInt() : null);
       i.put("orderId", text(c, "orderId"));
       i.put("type", text(c, "type"));
       i.put("state", text(c, "state"));
@@ -94,7 +123,7 @@ public class RecordListViews {
         orderIds.add(text(c, "orderId"));
       }
     }
-    Map<String, String> orderNumbers = new HashMap<>();
+    orderIds.removeIf(orderNumbers::containsKey);
     if (!orderIds.isEmpty()) {
       used.add(Source.ORDER);
       for (String id : new LinkedHashSet<>(orderIds)) {

@@ -42,7 +42,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(name = "customer", baseUrlProperties = "pmart.bff.customer-base-url"),
   @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url"),
   @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
-  @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url")
+  @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url"),
+  @ConfigureWireMock(name = "claim", baseUrlProperties = "pmart.bff.claim-base-url")
 })
 class CustomerViewsIT {
 
@@ -63,11 +64,14 @@ class CustomerViewsIT {
   @InjectWireMock("hr")
   WireMockServer hr;
 
+  @InjectWireMock("claim")
+  WireMockServer claim;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(customer, order, cases, hr)) {
+    for (WireMockServer w : List.of(customer, order, cases, hr, claim)) {
       w.resetAll();
     }
     http =
@@ -215,6 +219,21 @@ class CustomerViewsIT {
                     200,
                     """
                     {"items":[{"operatorId":"op-cs","name":"이상담","employeeNo":"P2026-00007"}]}""")));
+    claim.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/claims"))
+            .withQueryParam("customerId", equalTo("CU-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"claimId":"CL-1","claimSeq":1,"orderId":"ORD-1","type":"RETURN","state":"REQUESTED",
+                      "reason":"DAMAGED","channel":"CS","openedAt":"2026-11-19T04:00:00Z","refund":{"state":"IN_PROGRESS"}},
+                     {"claimId":"CL-2","claimSeq":1,"orderId":"ORD-9","type":"CANCEL","state":"COMPLETED",
+                      "openedAt":"2026-11-18T04:00:00Z","closedAt":"2026-11-18T05:00:00Z"}],
+                     "page":{"nextCursor":"c3"}}""")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-9"))
+            .willReturn(json(200, "{\"orderId\":\"ORD-9\",\"orderNumber\":\"51234567\"}")));
 
     Res r = get("/views/customer/CU-1");
 
@@ -242,9 +261,19 @@ class CustomerViewsIT {
     assertThat(in.path("items").get(0).has("summary")).as("요약 글 없음").isFalse();
     assertThat(in.path("items").get(0).path("receivedByLabel").path("name").asString())
         .isEqualTo("이상담");
-    assertThat(r.body().has("claims")).as("클레임 칸은 CL-7 뒤").isFalse();
+    JsonNode cl = r.body().path("claims");
+    assertThat(cl.path("hasMore").asBoolean()).isTrue();
+    assertThat(cl.path("items").get(0).path("claimSeq").asInt()).isEqualTo(1);
+    assertThat(cl.path("items").get(0).path("orderNumber").asString())
+        .as("주문 칸 값 — order 단건 안 부름")
+        .isEqualTo("74939255");
+    assertThat(cl.path("items").get(0).path("refundState").asString()).isEqualTo("IN_PROGRESS");
+    assertThat(cl.path("items").get(0).has("reason")).as("사유는 싣지 않음").isFalse();
+    assertThat(cl.path("items").get(1).path("orderNumber").asString()).isEqualTo("51234567");
+    assertThat(cl.path("items").get(1).path("refundState").isNull()).isTrue();
+    order.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/orders/lookups/ORD-1")));
     assertThat(r.body().path("unavailableSources")).isEmpty();
-    for (WireMockServer w : List.of(customer, order, cases)) {
+    for (WireMockServer w : List.of(customer, order, cases, claim)) {
       w.verify(
           WireMock.anyRequestedFor(WireMock.anyUrl())
               .withHeader("Authorization", equalTo("Bearer " + CS)));
@@ -274,6 +303,7 @@ class CustomerViewsIT {
 
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
     assertThat(r.body().path("inquiries").isNull()).as("문의 칸만 확인 불가").isTrue();
+    assertThat(r.body().path("claims").isNull()).as("클레임 칸 원천 없음(404) — 그 칸만 null").isTrue();
     assertThat(r.body().path("orders").path("items")).isEmpty();
     assertThat(r.body().path("csIntakes").path("items")).isEmpty();
     assertThat(r.body().path("unavailableSources").toString())

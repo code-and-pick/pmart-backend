@@ -11,6 +11,7 @@ import com.pmart.backoffice.bff.api.generated.model.GetMetricsView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetPackingHandoverView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetPendingWorkView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetRiderComplaintsView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetShortageBySkuView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetUnifiedLookupView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetWorkCountsView200Response;
 import com.pmart.backoffice.bff.application.ApprovalInboxView;
@@ -145,6 +146,20 @@ public class ViewsController implements ViewsApi {
   }
 
   @Override
+  public ResponseEntity<GetShortageBySkuView200Response> getShortageBySkuView(
+      LocalDate from,
+      LocalDate to,
+      @Nullable String centerId,
+      @Nullable String sort,
+      @Nullable Integer limit,
+      @Nullable Integer minPickedLines) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            metrics.shortageBySku(from, to, centerId, sort, limit, minPickedLines),
+            GetShortageBySkuView200Response.class));
+  }
+
+  @Override
   public ResponseEntity<GetWorkCountsView200Response> getWorkCountsView() {
     return ResponseEntity.ok(
         mapper.convertValue(workCounts.view(), GetWorkCountsView200Response.class));
@@ -188,13 +203,15 @@ public class ViewsController implements ViewsApi {
   @Override
   public ResponseEntity<GetClaimsView200Response> getClaimsView(
       @Nullable String orderId,
+      @Nullable String orderNumber,
+      @Nullable String customerId,
       @Nullable String type,
       @Nullable String state,
       Integer size,
       @Nullable String cursor) {
     return ResponseEntity.ok(
         mapper.convertValue(
-            recordLists.claims(orderId, type, state, size, cursor),
+            recordLists.claims(orderId, orderNumber, customerId, type, state, size, cursor),
             GetClaimsView200Response.class));
   }
 

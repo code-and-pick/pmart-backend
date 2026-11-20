@@ -43,6 +43,7 @@ GET /api/v1/backoffice/views/customer-search OPERATOR
 GET /api/v1/backoffice/views/customer/{customerId} OPERATOR
 GET /api/v1/backoffice/views/live-delivery OPERATOR
 GET /api/v1/backoffice/views/metrics OPERATOR
+GET /api/v1/backoffice/views/metrics/shortage-by-sku OPERATOR
 GET /api/v1/backoffice/views/packing-handover OPERATOR
 GET /api/v1/backoffice/views/pending-work OPERATOR
 GET /api/v1/backoffice/views/replenishment-status OPERATOR

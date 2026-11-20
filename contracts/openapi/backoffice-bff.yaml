@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.22.0
+  version: 0.23.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **0.23.0(2026-11-20 — claim 0.10.0 CL-7·CL-4, mfc-fulfillment 0.32.0 F-13)**: 고객 상세에 `claims` 칸(claim `GET /claims?customerId=`), `GET /views/claims` 에 `customerId`·`orderNumber` 거르기와 줄마다 `claimSeq`(같은 주문·같은 종류 안 순번 — 화면 표기 "<주문번호> <종류> <claimSeq>" 는 화면이 종류 이름과 조합), 새 `GET /views/metrics/shortage-by-sku`(상품(SKU)별 결품 — 웹 BR-73 SK-2, BF-3).
     **0.22.0(2026-11-20 — BF-2, customer 0.11.0 CU-3·CU-4)**: 백오피스 "고객" 메뉴 — `GET /views/customer-search`(고객번호·전화·주문번호 완전 일치 → 가린 고객 목록), `GET /views/customer/{customerId}`(가린 머리 + 최근 주문·문의·상담원 접수 칸). 클레임 칸은 claim CL-7 뒤.
     **0.21.0(2026-11-19 — PC 5 DD-4·DE-7)**: 지표 `ON_TIME_DELIVERY`(정시 배송률 — dispatch `GET /metrics/on-time-deliveries`, 점·합계에 `pending`), 지금 일 건수 DELIVERIES 를 execution `GET /deliveries/counts` 한 번으로(정확, 원천 404 면 예전 쪽 넘김). 포장 인계 현황 `packages[].handoverCode`(DL-2 — 포장 라벨 6자리, 원천 값 그대로). 결품률 사유에 SPOILED(변질, 원천에 칸이 있을 때만 — BF-MFC-S).
     **0.20.0(2026-11-19 — PC 3 F-10)**: 지표 `SHORTAGE_RATE`(결품률) — mfc-fulfillment `GET /metrics/picking-lines`, 줄 단위·사유별(`segment.mfcId`·`segment.reason`). 501 은 ON_TIME_DELIVERY·TRANSPORT_ON_TIME·UNPLANNED_RATE·PAYMENT_UNKNOWN.
@@ -174,17 +175,23 @@ paths:
   /views/claims:
     get:
       tags: [views]
-      summary: 클레임 목록 + 주문번호 (0.18.0)
+      summary: 클레임 목록 + 주문번호 (0.18.0, 거르기·순번 0.23.0)
       x-added-in: '2026-11-19'
       description: |
         2026-11-19 웹 요청(backend-display-numbers-in-responses, 사용자 "진행하고"): claim-service `GET /claims` 에 주문번호(order `GET /orders/lookups/{id}` 의 orderNumber)를 붙인다.
           - 원천 목록은 **호출한 직원의 토큰**으로 그대로(보이는 범위·권한은 원천 판정). 주 원천 401 → 401, 403 → 403, 400 → 400, 그 밖 4xx 그대로, 장애는 200 + 빈 items + unavailableSources.
           - 화면 번호는 원천 정본 값 그대로(ADR-0070). 같은 ID 는 한 번만 읽는다. 번호 원천이 실패하면 그 칸만 null + unavailableSources(0·빈칸으로 바꾸지 않음 — 화면은 "번호 확인 불가"), 404 는 없음(null — "번호 없음"). 한 번 장애인 원천은 남은 ID 에서 부르지 않는다.
           - size 는 최대 50(번호 조회가 줄 수만큼 늘어서).
+        0.23.0(2026-11-20 — claim 0.10.0 CL-7·CL-4):
+          - `customerId` → claim `?customerId=` 그대로(직원만 — 클레임 계정 = 주문 고객).
+          - `orderNumber`(화면 주문번호 8자리) → order `GET /orders/lookups?orderNumber=` 의 orderId 로 claim `?orderId=`(주문번호는 전체에서 겹치지 않음). 주문이 없으면 claim 을 부르지 않고 빈 items. `orderId` 와 같이 주면 400. order 401·403·400 그대로, order 장애는 200 + 빈 items + unavailableSources.
+          - 줄마다 `claimSeq`(claim 값 그대로 — 같은 주문·같은 종류 안 순번).
       operationId: getClaimsView
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: orderId, in: query, schema: { type: string } }
+        - { name: orderNumber, in: query, x-added-in: '2026-11-20', schema: { type: string, maxLength: 12 }, description: '(0.23.0) 화면 주문번호 8자리(공백·하이픈 무시 — order 판정). orderId 와 같이 주면 400' }
+        - { name: customerId, in: query, x-added-in: '2026-11-20', schema: { type: string, maxLength: 64 }, description: '(0.23.0, claim CL-7) 그 고객의 클레임' }
         - { name: type, in: query, schema: { type: string }, description: claim ClaimType 그대로 }
         - { name: state, in: query, schema: { type: string }, description: claim ClaimState 그대로 }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
@@ -249,7 +256,8 @@ paths:
           - `inquiries` = case `GET /inquiries?customerId=&size=10`(case 0.29.0 — 문의 번호·종류·상태, 제목·내용 없음)
           - `csIntakes` = case `GET /cs-intakes?customerRef=&size=10`(경로·종류·받은 직원 "이름 · 사번" — 요약 글 없음)
         **호출한 직원의 토큰**으로. 칸 원천이 실패하거나 403 이면 그 칸만 null + unavailableSources(0건으로 바꾸지 않음). 직원 이름(hr) 실패는 이름만 null.
-        **클레임 칸은 아직 없다** — claim CL-7(직원 클레임 목록 customerId 거르기)이 생기면 더한다. 원문 열람은 화면이 customer `POST /customers/{id}/pii-reveals` 를 직접(사유·감사 기록).
+          - `claims`(0.23.0) = claim `GET /claims?customerId=&size=10`(claim 0.10.0 CL-7 — 순번 `claimSeq`·종류·상태·환불 상태, 사유 글 없음) + 주문번호(같은 화면 주문 칸에 있으면 그 값, 없으면 order `/orders/lookups/{id}` — 한 번 장애면 남은 주문 안 부름, 404 는 null)
+        원문 열람은 화면이 customer `POST /customers/{id}/pii-reveals` 를 직접(사유·감사 기록).
       operationId: getCustomerView
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -769,6 +777,57 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
+  /views/metrics/shortage-by-sku:
+    get:
+      tags: [views]
+      summary: 상품(SKU)별 결품 — 결품 많은 상품 상위 N (0.23.0, BF-3)
+      x-added-in: '2026-11-20'
+      description: |
+        웹 BR-73 SK-2(대시보드 "결품 많은 상품 상위 N"). 원천 mfc-fulfillment 0.32.0 `GET /metrics/picking-lines/by-sku`(F-13)를 **호출한 직원의 토큰**으로 그대로 — 세는 법은 결품률(SHORTAGE_RATE)과 같다(피킹 시작 한국 날짜, 원래 주문 작업만, 결품 = 보고된 줄, 한 줄에 사유가 둘이면 사유별로 각각).
+          - 결품 줄 0 인 SKU 는 없다. 비율은 싣지 않는다 — 화면이 `shortLines`/`pickedLines`(BO-28, 분모 보존).
+          - `sort=shortRate` 면 피킹 줄이 `minPickedLines`(원천 기본 20) 이상인 SKU 만 — 원천이 적용한 값을 응답에 그대로(shortLines 정렬이면 null).
+          - `productName` 은 원천의 상품명 사본(없으면 null — bff 는 채우지 않는다, 화면은 SKU 로).
+        centerId → 원천 mfcId(본사 관리자는 비우면 모든 센터, 그 밖은 원천 판정). 기간 최대 92일(원천 판정). 원천 401·403·400 그대로, 장애는 503(0건으로 보이지 않게).
+      operationId: getShortageBySkuView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date }, description: 포함 }
+        - { name: centerId, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string, enum: [shortLines, shortRate], default: shortLines } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 10 } }
+        - { name: minPickedLines, in: query, description: 'sort=shortRate 일 때만 — 이 수 이상 피킹된 SKU 만(원천 기본 20)', schema: { type: integer, minimum: 1, maximum: 1000 } }
+      responses:
+        '200':
+          description: OK (정렬 순, 최대 limit 줄)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - type: object
+                    required: [items]
+                    properties:
+                      sort: { type: [string, 'null'] }
+                      minPickedLines: { type: [integer, 'null'] }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          required: [sku, pickedLines, shortLines]
+                          properties:
+                            sku: { type: string }
+                            productName: { type: [string, 'null'] }
+                            pickedLines: { type: integer, description: 분모 — 피킹을 시작한 주문 줄 }
+                            shortLines: { type: integer, description: 분자 — 결품이 보고된 줄 }
+                            shortLinesByReason:
+                              type: object
+                              description: 사유별 결품 줄(SHORT·DAMAGED·SPOILED·BLOCKED — 합이 shortLines 보다 클 수 있다)
+                              additionalProperties: { type: integer }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
   /commands/{targetService}/{command}:
     post:
       tags: [commands]
@@ -869,6 +928,7 @@ components:
       description: (0.18.0) claim ClaimSummary(0.6.0) 그대로 + 주문번호
       properties:
         claimId: { type: [string, 'null'] }
+        claimSeq: { type: [integer, 'null'], x-added-in: '2026-11-20', description: '(0.23.0, claim 0.10.0 CL-4) 같은 주문·같은 종류 안에서 몇 번째(1부터) — 화면 "<주문번호> <종류> <claimSeq>"(예 74939255 반품 1)' }
         orderId: { type: [string, 'null'], description: 시스템 ID — 링크·상세용 }
         orderNumber: { type: [string, 'null'], description: 화면용 주문번호 8자리(order 값 그대로 — 없거나 못 읽으면 null) }
         type: { type: [string, 'null'] }
@@ -1081,6 +1141,27 @@ components:
                   receivedAt: { type: [string, 'null'], format: date-time }
                   receivedBy: { type: [string, 'null'] }
                   receivedByLabel: { $ref: '#/components/schemas/OperatorLabel' }
+        claims:
+          type: [object, 'null']
+          x-added-in: '2026-11-20'
+          description: (0.23.0, claim CL-7) 최근 클레임 10건 — 원천 실패·403 이면 null
+          properties:
+            hasMore: { type: boolean }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  claimId: { type: string }
+                  claimSeq: { type: [integer, 'null'] }
+                  orderId: { type: [string, 'null'] }
+                  orderNumber: { type: [string, 'null'], description: 화면 주문번호(order 값 그대로 — 없거나 못 읽으면 null) }
+                  type: { type: [string, 'null'] }
+                  state: { type: [string, 'null'] }
+                  channel: { type: [string, 'null'] }
+                  openedAt: { type: [string, 'null'], format: date-time }
+                  closedAt: { type: [string, 'null'], format: date-time }
+                  refundState: { type: [string, 'null'], description: claim refund.state 그대로(NONE·IN_PROGRESS·COMPLETED·FAILED) }
     ComposedView:
       type: object
       description: 모든 화면 응답의 공통 머리. 원천별 asOf 목록과 조회 실패 원천을 분리해 보여준다.

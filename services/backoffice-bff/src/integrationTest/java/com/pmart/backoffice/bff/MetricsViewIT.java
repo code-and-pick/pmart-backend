@@ -246,6 +246,74 @@ class MetricsViewIT {
         .isEqualTo(503);
   }
 
+  /**
+   * 0.23.0(F-13, BR-73 SK-2): 상품별 결품 — 원천 by-sku 를 직원 토큰·조건 그대로, 정렬·하한은 원천 값 그대로, 비율 없음, 상품명 없으면
+   * null, 원천 400 그대로·장애 503, 모르는 정렬 400.
+   */
+  @Test
+  void shortageBySkuPassesSourceRowsAndAppliedFloor() {
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/picking-lines/by-sku"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"asOf":"2026-11-20T03:00:00Z","sort":"shortRate","minPickedLines":30,"items":[
+                      {"sku":"SKU-A","productName":"우유 1L","pickedLines":40,"shortLines":8,"shortLinesByReason":{"SHORT":6,"DAMAGED":2,"SPOILED":1,"BLOCKED":0}},
+                      {"sku":"SKU-B","productName":null,"pickedLines":100,"shortLines":5,"shortLinesByReason":{"SHORT":5,"DAMAGED":0,"SPOILED":0,"BLOCKED":0}}]}""")));
+
+    var e =
+        http.get()
+            .uri(
+                "/views/metrics/shortage-by-sku?from=2026-11-01&to=2026-11-20&centerId=MFC-1&sort=shortRate&limit=5&minPickedLines=30")
+            .headers(h -> h.setBearerAuth(ADMIN))
+            .retrieve()
+            .toEntity(String.class);
+    JsonNode body = mapper.readTree(e.getBody());
+
+    assertThat(e.getStatusCode().value()).as(body.toString()).isEqualTo(200);
+    assertThat(body.path("sort").asString()).isEqualTo("shortRate");
+    assertThat(body.path("minPickedLines").asInt()).as("원천이 적용한 하한 그대로").isEqualTo(30);
+    JsonNode a = body.path("items").get(0);
+    assertThat(a.path("sku").asString()).isEqualTo("SKU-A");
+    assertThat(a.path("productName").asString()).isEqualTo("우유 1L");
+    assertThat(a.path("pickedLines").asLong()).isEqualTo(40);
+    assertThat(a.path("shortLines").asLong()).isEqualTo(8);
+    assertThat(a.path("shortLinesByReason").path("SPOILED").asLong()).isEqualTo(1);
+    assertThat(a.has("ratio")).as("비율은 화면이").isFalse();
+    assertThat(body.path("items").get(1).path("productName").isNull()).isTrue();
+    assertThat(body.path("sources").get(0).path("system").asString())
+        .isEqualTo("mfc-fulfillment-service");
+    mfc.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/metrics/picking-lines/by-sku"))
+            .withHeader("Authorization", WireMock.equalTo("Bearer " + ADMIN))
+            .withQueryParam("mfcId", WireMock.equalTo("MFC-1"))
+            .withQueryParam("sort", WireMock.equalTo("shortRate"))
+            .withQueryParam("limit", WireMock.equalTo("5"))
+            .withQueryParam("minPickedLines", WireMock.equalTo("30"))
+            .withQueryParam("from", WireMock.equalTo("2026-11-01")));
+
+    assertThat(skuStatus("from=2026-11-01&to=2026-11-20&sort=ratio")).as("모르는 정렬").isEqualTo(400);
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/picking-lines/by-sku"))
+            .willReturn(json(400, "{\"code\":\"VALIDATION_FAILED\",\"detail\":\"기간은 92일까지\"}")));
+    assertThat(skuStatus("from=2026-01-01&to=2026-11-20")).as("원천 400 그대로").isEqualTo(400);
+    mfc.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/metrics/picking-lines/by-sku"))
+            .willReturn(aResponse().withStatus(503)));
+    assertThat(skuStatus("from=2026-11-01&to=2026-11-20")).as("장애는 0건이 아니라 503").isEqualTo(503);
+  }
+
+  int skuStatus(String query) {
+    return http.get()
+        .uri("/views/metrics/shortage-by-sku?" + query)
+        .headers(h -> h.setBearerAuth(ADMIN))
+        .retrieve()
+        .toEntity(String.class)
+        .getStatusCode()
+        .value();
+  }
+
   /** 0.21.0(PC 5 DD-4): 정시 배송률 — 분모 = due(정시 + 늦음), 판정 불가·약속 전은 따로, 날짜 합계, 원천 400 그대로·장애 503. */
   @Test
   void onTimeDeliveryKeepsPendingAndUnjudgedOutOfDenominator() {

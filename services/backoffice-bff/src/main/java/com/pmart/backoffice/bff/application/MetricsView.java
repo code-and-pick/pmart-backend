@@ -34,6 +34,11 @@ public class MetricsView {
   private static final Logger log = LoggerFactory.getLogger(MetricsView.class);
   static final String CASE_SLA = "CASE_SLA";
   static final String SHORTAGE_RATE = "SHORTAGE_RATE";
+
+  /** 상품별 결품 정렬(원천 F-13 값 그대로). */
+  private static final java.util.Set<String> SKU_SORTS =
+      java.util.Set.of("shortLines", "shortRate");
+
   static final String ON_TIME_DELIVERY = "ON_TIME_DELIVERY";
   static final List<String> SHORT_REASONS = List.of("SHORT", "DAMAGED", "BLOCKED", "SPOILED");
 
@@ -165,6 +170,80 @@ public class MetricsView {
     out.put("points", points);
     out.put("totals", totalRows);
     out.put("currentOverdue", overdue);
+    return out;
+  }
+
+  /**
+   * 상품(SKU)별 결품(0.23.0, 2026-11-20 — 웹 BR-73 SK-2, BF-3). 원천 mfc-fulfillment 0.32.0 {@code GET
+   * /metrics/picking-lines/by-sku}(F-13)를 직원 토큰으로 그대로 — 세는 법·정렬·결품률 하한(minPickedLines)은 원천이 정하고 적용한
+   * 값을 그대로 싣는다. 비율은 싣지 않는다(화면이 shortLines/pickedLines). 상품명은 원천 사본만(없으면 null). 원천 4xx 그대로, 장애 503.
+   */
+  public Map<String, Object> shortageBySku(
+      LocalDate from,
+      LocalDate to,
+      @Nullable String centerId,
+      @Nullable String sort,
+      @Nullable Integer limit,
+      @Nullable Integer minPickedLines) {
+    PmartPrincipal.current()
+        .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+        .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "직원만 쓸 수 있는 화면입니다."));
+    String token =
+        PmartPrincipal.currentTokenValue()
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자 토큰이 필요합니다."));
+    if (sort != null && !SKU_SORTS.contains(sort)) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "정렬은 shortLines·shortRate 중 하나입니다.");
+    }
+    Instant now = clock.instant();
+    Map<String, Object> q = new LinkedHashMap<>();
+    q.put("from", from.toString());
+    q.put("to", to.toString());
+    if (centerId != null && !centerId.isBlank()) {
+      q.put("mfcId", centerId.strip());
+    }
+    if (sort != null) {
+      q.put("sort", sort);
+    }
+    if (limit != null) {
+      q.put("limit", limit);
+    }
+    if (minPickedLines != null) {
+      q.put("minPickedLines", minPickedLines);
+    }
+    JsonNode body;
+    try {
+      body = clients.get(Source.FULFILLMENT, token, "/metrics/picking-lines/by-sku", Map.of(), q);
+    } catch (HttpClientErrorException e) {
+      throw rejected(e, "MFC 피킹");
+    } catch (PmartException e) {
+      log.warn("상품별 결품: mfc-fulfillment 실패 — {}", e.code());
+      throw new PmartException(
+          ErrorCode.DEPENDENCY_UNAVAILABLE, "MFC 피킹 원천에 닿지 않았습니다 — 잠시 뒤 다시 보세요.");
+    }
+    String asOf = text(body, "asOf");
+    Instant sourceAt = asOf == null ? now : Instant.parse(asOf);
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (JsonNode r : body.path("items")) {
+      Map<String, Object> i = new LinkedHashMap<>();
+      i.put("sku", text(r, "sku"));
+      i.put("productName", text(r, "productName"));
+      i.put("pickedLines", r.path("pickedLines").asLong(0));
+      i.put("shortLines", r.path("shortLines").asLong(0));
+      Map<String, Object> byReason = new LinkedHashMap<>();
+      for (Map.Entry<String, JsonNode> e : r.path("shortLinesByReason").properties()) {
+        byReason.put(e.getKey(), e.getValue().asLong(0));
+      }
+      i.put("shortLinesByReason", byReason);
+      items.add(i);
+    }
+    Map<String, Object> out = new LinkedHashMap<>();
+    out.put("composedAt", now.toString());
+    out.put("sources", List.of(stamp(Source.FULFILLMENT.system, sourceAt, true)));
+    out.put("unavailableSources", List.of());
+    out.put("sort", text(body, "sort"));
+    JsonNode min = body.path("minPickedLines");
+    out.put("minPickedLines", min.isNumber() ? min.asInt() : null);
+    out.put("items", items);
     return out;
   }
 

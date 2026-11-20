@@ -98,6 +98,62 @@ class RecordListViewsIT {
     return aResponse().withStatus(s).withHeader("Content-Type", "application/json").withBody(b);
   }
 
+  /**
+   * 0.23.0(claim 0.10.0 CL-7·CL-4): 주문번호 → order 의 orderId 로 claim(번호는 다시 부르지 않음), 없는 주문번호는 claim 안
+   * 부르고 빈 목록, orderId 와 같이 주면 400, customerId 그대로, 줄마다 claimSeq.
+   */
+  @Test
+  void claimsFilterByOrderNumberOrCustomerAndCarrySeq() {
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups"))
+            .withQueryParam("orderNumber", equalTo("74939255"))
+            .willReturn(
+                json(200, "{\"items\":[{\"orderId\":\"ORD-1\",\"orderNumber\":\"74939255\"}]}")));
+    claim.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/claims"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"claimId":"CL-1","claimSeq":2,"orderId":"ORD-1","type":"RETURN","state":"REQUESTED","openedAt":"2026-11-19T01:00:00Z"}],
+                     "page":{"nextCursor":null}}""")));
+
+    Res r = get("/views/claims?orderNumber=74939255");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode c = r.body().path("items").get(0);
+    assertThat(c.path("claimSeq").asInt()).isEqualTo(2);
+    assertThat(c.path("orderNumber").asString()).isEqualTo("74939255");
+    claim.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/claims"))
+            .withQueryParam("orderId", equalTo("ORD-1")));
+    order.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/orders/lookups/ORD-1")));
+
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups"))
+            .withQueryParam("orderNumber", equalTo("11111111"))
+            .willReturn(json(200, "{\"items\":[]}")));
+    claim.resetRequests();
+    Res none = get("/views/claims?orderNumber=11111111");
+    assertThat(none.status()).isEqualTo(200);
+    assertThat(none.body().path("items")).isEmpty();
+    claim.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/claims")));
+
+    assertThat(get("/views/claims?orderNumber=74939255&orderId=ORD-1").status())
+        .as("둘 다 주면 400")
+        .isEqualTo(400);
+
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-1"))
+            .willReturn(json(200, "{\"orderId\":\"ORD-1\",\"orderNumber\":\"74939255\"}")));
+    Res byCustomer = get("/views/claims?customerId=CU-1");
+    assertThat(byCustomer.status()).isEqualTo(200);
+    assertThat(byCustomer.body().path("items").get(0).path("claimSeq").asInt()).isEqualTo(2);
+    claim.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/claims"))
+            .withQueryParam("customerId", equalTo("CU-1")));
+  }
+
   @Test
   void claimsGetOrderNumbersOncePerOrder() {
     claim.stubFor(

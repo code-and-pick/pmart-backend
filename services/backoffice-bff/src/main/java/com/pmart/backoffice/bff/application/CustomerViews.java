@@ -33,7 +33,8 @@ import tools.jackson.databind.JsonNode;
  *   <li>값은 원천 그대로(가린 값만). 원문 열람은 화면이 customer {@code POST /customers/{id}/pii-reveals} 를 직접 — bff 는
  *       원문을 다루지 않는다.
  *   <li>찾는 값(고객번호·전화·주문번호)·고객 ID·이름은 로그에 남기지 않는다(예외 이름만).
- *   <li>칸 원천 실패·403 은 그 칸만 null + unavailableSources(0건으로 바꾸지 않음). 클레임 칸은 claim CL-7 뒤.
+ *   <li>칸 원천 실패·403 은 그 칸만 null + unavailableSources(0건으로 바꾸지 않음). 클레임 칸(0.23.0)은 claim 0.10.0 CL-7
+ *       {@code ?customerId=} — 주문번호는 같은 화면 주문 칸 값, 없으면 order 단건(한 번 장애면 남은 주문 안 부름).
  * </ul>
  */
 @Service
@@ -243,7 +244,78 @@ public class CustomerViews {
       }
       body.put("csIntakes", cellMap);
     }
+
+    // 클레임 — claim 0.10.0 CL-7 customerId 거르기(사유 글 없음), 주문번호는 주문 칸 값 → 없으면 order 단건
+    used.add(Source.CLAIM);
+    JsonNode claims =
+        cell(
+            Source.CLAIM,
+            token,
+            "/claims",
+            Map.of("customerId", customerId, "size", CELL_SIZE),
+            failed);
+    if (claims == null) {
+      body.put("claims", null);
+    } else {
+      Map<String, String> numbers = new java.util.HashMap<>();
+      if (orders != null) {
+        for (JsonNode o : orders.path("items")) {
+          if (text(o, "orderId") != null && text(o, "orderNumber") != null) {
+            numbers.put(text(o, "orderId"), text(o, "orderNumber"));
+          }
+        }
+      }
+      boolean orderDown = failed.contains(Source.ORDER);
+      List<Map<String, Object>> rows = new ArrayList<>();
+      for (JsonNode cl : claims.path("items")) {
+        String orderId = text(cl, "orderId");
+        if (orderId != null && !numbers.containsKey(orderId) && !orderDown) {
+          OrderNumber n = orderNumber(token, orderId);
+          if (n.down()) {
+            orderDown = true;
+            failed.add(Source.ORDER);
+          } else {
+            numbers.put(orderId, n.value());
+          }
+        }
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("claimId", text(cl, "claimId"));
+        r.put("claimSeq", cl.path("claimSeq").isNumber() ? cl.path("claimSeq").asInt() : null);
+        r.put("orderId", orderId);
+        r.put("orderNumber", orderId == null ? null : numbers.get(orderId));
+        r.put("type", text(cl, "type"));
+        r.put("state", text(cl, "state"));
+        r.put("channel", text(cl, "channel"));
+        r.put("openedAt", text(cl, "openedAt"));
+        r.put("closedAt", text(cl, "closedAt"));
+        r.put("refundState", text(cl.path("refund"), "state"));
+        rows.add(r);
+      }
+      Map<String, Object> cellMap = new LinkedHashMap<>();
+      cellMap.put("hasMore", text(claims.path("page"), "nextCursor") != null);
+      cellMap.put("items", rows);
+      body.put("claims", cellMap);
+    }
     return out(now, used, failed, body);
+  }
+
+  /** 클레임 칸 주문번호 — 404 는 value null(번호 없음), 그 밖 실패는 down(원천 장애). */
+  private record OrderNumber(@Nullable String value, boolean down) {}
+
+  private OrderNumber orderNumber(String token, String orderId) {
+    try {
+      String n =
+          text(
+              clients.get(
+                  Source.ORDER, token, "/orders/lookups/{id}", Map.of("id", orderId), Map.of()),
+              "orderNumber");
+      return new OrderNumber(n, false);
+    } catch (HttpClientErrorException.NotFound e) {
+      return new OrderNumber(null, false);
+    } catch (HttpClientErrorException | PmartException e) {
+      log.warn("고객 상세 클레임 주문번호: order 실패 — {}", e.getClass().getSimpleName());
+      return new OrderNumber(null, true);
+    }
   }
 
   // ------------------------------------------------------------------ 공통

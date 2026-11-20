@@ -83,7 +83,7 @@
   2. 환불 등 하위도 주문별 순번(`refundSeq` 등 — 이름은 claim 이 정함).
   3. 응답: `GET /claims`·`GET /claims/{id}`·환불 목록에 순번. 주문번호(8자리)는 order 가 정본 — claim 이 사본을 둘지는 claim 판단(bff `views/claims` 는 이미 order 에서 붙인다, 0.18.0).
   4. 찾기: 주문번호로 클레임 찾기(직원) — 있으면 좋음.
-- **받는 쪽(backoffice)**: bff `views/claims` 가 `claimLabel`(주문번호 + 종류 + 순번)을 만들어 준다(종류 이름은 화면이).
+- **받는 쪽(backoffice)**: bff `views/claims` 가 `claimLabel`(주문번호 + 종류 + 순번)을 만들어 준다(종류 이름은 화면이). → **바뀜(2026-11-20 bff 0.23.0)**: 종류 이름이 화면 몫이라 bff 는 `claimLabel` 을 만들지 않고 줄마다 `claimSeq`·`orderNumber` 를 싣는다(화면이 조합). 주문번호로 찾기는 bff `views/claims?orderNumber=`(order 로 orderId).
 - **처리(2026-11-20 PC 1 — 사용자 "진행해라", claim 0.10.0, LAN 배포)**: `claimSeq` = **같은 주문·같은 종류 안** 순번(예시대로 `74939255 반품 1`·`74939255 교환 1`), `refundSeq` = 같은 주문의 환불(상품·회수비 모두) 순번. V7 INSERT 트리거(주문마다 advisory lock, 유일 인덱스 (order_id, type, claim_seq)·(order_id, refund_seq)), 기존 행은 생성순으로 채움. 응답: `Claim`·`ClaimSummary.claimSeq`, `Refund.refundSeq`(상세 refunds·`GET /claims/{id}/refunds`). 4(주문번호로 찾기): claim 은 8자리 주문번호를 갖지 않는다 — bff 가 order 에서 orderId 를 얻어 `GET /claims?orderId=` 로.
 
 ## CL-5. 배차 불가 취소 — 전액 환불 + 2,000원 쿠폰 (2026-11-19, 보낸 영역 delivery — 사용자 "1,2,3 전부", "쿠폰 금액은 2000원", "취소는 주문 취소 및 전액 환불")

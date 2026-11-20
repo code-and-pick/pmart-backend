@@ -46,4 +46,4 @@
 ## BF-3. 상품(SKU)별 결품률 — `views/metrics` SKU 묶음 (2026-11-20, 보낸 영역 backoffice 웹 — BR-73 SK-2, PC 2 자신)
 - **왜**: 웹 BR-73(pmart-clients `docs/handoff/backoffice/2026-11-20-backend-shortage-by-sku.md`) — 대시보드 "결품 많은 상품 상위 N". 웹은 bff 로 묶든 원천을 바로 부르든 괜찮다고 했고, PC 2 는 지금 SHORTAGE_RATE 와 같은 길(`views/metrics`, 권한·실패 표시 같게)로 묶기로 웹에 답함(2026-11-20).
 - **기다림**: mfc-fulfillment F-13(SKU별 원천, PC 3). 들어오면 bff 에서 원천 그대로 넘기고(SKU·분자·분모·사유별), 상품명이 없으면 product 조회로 채울지는 그때.
-- **상태**: 원천 대기(PC 3 F-13).
+- **상태: 구현(2026-11-20, bff 0.23.0 — PC 2)**. F-13(mfc-fulfillment 0.32.0, #308) 배포 뒤. `views/metrics` 의 날짜별 점(points) 모양과 달라 **새 경로 `GET /views/metrics/shortage-by-sku`**(from·to·centerId·sort·limit·minPickedLines) — 원천 값 그대로(sku·productName·pickedLines·shortLines·shortLinesByReason, 원천이 적용한 sort·minPickedLines), 비율은 화면이. 상품명이 없으면 null(bff 가 product 로 채우지 않음 — 화면은 SKU). 원천 4xx 그대로, 장애 503.
