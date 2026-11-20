@@ -133,4 +133,26 @@ public class PhoneVerificationStore {
         .stream()
         .findFirst();
   }
+
+  /** 탈퇴 뒤 부정 이용 방지 보관(처리방침 §3) — 이름·전화를 기한까지. 같은 라이더면 덮어쓴다. */
+  public void hold(
+      String riderId, @Nullable String name, @Nullable String phone, Instant until, Instant now) {
+    jdbc.update(
+        "INSERT INTO rider_withdrawal_hold (rider_id, name, phone, held_until, created_at) VALUES"
+            + " (?,?,?,?,?) ON CONFLICT (rider_id) DO UPDATE SET name = EXCLUDED.name, phone ="
+            + " EXCLUDED.phone, held_until = EXCLUDED.held_until",
+        riderId,
+        name,
+        phone,
+        Timestamp.from(until),
+        Timestamp.from(now));
+  }
+
+  /** 기한 지난 탈퇴 보관(이름·전화)과 재가입 막기 해시를 지운다. 지운 보관 건수. */
+  public int purgeExpired(Instant now) {
+    Timestamp t = Timestamp.from(now);
+    int held = jdbc.update("DELETE FROM rider_withdrawal_hold WHERE held_until <= ?", t);
+    jdbc.update("DELETE FROM rider_rejoin_block WHERE blocked_until <= ?", t);
+    return held;
+  }
 }

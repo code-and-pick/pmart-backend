@@ -93,8 +93,11 @@ public class WithdrawalService {
                 store.upsertWithdrawal(riderId, requestId, "REJECTED", blockers, reason, now, null);
                 return new Withdrawal(requestId, "REJECTED", List.copyOf(blockers), now, null);
               }
-              // 탈퇴 번호 30일 재가입 막기(2026-11-19 사용자 결정) — 번호를 지우기 전에 해시로 남긴다
-              store.find(riderId).ifPresent(me -> phones.getObject().blockRejoin(me.phone(), now));
+              // 재가입 막기(해시)·부정 이용 방지 보관(이름·전화, rejoin-block 동안 — 처리방침 §3) — 지우기 전에 남긴다
+              store
+                  .find(riderId)
+                  .ifPresent(
+                      me -> phones.getObject().holdWithdrawn(riderId, me.name(), me.phone(), now));
               store.withdraw(riderId, now);
               store.recordDuty(riderId, true, true, false, false, now); // 열린 운행 구간 닫기
               store.upsertWithdrawal(riderId, requestId, "COMPLETED", List.of(), reason, now, now);

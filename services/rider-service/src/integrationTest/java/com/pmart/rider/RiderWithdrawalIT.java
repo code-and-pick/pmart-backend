@@ -51,6 +51,7 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
   @Autowired JdbcTemplate jdbc;
+  @Autowired com.pmart.rider.application.WithdrawalHoldPurger purger;
 
   @InjectWireMock("execution")
   WireMockServer execution;
@@ -141,8 +142,24 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     assertThat(blockedJoin.getStatusCode().value()).isEqualTo(409);
     assertThat(json(blockedJoin).path("code").asString()).isEqualTo("RIDER_REJOIN_BLOCKED");
     assertThat(blockedJoin.getBody()).contains("30일 동안");
+    // 부정 이용 방지 보관(처리방침 §3): 이름·전화를 막는 기간 동안만 따로 두고, 기한이 지나면 주기 작업이 지운다
+    Map<String, Object> held =
+        jdbc.queryForMap("SELECT name, phone FROM rider_withdrawal_hold WHERE rider_id = ?", rider);
+    assertThat(held.get("phone")).isEqualTo(phone);
+    assertThat(held.get("name")).isNotNull();
+    purger.purge();
+    assertThat(count("SELECT count(*) FROM rider_withdrawal_hold WHERE rider_id = ?", rider))
+        .isEqualTo(1);
+    jdbc.update(
+        "UPDATE rider_withdrawal_hold SET held_until = now() - interval '1 minute' WHERE rider_id = ?",
+        rider);
     jdbc.update("UPDATE rider_rejoin_block SET blocked_until = now() - interval '1 minute'");
     assertThat(signup(fresh, phone, "k2-" + fresh, rider).getStatusCode().value()).isEqualTo(201);
+    purger.purge();
+    assertThat(count("SELECT count(*) FROM rider_withdrawal_hold WHERE rider_id = ?", rider))
+        .isZero();
+    assertThat(count("SELECT count(*) FROM rider_rejoin_block WHERE blocked_until <= now()"))
+        .isZero();
     // 직원 찾기에서도 빠진다
     String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
     JsonNode found =
@@ -233,5 +250,10 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
 
   private JsonNode json(ResponseEntity<String> r) {
     return mapper.readTree(r.getBody() == null ? "{}" : r.getBody());
+  }
+
+  private long count(String sql, Object... args) {
+    Long n = jdbc.queryForObject(sql, Long.class, args);
+    return n == null ? 0 : n;
   }
 }

@@ -232,11 +232,17 @@ public class PhoneVerificationService {
     return true;
   }
 
-  /** 탈퇴 때 — 그 번호를 {@code rejoin-block} 동안 막는다(번호는 해시로만). */
-  public void blockRejoin(@Nullable String phone, Instant now) {
+  /**
+   * 탈퇴 때 — 그 번호를 {@code rejoin-block} 동안 막고(해시), 같은 기간 이름·전화를 부정 이용 방지로 보관한다(2026-11-20 사용자 "이름이나
+   * 전화번호를 5분 보관", 처리방침 §3). 기한이 지나면 {@link WithdrawalHoldPurger} 가 지운다.
+   */
+  public void holdWithdrawn(
+      String riderId, @Nullable String name, @Nullable String phone, Instant now) {
+    Instant until = now.plus(props.rejoinBlock());
     if (phone != null && !phone.isBlank()) {
-      store.block(PhoneRules.hash(phone), now.plus(props.rejoinBlock()), now);
+      store.block(PhoneRules.hash(phone), until, now);
     }
+    store.hold(riderId, name, phone, until, now);
   }
 
   static PmartException notVerified() {

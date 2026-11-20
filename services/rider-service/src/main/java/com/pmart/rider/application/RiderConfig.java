@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 @Configuration(proxyBeanMethods = false)
 @org.springframework.boot.context.properties.EnableConfigurationProperties(
     PhoneVerificationProperties.class)
+@org.springframework.scheduling.annotation.EnableScheduling
 class RiderConfig {
 
   /** UTC(ADR-0010). */
