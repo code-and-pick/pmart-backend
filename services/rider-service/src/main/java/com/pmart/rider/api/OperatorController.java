@@ -267,6 +267,41 @@ public class OperatorController implements OperatorApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.ListRiderWithdrawalsForStaff200Response>
+      listRiderWithdrawalsForStaff(
+          @Nullable String state, @Nullable String riderNumber, Integer page, Integer size) {
+    List<RiderStore.StaffWithdrawal> rows =
+        staff.withdrawals(state, blankToNull(riderNumber), size + 1, page * size);
+    boolean more = rows.size() > size;
+    List<RiderStore.StaffWithdrawal> items = more ? rows.subList(0, size) : rows;
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.ListRiderWithdrawalsForStaff200Response()
+            .items(
+                items.stream()
+                    .map(
+                        w ->
+                            new com.pmart.rider.api.generated.model.StaffRiderWithdrawal()
+                                .riderId(w.riderId())
+                                .riderNumber(w.riderNumber())
+                                .state(
+                                    com.pmart.rider.api.generated.model.StaffRiderWithdrawal
+                                        .StateEnum.fromValue(w.state()))
+                                .blockers(
+                                    w.blockers().stream()
+                                        .map(
+                                            com.pmart.rider.api.generated.model.WithdrawalBlocker
+                                                ::fromValue)
+                                        .toList())
+                                .reason(w.reason())
+                                .requestedAt(RiderViews.time(w.requestedAt()))
+                                .completedAt(RiderViews.time(w.completedAt())))
+                    .toList())
+            .page(page)
+            .size(items.size())
+            .hasNext(more));
+  }
+
+  @Override
   public ResponseEntity<ListRiderRestrictionReviews200Response> listRiderRestrictionReviews(
       String state, @Nullable String riderId) {
     return ResponseEntity.ok(

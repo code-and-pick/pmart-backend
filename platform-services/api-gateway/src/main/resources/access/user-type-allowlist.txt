@@ -300,6 +300,7 @@ GET /api/v1/riders/me/withdrawals/{requestId} RIDER
 GET /api/v1/riders/restriction-reviews OPERATOR
 GET /api/v1/riders/signups/{requestId} RIDER
 GET /api/v1/riders/stats OPERATOR
+GET /api/v1/riders/withdrawals OPERATOR
 GET /api/v1/riders/{riderId} OPERATOR
 GET /api/v1/riders/{riderId}/restrictions OPERATOR
 GET /api/v1/search/filters PUBLIC

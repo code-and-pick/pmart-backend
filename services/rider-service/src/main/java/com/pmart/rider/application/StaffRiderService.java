@@ -183,6 +183,16 @@ public class StaffRiderService {
     return s.length() <= max ? s : s.substring(0, max);
   }
 
+  /** 탈퇴 신청 목록(2026-11-20 사용자 "라이더 쪽에만 넣어" — 라이더 백오피스). OPERATOR_ADMIN·RIDER_OPS·CS_AGENT. */
+  public List<RiderStore.StaffWithdrawal> withdrawals(
+      @org.jspecify.annotations.Nullable String state,
+      @org.jspecify.annotations.Nullable String riderNumber,
+      int limit,
+      int offset) {
+    requireStaff();
+    return store.staffWithdrawals(state, riderNumber, limit, offset);
+  }
+
   /** OPERATOR_ADMIN·RIDER_OPS·CS_AGENT 만. */
   private static PmartPrincipal requireStaff() {
     PmartPrincipal p =

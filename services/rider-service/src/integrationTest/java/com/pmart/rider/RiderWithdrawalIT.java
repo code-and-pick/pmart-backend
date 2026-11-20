@@ -83,6 +83,17 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     JsonNode r1 = json(get(rider, "/riders/me/withdrawals/w-1"));
     assertThat(r1.path("state").asString()).isEqualTo("REJECTED");
     assertThat(r1.path("blockers").get(0).asString()).isEqualTo("UNCONFIRMED_EARNING");
+    // 직원 탈퇴 목록(0.19.0 — 라이더 백오피스): 거절은 막은 것과 함께, 라이더 번호로 좁힌다, 라이더 토큰은 403
+    String number =
+        jdbc.queryForObject(
+            "SELECT rider_number FROM rider WHERE rider_id = ?", String.class, rider);
+    JsonNode rejected = staffWithdrawals("riderNumber=" + number);
+    assertThat(rejected.path("items")).hasSize(1);
+    assertThat(rejected.path("items").get(0).path("state").asString()).isEqualTo("REJECTED");
+    assertThat(rejected.path("items").get(0).path("blockers").get(0).asString())
+        .isEqualTo("UNCONFIRMED_EARNING");
+    assertThat(rejected.path("items").get(0).path("riderNumber").asString()).isEqualTo(number);
+    assertThat(get(rider, "/riders/withdrawals").getStatusCode().value()).isEqualTo(403);
 
     // 2) 제한 검토 중(이 서비스) — execution 은 비었어도 막는다
     blockers(rider, "[]");
@@ -114,6 +125,11 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     assertThat(json(get(rider, "/riders/me/withdrawals/w-1")).path("state").asString())
         .isEqualTo("COMPLETED");
     assertThat(withdraw(rider, "w-1").getStatusCode().value()).isEqualTo(202); // 같은 키 재전송
+    JsonNode completed = staffWithdrawals("state=COMPLETED&riderNumber=" + number);
+    assertThat(completed.path("items")).hasSize(1);
+    assertThat(completed.path("items").get(0).path("completedAt").isNull()).isFalse();
+    assertThat(completed.path("items").get(0).toString()).doesNotContain(phone);
+    assertThat(staffWithdrawals("state=REJECTED&riderNumber=" + number).path("items")).isEmpty();
     Map<String, Object> row =
         jdbc.queryForMap(
             "SELECT name, phone, bank_account_number, license_hash, operating_status,"
@@ -255,5 +271,15 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
   private long count(String sql, Object... args) {
     Long n = jdbc.queryForObject(sql, Long.class, args);
     return n == null ? 0 : n;
+  }
+
+  private JsonNode staffWithdrawals(String query) {
+    String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
+    return json(
+        http.get()
+            .uri("/riders/withdrawals?" + query)
+            .header("Authorization", "Bearer " + ops)
+            .retrieve()
+            .toEntity(String.class));
   }
 }

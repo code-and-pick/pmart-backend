@@ -738,6 +738,55 @@ public class RiderStore {
         .findFirst();
   }
 
+  /** 직원이 보는 탈퇴 신청(2026-11-20 라이더 백오피스) — 개인정보 없음. */
+  public record StaffWithdrawal(
+      String riderId,
+      @Nullable String riderNumber,
+      String state,
+      List<String> blockers,
+      @Nullable String reason,
+      Instant requestedAt,
+      @Nullable Instant completedAt) {}
+
+  /** 최근 신청 순. state·riderNumber 는 없으면 거르지 않는다. */
+  public List<StaffWithdrawal> staffWithdrawals(
+      @Nullable String state, @Nullable String riderNumber, int limit, int offset) {
+    return jdbc.query(
+        "SELECT w.rider_id, r.rider_number, w.state, w.blockers::text, w.reason, w.requested_at,"
+            + " w.completed_at FROM rider_withdrawal w LEFT JOIN rider r ON r.rider_id = w.rider_id"
+            + " WHERE (CAST(? AS varchar) IS NULL OR w.state = ?) AND (CAST(? AS varchar) IS NULL OR"
+            + " r.rider_number = ?) ORDER BY w.requested_at DESC, w.rider_id, w.request_id LIMIT ?"
+            + " OFFSET ?",
+        (rs, i) -> {
+          java.sql.Timestamp done = rs.getTimestamp(7);
+          return new StaffWithdrawal(
+              rs.getString(1),
+              rs.getString(2),
+              rs.getString(3),
+              blockerList(rs.getString(4)),
+              rs.getString(5),
+              rs.getTimestamp(6).toInstant(),
+              done == null ? null : done.toInstant());
+        },
+        state,
+        state,
+        riderNumber,
+        riderNumber,
+        limit,
+        offset);
+  }
+
+  private static List<String> blockerList(@Nullable String raw) {
+    List<String> b = new java.util.ArrayList<>();
+    if (raw != null) {
+      java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"([A-Z_]+)\"").matcher(raw);
+      while (m.find()) {
+        b.add(m.group(1));
+      }
+    }
+    return b;
+  }
+
   /** 다른 라이더가 같은 은행·계좌를 쓰는가(2026-11-17 — 사용자 "중복 불가"). 탈퇴 행은 계좌를 지웠다. */
   public boolean accountTakenByOther(String bankCode, String accountNumber, String riderId) {
     Integer n =
