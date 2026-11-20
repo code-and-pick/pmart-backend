@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.29.0
+  version: 0.30.0
   description: |
+    **0.30.0(2026-11-20 — 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게")**: 0.28.0 ① 닫기 막기(409 FAILURE_DECISION_PENDING)를 뺌 — 전달 실패 결정 전인 라이더 도움요청·전달 실패 사건도 닫힌다. 닫으면 delivery-execution 이 `CaseClosed` 로 그 전달 실패를 확정하고 반납 배송을 만든다(execution 1a2f0feb). 라이더가 전달을 계속해야 하면 닫기 전에 execution `failure-decisions` REJECT. ② 재개 이력(RIDER_REOPENED)은 그대로.
     **0.29.0(2026-11-19 — 백오피스 "고객" 메뉴 BF-2, 사용자 "진행해")**: 직원 `GET /inquiries?customerId=` — 그 고객의 고객 문의(상담원 접수 포함), 고객 문의를 못 보는 직원 403.
     **0.28.0(2026-11-19 — R-10, PC 5 요청·사용자 "추천대로")**: ① 라이더 도움요청·전달 실패 사건(RIDER_HELP·DELIVERY_INCIDENT, subject 배송)은 그 배송이 **전달 실패 결정 전**(execution `GET /deliveries/{id}` state FAILURE_REPORTED — 닫는 직원 토큰으로)이면 `POST /cases/{id}/closures` **409 FAILURE_DECISION_PENDING**, 배송 상태를 못 읽으면 503(확인 없이 닫지 않음), 배송 없음(404)은 막지 않음. ② execution `HelpRequestReopened` → 그 접수 건에 이력 **RIDER_REOPENED** 만(상태 그대로 — 자동 재개 없음, 2026-11-16 "재개는 사람이 손으로만" 유지).
     **0.27.0(2026-11-19 — R-9, PC 5 요청·사용자 "1,2,3 전부", 원문 Delivery §3.6)**: 사건 종류 `DISPATCH_DELAYED`(배차 지연) — dispatch `DispatchDelayed`(배송마다 한 번)를 받아 **상담원 팀(CS)** 사건, 센터 = mfcId(센터 관리자 MFC_SUPERVISOR 도 자기 센터만 보기), refs deliveryId·orderId, 배송마다 열린 것 하나. 같은 배송의 배차 실패(지원센터) 사건과는 따로. 기한 1시간(표시만 — 사용자 확정 2026-11-19, 설정으로 바꿀 수 있음). 고객 안내는 notification, 취소는 claim "배차 불가 취소"(사건이 부르지 않음).
@@ -256,7 +257,7 @@ paths:
       description: |
         귀책·비용 결정을 기록한다(지급은 회계). CloseSnapshot 을 남긴다. 시간 경과 자동 종결은 없다.
         0.4.0(2026-11-16): 그 종류의 팀(배송 쪽 = RIDER_OPS)·OPERATOR_ADMIN. 다른 사람이 집은 사건은 OPERATOR_ADMIN 만. liability 는 지금 저장하지 않는다. 결과는 사건 상세(200).
-        0.28.0(2026-11-19 R-10): 라이더 도움요청·전달 실패 사건은 그 배송이 전달 실패 결정 전(FAILURE_REPORTED)이면 409 FAILURE_DECISION_PENDING(실패 확정·반려를 먼저), 배송 상태를 못 읽으면 503.
+        0.30.0(2026-11-20): 0.28.0 의 전달 실패 결정 전 닫기 막기(409 FAILURE_DECISION_PENDING·503)를 뺌 — 결정 대기 전달 불가 사건을 닫으면 execution 이 실패를 확정한다(반납 배송). 계속 전달시키려면 닫기 전에 반려.
         0.8.0(2026-11-16): 열린 의무(OPEN·PARTIALLY_RESOLVED)가 있으면 409 OPEN_OBLIGATIONS — 의무를 해소하거나 관리자가 면제·실패로 끝낸 뒤 닫는다(업무 원문 §5.3 "상담 종료와 의무 종결은 구분").
       operationId: closeCase
       x-pmart-user-types: [OPERATOR]

@@ -48,14 +48,10 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.cases.delivery-dispatch-base-url=${dispatch.url}",
-      "pmart.cases.delivery-execution-base-url=${execution.url}",
       "pmart.test.context=case-inbox"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock({
-  @ConfigureWireMock(name = "dispatch", baseUrlProperties = "dispatch.url"),
-  @ConfigureWireMock(name = "execution", baseUrlProperties = "execution.url")
-})
+@EnableWireMock({@ConfigureWireMock(name = "dispatch", baseUrlProperties = "dispatch.url")})
 class CaseInboxIT extends PostgresKafkaContainerSupport {
 
   @LocalServerPort int port;
@@ -65,10 +61,6 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("dispatch")
   WireMockServer dispatch;
-
-  /** R-10: 닫을 때 배송 상태 — 스텁이 없으면 404(배송 없음 → 막지 않음). */
-  @InjectWireMock("execution")
-  WireMockServer execution;
 
   final String ops = TestJwt.operator("op-ops-1", List.of("RIDER_OPS"), List.of());
   final String ops2 = TestJwt.operator("op-ops-2", List.of("RIDER_OPS"), List.of());
@@ -2229,12 +2221,12 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * R-10(2026-11-19): 전달 실패 결정 전(배송 FAILURE_REPORTED)이면 그 배송의 전달 실패·도움요청 사건은 닫지 못한다(409
-   * FAILURE_DECISION_PENDING). 결정 뒤에는 닫힌다. 닫힌 뒤 라이더가 도움요청을 다시 열면(HelpRequestReopened) 이력만 — 상태
-   * 그대로(자동 재개 없음, 사용자 "추천대로").
+   * R-10 → 0.30.0(2026-11-20 사용자 "처리완료하면 아예 배차 취소되게"): 전달 실패 결정 전이어도 사건을 닫을 수 있다 — 닫으면 execution 이
+   * CaseClosed 로 실패를 확정한다(execution 1a2f0feb). case 는 배송 상태를 보지 않는다. 닫힌 뒤 라이더가 도움요청을 다시
+   * 열면(HelpRequestReopened) 이력만 — 상태 그대로(자동 재개 없음, 사용자 "추천대로").
    */
   @Test
-  void failurePendingBlocksCloseAndRiderReopenOnlyLeavesHistory() throws Exception {
+  void failurePendingCaseClosesAndRiderReopenOnlyLeavesHistory() throws Exception {
     String deliveryId = "DLV-R10-" + UUID.randomUUID().toString().substring(0, 8);
     String incidentId = deliveryId + ":FAIL-1";
     Map<String, Object> p = new LinkedHashMap<>();
@@ -2263,33 +2255,11 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .isEqualTo(200);
     Map<String, Object> close = Map.of("resolution", "RESOLVED", "summary", "고객 연락 안 됨 — 실패 처리");
 
-    execution.stubFor(
-        com.github.tomakehurst.wiremock.client.WireMock.get(
-                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
-                    "/api/v1/deliveries/" + deliveryId))
-            .willReturn(
-                com.github.tomakehurst.wiremock.client.WireMock.okJson(
-                    "{\"deliveryId\":\"" + deliveryId + "\",\"state\":\"FAILURE_REPORTED\"}")));
-    Res blocked = send("POST", ops, "/cases/" + caseId + "/closures", close);
-    assertThat(blocked.status()).as(blocked.body().toString()).isEqualTo(409);
-    assertThat(blocked.body().path("code").asString()).isEqualTo("FAILURE_DECISION_PENDING");
-    execution.verify(
-        com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
-                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
-                    "/api/v1/deliveries/" + deliveryId))
-            .withHeader(
-                "Authorization",
-                com.github.tomakehurst.wiremock.client.WireMock.equalTo("Bearer " + ops)));
-
-    execution.stubFor(
-        com.github.tomakehurst.wiremock.client.WireMock.get(
-                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
-                    "/api/v1/deliveries/" + deliveryId))
-            .willReturn(
-                com.github.tomakehurst.wiremock.client.WireMock.okJson(
-                    "{\"deliveryId\":\"" + deliveryId + "\",\"state\":\"FAILED\"}")));
     Res closed = send("POST", ops, "/cases/" + caseId + "/closures", close);
-    assertThat(closed.status()).as(closed.body().toString()).isEqualTo(200);
+    assertThat(closed.status())
+        .as("0.30.0 — 결정 대기여도 닫힌다(닫기 = 전달 실패 확정, execution 이 CaseClosed 로)")
+        .isEqualTo(200);
+    assertThat(outbox(caseId, "CaseClosed")).isEqualTo(1);
 
     Map<String, Object> r = new LinkedHashMap<>();
     r.put("deliveryId", deliveryId);
