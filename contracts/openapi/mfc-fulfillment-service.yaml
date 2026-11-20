@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: mfc-fulfillment-service
-  version: 0.31.0
+  version: 0.31.1
   description: |
+    0.31.1(2026-11-20, 라이더 앱 실서버 — PC 5 작성·PC 3 검토): 번호 인계 `POST /packages/handover-code-authorizations` 에서 그 출고의 **이미 인계된 포장 숫자**면 409 `ALREADY_HANDED_OVER`(틀린 횟수에 넣지 않음). 인계 뒤 같은 번호를 다시 넣으면 HANDOVER_CODE_MISMATCH 로 세어 5번이면 잠기던 것.
     MFC 작업(PICK/PACK/DISPATCH Task)·Shipment·Package·HandoverFact·**인계 fence**의 정본. (docs/architecture/service-map.md §5, ADR-0006)
 
     0.2.0(2026-11-07, 슬라이스 6b): 점원 단말 Task API·포장 밀봉 구현. 작업자 = 운영자 계정(작업자 로그인 BR-02 결정 전 잠정) — 그 센터 권한 +
@@ -1231,7 +1232,8 @@ paths:
         이 센터 출고의 배송이 아니면 409 DELIVERY_MISMATCH, 그 출고에 숫자가 같은 밀봉 포장이 없으면 409 HANDOVER_CODE_MISMATCH(다른 배송·다른 센터 포장도
         여기 — 시도는 경고 로그, details `attemptsLeft` 남은 횟수), 같은 숫자 포장이 둘 이상이면 409 HANDOVER_CODE_AMBIGUOUS(QR 로 — 0.23.0 부터 센터 안 번호가
         겹치지 않아 6자리 옛 포장에서만). 같은 라이더·배송이 5번 틀리면 409 HANDOVER_CODE_LOCKED(0.23.0, R-26 — 맞는 번호도 거절, QR 을 찍거나 점원
-        확인). 토큰 RIDER, 주체 = riderId.
+        확인). 0.31.1(2026-11-20 — 라이더 앱 실서버): 그 출고에서 **이미 인계된(HANDED_OVER) 포장의 숫자**면 409 ALREADY_HANDED_OVER(틀린 횟수에 넣지 않음 —
+        인계 뒤 같은 번호를 다시 넣어 잠기던 것). 토큰 RIDER, 주체 = riderId.
       operationId: authorizeHandoverByCode
       x-pmart-user-types: [RIDER]
       parameters:

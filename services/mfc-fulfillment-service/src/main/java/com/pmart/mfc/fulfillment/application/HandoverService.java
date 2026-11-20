@@ -565,6 +565,15 @@ public class HandoverService {
       throw locked();
     }
     List<String> found = store.sealedPackagesByCode(a.shipmentId(), code.strip());
+    if (found.isEmpty() && store.handedOverByCode(a.shipmentId(), code.strip())) {
+      // 2026-11-20(라이더 앱 실서버 — 인계 뒤 같은 번호를 다시 넣어 틀린 횟수가 줄던 것): 이미 인계된 이 배송 포장 번호는 틀린 번호로 세지 않는다
+      throw new PmartException(
+          HandoverRules.ALREADY_HANDED_OVER,
+          HttpStatus.CONFLICT,
+          "이미 인계된 포장 번호입니다.",
+          false,
+          List.of());
+    }
     if (found.isEmpty()) {
       int failures = store.recordCodeFailure(riderId, deliveryId, clock.instant());
       log.warn("라벨 숫자 인계 불일치 — 라이더 {} 배송 {} ({}번째)", riderId, deliveryId, failures);

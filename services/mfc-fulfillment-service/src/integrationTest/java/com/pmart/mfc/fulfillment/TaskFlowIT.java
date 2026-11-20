@@ -2562,6 +2562,18 @@ class TaskFlowIT extends PostgresKafkaContainerSupport {
     assertThat(c2.body().path("packageState").asString()).isEqualTo("HANDED_OVER");
     assertThat(c2.body().path("shipmentState").asString()).isEqualTo("HANDED_OVER");
     assertThat(outbox("PackageHandedOver", p2.id())).isEqualTo(1);
+    // 2026-11-20(라이더 앱 실서버): 인계 뒤 같은 번호를 다시 넣으면 ALREADY_HANDED_OVER — 틀린 횟수에 넣지 않는다
+    for (int i = 0; i < 6; i++) {
+      Res again =
+          call(
+              "POST",
+              RIDER1,
+              "/packages/handover-code-authorizations",
+              UUID.randomUUID().toString(),
+              Map.of("riderId", "R1", "deliveryId", dlv, "handoverCode", code2));
+      assertThat(again.status()).isEqualTo(409);
+      assertThat(again.body().path("code").asString()).isEqualTo("ALREADY_HANDED_OVER");
+    }
   }
 
   @Test

@@ -199,6 +199,18 @@ public class HandoverStore {
         handoverCode);
   }
 
+  /** 이 배송에 이미 인계된 같은 번호의 포장(2026-11-20 — 다시 넣어도 틀린 번호로 세지 않게). */
+  public boolean handedOverByCode(String shipmentId, String handoverCode) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM package p WHERE p.shipment_id = ? AND p.handover_code = ? AND"
+                + " p.state = 'HANDED_OVER'",
+            Integer.class,
+            shipmentId,
+            handoverCode);
+    return n != null && n > 0;
+  }
+
   /** 번호 입력 실패 횟수(0.23.0, R-26) — 없으면 0. */
   public int codeFailures(String riderId, String deliveryId) {
     List<Integer> r =
