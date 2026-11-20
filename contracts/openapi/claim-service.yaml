@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: claim-service
-  version: 0.9.0
+  version: 0.9.1
   description: |
+    0.9.1(2026-11-20, PC 5 요청 — 사용자 "쿠폰 안 되면 자동취소만", "약속+30분"): 내부 시스템 취소 `POST /internal/claims/system-cancellations` 사유에 **`DISPATCH_UNAVAILABLE`** — delivery-dispatch 가 배송 약속 시각 + 30분이 지나도 라이더가 배정되지 않은(픽업 전) 고객 배송의 주문을 자동 취소. 범위·흐름은 시스템 취소 그대로(CONFIRMED·PREPARING, 전액 환불, 고객 알림은 배차 불가 문구). 2,000원 쿠폰은 promotion 이 생길 때.
     0.9.0(2026-11-20, ADR-0077 고객 탈퇴): 내부 `GET /internal/accounts/{accountId}/withdrawal-eligibility` — 끝나지 않은 클레임(취소·반품·교환)·환불·분쟁.
     0.8.0(2026-11-20, ADR-0076 — 사용자 "관리자 사유 취소만 넓힘", MFC 시뮬레이터 R-29 "니가 바로 고쳐"): 사유 **`OPERATOR_DECISION`**(관리자 판단) 직원 전체 취소 —
     역할은 그 센터 `MFC_SUPERVISOR`·`OPERATOR_ADMIN` 만(**CS_AGENT 403** — 배차 불가와 다름), 배차 불가(0.7.0)와 같은 범위(**상품준비 뒤라도 인계 전**, 인계 뒤·미이행 0 은 422)·흐름, 본인 확인 없음,
@@ -631,7 +632,7 @@ components:
       required: [orderId, reason]
       properties:
         orderId: { type: string }
-        reason: { type: string, enum: [FULFILLMENT_REJECTED, OUT_OF_STOCK], description: 'OUT_OF_STOCK(2026-11-08, ADR-0046) = 결품 사가의 전체 취소(고객 선택 CANCEL_ALL·주문 전체 결품)' }
+        reason: { type: string, enum: [FULFILLMENT_REJECTED, OUT_OF_STOCK, DISPATCH_UNAVAILABLE], description: 'DISPATCH_UNAVAILABLE(0.9.1, 2026-11-20 — delivery-dispatch 자동 취소: 약속+30분 라이더 없음, 인계 전) · OUT_OF_STOCK(2026-11-08, ADR-0046) = 결품 사가의 전체 취소(고객 선택 CANCEL_ALL·주문 전체 결품)' }
         reasonDetail: { type: string, maxLength: 1000, description: '예 작업 거절 사유 코드·마지막 작업 버전' }
         sourceRef: { type: string, description: 요청한 사가 ID(추적용) }
     ClaimLineRequest:

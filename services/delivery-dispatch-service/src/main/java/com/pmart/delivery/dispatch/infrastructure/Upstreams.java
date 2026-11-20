@@ -29,6 +29,7 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>order-service: 배송지(O-4 — 도로명주소는 좌표 변환에만, 저장·로그 금지)
  *   <li>center-master: MFC 좌표(CM-1)
  *   <li>serviceability: 도로명주소 → 좌표(정확 일치)
+ *   <li>claim-service: 배차 불가 자동 취소(시스템 취소 DISPATCH_UNAVAILABLE — 2026-11-20)
  * </ul>
  */
 @Component
@@ -63,6 +64,7 @@ public class Upstreams {
   private final RestClient order;
   private final RestClient center;
   private final RestClient serviceability;
+  private final RestClient claim;
   private final ObjectMapper mapper;
 
   public Upstreams(RestClient.Builder builder, DispatchProperties props, ObjectMapper mapper) {
@@ -72,7 +74,53 @@ public class Upstreams {
     this.order = builder.clone().baseUrl(u.order()).build();
     this.center = builder.clone().baseUrl(u.centerMaster()).build();
     this.serviceability = builder.clone().baseUrl(u.serviceability()).build();
+    this.claim = builder.clone().baseUrl(u.claim()).build();
     this.mapper = mapper;
+  }
+
+  // ---------- claim ----------
+
+  /** 자동 취소 결과 — accepted 면 claim 이 취소를 접수(또는 이미 진행 중), 아니면 거절 코드. */
+  public record CancelResult(boolean accepted, @Nullable String rejectCode) {}
+
+  /**
+   * 배차 불가 자동 취소(2026-11-20 사용자 "쿠폰 안 되면 자동취소만", "약속+30분"): claim 시스템 취소(reason
+   * DISPATCH_UNAVAILABLE) — 주문 전체 취소·전액 환불, 그 뒤 OrderCancelled 로 이 배송도 픽업 전 취소된다. 같은 배송은 같은 멱등 키.
+   * 4xx 는 거절 코드로, 연결 안 됨·5xx 는 예외(호출자가 나중에 다시).
+   */
+  public CancelResult cancelOrderForNoRider(String orderId, String deliveryId) {
+    try {
+      Downstream.call(
+          "claim-service system-cancellation",
+          () ->
+              claim
+                  .post()
+                  .uri("/api/v1/internal/claims/system-cancellations")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .header("Idempotency-Key", "dispatch-no-rider:" + deliveryId)
+                  .body(
+                      Map.of(
+                          "orderId",
+                          orderId,
+                          "reason",
+                          "DISPATCH_UNAVAILABLE",
+                          "reasonDetail",
+                          "배차 불가 자동 취소 — 배송 " + deliveryId + " 약속 시각이 지나도 라이더 없음"))
+                  .retrieve()
+                  .body(String.class));
+      return new CancelResult(true, null);
+    } catch (HttpClientErrorException e) {
+      String code = "HTTP_" + e.getStatusCode().value();
+      try {
+        String c = mapper.readTree(e.getResponseBodyAsString()).path("code").asString("");
+        if (!c.isBlank()) {
+          code = c;
+        }
+      } catch (RuntimeException ignored) {
+        // 본문이 JSON 이 아니면 HTTP 코드
+      }
+      return new CancelResult(false, code);
+    }
   }
 
   // ---------- rider ----------

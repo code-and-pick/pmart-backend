@@ -37,7 +37,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     수천 개라 CP-SAT 가 2초 안에 80~90% 못 풀고 규칙 기반으로 떨어졌다. 4 면 0건, 배정 +7~10%(2026-11-13 측정,
  *     LargeMfcBenchmarkTest)
  * @param failedReturnFallbackAfter 다른 라이더 반납(FAILURE_OTHER)을 이만큼 못 맡기면 원래 라이더에게 바로(2026-11-20 사용자
- *     "가" — 기본 30분)
+ * @param autoCancelAfter 배송 약속 시각 + 이만큼 지나도 라이더가 배정되지 않은 고객 배송은 claim 시스템 취소(DISPATCH_UNAVAILABLE)
+ *     — 사용자 2026-11-20 "약속+30분" "가" — 기본 30분)
  */
 @ConfigurationProperties(prefix = "pmart.dispatch")
 public record DispatchProperties(
@@ -66,6 +67,7 @@ public record DispatchProperties(
     @Nullable Duration listDelayPerCancellation,
     @Nullable Integer bundleNeighbors,
     @Nullable Duration failedReturnFallbackAfter,
+    @Nullable Duration autoCancelAfter,
     @Nullable Ai ai,
     @Nullable Urls urls) {
 
@@ -98,7 +100,8 @@ public record DispatchProperties(
     bundleNeighbors = bundleNeighbors == null ? 4 : bundleNeighbors;
     failedReturnFallbackAfter =
         failedReturnFallbackAfter == null ? Duration.ofMinutes(30) : failedReturnFallbackAfter;
-    urls = urls == null ? new Urls(null, null, null, null, null) : urls;
+    autoCancelAfter = autoCancelAfter == null ? Duration.ofMinutes(30) : autoCancelAfter;
+    urls = urls == null ? new Urls(null, null, null, null, null, null) : urls;
   }
 
   public OperatingHours hours() {
@@ -128,8 +131,10 @@ public record DispatchProperties(
       @Nullable String tracking,
       @Nullable String order,
       @Nullable String centerMaster,
-      @Nullable String serviceability) {
+      @Nullable String serviceability,
+      @Nullable String claim) {
     public Urls {
+      claim = or(claim, "http://claim-service:8204");
       rider = or(rider, "http://rider-service:8403");
       tracking = or(tracking, "http://delivery-tracking-service:8406");
       order = or(order, "http://order-service:8201");

@@ -120,6 +120,7 @@ public class DispatchEngine {
     Instant now = clock.instant();
     expireOffers(now);
     alertDelays(now);
+    autoCancelNoRider(now);
     Map<String, List<DispatchStore.Due>> byMfc = new LinkedHashMap<>();
     for (DispatchStore.Due d : store.dueAttempts(now, 50)) {
       byMfc.computeIfAbsent(d.mfcId(), k -> new ArrayList<>()).add(d);
@@ -193,6 +194,35 @@ public class DispatchEngine {
             }
           }
         });
+  }
+
+  /**
+   * 배차 불가 자동 취소(2026-11-20 사용자 "배차 신청 계속 하다가 많이 지연되면 기사 없다고 취소", "쿠폰 안 되면 자동취소만", "약속+30분"): 고객
+   * 배송(FORWARD)이 약속 시각 + autoCancelAfter 가 지나도 라이더 없이 배차 대기면 claim 시스템 취소(DISPATCH_UNAVAILABLE — 주문
+   * 전체 취소·전액 환불, 2,000원 쿠폰은 promotion 이 생길 때). 이 배송은 그 뒤 OrderCancelled 로 픽업 전 취소된다. 호출은 트랜잭션 밖,
+   * 결과는 한 번 기록(거절 코드면 다시 부르지 않음 — MFC 관리자 수동 취소로), 일시 장애면 1분 뒤 다시.
+   */
+  void autoCancelNoRider(Instant now) {
+    for (DispatchStore.AutoCancelTarget t :
+        store.autoCancelTargets(now, props.autoCancelAfter(), 20)) {
+      try {
+        Upstreams.CancelResult r = upstreams.cancelOrderForNoRider(t.orderId(), t.deliveryId());
+        String result = r.accepted() ? "ACCEPTED" : r.rejectCode();
+        tx.executeWithoutResult(s -> store.autoCancelDone(t.deliveryId(), result, now));
+        if (r.accepted()) {
+          log.warn(
+              "배송 {} 배차 불가 자동 취소 요청 — 약속 + {} 지나도 라이더 없음(주문 {})",
+              t.deliveryId(),
+              props.autoCancelAfter(),
+              t.orderId());
+        } else {
+          log.warn("배송 {} 배차 불가 자동 취소 거절 {} — MFC 관리자 확인 필요", t.deliveryId(), result);
+        }
+      } catch (RuntimeException e) {
+        tx.executeWithoutResult(s -> store.autoCancelRetry(t.deliveryId(), now.plusSeconds(60)));
+        log.warn("배송 {} 배차 불가 자동 취소 — claim 응답 없음, 1분 뒤 다시: {}", t.deliveryId(), e.toString());
+      }
+    }
   }
 
   // ---------- 2~6. 한 MFC ----------

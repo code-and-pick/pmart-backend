@@ -559,6 +559,41 @@ public class DispatchStore {
         == 1;
   }
 
+  /** 자동 취소 대상(2026-11-20): 고객 배송(FORWARD), 배차 대기(라이더 없음), 약속 + after 지남, 인계 없음, 아직 결과 없음·재시도 때. */
+  public record AutoCancelTarget(String deliveryId, String orderId) {}
+
+  public List<AutoCancelTarget> autoCancelTargets(
+      Instant now, java.time.Duration after, int limit) {
+    return jdbc.query(
+        "SELECT delivery_id, order_id FROM delivery WHERE type = 'FORWARD' AND state ="
+            + " 'DISPATCHING' AND rider_id IS NULL AND promised_at IS NOT NULL AND promised_at <= ?"
+            + " AND order_id IS NOT NULL AND auto_cancel_result IS NULL AND (auto_cancel_retry_at"
+            + " IS NULL OR auto_cancel_retry_at <= ?) AND (handed_over_packages IS NULL OR"
+            + " handed_over_packages::text IN ('[]', 'null')) ORDER BY promised_at LIMIT ?",
+        (rs, i) -> new AutoCancelTarget(rs.getString(1), rs.getString(2)),
+        ts(now.minus(after)),
+        ts(now),
+        limit);
+  }
+
+  /** 자동 취소 결과 기록(ACCEPTED 또는 거절 코드) — 다시 부르지 않는다. */
+  public void autoCancelDone(String deliveryId, String result, Instant now) {
+    jdbc.update(
+        "UPDATE delivery SET auto_cancel_at = ?, auto_cancel_result = ?, auto_cancel_retry_at ="
+            + " NULL WHERE delivery_id = ?",
+        ts(now),
+        result,
+        deliveryId);
+  }
+
+  /** 일시 장애 — retryAt 뒤 다시. */
+  public void autoCancelRetry(String deliveryId, Instant retryAt) {
+    jdbc.update(
+        "UPDATE delivery SET auto_cancel_retry_at = ? WHERE delivery_id = ?",
+        ts(retryAt),
+        deliveryId);
+  }
+
   public void markReshipment(String deliveryId, String caseId) {
     jdbc.update(
         "UPDATE delivery SET type = 'RESHIPMENT', purpose = 'MISDELIVERY_RESHIPMENT', case_id ="

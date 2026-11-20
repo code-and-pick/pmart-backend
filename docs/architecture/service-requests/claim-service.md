@@ -93,6 +93,8 @@
   3. 고객 알림: 기존 주문 취소·환불 알림 + 쿠폰 안내(notification — 사유 DISPATCH_UNAVAILABLE 이면 "배달 기사를 찾지 못해 주문을 취소했어요. 전액 환불되고 2,000원 쿠폰을 드렸어요").
 - 찾기: dispatch `GET /dispatch-delays?mfcId=`(0.12.0, PC 5 — 지연 안내가 난 픽업 전 배송) 에서 MFC 백오피스가 고르고 이 취소를 부른다.
 
+- **자동 취소 추가(2026-11-20, PC 5 — 사용자 "쿠폰 안 되면 자동취소만"·"약속+30분")**: 내부 시스템 취소 `POST /internal/claims/system-cancellations` 사유에 `DISPATCH_UNAVAILABLE`(계약 0.9.1) — delivery-dispatch 가 약속 + 30분 라이더 없는 고객 배송의 주문을 자동 취소. claim 코드는 계약 enum 만(범위·흐름은 시스템 취소 그대로), 시험 `CancelClaimFlowIT.systemCancellationForDispatchUnavailable`. **상태: PR 올림(PC 5, platform 영역 — PC 1 검토)**.
+
 ## CL-6. 클레임 목록의 상태별 수 — 목록 맨 위 숫자 띠 (2026-11-19, 보낸 영역 backoffice — PC 2)
 
 - **요청한 곳**: 백오피스 웹(pmart-clients `docs/handoff/backoffice/2026-11-19-backend-list-status-counts.md`).

@@ -707,6 +707,36 @@ class CancelClaimFlowIT extends PostgresKafkaContainerSupport {
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
 
+  /**
+   * 배차 불가 자동 취소(0.9.1, 2026-11-20 — delivery-dispatch 가 약속 + 30분 라이더 없음): 시스템 취소 사유
+   * DISPATCH_UNAVAILABLE — 포장까지 끝난(PREPARING) 주문도 접수, channel SYSTEM.
+   */
+  @Test
+  void systemCancellationForDispatchUnavailable() throws Exception {
+    String account = "CU-" + UUID.randomUUID();
+    String orderId = "ORD-" + UUID.randomUUID();
+    order(orderId, account, "PREPARING");
+    paymentAccepts(orderId);
+    Res r =
+        system(
+            "dispatch-no-rider:DLV-" + orderId,
+            Map.of(
+                "orderId",
+                orderId,
+                "reason",
+                "DISPATCH_UNAVAILABLE",
+                "reasonDetail",
+                "배차 불가 자동 취소"));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    assertThat(r.body().path("reason").asString()).isEqualTo("DISPATCH_UNAVAILABLE");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT channel FROM claim WHERE claim_id = ?",
+                String.class,
+                r.body().path("claimId").asString()))
+        .isEqualTo("SYSTEM");
+  }
+
   /** 슬라이스 6a D6-4: MFC 작업 거절 뒤 orchestration 의 자동 전체 취소 — 고객 취소와 같은 흐름, 진행 중 취소가 있으면 그것. */
   @Test
   void systemCancellationAfterFulfillmentRejected() throws Exception {

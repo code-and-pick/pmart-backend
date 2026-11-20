@@ -66,7 +66,8 @@ import tools.jackson.databind.ObjectMapper;
           "pmart.dispatch.urls.tracking",
           "pmart.dispatch.urls.order",
           "pmart.dispatch.urls.center-master",
-          "pmart.dispatch.urls.serviceability"
+          "pmart.dispatch.urls.serviceability",
+          "pmart.dispatch.urls.claim"
         }))
 class DispatchFlowIT extends PostgresKafkaContainerSupport {
 
@@ -1474,6 +1475,55 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             body(respond(rider, offerId, "a-" + deliveryId, "ACCEPT")).path("outcome").asString())
         .isEqualTo("ASSIGNED");
     return deliveryId;
+  }
+
+  /**
+   * 배차 불가 자동 취소(2026-11-20 사용자 "쿠폰 안 되면 자동취소만", "약속+30분"): 약속 + 30분이 지나도 라이더 없는 고객 배송 → claim 시스템
+   * 취소(DISPATCH_UNAVAILABLE) 한 번. 30분 전이면 부르지 않는다.
+   */
+  @Test
+  void undispatchedDeliveryIsAutoCancelledAfterPromisePlus30Minutes() {
+    String mfc = "MFC-D29";
+    riders(mfc);
+    String deliveryId =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-29-" + UUID.randomUUID());
+    String orderId =
+        jdbc.queryForObject(
+            "SELECT order_id FROM delivery WHERE delivery_id = ?", String.class, deliveryId);
+    up.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/claims/system-cancellations"))
+            .willReturn(
+                aResponse()
+                    .withStatus(201)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"claimId\":\"CLM-IT\",\"orderId\":\"" + orderId + "\"}")));
+    engine.tick();
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ago(25 * 60), deliveryId);
+    engine.tick(); // 약속 + 25분 — 아직
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT auto_cancel_result FROM delivery WHERE delivery_id = ?",
+                String.class,
+                deliveryId))
+        .isNull();
+    jdbc.update(
+        "UPDATE delivery SET promised_at = ? WHERE delivery_id = ?", ago(31 * 60), deliveryId);
+    engine.tick();
+    engine.tick(); // 두 번째 주기에는 다시 부르지 않는다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT auto_cancel_result FROM delivery WHERE delivery_id = ?",
+                String.class,
+                deliveryId))
+        .isEqualTo("ACCEPTED");
+    up.verify(
+        1,
+        com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor(
+                urlPathEqualTo("/api/v1/internal/claims/system-cancellations"))
+            .withHeader("Idempotency-Key", equalTo("dispatch-no-rider:" + deliveryId))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("DISPATCH_UNAVAILABLE")))
+            .withRequestBody(matchingJsonPath("$.orderId", equalTo(orderId))));
   }
 
   @Test
