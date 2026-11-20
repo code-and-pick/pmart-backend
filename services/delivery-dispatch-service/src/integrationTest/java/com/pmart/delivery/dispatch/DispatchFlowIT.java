@@ -2590,6 +2590,17 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 back))
         .isZero(); // 제안(푸시) 없이
+    // 배차 상세가 FAILED_RETURN 출처를 계약 enum 으로 낸다(2026-11-20 — 빠져 있어 500 이었음)
+    var detail =
+        http.get()
+            .uri("/deliveries/{id}/dispatch", back)
+            .header(
+                "Authorization",
+                "Bearer " + TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of()))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(detail.getStatusCode().value()).isEqualTo(200);
+    assertThat(detail.getBody()).contains("FAILED_RETURN");
 
     // 다른 라이더(2026-11-17 — returnBy OTHER_RIDER): 원래 라이더는 빼고 근처 라이더에게 회수 제안, 회수지 = 원래 라이더 위치
     String r2 = "RD-fr2-" + UUID.randomUUID();
