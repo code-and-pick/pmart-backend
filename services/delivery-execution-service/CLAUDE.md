@@ -96,3 +96,5 @@
 - **처리 주인 하나(2026-11-19, 0.31.3 — 사용자 "라이더 백오피스만")**: `Access.operatorCanDecide` = RIDER_OPS·OPERATOR_ADMIN 만 — 전달 실패 확정·반려, 도움요청 처리함 닫기. 상담원·센터 관리자는 보기만(403).
 
 - **DE-7 상태별 수(2026-11-19, 0.33.0)**: 직원 `GET /deliveries/counts`(목록과 같은 거르기, state 제외) — ExecutionState 13개 모두 0 까지, capped 늘 false.
+
+- **사건함 처리완료 = 실패 확정(2026-11-20 — 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게 하고, 회수배차 바로 요청오고 진행하게")**: `CaseClosed` 를 받을 때, 그 사건이 붙은 열린 도움요청이 **결정 대기 전달 불가 대화**(category DELIVERY_FAILURE, 배송 FAILURE_REPORTED, 실패 기록 requestId 같음)면 `FailureDecisionService.confirmOnCaseClosed` 가 CONFIRM — 직접 확정과 같은 `confirm`(상품 위치 = 라이더 등록값, 반납 = 같은 라이더, 수행료 규칙 같음, 반품 회수는 ReturnPickupFailed). 실패 기록 decidedBy = 닫은 직원(봉투 actor OPERATOR, 없으면 `case:<caseId>`)·`decidedByCase`, 이력 source_ref `CASE_CLOSED:<caseId>`. 계속 전달시키려면 **사건을 닫기 전에 반려**. 확정 뒤 재개 요청은 409(FAILURE_REPORTED 아님). 계약 변경 없음.

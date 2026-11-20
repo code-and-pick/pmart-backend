@@ -51,6 +51,7 @@ public class ExecutionEventHandler {
   private final ObjectMapper mapper;
   private final Clock clock;
   private final com.pmart.delivery.execution.infrastructure.OrderClient orders;
+  private final FailureDecisionService failures;
 
   public ExecutionEventHandler(
       ExecutionStore store,
@@ -58,7 +59,9 @@ public class ExecutionEventHandler {
       EarningService earnings,
       ObjectMapper mapper,
       Clock clock,
-      com.pmart.delivery.execution.infrastructure.OrderClient orders) {
+      com.pmart.delivery.execution.infrastructure.OrderClient orders,
+      FailureDecisionService failures) {
+    this.failures = failures;
     this.store = store;
     this.pickup = pickup;
     this.earnings = earnings;
@@ -113,6 +116,16 @@ public class ExecutionEventHandler {
     }
     if ("CaseClosed".equals(e.eventType())) {
       Instant at = instantOr(p.path("closedAt").asString(null), clock.instant());
+      // 2026-11-20 사용자 "지원센터에서 처리완료하면 아예 배차 취소, 회수배차 바로": 결정 대기 전달 불가 대화의 사건이 닫히면 실패 확정
+      String closedBy =
+          e.actor() != null && e.actor().type() == EventEnvelope.ActorType.OPERATOR
+              ? e.actor().id()
+              : null;
+      for (ExecutionStore.HelpRow h : store.openHelpsByCase(caseId)) {
+        if ("DELIVERY_FAILURE".equals(h.category())) {
+          failures.confirmOnCaseClosed(h.deliveryId(), h.requestId(), caseId, closedBy);
+        }
+      }
       int n = store.closeHelpByCase(caseId, p.path("outcome").asString(null), at);
       log.info("사건 {} 닫힘 → 도움요청 {}건 처리됨", caseId, n);
       return;

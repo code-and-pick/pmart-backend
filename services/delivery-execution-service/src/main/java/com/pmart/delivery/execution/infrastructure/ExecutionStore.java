@@ -818,6 +818,12 @@ public class ExecutionStore {
   }
 
   /** 사건함이 사건을 닫았다(DE-CASE) — 그 사건의 도움요청을 닫는다. 처리자 = {@code case:<caseId>}, 메모 = 결과. */
+  /** 이 사건이 붙은, 아직 닫히지 않은 도움요청(2026-11-20 — 처리완료 = 실패 확정 판정용). */
+  public List<HelpRow> openHelpsByCase(String caseId) {
+    return jdbc.query(
+        HELP_SELECT + " WHERE case_id = ? AND state <> 'RESOLVED'", this::mapHelp, caseId);
+  }
+
   public int closeHelpByCase(String caseId, @Nullable String outcome, Instant closedAt) {
     return jdbc.update(
         "UPDATE help_request SET state = 'RESOLVED', resolved_at = ?, resolved_by = ?,"

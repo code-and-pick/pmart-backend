@@ -146,53 +146,9 @@ public class FailureDecisionService {
               if (c.note() != null) {
                 failure.put("decisionNote", c.note());
               }
-              if ("CONFIRM".equals(c.decision()) && d.claimReturn()) {
-                // 고객 반품 회수 실패(CL-1, 2026-11-17): 상품은 고객에게 그대로 — custody 없음. 다시 시도는 반품 쪽이 정한다.
-                // 수행료: 고객 사정(부재·연락 두절·주소 오류·거부)이면 수락 당시 금액(사용자 "수락 당시 금액 지급"), 그 밖은 지원센터 조정
-                String reason = reported.path("reason").asString("OTHER");
-                boolean customerReason = ExecutionRules.CUSTOMER_REASONS.contains(reason);
-                store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
-                store.history(deliveryId, "FAILED", now, "OPERATOR", requestId, now);
-                events.returnPickupFailed(
-                    d,
-                    reason,
-                    customerReason,
-                    reported.path("contactAttempts").size(),
-                    reported.path("reportedAt").asString(null),
-                    p.subject(),
-                    now);
-                if (customerReason) {
-                  earnings.completed(d, now);
-                } else {
-                  earnings.notCalculable(d, "FAILED", now);
-                }
-                log.info("반품 회수 배송 {} 회수 실패 확정 — 사유 {}", deliveryId, reason);
-              } else if ("CONFIRM".equals(c.decision())) {
-                String goods = reported.path("goodsLocation").asString(null);
-                String custody = ExecutionRules.custody(c.custody(), goods);
-                failure.put("custody", custody);
-                String returnBy =
-                    "RIDER".equals(custody) && "OTHER_RIDER".equals(c.returnBy())
-                        ? "OTHER_RIDER"
-                        : "SAME_RIDER";
-                failure.put("returnBy", returnBy);
-                store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
-                store.history(deliveryId, "FAILED", now, "OPERATOR", requestId, now);
-                String reason = reported.path("reason").asString("OTHER");
-                events.failed(d, reason, custody, goods, returnBy, p.subject(), now);
-                // 수행료(2026-11-17 사용자 "고객 귀책이면 라이더는 잘못 없으니 원래 측정돼 있던 수행료"): 고객 사유(부재·연락 두절·주소
-                // 오류·거부)면 수락 당시 금액, 그 밖은 산정 불가 → 지원센터 조정. 상품이 라이더 손이면 dispatch 가 반납 배송을 같은 라이더에게
-                // 사고(2026-11-18 사용자 "이동시점까지의 거리" → "원래 금액을 거리 비율로"): 등록 시각의 라이더 위치까지 간 거리 비율
-                if (ExecutionRules.CUSTOMER_REASONS.contains(reason)) {
-                  earnings.completed(d, now);
-                } else if (ExecutionRules.INCIDENT_REASON.equals(reason)) {
-                  Instant reportedAt = instantOr(reported.path("reportedAt").asString(null), now);
-                  var travelled = dispatch.incidentDistance(deliveryId, reportedAt);
-                  earnings.incident(d, travelled.isPresent() ? travelled.getAsInt() : null, now);
-                } else {
-                  earnings.notCalculable(d, "FAILED", now);
-                }
-                log.info("배송 {} 전달 실패 확정 — 상품 {}", deliveryId, custody);
+              if ("CONFIRM".equals(c.decision())) {
+                confirm(
+                    d, reported, failure, c.custody(), c.returnBy(), p.subject(), requestId, now);
               } else {
                 String back = reported.path("previousState").asString("ARRIVED_AT_CUSTOMER");
                 store.failure(deliveryId, back, mapper.writeValueAsString(failure), now);
@@ -205,6 +161,97 @@ public class FailureDecisionService {
               return new ExecutionService.Applied(requestId, deliveryId, version, now);
             })
         .value();
+  }
+
+  /**
+   * 사건함 처리완료 = 실패 확정(2026-11-20 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게 하고, 회수배차 바로 요청오고 진행하게"): 결정을 기다리던 전달
+   * 불가가 연 대화의 사건이 닫히면, 반려 없이 닫은 것을 CONFIRM 으로 본다. 상품 위치는 라이더가 등록한 값, 반납은 같은 라이더, 수행료 규칙은 직접 확정과 같다.
+   * 계속 전달시키려면 사건을 닫기 전에 반려한다. 호출자(inbox) 트랜잭션 안 — 배송을 잠근다.
+   *
+   * @return 확정했으면 true(결정 대기가 아니면 아무것도 안 함)
+   */
+  public boolean confirmOnCaseClosed(
+      String deliveryId, String helpRequestId, String caseId, @Nullable String closedBy) {
+    DeliveryRow d = store.lockDelivery(deliveryId).orElse(null);
+    if (d == null || !"FAILURE_REPORTED".equals(d.state()) || d.failureJson() == null) {
+      return false;
+    }
+    JsonNode reported = mapper.readTree(d.failureJson());
+    if (!helpRequestId.equals(reported.path("requestId").asString(""))) {
+      return false;
+    }
+    Instant now = clock.instant();
+    String actor = closedBy == null || closedBy.isBlank() ? "case:" + caseId : closedBy;
+    Map<String, Object> failure = new LinkedHashMap<>();
+    reported.properties().forEach(en -> failure.put(en.getKey(), en.getValue()));
+    failure.put("decision", "CONFIRM");
+    failure.put("decidedBy", actor);
+    failure.put("decidedAt", now.toString());
+    failure.put("decidedByCase", caseId);
+    confirm(d, reported, failure, null, null, actor, "CASE_CLOSED:" + caseId, now);
+    log.info("배송 {} 사건 {} 처리완료 → 전달 실패 확정", deliveryId, caseId);
+    return true;
+  }
+
+  /** 실패 확정(CONFIRM) 한 가지 — 직접 결정·사건함 처리완료가 같이 쓴다. 잠근 배송, 호출자 트랜잭션 안. */
+  private void confirm(
+      DeliveryRow d,
+      JsonNode reported,
+      Map<String, Object> failure,
+      @Nullable String custodyChoice,
+      @Nullable String returnByChoice,
+      String operatorId,
+      String historyRef,
+      Instant now) {
+    String deliveryId = d.deliveryId();
+    if (d.claimReturn()) {
+      // 고객 반품 회수 실패(CL-1, 2026-11-17): 상품은 고객에게 그대로 — custody 없음. 다시 시도는 반품 쪽이 정한다.
+      // 수행료: 고객 사정(부재·연락 두절·주소 오류·거부)이면 수락 당시 금액(사용자 "수락 당시 금액 지급"), 그 밖은 지원센터 조정
+      String reason = reported.path("reason").asString("OTHER");
+      boolean customerReason = ExecutionRules.CUSTOMER_REASONS.contains(reason);
+      store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
+      store.history(deliveryId, "FAILED", now, "OPERATOR", historyRef, now);
+      events.returnPickupFailed(
+          d,
+          reason,
+          customerReason,
+          reported.path("contactAttempts").size(),
+          reported.path("reportedAt").asString(null),
+          operatorId,
+          now);
+      if (customerReason) {
+        earnings.completed(d, now);
+      } else {
+        earnings.notCalculable(d, "FAILED", now);
+      }
+      log.info("반품 회수 배송 {} 회수 실패 확정 — 사유 {}", deliveryId, reason);
+      return;
+    }
+    String goods = reported.path("goodsLocation").asString(null);
+    String custody = ExecutionRules.custody(custodyChoice, goods);
+    failure.put("custody", custody);
+    String returnBy =
+        "RIDER".equals(custody) && "OTHER_RIDER".equals(returnByChoice)
+            ? "OTHER_RIDER"
+            : "SAME_RIDER";
+    failure.put("returnBy", returnBy);
+    store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
+    store.history(deliveryId, "FAILED", now, "OPERATOR", historyRef, now);
+    String reason = reported.path("reason").asString("OTHER");
+    events.failed(d, reason, custody, goods, returnBy, operatorId, now);
+    // 수행료(2026-11-17 사용자 "고객 귀책이면 라이더는 잘못 없으니 원래 측정돼 있던 수행료"): 고객 사유(부재·연락 두절·주소
+    // 오류·거부)면 수락 당시 금액, 그 밖은 산정 불가 → 지원센터 조정. 상품이 라이더 손이면 dispatch 가 반납 배송을 같은 라이더에게
+    // 사고(2026-11-18 사용자 "이동시점까지의 거리" → "원래 금액을 거리 비율로"): 등록 시각의 라이더 위치까지 간 거리 비율
+    if (ExecutionRules.CUSTOMER_REASONS.contains(reason)) {
+      earnings.completed(d, now);
+    } else if (ExecutionRules.INCIDENT_REASON.equals(reason)) {
+      Instant reportedAt = instantOr(reported.path("reportedAt").asString(null), now);
+      var travelled = dispatch.incidentDistance(deliveryId, reportedAt);
+      earnings.incident(d, travelled.isPresent() ? travelled.getAsInt() : null, now);
+    } else {
+      earnings.notCalculable(d, "FAILED", now);
+    }
+    log.info("배송 {} 전달 실패 확정 — 상품 {}", deliveryId, custody);
   }
 
   private static Instant instantOr(@Nullable String s, Instant fallback) {

@@ -2942,6 +2942,73 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(409);
   }
 
+  /**
+   * 사건함 처리완료 = 실패 확정(2026-11-20 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게 하고, 회수배차 바로"): 결정 대기 전달 불가가 연 사건이 닫히면
+   * FAILED + DeliveryFailed(상품 위치 = 라이더 등록값, 같은 라이더 반납). 그 뒤 재개 요청은 409.
+   */
+  @Test
+  void caseClosedConfirmsPendingFailure() throws Exception {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    ResponseEntity<String> reported =
+        post(id, "failures", rider, failure("CUSTOMER_ABSENT", List.of(photo), 2));
+    assertThat(reported.getStatusCode().value()).isEqualTo(200);
+    String helpId = body(reported).path("resultId").asString();
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String caseId = "CASE-" + UUID.randomUUID();
+    caseEvent(
+        "CaseOpened",
+        caseId,
+        1,
+        Map.of(
+            "caseId",
+            caseId,
+            "type",
+            "DELIVERY_INCIDENT",
+            "refs",
+            List.of(Map.of("refType", "incidentId", "refId", id + ":" + helpId)),
+            "openedAt",
+            Instant.now().toString()));
+    for (int i = 0; i < 100; i++) {
+      JsonNode h = body(staffGet("/deliveries/" + id + "/help-requests/" + helpId, ops));
+      if (caseId.equals(h.path("caseId").asString())) {
+        break;
+      }
+      Thread.sleep(200);
+    }
+    caseEvent(
+        "CaseClosed",
+        caseId,
+        2,
+        Map.of(
+            "caseId",
+            caseId,
+            "type",
+            "DELIVERY_INCIDENT",
+            "outcome",
+            "RESOLVED",
+            "closedAt",
+            Instant.now().toString()));
+    awaitHelpState(id, helpId, ops, "RESOLVED");
+    assertThat(state(id)).isEqualTo("FAILED");
+    JsonNode failed = outbox(id, "DeliveryFailed").path("payload");
+    assertThat(failed.path("reason").asString()).isEqualTo("CUSTOMER_ABSENT");
+    assertThat(failed.path("returnBy").asString()).isEqualTo("SAME_RIDER");
+    JsonNode v = view(id, rider);
+    assertThat(v.path("failure").path("decision").asString()).isEqualTo("CONFIRM");
+    assertThat(post(id, "failures/resume-requests", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(409);
+    // 다시 받아도(재전달) 두 번 확정하지 않는다
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'DeliveryFailed'",
+                Integer.class,
+                id))
+        .isEqualTo(1);
+  }
+
   List<String> blockers(String rider) {
     JsonNode b =
         body(
