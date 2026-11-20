@@ -140,6 +140,7 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     ResponseEntity<String> blockedJoin = signup(fresh, phone, "k-" + fresh, rider);
     assertThat(blockedJoin.getStatusCode().value()).isEqualTo(409);
     assertThat(json(blockedJoin).path("code").asString()).isEqualTo("RIDER_REJOIN_BLOCKED");
+    assertThat(blockedJoin.getBody()).contains("30일 동안");
     jdbc.update("UPDATE rider_rejoin_block SET blocked_until = now() - interval '1 minute'");
     assertThat(signup(fresh, phone, "k2-" + fresh, rider).getStatusCode().value()).isEqualTo(201);
     // 직원 찾기에서도 빠진다

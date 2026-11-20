@@ -112,7 +112,7 @@ public class PhoneVerificationStore {
         verificationId);
   }
 
-  /** 탈퇴 번호 막기(30일) — 같은 번호면 더 늦은 기한으로. */
+  /** 탈퇴 번호 막기(rejoin-block) — 같은 번호면 더 늦은 기한으로. */
   public void block(String phoneHash, Instant until, Instant now) {
     jdbc.update(
         "INSERT INTO rider_rejoin_block (phone_hash, blocked_until, created_at) VALUES (?,?,?) ON"
