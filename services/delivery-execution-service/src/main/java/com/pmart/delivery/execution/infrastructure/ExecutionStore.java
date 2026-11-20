@@ -818,6 +818,15 @@ public class ExecutionStore {
         .findFirst();
   }
 
+  /** 실패 기록만 바꾼다(상태·버전 그대로 — 2026-11-20 반납할 사람 변경). */
+  public void replaceFailureRecord(String deliveryId, String failureJson, Instant now) {
+    jdbc.update(
+        "UPDATE execution_delivery SET failure = ?::jsonb, updated_at = ? WHERE delivery_id = ?",
+        failureJson,
+        ts(now),
+        deliveryId);
+  }
+
   public void failure(String deliveryId, String state, String failureJson, Instant now) {
     jdbc.update(
         "UPDATE execution_delivery SET state = ?, failure = ?::jsonb, version = version + 1,"

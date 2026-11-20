@@ -2643,6 +2643,60 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                 back3))
         .isEqualTo(1);
 
+    // 다른 라이더 반납을 30분 동안 못 맡기면 원래 라이더에게 바로(2026-11-20 사용자 "가")
+    String order4 = "ORD-" + UUID.randomUUID();
+    bundledOrder(order4, "IT-ROAD-FR4-" + order4, 37.5006, 127.0360);
+    String origin4 =
+        readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID(), order4);
+    engine.tick();
+    String offer4 =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin4);
+    String r4rider =
+        jdbc.queryForObject(
+            "SELECT rider_id FROM dispatch_offer WHERE offer_id = ?", String.class, offer4);
+    assertThat(body(respond(r4rider, offer4, "a-" + origin4, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    executionEvent(
+        "DeliveryFailed",
+        origin4,
+        Map.of(
+            "deliveryId",
+            origin4,
+            "reason",
+            "CUSTOMER_ABSENT",
+            "custody",
+            "RIDER",
+            "returnBy",
+            "OTHER_RIDER",
+            "failedAt",
+            Instant.now().toString()));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE origin_delivery_id = '"
+            + origin4
+            + "' AND request_trigger = 'FAILURE_OTHER'");
+    String back4 =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE origin_delivery_id = ?", String.class, origin4);
+    jdbc.update(
+        "UPDATE delivery SET created_at = now() - interval '31 minutes' WHERE delivery_id = ?",
+        back4);
+    engine.tick();
+    Map<String, Object> d4 =
+        jdbc.queryForMap(
+            "SELECT state, rider_id, request_trigger FROM delivery WHERE delivery_id = ?", back4);
+    assertThat(d4.get("state")).isEqualTo("ASSIGNED");
+    assertThat(d4.get("rider_id")).isEqualTo(r4rider); // 상품을 든 원래 라이더
+    assertThat(d4.get("request_trigger")).isEqualTo("FAILURE");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT source FROM dispatch_offer WHERE delivery_id = ? AND state = 'ACCEPTED'",
+                String.class,
+                back4))
+        .isEqualTo("FAILED_RETURN");
+
     // 상품이 매장(custody STORE)이면 라이더 할 일 없음
     String origin2 = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-fr-" + UUID.randomUUID());
     executionEvent(

@@ -36,6 +36,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param bundleNeighbors 알뜰배달 묶음 후보를 고객마다 가까운 이만큼으로 줄인다(0 = 모든 조합). 기본 4 — 대기 20~40건에서 모든 조합은 후보가
  *     수천 개라 CP-SAT 가 2초 안에 80~90% 못 풀고 규칙 기반으로 떨어졌다. 4 면 0건, 배정 +7~10%(2026-11-13 측정,
  *     LargeMfcBenchmarkTest)
+ * @param failedReturnFallbackAfter 다른 라이더 반납(FAILURE_OTHER)을 이만큼 못 맡기면 원래 라이더에게 바로(2026-11-20 사용자
+ *     "가" — 기본 30분)
  */
 @ConfigurationProperties(prefix = "pmart.dispatch")
 public record DispatchProperties(
@@ -63,6 +65,7 @@ public record DispatchProperties(
     @Nullable Duration cancellationPenalty,
     @Nullable Duration listDelayPerCancellation,
     @Nullable Integer bundleNeighbors,
+    @Nullable Duration failedReturnFallbackAfter,
     @Nullable Ai ai,
     @Nullable Urls urls) {
 
@@ -93,6 +96,8 @@ public record DispatchProperties(
     listDelayPerCancellation =
         listDelayPerCancellation == null ? Duration.ofMinutes(1) : listDelayPerCancellation;
     bundleNeighbors = bundleNeighbors == null ? 4 : bundleNeighbors;
+    failedReturnFallbackAfter =
+        failedReturnFallbackAfter == null ? Duration.ofMinutes(30) : failedReturnFallbackAfter;
     urls = urls == null ? new Urls(null, null, null, null, null) : urls;
   }
 

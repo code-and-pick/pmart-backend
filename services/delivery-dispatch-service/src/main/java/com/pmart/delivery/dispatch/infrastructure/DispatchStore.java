@@ -550,6 +550,15 @@ public class DispatchStore {
   }
 
   /** 오배송 재발송 출고의 배송(2026-11-16) — type RESHIPMENT·purpose·caseId. 이미 표시됐으면 그대로. */
+  /** 다른 라이더 반납을 원래 라이더 반납으로(2026-11-20 사용자 "가" — 오래 못 맡기면). 배차 대기·FAILURE_OTHER 일 때만, 바꿨으면 true. */
+  public boolean switchFailedReturnToSameRider(String deliveryId) {
+    return jdbc.update(
+            "UPDATE delivery SET request_trigger = 'FAILURE' WHERE delivery_id = ? AND"
+                + " request_trigger = 'FAILURE_OTHER' AND state = 'DISPATCHING'",
+            deliveryId)
+        == 1;
+  }
+
   public void markReshipment(String deliveryId, String caseId) {
     jdbc.update(
         "UPDATE delivery SET type = 'RESHIPMENT', purpose = 'MISDELIVERY_RESHIPMENT', case_id ="

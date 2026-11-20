@@ -260,6 +260,7 @@ public class ExecutionEventHandler {
             deliveryId,
             p.path("bundleId").asString(null),
             p.path("stopSequence").isInt() ? p.path("stopSequence").asInt() : null);
+        sameRiderReturn(d, p.path("riderId").asString(""), now);
       }
       case "DeliveryAssignmentChanged" -> {
         int v = p.path("assignmentVersion").asInt();
@@ -308,6 +309,30 @@ public class ExecutionEventHandler {
       }
     }
     pickup.judge(deliveryId, now);
+  }
+
+  /**
+   * 다른 라이더 반납이 원래 라이더에게 넘어감(2026-11-20 — dispatch 가 30분 못 구하면 원래 라이더에게 바로, 사용자 "가"): 원래 배송 실패 기록의
+   * returnBy 를 SAME_RIDER 로 — 라이더 앱이 "다른 라이더에게 넘겨 주세요" 대신 반납 배송을 연다. 실패 기록에 바뀐 시각을 남긴다.
+   */
+  private void sameRiderReturn(DeliveryRow d, String riderId, Instant now) {
+    if (!d.failedReturn() || d.originDeliveryId() == null || riderId.isBlank()) {
+      return;
+    }
+    DeliveryRow origin = store.delivery(d.originDeliveryId()).orElse(null);
+    if (origin == null || !riderId.equals(origin.riderId()) || origin.failureJson() == null) {
+      return;
+    }
+    JsonNode f = mapper.readTree(origin.failureJson());
+    if (!"OTHER_RIDER".equals(f.path("returnBy").asString(""))) {
+      return;
+    }
+    Map<String, Object> m = new LinkedHashMap<>();
+    f.properties().forEach(en -> m.put(en.getKey(), en.getValue()));
+    m.put("returnBy", "SAME_RIDER");
+    m.put("returnByChangedAt", now.toString());
+    store.replaceFailureRecord(origin.deliveryId(), mapper.writeValueAsString(m), now);
+    log.info("배송 {} 반납을 원래 라이더가 하게 됨(다른 라이더 못 구함) — 반납 배송 {}", origin.deliveryId(), d.deliveryId());
   }
 
   public void onFulfillment(EventEnvelope e) {

@@ -1607,6 +1607,45 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 다른 라이더 반납을 못 구해 원래 라이더에게 넘어감(2026-11-20 사용자 "가" — dispatch 가 30분 뒤 원래 라이더에게 바로 배정): 반납 배송이 원래
+   * 라이더에게 배정되면 원래 배송 실패 기록의 returnBy 가 SAME_RIDER — 라이더 앱이 반납 배송으로 넘어가고, 받음 없이 바로 반납.
+   */
+  @Test
+  void otherRiderReturnFallsBackToOriginalRider() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String r1 = "RDR-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, r1);
+    Map<String, Object> direct =
+        Map.of(
+            "decision", "CONFIRM",
+            "custody", "RIDER",
+            "returnBy", "OTHER_RIDER",
+            "reason", "CUSTOMER_ABSENT",
+            "note", "IT");
+    assertThat(decideWith(origin, List.of("RIDER_OPS"), direct).getStatusCode().value())
+        .isEqualTo(200);
+    assertThat(view(origin, r1).path("failure").path("returnBy").asString())
+        .isEqualTo("OTHER_RIDER");
+    String back = "DLV-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", back);
+    created.put("orderId", order);
+    created.put("shipmentId", "FLR-" + origin);
+    created.put("type", "RETURN");
+    created.put("purpose", "FAILED_DELIVERY_RETURN");
+    created.put("originDeliveryId", origin);
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "mfc:MFC-1");
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", back, created);
+    assigned(back, order, r1, 1); // 원래 라이더에게
+    awaitState(back, "ASSIGNED");
+    assertThat(view(origin, r1).path("failure").path("returnBy").asString())
+        .isEqualTo("SAME_RIDER");
+    assertThat(view(back, r1).path("returnPickupRequired").asBoolean()).isFalse();
+  }
+
+  /**
    * 라이더가 더 갈 수 없을 때(2026-11-17 — 사용자 "다른 라이더에게 보낼 수 있게"): 지원센터가 등록 없이 직접 확정(RIDER_OPS) +
    * OTHER_RIDER → 반납 배송을 다른 라이더가 받음 사진 → MFC 반납, 수행료는 그 라이더에게 그대로.
    */
