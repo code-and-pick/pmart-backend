@@ -37,6 +37,8 @@ GET /api/v1/backoffice/commands/{targetService}/{command}/{requestId} OPERATOR
 GET /api/v1/backoffice/views/approval-inbox OPERATOR
 GET /api/v1/backoffice/views/case-inbox OPERATOR
 GET /api/v1/backoffice/views/claims OPERATOR
+GET /api/v1/backoffice/views/customer-search OPERATOR
+GET /api/v1/backoffice/views/customer/{customerId} OPERATOR
 GET /api/v1/backoffice/views/live-delivery OPERATOR
 GET /api/v1/backoffice/views/metrics OPERATOR
 GET /api/v1/backoffice/views/packing-handover OPERATOR

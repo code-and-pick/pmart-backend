@@ -4,6 +4,8 @@ import com.pmart.backoffice.bff.api.generated.ViewsApi;
 import com.pmart.backoffice.bff.api.generated.model.GetApprovalInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetCaseInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetClaimsView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetCustomerSearchView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetCustomerView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetLiveDeliveryView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetMetricsView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetPackingHandoverView200Response;
@@ -13,6 +15,7 @@ import com.pmart.backoffice.bff.api.generated.model.GetUnifiedLookupView200Respo
 import com.pmart.backoffice.bff.api.generated.model.GetWorkCountsView200Response;
 import com.pmart.backoffice.bff.application.ApprovalInboxView;
 import com.pmart.backoffice.bff.application.CaseInboxView;
+import com.pmart.backoffice.bff.application.CustomerViews;
 import com.pmart.backoffice.bff.application.LiveDeliveryView;
 import com.pmart.backoffice.bff.application.MetricsView;
 import com.pmart.backoffice.bff.application.PackingHandoverView;
@@ -46,6 +49,7 @@ public class ViewsController implements ViewsApi {
   private final MetricsView metrics;
   private final WorkCountsView workCounts;
   private final RecordListViews recordLists;
+  private final CustomerViews customers;
   private final ObjectMapper mapper;
 
   public ViewsController(
@@ -58,6 +62,7 @@ public class ViewsController implements ViewsApi {
       MetricsView metrics,
       WorkCountsView workCounts,
       RecordListViews recordLists,
+      CustomerViews customers,
       ObjectMapper mapper) {
     this.approvalInbox = approvalInbox;
     this.pendingWork = pendingWork;
@@ -68,6 +73,7 @@ public class ViewsController implements ViewsApi {
     this.metrics = metrics;
     this.workCounts = workCounts;
     this.recordLists = recordLists;
+    this.customers = customers;
     this.mapper = mapper;
   }
 
@@ -162,6 +168,21 @@ public class ViewsController implements ViewsApi {
         mapper.convertValue(
             approvalInbox.view(approvalType, reviewState, centerId, size, cursor, decidableByMe),
             GetApprovalInboxView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetCustomerSearchView200Response> getCustomerSearchView(
+      @Nullable String customerNumber, @Nullable String phone, @Nullable String orderNumber) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            customers.search(customerNumber, phone, orderNumber),
+            GetCustomerSearchView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetCustomerView200Response> getCustomerView(String customerId) {
+    return ResponseEntity.ok(
+        mapper.convertValue(customers.detail(customerId), GetCustomerView200Response.class));
   }
 
   @Override

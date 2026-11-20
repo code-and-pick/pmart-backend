@@ -36,7 +36,7 @@
   - 원천 하나가 실패하면 그 칸만 null + unavailableSources(0건으로 바꾸지 않음), customer 가 없으면 404, 403 은 그대로.
 - **역할**: CS_AGENT·OPERATOR_ADMIN(원천 판정 그대로). 원문 열람은 화면이 customer CU-4 ③ 을 직접.
 - **순서**: CU-4·CU-3 → bff·case 고객 거르기 → 웹. 그전에는 화면이 통합 조회(고객 ID → 주문)로 대신.
-- **상태**: 설계(PC 2), 원천 대기.
+- **상태**: **구현(PC 2, 2026-11-20 — bff 0.22.0, customer 0.11.0 CU-3·CU-4 LAN 배포 뒤)**: `GET /views/customer-search`(고객번호·전화·주문번호), `GET /views/customer/{customerId}`(가린 머리 + 주문·문의·상담원 접수 칸). 열린 접수 건 칸은 이번에 넣지 않음(웹은 문의·접수의 caseId 로 이음). **클레임 칸은 CL-7 뒤** 추가.
 
 ## BF-MFC-S. 결품률 지표 사유에 변질 SPOILED (2026-11-19, 보낸 영역 mfc — PC 3)
 - mfc-fulfillment 0.22.0 이 결품 사유 **SPOILED(변질)** 를 더했다 — `GET /metrics/picking-lines` 의 `shortLinesByReason.SPOILED`(선택 칸, 없으면 0 으로).

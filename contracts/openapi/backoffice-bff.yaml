@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.21.0
+  version: 0.22.0
   description: |
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
     명령은 대상 서비스로 그대로 전달한다(멱등키·expected version 부착). 응답 ACK(ACCEPTED)는 성공이 아니며 결과는 짝 조회로 확인한다.
     금지 — 주문 상태 직접 변경, 잔고 덮어쓰기, 강제 성공, 검증 생략.
+    **0.22.0(2026-11-20 — BF-2, customer 0.11.0 CU-3·CU-4)**: 백오피스 "고객" 메뉴 — `GET /views/customer-search`(고객번호·전화·주문번호 완전 일치 → 가린 고객 목록), `GET /views/customer/{customerId}`(가린 머리 + 최근 주문·문의·상담원 접수 칸). 클레임 칸은 claim CL-7 뒤.
     **0.21.0(2026-11-19 — PC 5 DD-4·DE-7)**: 지표 `ON_TIME_DELIVERY`(정시 배송률 — dispatch `GET /metrics/on-time-deliveries`, 점·합계에 `pending`), 지금 일 건수 DELIVERIES 를 execution `GET /deliveries/counts` 한 번으로(정확, 원천 404 면 예전 쪽 넘김). 포장 인계 현황 `packages[].handoverCode`(DL-2 — 포장 라벨 6자리, 원천 값 그대로). 결품률 사유에 SPOILED(변질, 원천에 칸이 있을 때만 — BF-MFC-S).
     **0.20.0(2026-11-19 — PC 3 F-10)**: 지표 `SHORTAGE_RATE`(결품률) — mfc-fulfillment `GET /metrics/picking-lines`, 줄 단위·사유별(`segment.mfcId`·`segment.reason`). 501 은 ON_TIME_DELIVERY·TRANSPORT_ON_TIME·UNPLANNED_RATE·PAYMENT_UNKNOWN.
     **0.19.0(2026-11-19 — ADR-0070 덧붙임, case 0.25.0)**: 사건함 `items[].caseNumber`·실시간 배송 `openCases[].caseNumber`(C-MMDD-일련), 통합 조회 사건·문의 summary 에 caseNumber·inquiryNumber, 처리 대기 `items[].orderNumber`(사가 = "주문번호 + 흐름" — order 를 주문마다 한 번, 실패면 null + unavailableSources). 라이더 컴플레인 목록의 배송 번호는 execution 0.31.0 묶음 조회(`deliveryIds`) 한 번으로.
@@ -204,6 +205,71 @@ paths:
                       page: { $ref: '_common.yaml#/components/schemas/Page' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /views/customer-search:
+    get:
+      tags: [views]
+      summary: 고객 찾기 — 고객번호·전화·주문번호 완전 일치 (0.22.0, BF-2)
+      x-added-in: '2026-11-20'
+      description: |
+        백오피스 "고객" 메뉴(BF-2, 사용자 2026-11-19 "응 그대로 진행해"). `customerNumber`·`phone`·`orderNumber` 중 **하나만**(없거나 둘 이상 400).
+          - customerNumber·phone → customer-service `GET /customers?customerNumber=|phone=`(CU-4, customer 0.11.0) 그대로.
+          - orderNumber → order `GET /orders/lookups?orderNumber=` 의 customerId(들) → customer `GET /customers?customerIds=`.
+        **호출한 직원의 토큰**으로(권한은 원천 판정 — CS_AGENT·OPERATOR_ADMIN). 이름 검색·전체 목록 없음. 응답은 가린 값만. 찾는 값은 로그에 남기지 않는다.
+        customer·order 401 → 401, 403 → 403, 400 → 400. 원천 장애는 200 + 빈 items + unavailableSources(없음과 구별). 원문은 화면이 customer `POST /customers/{id}/pii-reveals` 를 직접.
+      operationId: getCustomerSearchView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerNumber, in: query, schema: { type: string, pattern: '^[1-9][0-9]{5}$' } }
+        - { name: phone, in: query, schema: { type: string, maxLength: 20 } }
+        - { name: orderNumber, in: query, schema: { type: string, maxLength: 12 }, description: '화면 주문번호 8자리(공백·하이픈 무시 — order 판정)' }
+      responses:
+        '200':
+          description: OK — 찾은 고객(없으면 빈 items)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items: { type: array, items: { $ref: '#/components/schemas/CustomerSummaryView' } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /views/customer/{customerId}:
+    get:
+      tags: [views]
+      summary: 고객 상세 — 가린 머리 + 최근 주문·문의·상담원 접수 (0.22.0, BF-2)
+      x-added-in: '2026-11-20'
+      description: |
+        머리 = customer `GET /customers/{id}`(가린 값만 — 없으면 404, 401·403 그대로, 장애 503). 칸마다 최근 10건(원천 순서 그대로, 다음이 있으면 `hasMore`):
+          - `orders` = order `GET /orders/lookups?customerId=&size=10`(주문번호·상태·확정 시각·금액 — 연락처 없음)
+          - `inquiries` = case `GET /inquiries?customerId=&size=10`(case 0.29.0 — 문의 번호·종류·상태, 제목·내용 없음)
+          - `csIntakes` = case `GET /cs-intakes?customerRef=&size=10`(경로·종류·받은 직원 "이름 · 사번" — 요약 글 없음)
+        **호출한 직원의 토큰**으로. 칸 원천이 실패하거나 403 이면 그 칸만 null + unavailableSources(0건으로 바꾸지 않음). 직원 이름(hr) 실패는 이름만 null.
+        **클레임 칸은 아직 없다** — claim CL-7(직원 클레임 목록 customerId 거르기)이 생기면 더한다. 원문 열람은 화면이 customer `POST /customers/{id}/pii-reveals` 를 직접(사유·감사 기록).
+      operationId: getCustomerView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: customerId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - $ref: '#/components/schemas/CustomerDetailView'
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '503':
+          description: customer-service 장애 — 머리를 못 읽음
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /views/rider-complaints:
     get:
@@ -929,6 +995,92 @@ components:
         value: { type: integer, format: int64 }
         complete: { type: boolean, description: false 면 쪽 상한에 걸려 value 는 "적어도 이만큼" }
         source: { type: string, description: 센 원천 서비스 }
+    CustomerSummaryView:
+      type: object
+      x-added-in: '2026-11-20'
+      description: (0.22.0, BF-2) customer StaffCustomerSummary 그대로 — 화면 "김*수 · 482913"
+      required: [customerId]
+      properties:
+        customerId: { type: string }
+        customerNumber: { type: [string, 'null'] }
+        nameMasked: { type: [string, 'null'] }
+        phoneMasked: { type: [string, 'null'] }
+        status: { type: [string, 'null'], description: customer AccountStatus 그대로 }
+    CustomerDetailView:
+      type: object
+      x-added-in: '2026-11-20'
+      description: (0.22.0, BF-2) 고객 상세 — 머리는 customer 값 그대로(가린 값), 칸은 원천 실패면 null
+      required: [customer]
+      properties:
+        customer:
+          type: object
+          required: [customerId]
+          properties:
+            customerId: { type: string }
+            customerNumber: { type: [string, 'null'] }
+            nameMasked: { type: [string, 'null'] }
+            phoneMasked: { type: [string, 'null'] }
+            emailMasked: { type: [string, 'null'] }
+            status: { type: [string, 'null'] }
+            socialProvider: { type: [string, 'null'] }
+            phoneVerified: { type: [boolean, 'null'] }
+            joinedAt: { type: [string, 'null'], format: date-time }
+        orders:
+          type: [object, 'null']
+          properties:
+            hasMore: { type: boolean }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  orderId: { type: string }
+                  orderNumber: { type: [string, 'null'] }
+                  status: { type: [string, 'null'] }
+                  confirmedAt: { type: [string, 'null'], format: date-time }
+                  mfcId: { type: [string, 'null'] }
+                  deliveryMode: { type: [string, 'null'] }
+                  totalAmount: { type: [integer, 'null'], format: int64 }
+                  itemCount: { type: [integer, 'null'] }
+                  openFulfillmentIssues: { type: [integer, 'null'] }
+        inquiries:
+          type: [object, 'null']
+          properties:
+            hasMore: { type: boolean }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  inquiryId: { type: string }
+                  inquiryNumber: { type: [string, 'null'] }
+                  category: { type: [string, 'null'] }
+                  status: { type: [string, 'null'] }
+                  orderId: { type: [string, 'null'] }
+                  origin: { type: [string, 'null'] }
+                  channel: { type: [string, 'null'] }
+                  createdAt: { type: [string, 'null'], format: date-time }
+                  answeredAt: { type: [string, 'null'], format: date-time }
+        csIntakes:
+          type: [object, 'null']
+          properties:
+            hasMore: { type: boolean }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  intakeId: { type: string }
+                  caseId: { type: [string, 'null'] }
+                  inquiryId: { type: [string, 'null'] }
+                  channel: { type: [string, 'null'] }
+                  category: { type: [string, 'null'] }
+                  subjectRef: { type: [string, 'null'] }
+                  callerRelation: { type: [string, 'null'] }
+                  linked: { type: [boolean, 'null'] }
+                  receivedAt: { type: [string, 'null'], format: date-time }
+                  receivedBy: { type: [string, 'null'] }
+                  receivedByLabel: { $ref: '#/components/schemas/OperatorLabel' }
     ComposedView:
       type: object
       description: 모든 화면 응답의 공통 머리. 원천별 asOf 목록과 조회 실패 원천을 분리해 보여준다.

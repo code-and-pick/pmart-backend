@@ -33,7 +33,9 @@ public class LookupClients {
     /** 화면 라이더 번호·가린 이름(ADR-0070, 2026-11-18 — 직원 찾기 riderIds). */
     RIDER("rider-service"),
     /** 직원 "이름 · 사번"(HR-4 hr 0.8.0 `GET /hr/employee-labels`, 2026-11-19). */
-    HR("hr-service");
+    HR("hr-service"),
+    /** 고객 찾기·상세(BF-2, CU-4 customer 0.11.0, 2026-11-20). */
+    CUSTOMER("customer-service");
 
     public final String system;
 
@@ -46,18 +48,22 @@ public class LookupClients {
   private final ObjectMapper mapper;
 
   public LookupClients(RestClient.Builder builder, BffProperties props, ObjectMapper mapper) {
-    this.clients =
-        Map.of(
-            Source.ORDER, builder.clone().baseUrl(props.orderBaseUrl()).build(),
-            Source.EXECUTION, builder.clone().baseUrl(props.executionBaseUrl()).build(),
-            Source.DISPATCH, builder.clone().baseUrl(props.dispatchBaseUrl()).build(),
-            Source.CLAIM, builder.clone().baseUrl(props.claimBaseUrl()).build(),
-            Source.CASE, builder.clone().baseUrl(props.caseBaseUrl()).build(),
-            Source.INQUIRY, builder.clone().baseUrl(props.caseBaseUrl()).build(),
-            Source.TRACKING, builder.clone().baseUrl(props.trackingBaseUrl()).build(),
-            Source.FULFILLMENT, builder.clone().baseUrl(props.mfcFulfillmentBaseUrl()).build(),
-            Source.RIDER, builder.clone().baseUrl(props.riderBaseUrl()).build(),
-            Source.HR, builder.clone().baseUrl(props.hrBaseUrl()).build());
+    // 원천이 10개를 넘어(Map.of 상한) EnumMap 으로(2026-11-20 CUSTOMER)
+    Map<Source, String> urls = new java.util.EnumMap<>(Source.class);
+    urls.put(Source.ORDER, props.orderBaseUrl());
+    urls.put(Source.EXECUTION, props.executionBaseUrl());
+    urls.put(Source.DISPATCH, props.dispatchBaseUrl());
+    urls.put(Source.CLAIM, props.claimBaseUrl());
+    urls.put(Source.CASE, props.caseBaseUrl());
+    urls.put(Source.INQUIRY, props.caseBaseUrl());
+    urls.put(Source.TRACKING, props.trackingBaseUrl());
+    urls.put(Source.FULFILLMENT, props.mfcFulfillmentBaseUrl());
+    urls.put(Source.RIDER, props.riderBaseUrl());
+    urls.put(Source.HR, props.hrBaseUrl());
+    urls.put(Source.CUSTOMER, props.customerBaseUrl());
+    Map<Source, RestClient> built = new java.util.EnumMap<>(Source.class);
+    urls.forEach((k, v) -> built.put(k, builder.clone().baseUrl(v).build()));
+    this.clients = java.util.Collections.unmodifiableMap(built);
     this.mapper = mapper;
   }
 
