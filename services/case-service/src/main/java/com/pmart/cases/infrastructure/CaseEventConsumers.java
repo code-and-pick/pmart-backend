@@ -21,6 +21,9 @@ import org.springframework.context.annotation.Configuration;
  *       사가·결제 이상(R-3, 2026-11-16). 처음 켤 때 latest(지난 이상은 처리 대기 BO-12 에 이미 보인다).
  *   <li>{@code claimEvents-in-0} = order.claim.v1 — {@code ReturnRecoveryFailed}(R-8, 2026-11-17),
  *       {@code ClaimClosed}(2026-11-18 — 열린 반품 회수 실패 사건에 이력만).
+ *   <li>{@code qualityEvents-in-0} = mfc.quality.v1 — {@code
+ *       QualityIncidentImpactAssessed}(CS-MFC-Q, 2026-11-20 — 품질 사고 영향 주문마다 상담원 사건). 같은 토픽의 다른 사건은
+ *       버린다.
  * </ul>
  */
 @Configuration(proxyBeanMethods = false)
@@ -79,6 +82,13 @@ class CaseEventConsumers {
             cases.onReturnRecoveryFailed(e);
           }
         });
+  }
+
+  /** CS-MFC-Q(2026-11-20): mfc.quality.v1 — {@code QualityIncidentImpactAssessed} 만. */
+  @Bean
+  PmartEventConsumer qualityEvents(EventConsumers consumers, CaseInboxService cases) {
+    return consumers.of(
+        e -> "QualityIncidentImpactAssessed".equals(e.eventType()), cases::onQualityImpactAssessed);
   }
 
   private static final Set<String> DELIVERY_TYPES =

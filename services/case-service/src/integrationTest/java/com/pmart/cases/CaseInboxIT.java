@@ -2220,6 +2220,130 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
         .isEqualTo(200);
   }
 
+  Map<String, Object> qualityImpact(String incidentId, String center, List<String> orders) {
+    List<Map<String, Object>> affected = new ArrayList<>();
+    for (String o : orders) {
+      affected.add(
+          Map.of(
+              "orderId",
+              o,
+              "lines",
+              List.of(
+                  Map.of("orderLineId", o + "-L1", "sku", "SKU-Q1", "lotId", "LOT-Q1", "qty", 2))));
+    }
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("incidentId", incidentId);
+    p.put("mfcId", center);
+    p.put("kind", "DAMAGE");
+    p.put("origin", "MANUAL");
+    p.put("lots", List.of(Map.of("lotId", "LOT-Q1", "sku", "SKU-Q1")));
+    p.put("affectedOrderCount", orders.size());
+    p.put("affectedOrders", affected);
+    p.put("assessedAt", "2026-11-20T03:00:00Z");
+    return p;
+  }
+
+  /**
+   * CS-MFC-Q(0.31.0, 2026-11-20 사용자 "추천대로"): 품질 사고 영향 → 주문마다 상담원 사건 MFC_QUALITY_IMPACT. 0건이면 안 열고,
+   * 같은 판단을 다시 받아도 하나, 다음 판단에서 늘어난 주문만 새로 — 닫은 주문은 다시 열지 않는다. 센터 관리자는 자기 센터 보기만, 지원센터에게는 안 보임,
+   * CaseOpened refs 에 incidentId·orderId(mfc-quality 가 caseId 를 받는 길).
+   */
+  @Test
+  void qualityImpactOpensCsCasePerOrderOnce() throws Exception {
+    String suffix = UUID.randomUUID().toString().substring(0, 8);
+    String incident = "QI-" + suffix;
+    String center = "MFC-QI-" + suffix;
+    String o1 = "ORD-QI1-" + suffix;
+    String o2 = "ORD-QI2-" + suffix;
+    String o3 = "ORD-QI3-" + suffix;
+    String byIncident =
+        "SELECT count(*) FROM case_record WHERE case_type = 'MFC_QUALITY_IMPACT' AND center_id = ?";
+
+    publish(
+        "mfc.quality.v1",
+        "QualityIncidentImpactAssessed",
+        incident,
+        qualityImpact(incident, center, List.of()),
+        "mfc-quality-service");
+    publish(
+        "mfc.quality.v1",
+        "QualityIncidentImpactAssessed",
+        incident,
+        qualityImpact(incident, center, List.of(o1, o2)),
+        "mfc-quality-service");
+    publish(
+        "mfc.quality.v1",
+        "QualityIncidentImpactAssessed",
+        incident,
+        qualityImpact(incident, center, List.of(o1, o2)),
+        "mfc-quality-service");
+    await(() -> count(byIncident, center), n -> n >= 2);
+    Thread.sleep(1000);
+    assertThat(count(byIncident, center)).as("0건은 안 열고, 같은 판단 두 번이어도 주문마다 하나").isEqualTo(2);
+
+    Res asCs = send("GET", cs, "/cases?subjectRef=" + o1, null);
+    assertThat(asCs.status()).isEqualTo(200);
+    JsonNode c = asCs.body().path("items").get(0);
+    assertThat(c.path("kind").asString()).isEqualTo("MFC_QUALITY_IMPACT");
+    assertThat(c.path("assigneeGroup").asString()).isEqualTo("CS");
+    assertThat(c.path("centerId").asString()).isEqualTo(center);
+    assertThat(c.path("priority").asString()).isEqualTo("P2");
+    assertThat(c.path("summary").asString()).contains("파손").contains("SKU-Q1 2개");
+    assertThat(c.path("refs").toString()).contains(incident).contains(o1).contains("LOT-Q1");
+    String caseId = c.path("caseId").asString();
+    assertThat(outbox(caseId, "CaseOpened")).isEqualTo(1);
+    String opened =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'CaseOpened'",
+            String.class,
+            caseId);
+    assertThat(opened).contains("MFC_QUALITY_IMPACT").contains(incident).contains(o1);
+
+    assertThat(send("GET", ops, "/cases?subjectRef=" + o1, null).body().path("items"))
+        .as("지원센터에게는 안 보임")
+        .isEmpty();
+    String sup = TestJwt.operator("op-sup-qi", List.of("MFC_SUPERVISOR"), List.of(center));
+    assertThat(send("GET", sup, "/cases?subjectRef=" + o1, null).body().path("items").size())
+        .as("센터 관리자 — 자기 센터 보기")
+        .isEqualTo(1);
+    assertThat(
+            send(
+                    "POST",
+                    sup,
+                    "/cases/" + caseId + "/assignments",
+                    Map.of("assigneeId", "op-sup-qi"))
+                .status())
+        .as("센터 관리자는 보기만")
+        .isEqualTo(403);
+
+    assertThat(
+            send("POST", cs, "/cases/" + caseId + "/assignments", Map.of("assigneeId", "op-cs-1"))
+                .status())
+        .as("상담원이 집는다")
+        .isEqualTo(200);
+    assertThat(
+            send(
+                    "POST",
+                    cs,
+                    "/cases/" + caseId + "/closures",
+                    Map.of("resolution", "RESOLVED", "summary", "고객 연락 — 환불 안내"))
+                .status())
+        .isEqualTo(200);
+
+    publish(
+        "mfc.quality.v1",
+        "QualityIncidentImpactAssessed",
+        incident,
+        qualityImpact(incident, center, List.of(o1, o2, o3)),
+        "mfc-quality-service");
+    await(() -> count(byIncident, center), n -> n >= 3);
+    Thread.sleep(1000);
+    assertThat(count(byIncident, center)).as("늘어난 주문만 새로").isEqualTo(3);
+    assertThat(count("SELECT count(*) FROM case_record WHERE subject_ref = ?", o1))
+        .as("닫은 주문은 다시 열지 않음")
+        .isEqualTo(1);
+  }
+
   /**
    * R-10 → 0.30.0(2026-11-20 사용자 "처리완료하면 아예 배차 취소되게"): 전달 실패 결정 전이어도 사건을 닫을 수 있다 — 닫으면 execution 이
    * CaseClosed 로 실패를 확정한다(execution 1a2f0feb). case 는 배송 상태를 보지 않는다. 닫힌 뒤 라이더가 도움요청을 다시

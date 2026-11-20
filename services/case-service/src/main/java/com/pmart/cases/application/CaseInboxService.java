@@ -184,6 +184,70 @@ public class CaseInboxService {
         "DISPATCH_DELAYED:" + deliveryId);
   }
 
+  /**
+   * CS-MFC-Q(2026-11-20 사용자 "추천대로" — PC 3 요청, MB-2 2차 R6): mfc-quality {@code
+   * QualityIncidentImpactAssessed}(영향 LOT 이 고객에게 나간 주문, 판단이 바뀔 때마다 전체 목록) → 영향 주문마다 상담원 팀 사건
+   * MFC_QUALITY_IMPACT(subject ORDER, 센터 = mfcId — 센터 관리자는 보기만). dedupe {@code
+   * MFC_QUALITY:<사고>:<주문>} 로 <b>닫힌 것까지</b> 한 번만 연다 — 다음 판단에서 늘어난 주문만 새로, 이미 연(또는 닫은) 주문은 그대로. 0건이면
+   * 아무것도 안 한다. 사건 ID 는 {@code CaseOpened}(type MFC_QUALITY_IMPACT, refs incidentId·orderId)로
+   * mfc-quality 가 받는다. 고객 ID 는 이벤트에 없어 싣지 않는다(상담원은 주문으로 찾음). 연락·환불은 상담원이 각 메뉴에서 — case 는 부르지 않고 자동
+   * 종결 없음.
+   */
+  public void onQualityImpactAssessed(EventEnvelope e) {
+    JsonNode p = e.payload();
+    String incidentId = text(p, "incidentId");
+    if (incidentId == null) {
+      throw new IllegalArgumentException("incidentId 없음"); // 계약 위반 → DLT
+    }
+    if (p.path("affectedOrderCount").asInt(0) <= 0) {
+      return;
+    }
+    String mfcId = text(p, "mfcId");
+    String what = CaseRules.qualityKindName(text(p, "kind"));
+    for (JsonNode order : p.path("affectedOrders")) {
+      String orderId = text(order, "orderId");
+      if (orderId == null) {
+        continue;
+      }
+      String key = "MFC_QUALITY:" + incidentId + ":" + orderId;
+      if (store.lockLatestByDedupe(key).isPresent()) {
+        continue; // 이미 연 주문(닫힌 것 포함) — 그대로
+      }
+      List<Ref> refs = new ArrayList<>();
+      refs.add(new Ref("incidentId", incidentId));
+      refs.add(new Ref("orderId", orderId));
+      List<String> lines = new ArrayList<>();
+      for (JsonNode line : order.path("lines")) {
+        String lotId = text(line, "lotId");
+        if (lotId != null && refs.stream().noneMatch(r -> r.refId().equals(lotId))) {
+          refs.add(new Ref("lotId", lotId));
+        }
+        if (lines.size() < 10) {
+          lines.add(
+              (text(line, "sku") == null ? "-" : text(line, "sku"))
+                  + " "
+                  + line.path("qty").asInt(0)
+                  + "개");
+        }
+      }
+      String summary =
+          "품질 사고(" + what + ") 상품이 이 주문으로 나감 — " + String.join(", ", lines) + ". 고객 연락·환불 판단";
+      openFromEvent(
+          e,
+          CaseRules.MFC_QUALITY_IMPACT,
+          "P2",
+          "ORDER",
+          orderId,
+          mfcId,
+          summary,
+          refs,
+          key,
+          UUID.nameUUIDFromBytes(
+                  (e.eventId() + ":" + orderId).getBytes(java.nio.charset.StandardCharsets.UTF_8))
+              .toString());
+    }
+  }
+
   /** R-6: 배달 중 위치 끊김 → RIDER_LOCATION_STALE. 같은 라이더·배송으로 열린 사건이 있으면 이력(재발)만. */
   public void onLocationStale(EventEnvelope e) {
     JsonNode p = e.payload();
@@ -445,6 +509,34 @@ public class CaseInboxService {
       String summary,
       List<Ref> refs,
       String dedupeKey) {
+    openFromEvent(
+        e,
+        kind,
+        priority,
+        subjectType,
+        subjectRef,
+        centerId,
+        summary,
+        refs,
+        dedupeKey,
+        e.eventId().toString());
+  }
+
+  /**
+   * {@code sourceEventId} — 사건 하나에 사건이 하나면 이벤트 ID, 한 이벤트로 여럿을 열면(품질 사고 영향 주문) 주문마다 다른 값(원천 이벤트 유일
+   * 색인 V4 를 지키려고 — 같은 이벤트를 다시 받아도 같은 값).
+   */
+  private void openFromEvent(
+      EventEnvelope e,
+      String kind,
+      String priority,
+      String subjectType,
+      String subjectRef,
+      @Nullable String centerId,
+      String summary,
+      List<Ref> refs,
+      String dedupeKey,
+      String sourceEventId) {
     Instant now = now();
     if (store.lockOpenByDedupe(dedupeKey).isPresent()) {
       log.info("이미 열린 사건 — {} 무시", dedupeKey);
@@ -465,7 +557,7 @@ public class CaseInboxService {
             now.plus(sla(kind)),
             summary,
             refs,
-            e.eventId().toString(),
+            sourceEventId,
             1,
             now,
             now,

@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.30.0
+  version: 0.31.0
   description: |
+    **0.31.0(2026-11-20 — CS-MFC-Q, PC 3 요청·사용자 "추천대로")**: 사건 종류 `MFC_QUALITY_IMPACT`(품질 사고 고객 영향) — mfc-quality `QualityIncidentImpactAssessed`(mfc.quality.v1) 의 **영향 주문마다** 하나, 상담원 팀(CS_AGENT 가 집고 닫음, 관리자 모두, 센터 관리자는 자기 센터(mfcId) 보기만, 지원센터에게는 안 보임), P2, 기한 1시간(표시만), subject ORDER(orderId), refs incidentId·orderId·lotId. 다음 판단에서 늘어난 주문만 새로 열고 이미 연(닫은 것 포함) 주문은 그대로, 0건은 안 엶. 사람이 닫기(자동 종결 없음). 사건 ID 는 `CaseOpened`(type MFC_QUALITY_IMPACT, refs incidentId·orderId)로 mfc-quality 가 받는다.
     **0.30.0(2026-11-20 — 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게")**: 0.28.0 ① 닫기 막기(409 FAILURE_DECISION_PENDING)를 뺌 — 전달 실패 결정 전인 라이더 도움요청·전달 실패 사건도 닫힌다. 닫으면 delivery-execution 이 `CaseClosed` 로 그 전달 실패를 확정하고 반납 배송을 만든다(execution 1a2f0feb). 라이더가 전달을 계속해야 하면 닫기 전에 execution `failure-decisions` REJECT. ② 재개 이력(RIDER_REOPENED)은 그대로.
     **0.29.0(2026-11-19 — 백오피스 "고객" 메뉴 BF-2, 사용자 "진행해")**: 직원 `GET /inquiries?customerId=` — 그 고객의 고객 문의(상담원 접수 포함), 고객 문의를 못 보는 직원 403.
     **0.28.0(2026-11-19 — R-10, PC 5 요청·사용자 "추천대로")**: ① 라이더 도움요청·전달 실패 사건(RIDER_HELP·DELIVERY_INCIDENT, subject 배송)은 그 배송이 **전달 실패 결정 전**(execution `GET /deliveries/{id}` state FAILURE_REPORTED — 닫는 직원 토큰으로)이면 `POST /cases/{id}/closures` **409 FAILURE_DECISION_PENDING**, 배송 상태를 못 읽으면 503(확인 없이 닫지 않음), 배송 없음(404)은 막지 않음. ② execution `HelpRequestReopened` → 그 접수 건에 이력 **RIDER_REOPENED** 만(상태 그대로 — 자동 재개 없음, 2026-11-16 "재개는 사람이 손으로만" 유지).
@@ -1516,8 +1517,9 @@ components:
   schemas:
     CaseKind:
       type: string
-      enum: [RECONCILIATION, PAYMENT_UNKNOWN, DISPATCH_FAILED, DELIVERY_INCIDENT, TRANSPORT_INCIDENT, LINE_SHORTAGE, RECEIPT_DISCREPANCY, OUTBOUND_DISCREPANCY, QUALITY_RECALL, CS_INTAKE, RIDER_HELP, MFC_ISSUE, SECURITY, OTHER, RIDER_LOCATION_STALE, MISDELIVERY, RETURN_RECOVERY_FAILED, DISPATCH_DELAYED]
+      enum: [RECONCILIATION, PAYMENT_UNKNOWN, DISPATCH_FAILED, DELIVERY_INCIDENT, TRANSPORT_INCIDENT, LINE_SHORTAGE, RECEIPT_DISCREPANCY, OUTBOUND_DISCREPANCY, QUALITY_RECALL, CS_INTAKE, RIDER_HELP, MFC_ISSUE, SECURITY, OTHER, RIDER_LOCATION_STALE, MISDELIVERY, RETURN_RECOVERY_FAILED, DISPATCH_DELAYED, MFC_QUALITY_IMPACT]
       description: |
+        0.31.0(2026-11-20 CS-MFC-Q) MFC_QUALITY_IMPACT — 품질 사고 상품이 나간 주문(mfc-quality QualityIncidentImpactAssessed, 주문마다 하나), 상담원 팀(CS_AGENT 가 집고 닫음, 관리자 모두, 센터 관리자는 자기 센터 보기만, 지원센터에게는 안 보임), subject ORDER, refs incidentId·orderId·lotId.
         0.27.0(2026-11-19 R-9) DISPATCH_DELAYED — 배차 지연(약속 대비 기준 넘음), 상담원 팀(CS_AGENT 가 집고 닫음, 관리자 모두, 센터 관리자는 자기 센터 보기만, 지원센터에게는 안 보임).
         0.4.0(2026-11-16 사건함 공통 결정) 지금 여는 종류 — RIDER_HELP(라이더 도움요청, R-4), DELIVERY_INCIDENT(전달 실패 등록, R-4), RIDER_LOCATION_STALE(배달 중 위치 끊김, R-6), MISDELIVERY(오배송 확인, R-7 — 직원이 연다).
         0.5.0(2026-11-16 배차 실패, 사용자 — 중간안·지원센터·10분) DISPATCH_FAILED: delivery-dispatch DispatchFailed — reason SYSTEM_FAILURE(자동 재배차 없음)는 첫 실패에, 그 밖(NO_RIDER·REPEATED_REJECTION·EXPIRED — 10분마다 자동 재배차)은 같은 배송의 두 번째 실패부터 연다(배송별 횟수는 case 가 센다 — 이벤트 attempts 는 재배차 시도마다 다시 셈). 배송 쪽(DELIVERY_OPS), 배송마다 열린 사건 하나, 그 뒤 실패는 이력(RECURRED). 배차가 뒤에 성공해도 자동으로 닫지 않는다. refs deliveryId·orderId. 사건 centerId = 이벤트의 mfcId(0.5.2 — delivery-dispatch 가 싣기 전에는 null, 그 사건은 센터 관리자에게 안 보임).

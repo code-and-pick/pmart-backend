@@ -128,5 +128,7 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   3. **caseId 되돌려 주기**: 사건을 열면 case 사건(예 `CaseOpened` 에 refs incidentId)을 mfc-quality 가 받아 `QualityIncident.caseId` 를 채운다 — 사건 이름·모양을 정해 주면 PC 3 가 구독을 붙인다(사고 하나에 사건이 여럿이면 첫 사건 또는 묶음 사건 ID 하나).
   4. 센터 관리자 조회: 사고 상세에서 case 상태를 보기만 — 기존 센터 관리자 사건 조회(`DISPATCH_DELAYED` 와 같은 길)로 되면 따로 필요 없음.
 - 급함: 중간(지금은 영향 주문 수만 보이고 고객 사건은 안 열림).
-- **상태**: 요청(PC 2).
+- **상태: 구현(2026-11-20, case 0.31.0 — PC 2)**. 사용자 "추천대로": ① 종류 `MFC_QUALITY_IMPACT`, ② **주문마다 사건 하나**(dedupe `MFC_QUALITY:<사고>:<주문>`, 닫힌 것까지 — 늘어난 주문만 새로, 닫은 주문은 다시 안 엶, 0건 무시), ③ 상담원 팀 CS(관리자 모두, 지원센터 안 보임), ④ 센터 관리자는 자기 센터 보기만(R-9 와 같은 길 — 4번 따로 필요 없음), ⑤ P2·기한 1시간(표시만), ⑥ 사람이 닫기. subject ORDER(orderId), refs incidentId·orderId·lotId, 고객 ID 없음(이벤트에 없음).
+  - **caseId 되돌려 주기(PC 3 할 일)**: 기존 `CaseOpened`(platform.case.v1) — payload `type` = `MFC_QUALITY_IMPACT`, `refs` 에 `{refType: incidentId, refId: <사고>}`·`{refType: orderId, …}`. 사고 하나에 사건이 주문 수만큼 나오니 **첫 caseId** 를 채우면 된다(새 사건 없음).
+  - 설정: pmart-config `case-service.yml` 에 `qualityEvents-in-0`(destination mfc.quality.v1)·function definition `;qualityEvents` — PC 1.
 

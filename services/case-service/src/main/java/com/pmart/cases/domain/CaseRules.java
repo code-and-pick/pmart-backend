@@ -25,6 +25,9 @@ import org.jspecify.annotations.Nullable;
  *   <li>반품 회수 실패(R-8, 2026-11-17 사용자 — 상담원 팀·1시간·사람이 닫기): RETURN_RECOVERY_FAILED — 팀 CS =
  *       상담원(CS_AGENT)이 보고 집고 닫는다(관리자는 모두, 지원센터에는 안 보임). 클레임마다 열린 사건 하나, 또 실패하면 이력. 클레임이 바뀌어도 자동으로
  *       닫지 않는다.
+ *   <li>품질 사고 고객 영향(CS-MFC-Q, 2026-11-20 사용자 "추천대로" — 주문마다·상담원 팀·1시간·P2·사람이 닫기): MFC_QUALITY_IMPACT
+ *       — mfc-quality {@code QualityIncidentImpactAssessed} 의 영향 주문마다 사건 하나, 센터 관리자는 자기 센터 보기만. 다음
+ *       판단에서 늘어난 주문만 새로 연다(닫은 주문도 다시 열지 않음).
  * </ul>
  */
 public final class CaseRules {
@@ -44,6 +47,9 @@ public final class CaseRules {
   /** 배차 지연(R-9, 2026-11-19 — 원문 Delivery §3.6, 사용자 "1,2,3 전부") — 상담원 팀, 센터 관리자도 보기. */
   public static final String DISPATCH_DELAYED = "DISPATCH_DELAYED";
 
+  /** 품질 사고 고객 영향(CS-MFC-Q, 2026-11-20 사용자 "추천대로") — 상담원 팀, 센터 관리자도 보기. */
+  public static final String MFC_QUALITY_IMPACT = "MFC_QUALITY_IMPACT";
+
   public static final String GROUP_DELIVERY_OPS = "DELIVERY_OPS";
   public static final String GROUP_ORDER_OPS = "ORDER_OPS";
 
@@ -57,7 +63,8 @@ public final class CaseRules {
   public static final Set<String> ORDER_KINDS = Set.of(RECONCILIATION, PAYMENT_UNKNOWN);
 
   /** 상담원 팀 사건(R-8) — CS_AGENT 가 집고 닫는다, 관리자는 모두, 지원센터에는 안 보임. */
-  public static final Set<String> CS_KINDS = Set.of(RETURN_RECOVERY_FAILED, DISPATCH_DELAYED);
+  public static final Set<String> CS_KINDS =
+      Set.of(RETURN_RECOVERY_FAILED, DISPATCH_DELAYED, MFC_QUALITY_IMPACT);
 
   /** 상담원이 보는 종류 = 배송 쪽(보기만) + 상담원 팀. */
   public static final Set<String> CS_AGENT_KINDS = union(DELIVERY_KINDS, CS_KINDS);
@@ -69,7 +76,8 @@ public final class CaseRules {
   /** 센터 관리자 — 자기 센터(토큰 centers)의 배차 실패 사건만 보기(2026-11-16 사용자 "추천대로", 배송 원문 §3.6). */
   public static final String MFC_SUPERVISOR = "MFC_SUPERVISOR";
 
-  public static final Set<String> MFC_SUPERVISOR_KINDS = Set.of(DISPATCH_FAILED, DISPATCH_DELAYED);
+  public static final Set<String> MFC_SUPERVISOR_KINDS =
+      Set.of(DISPATCH_FAILED, DISPATCH_DELAYED, MFC_QUALITY_IMPACT);
 
   public static final List<String> CREATE_MISDELIVERY_ROLES = List.of(CS_AGENT, RIDER_OPS, ADMIN);
 
@@ -87,7 +95,8 @@ public final class CaseRules {
           PAYMENT_UNKNOWN, Duration.ofHours(1),
           DISPATCH_FAILED, Duration.ofMinutes(10),
           RETURN_RECOVERY_FAILED, Duration.ofHours(1),
-          DISPATCH_DELAYED, Duration.ofHours(1));
+          DISPATCH_DELAYED, Duration.ofHours(1),
+          MFC_QUALITY_IMPACT, Duration.ofHours(1));
 
   public static String group(String kind) {
     if (DELIVERY_KINDS.contains(kind)) {
@@ -167,7 +176,8 @@ public final class CaseRules {
           RECONCILIATION,
           PAYMENT_UNKNOWN,
           RETURN_RECOVERY_FAILED,
-          DISPATCH_DELAYED);
+          DISPATCH_DELAYED,
+          MFC_QUALITY_IMPACT);
 
   private static Set<String> union(Set<String> a, Set<String> b) {
     var s = new java.util.HashSet<>(a);
@@ -207,6 +217,18 @@ public final class CaseRules {
       case "EXPIRED" -> "응답 만료";
       case "SYSTEM_FAILURE" -> "시스템 장애";
       default -> reason;
+    };
+  }
+
+  /** 품질 사고 종류 → 화면 이름(모르는 값은 그대로 — 추측하지 않음). */
+  public static String qualityKindName(@Nullable String kind) {
+    if (kind == null) {
+      return "-";
+    }
+    return switch (kind) {
+      case "DAMAGE" -> "파손";
+      case "SPOILAGE" -> "변질";
+      default -> kind;
     };
   }
 
