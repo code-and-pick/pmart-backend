@@ -15,3 +15,10 @@
 ## AP-1 참조. 승인 번호 실제 확인 — 본사 승인 기준·한 번만 쓰기 (2026-11-17, platform PC 1)
 - 요청 본문은 `approval-service.md` **AP-1 "PC 3 이 할 것" 1~6**(이 서비스 몫: 폐기 승인·격리 해제 — `DisposalService`, `QualityDecisionService`). 기준(사용자 2026-11-17): 한 건 손실 10만 원 이상 또는 한 SKU 20개 이상이면 본사 승인, 그 아래는 센터 관리자. approval-service 쪽(승인 종류·`/internal/approval-ref-checks`·`/internal/approval-ref-uses`)은 구현됨(b969005d).
 - **구현**(PC 3, 2026-11-17 — 폐기·격리 해제 0.3.0, 브랜치 `mfc/approval-ref-check`): 회신은 `approval-service.md` AP-1 "회신(PC 3)". LAN 은 설정(기준 값·주소·VERIFY) 뒤에 켜진다 — PC 1.
+
+## MQ-2. 품질 사고 `caseId` 채우기 — case `CaseOpened` 구독 (2026-11-20, 보낸 영역 backoffice — PC 2, CS-MFC-Q 회신)
+- **왜**: PC 3 요청 CS-MFC-Q 3번("caseId 되돌려 주기")에 대한 case 쪽 답. case 0.31.0(#300, 2026-11-20 LAN 배포)이 `QualityIncidentImpactAssessed` 의 **영향 주문마다** 상담원 사건 `MFC_QUALITY_IMPACT` 를 연다. 새 사건은 만들지 않았다 — 기존 `CaseOpened` 로 받는다.
+- **요청**: platform.case.v1 `CaseOpened` 구독 → payload `type` = `MFC_QUALITY_IMPACT` 만, `refs` 의 `{refType: incidentId, refId}` 로 사고를 찾아 `QualityIncident.caseId` 를 채운다. 사고 하나에 사건이 주문 수만큼 나오니 **비어 있을 때만 첫 caseId**(그 뒤 것은 무시하거나 주문별로 둘지는 PC 3). `refs` 에 `orderId`·`lotId` 도 있다.
+- 사건 상태(접수·처리 중·닫힘)를 사고 상세에 보이려면 `CaseAssigned`·`CaseClosed`·`CaseReopened`(같은 토픽, caseId) — 또는 센터 관리자 토큰으로 case `GET /cases/{caseId}`(자기 센터 MFC_QUALITY_IMPACT 보기 가능).
+- 근거: `case-service.md` CS-MFC-Q 상태 절, 계약 `contracts/events/CaseOpened.v1.json`·`case-service.yaml` 0.31.0.
+- **상태**: 요청(PC 3).

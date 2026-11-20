@@ -172,3 +172,14 @@
 - 11-14 PC 3 회신 "다음 차례 후보" 뒤 만들지 않았다. 회신은 이 절 + `docs/handoff/simulator/mfc/`·`docs/handoff/clients/mfc-app/`.
 - **상태**: 구현(PC 3, 2026-11-19 — fulfillment 0.20.0·inventory 0.29.0, 브랜치 `mfc/package-staging`) — 아래 회신. LAN 은 PC 1 병합·배포 뒤.
 - **회신(PC 3, 2026-11-19)**: `POST /packages/{packageId}/staging {stagingLocation}`(그 센터 MFC_WORKER·MFC_SUPERVISOR, 밀봉 포장만 — 아니면 409 INVALID_STATE, 같은 랙이면 그대로 200, 다른 랙이면 옮김) → mfc-inventory 작업 실행 `STAGE`(PACKED 위치만 지금 위치 → 랙, DISPATCH_STAGING 아니면 422 STAGING_REJECTED, 수량·예약 불변). `Package.packingLocation`·`stagingLocation`. 인계 전기·중지 복귀는 지금 있는 곳(랙). 회신 `docs/handoff/simulator/mfc/2026-11-19-reply-r20-staging.md`·`docs/handoff/clients/mfc-app/2026-11-19-reply-staging-rack.md`.
+
+## F-13. 상품(SKU)별 피킹·결품 줄 — 대시보드 "결품 많은 상품 상위 N" (2026-11-20, 보낸 영역 backoffice — PC 2, 원 요청 웹 BR-73)
+- **왜**: 사용자 2026-11-20 "상품별 SKU 결손률"(대시보드 매출·통계 탭). 지금 F-10 `GET /metrics/picking-lines` 는 날짜·센터·사유까지만 나눠서 어느 상품이 자주 결품되는지 못 보인다. 결품 보고 목록(`GET /shortages`)을 SKU 로 세면 분모(그 SKU 의 피킹 줄)가 없어 비율을 지어내게 된다. 원 요청: pmart-clients `docs/handoff/backoffice/2026-11-20-backend-shortage-by-sku.md`(SK-1).
+- **요청**(경로·이름은 PC 3 이 정한다 — 예): `GET /api/v1/metrics/picking-lines/by-sku?from=&to=&mfcId=&sort=&limit=`
+  - 기간·권한·세는 법은 **F-10 그대로**(피킹을 처음 시작한 한국 날짜, 최대 92일, 원래 주문 작업만·재발송 제외, 결품 = LineShortageReported, OPERATOR_ADMIN·서비스 모든 센터 — 그 밖 운영자는 토큰 센터만).
+  - 줄마다: `sku`, `productId`(있으면), 상품명 사본(있으면 — 없으면 화면이 상품 조회로 찾는다), `pickedLines`, `shortLines`, `shortLinesByReason`(SHORT·DAMAGED·BLOCKED·SPOILED). 결품 줄 0 인 SKU 는 빼도 됨.
+  - `sort`: `shortLines`(기본) 또는 `shortRate`. `limit` 기본 10·최대 50. 개인정보 없음.
+  - **비율 정렬 하한(예 `minPickedLines`)**: 피킹 줄이 아주 적은 SKU 가 위로 오지 않게 — **값은 PC 3·사용자가 정한다**(PC 2 는 정하지 않음). 정한 값과 응답에 실을지 적어 주면 bff·화면이 그대로 쓴다.
+- **받는 쪽(backoffice)**: bff `views/metrics` 에 SKU 묶음(`backoffice-bff.md` BF-3) → 대시보드 "결품 많은 상품 상위 N". 비율은 서버 분자·분모로만.
+- 급함: 낮음(운영 참고 지표). MFC 백엔드 세션이 꺼져 있어 웹 세션이 PC 2 에 먼저 알림(2026-11-20).
+- **상태**: 요청(PC 3).
