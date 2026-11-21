@@ -117,7 +117,10 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
             .orElseThrow();
     assertThat(me.path("operating").path("status").asString()).isEqualTo("ON_DUTY");
     assertThat(me.path("nameMasked").asString()).contains("*");
-    assertThat(duty.toString()).doesNotContain("010");
+    // 전화번호는 내보내지 않는다 — 응답 전체에서 "010" 을 찾으면 무작위 riderId(UUID) 에 걸려 흔들린다(2026-11-21)
+    assertThat(me.has("phone")).isFalse();
+    assertThat(me.has("phoneMasked")).isFalse();
+    assertThat(duty.toString()).doesNotContain(phone);
     // 접속·대기(2026-11-18): 운행 시작·신규배차 켠 시각, 신규배차를 꺼도 운행 시작은 그대로
     String since = me.path("onDutySince").asString();
     assertThat(since).isNotBlank();
