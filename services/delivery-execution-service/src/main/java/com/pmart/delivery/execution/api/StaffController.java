@@ -320,9 +320,11 @@ public class StaffController implements StaffApi {
             offset);
     boolean more = rows.size() > size;
     List<DeliveryRow> page = more ? rows.subList(0, size) : rows;
+    java.util.Map<String, ExecutionStore.StageTimes> times =
+        queries.stageTimes(page.stream().map(DeliveryRow::deliveryId).toList());
     return ResponseEntity.ok(
         new SearchDeliveriesForStaff200Response()
-            .items(page.stream().map(this::delivery).toList())
+            .items(page.stream().map(d -> delivery(d, times.get(d.deliveryId()))).toList())
             .page(page(more, offset, size, page.size())));
   }
 
@@ -427,10 +429,16 @@ public class StaffController implements StaffApi {
         .resolvedAt(ExecutionViews.time(h.resolvedAt()));
   }
 
-  private StaffDeliverySummary delivery(DeliveryRow d) {
+  private StaffDeliverySummary delivery(DeliveryRow d, ExecutionStore.@Nullable StageTimes t) {
     tools.jackson.databind.JsonNode f =
         d.failureJson() == null ? null : mapper.readTree(d.failureJson());
     return new StaffDeliverySummary()
+        // 단계 시각·약속·완료 방법(2026-11-21 — 라이더 백오피스 대시보드 구간별 평균·지연)
+        .firstAssignedAt(t == null ? null : ExecutionViews.time(t.firstAssignedAt()))
+        .arrivedAtStoreAt(t == null ? null : ExecutionViews.time(t.arrivedAtStoreAt()))
+        .arrivedAtCustomerAt(t == null ? null : ExecutionViews.time(t.arrivedAtCustomerAt()))
+        .promisedAt(ExecutionViews.time(d.promisedAt()))
+        .completionMethod(completionMethod(d))
         .resumeRequestedAt(
             f == null || !f.path("resumeRequestedAt").isString()
                 ? null
@@ -449,6 +457,19 @@ public class StaffController implements StaffApi {
         .pickedUpAt(ExecutionViews.time(d.pickedUpAt()))
         .completedAt(ExecutionViews.time(d.completedAt()))
         .createdAt(ExecutionViews.time(d.createdAt()));
+  }
+
+  /** 전달 완료 방법 — 완료된 일반 배송만(회수 반납 등은 null). */
+  private static StaffDeliverySummary.@Nullable CompletionMethodEnum completionMethod(
+      DeliveryRow d) {
+    if (!"COMPLETED".equals(d.state()) || d.method() == null) {
+      return null;
+    }
+    try {
+      return StaffDeliverySummary.CompletionMethodEnum.fromValue(d.method());
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 
   private static ListMyDeliveries200ResponsePage page(

@@ -43,7 +43,8 @@ public class ExecutionStore {
       @Nullable String orderNumber,
       @Nullable String mfcName,
       @Nullable String mfcPhone,
-      @Nullable Integer deliverySeq) {
+      @Nullable Integer deliverySeq,
+      @Nullable Instant promisedAt) {
 
     /** 화면 배송 번호(ADR-0070) = 화면용 주문번호-순번. 둘 중 하나라도 모르면 null. */
     public @Nullable String deliveryNumber() {
@@ -143,7 +144,7 @@ public class ExecutionStore {
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
           + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text,"
-          + " order_number, mfc_name, mfc_phone, delivery_seq";
+          + " order_number, mfc_name, mfc_phone, delivery_seq, promised_at";
 
   private final JdbcTemplate jdbc;
 
@@ -1212,6 +1213,42 @@ public class ExecutionStore {
     return out;
   }
 
+  /** 고객 약속 끝(2026-11-21 — DeliveryAssigned.promisedAt). 사건에 없으면 그대로 둔다. */
+  public void promised(String deliveryId, @Nullable Instant promisedAt) {
+    if (promisedAt != null) {
+      jdbc.update(
+          "UPDATE execution_delivery SET promised_at = ? WHERE delivery_id = ?",
+          ts(promisedAt),
+          deliveryId);
+    }
+  }
+
+  /** 직원 목록의 단계 시각(2026-11-21 — 대시보드 구간별 평균): 첫 배정·첫 가게 도착·첫 고객 도착(이력의 occurred_at). */
+  public record StageTimes(
+      @Nullable Instant firstAssignedAt,
+      @Nullable Instant arrivedAtStoreAt,
+      @Nullable Instant arrivedAtCustomerAt) {}
+
+  public java.util.Map<String, StageTimes> stageTimes(List<String> deliveryIds) {
+    java.util.Map<String, StageTimes> out = new java.util.HashMap<>();
+    if (deliveryIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT delivery_id,"
+            + " MIN(occurred_at) FILTER (WHERE state = 'ASSIGNED'),"
+            + " MIN(occurred_at) FILTER (WHERE state = 'ARRIVED_AT_STORE'),"
+            + " MIN(occurred_at) FILTER (WHERE state = 'ARRIVED_AT_CUSTOMER')"
+            + " FROM execution_history WHERE delivery_id = ANY (?)"
+            + " AND state IN ('ASSIGNED', 'ARRIVED_AT_STORE', 'ARRIVED_AT_CUSTOMER')"
+            + " GROUP BY delivery_id",
+        rs -> {
+          out.put(rs.getString(1), new StageTimes(instant(rs, 2), instant(rs, 3), instant(rs, 4)));
+        },
+        (Object) deliveryIds.toArray(new String[0]));
+    return out;
+  }
+
   public List<DeliveryRow> staffDeliveries(DeliveryFilter f, int limit, int offset) {
     StringBuilder sql =
         new StringBuilder("SELECT " + DELIVERY_COLUMNS + " FROM execution_delivery WHERE TRUE");
@@ -1504,7 +1541,8 @@ public class ExecutionStore {
         rs.getString(26),
         rs.getString(27),
         rs.getString(28),
-        rs.getObject(29, Integer.class));
+        rs.getObject(29, Integer.class),
+        instant(rs, 30));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

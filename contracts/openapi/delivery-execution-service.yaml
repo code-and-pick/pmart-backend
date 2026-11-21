@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.33.0
+  version: 0.34.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -1873,6 +1873,15 @@ components:
         completedAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: string, format: date-time }
         resumeRequestedAt: { type: [string, 'null'], format: date-time, description: '전달 실패 대기 중 라이더가 전달 재개를 요청한 시각(0.14.0) — 반려 판단', x-added-in: '2026-11-17' }
+        firstAssignedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.34.0 — 라이더 백오피스 대시보드) 첫 배정 시각(재배정 전, 배정 이력의 가장 이른 시각). assignedAt 은 지금 배정' }
+        arrivedAtStoreAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.34.0) 가게 도착(ARRIVED_AT_STORE)을 처음 기록한 시각 — 누르지 않고 픽업했으면 null' }
+        arrivedAtCustomerAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.34.0) 고객 도착(ARRIVED_AT_CUSTOMER)을 처음 기록한 시각' }
+        promisedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.34.0) 고객 약속 끝 — dispatch promisedAt 과 같은 뜻(한집·알뜰 확정 + 50분, 예약은 시간대 끝). 배정 사건(DeliveryAssigned.promisedAt)에서 받음 — 이 배포 전 배정·배정 전은 null' }
+        completionMethod:
+          type: [string, 'null']
+          enum: [FACE, CONTACTLESS, CUSTOMER_CONFIRMED, AUTO_COMPLETED, null]
+          x-added-in: '2026-11-21'
+          description: '(0.34.0) 전달 완료 방법(Evidence.method 와 같은 값) — COMPLETED 일 때만. CUSTOMER_CONFIRMED·AUTO_COMPLETED 는 완료 시각이 실제 전달 시각이 아니다'
     ExecutionState:
       type: string
       description: |

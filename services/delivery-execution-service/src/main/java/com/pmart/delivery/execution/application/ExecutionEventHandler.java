@@ -253,6 +253,12 @@ public class ExecutionEventHandler {
             p.path("orderNumber").asString(null), // 내 배달 내역(2026-11-17)
             p.path("mfcName").asString(null),
             p.path("mfcPhone").asString(null)); // 지점 전화(2026-11-17)
+        // 고객 약속 끝(2026-11-21 — 직원 배송 목록 지연 표시)
+        store.promised(
+            deliveryId,
+            p.path("promisedAt").isString()
+                ? Instant.parse(p.path("promisedAt").asString())
+                : null);
         store.history(
             deliveryId, "ASSIGNED", at, "SYSTEM_EVENT", p.path("offerId").asString(null), now);
         // DE-6(2026-11-19) — 묶음 전달 순서

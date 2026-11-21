@@ -779,6 +779,42 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("STORE_WAITING");
   }
 
+  /**
+   * 직원 배송 목록 단계 시각(2026-11-21, 0.34.0 — 라이더 백오피스 대시보드 구간별 평균·지연): 첫 배정·가게 도착·고객 도착(이력의 첫 기록), 약속
+   * 끝(배정 사건 promisedAt), 완료 방법.
+   */
+  @Test
+  void staffDeliveryListCarriesStageTimesPromiseAndCompletionMethod() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    created(id, "SHP-" + UUID.randomUUID(), order);
+    assigned(id, order, rider, 1);
+    awaitState(id, "ASSIGNED");
+
+    JsonNode before = body(staffGet("/deliveries?orderId=" + order, ops)).path("items").get(0);
+    assertThat(before.path("firstAssignedAt").isString()).isTrue();
+    assertThat(before.path("arrivedAtStoreAt").isNull()).isTrue();
+    assertThat(java.time.Instant.parse(before.path("promisedAt").asString()))
+        .isEqualTo(java.time.Instant.parse(PROMISED_AT));
+    assertThat(before.path("completionMethod").isNull()).isTrue();
+
+    assertThat(post(id, "store-arrivals", rider, Map.of()).getStatusCode().value()).isEqualTo(200);
+    // 다른 라이더로 재배정 — 첫 배정 시각은 그대로, 가게 도착은 처음 기록
+    String first = before.path("firstAssignedAt").asString();
+    assigned(id, order, "RDR-" + UUID.randomUUID(), 2);
+    awaitSql(
+        "SELECT count(*) FROM execution_delivery WHERE delivery_id = '"
+            + id
+            + "' AND assignment_version = 2");
+    JsonNode after = body(staffGet("/deliveries?orderId=" + order, ops)).path("items").get(0);
+    assertThat(java.time.Instant.parse(after.path("firstAssignedAt").asString()))
+        .isEqualTo(java.time.Instant.parse(first));
+    assertThat(after.path("arrivedAtStoreAt").isString()).isTrue();
+    assertThat(after.path("arrivedAtCustomerAt").isNull()).isTrue();
+  }
+
   /** 0.4.0 백오피스 직원 목록(BOD-4·5): 배송 찾기·도움요청 대기 목록·처리함 닫기, RIDER_OPS 권한(BOD-1). */
   @Test
   void staffFindsDeliveriesAndHelpQueueAndResolvesHelpRequest() {
@@ -2091,6 +2127,15 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isTrue();
     assertThat(receipt(id, TestJwt.customer(me)).getStatusCode().value()).isEqualTo(409);
     orderApi.removeStub(stub);
+    // 직원 목록 완료 방법(2026-11-21, 0.34.0)
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    assertThat(
+            body(staffGet("/deliveries?orderId=" + order, ops))
+                .path("items")
+                .get(0)
+                .path("completionMethod")
+                .asString())
+        .isEqualTo("CUSTOMER_CONFIRMED");
 
     // 픽업 5시간 지남 → 자동 완료, 열린 도움요청이 있으면 그대로
     String old = "DLV-" + UUID.randomUUID();
@@ -2113,6 +2158,13 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("AUTO_COMPLETED");
     JsonNode auto = view(old, rider);
     assertThat(auto.path("evidence").path("method").asString()).isEqualTo("AUTO_COMPLETED");
+    assertThat(
+            body(staffGet("/deliveries?deliveryIds=" + old, ops))
+                .path("items")
+                .get(0)
+                .path("completionMethod")
+                .asString())
+        .isEqualTo("AUTO_COMPLETED");
     assertThat(auto.path("evidence").path("photoRefs")).isEmpty();
     assertThat(auto.path("history").valueStream().map(h -> h.path("actor").asString()))
         .contains("SYSTEM_EVENT");
@@ -3346,6 +3398,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             "order:" + order));
   }
 
+  static final String PROMISED_AT = "2030-01-01T03:50:00Z";
+
   void assigned(String id, String order, String rider, int version) {
     Map<String, Object> p = new java.util.LinkedHashMap<>();
     p.put("deliveryId", id);
@@ -3359,6 +3413,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     p.put("orderNumber", "12345678");
     p.put("mfcName", "부산진구지점");
     p.put("mfcPhone", "051-000-0000");
+    p.put("promisedAt", PROMISED_AT); // 2026-11-21 직원 목록 지연 표시
     send("delivery.delivery.v1", "DeliveryAssigned", "Delivery", id, p);
   }
 

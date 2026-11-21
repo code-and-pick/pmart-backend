@@ -164,6 +164,10 @@ public class DispatchEvents {
     if (before.dropDistanceM() != null) {
       p.put("distanceM", before.dropDistanceM());
     }
+    if (before.promisedAt() != null) {
+      // 고객 약속 끝(2026-11-21) — execution 직원 배송 목록의 지연 표시
+      p.put("promisedAt", before.promisedAt().toString());
+    }
     publish(
         "DeliveryAssigned",
         before,

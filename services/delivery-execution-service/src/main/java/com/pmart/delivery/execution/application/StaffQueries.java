@@ -27,4 +27,9 @@ public class StaffQueries {
     Access.requireStaffScope(filter.mfcId());
     return store.staffDeliveries(filter, limit, offset);
   }
+
+  /** 목록 줄의 단계 시각(이미 범위를 확인한 목록의 배송만 — 2026-11-21). */
+  public java.util.Map<String, ExecutionStore.StageTimes> stageTimes(List<String> deliveryIds) {
+    return store.stageTimes(deliveryIds);
+  }
 }
