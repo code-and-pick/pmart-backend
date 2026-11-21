@@ -891,6 +891,13 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             body(staffGet("/delivery-help-requests?state=RESOLVED&riderId=" + rider, ops))
                 .path("items"))
         .hasSize(1);
+    // 0.35.0 라이더 상세 기록 — 모든 상태·최근 접수 먼저
+    JsonNode all =
+        body(staffGet("/delivery-help-requests?state=ALL&sort=NEWEST&riderId=" + rider, ops));
+    assertThat(all.path("items")).hasSize(1);
+    assertThat(all.path("items").get(0).path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(staffGet("/delivery-help-requests?sort=SIDEWAYS", ops).getStatusCode().value())
+        .isEqualTo(400);
 
     // 라이더에게는 닫힌 것만 — 누가·메모는 숨긴다
     JsonNode after =

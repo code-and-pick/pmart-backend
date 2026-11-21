@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.34.0
+  version: 0.35.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
+    0.35.0(2026-11-21, 라이더 백오피스 라이더 상세 "도움요청" 구역 — 사용자 "응"): 직원 도움요청 목록 `GET /delivery-help-requests` 에 state=ALL(모든 상태)·sort(OLDEST 기본·NEWEST). 기본값은 그대로(OPEN·오래된 것 먼저).
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
     0.3.0(2026-11-13, 사용자 결정): 전달 실패 = 라이더 등록(FAILURE_REPORTED — 아직 진행 중) → 운영자 확정(FAILED, DeliveryFailed — 배송 종료, 이어지는 회수 배차는 새 배송) 또는 반려(원래 상태로). 도움요청 = 이 서비스에 기록 + DeliveryIncidentRaised(case-service 가 받아 지원센터 사건으로 — 구현 전, caseId 는 그때부터). 수행료 = 수락 당시 금액(dispatch DeliveryAssigned.fee) → 완료 5시간 뒤 확정·지급 예정일 3영업일, 실패·취소는 산정 불가(calculable false). 회수·정정은 아직 501.
     0.4.0(2026-11-15, 백오피스 고객센터·라이더 운영 — 요청서 service-requests/delivery-backoffice-staff-apis.md BOD-1·4·5): 직원 배송 찾기(GET /deliveries — 주문 ID·라이더·상태, 전달 실패 대기는 state=FAILURE_REPORTED), 도움요청 대기 목록(GET /delivery-help-requests), 도움요청 처리함 닫기(…/resolutions — 지원센터 사건함(case R-4)이 생기면 그 사건이 정본). 역할 RIDER_OPS 를 운영자 조회·결정에 더함.
@@ -1216,12 +1217,13 @@ paths:
       operationId: listHelpRequestsForStaff
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: state, in: query, schema: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED], default: OPEN } }
+        - { name: state, in: query, schema: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED, ALL], default: OPEN }, description: "ALL(0.35.0) = 모든 상태" }
         - { name: category, in: query, schema: { $ref: '#/components/schemas/HelpCategory' } }
         - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: sort, in: query, x-added-in: '2026-11-21', schema: { type: string, enum: [OLDEST, NEWEST], default: OLDEST }, description: '(0.35.0) 접수 시각 순 — NEWEST = 최근 접수 먼저(라이더 상세 기록)' }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:

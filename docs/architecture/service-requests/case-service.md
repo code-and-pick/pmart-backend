@@ -132,3 +132,10 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
   - **caseId 되돌려 주기(PC 3 할 일)**: 기존 `CaseOpened`(platform.case.v1) — payload `type` = `MFC_QUALITY_IMPACT`, `refs` 에 `{refType: incidentId, refId: <사고>}`·`{refType: orderId, …}`. 사고 하나에 사건이 주문 수만큼 나오니 **첫 caseId** 를 채우면 된다(새 사건 없음).
   - 설정: pmart-config `case-service.yml` 에 `qualityEvents-in-0`(destination mfc.quality.v1)·function definition `;qualityEvents` — PC 1.
 
+
+## R-11. 직원 문의 목록 라이더 거르기 `riderId` (2026-11-21, 보낸 영역 delivery — 사용자 "응")
+- **왜**: 라이더 백오피스 라이더 상세에 그 라이더의 도움요청·문의 기록을 모아 보인다(사용자 결정 2026-11-21). 도움요청은 execution 0.35.0 `GET /delivery-help-requests?riderId=&state=ALL&sort=NEWEST` 로 됨. 문의는 `GET /inquiries` 에 라이더 거르기가 없어 지원센터 목록을 따로 찾아야 한다(`customerId` 는 0.29.0 에 있음).
+- **요청**: `GET /inquiries` 에 `riderId`(string, maxLength 64) — 직원(RIDER_OPS·OPERATOR_ADMIN) 거르기, 그 라이더의 **라이더 문의**만(requesterType RIDER), 최근 접수 순(지금과 같음). `customerId` 와 같은 방식. 볼 수 없는 직원(CS_AGENT 등)은 지금처럼 빈 목록 또는 403 — case 가 정함.
+- **탈퇴한 라이더도** 기록은 riderId 로 남으니 그대로 나와야 한다(rider 0.20.0 탈퇴 라이더 상세에서 씀).
+- 받는 화면: pmart-clients `web/rider-backoffice/src/features/riders/RiderPages.tsx` 라이더 상세 "문의" 구역(PC 5 — 이 요청이 배포되면 붙임).
+- 급함: 낮음(지금은 지원센터 메뉴에서 찾으면 됨).

@@ -336,11 +336,15 @@ public class StaffController implements StaffApi {
       @Nullable String riderId,
       @Nullable OffsetDateTime from,
       @Nullable OffsetDateTime to,
+      String sort,
       Integer size,
       @Nullable String cursor) {
-    if (!HELP_STATES.contains(state)) {
+    if (!HELP_STATES.contains(state) && !"ALL".equals(state)) {
       throw new PmartException(
-          ErrorCode.VALIDATION_FAILED, "state 는 OPEN·IN_PROGRESS·RESOLVED 입니다.");
+          ErrorCode.VALIDATION_FAILED, "state 는 OPEN·IN_PROGRESS·RESOLVED·ALL 입니다.");
+    }
+    if (!"OLDEST".equals(sort) && !"NEWEST".equals(sort)) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "sort 는 OLDEST·NEWEST 입니다.");
     }
     if (from != null && to != null && !from.isBefore(to)) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "from 은 to 보다 앞이어야 합니다.");
@@ -349,12 +353,13 @@ public class StaffController implements StaffApi {
     List<ExecutionStore.StaffHelpRow> rows =
         helps.staffList(
             new ExecutionStore.HelpFilter(
-                state,
+                "ALL".equals(state) ? null : state,
                 category == null ? null : category.getValue(),
                 blankToNull(mfcId),
                 blankToNull(riderId),
                 from == null ? null : from.toInstant(),
-                to == null ? null : to.toInstant()),
+                to == null ? null : to.toInstant(),
+                "NEWEST".equals(sort)),
             size + 1,
             offset);
     boolean more = rows.size() > size;

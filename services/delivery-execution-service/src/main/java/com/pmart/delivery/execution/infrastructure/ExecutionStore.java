@@ -1274,20 +1274,26 @@ public class ExecutionStore {
     return jdbc.query(sql.toString(), this::mapDelivery, args.toArray());
   }
 
-  /** 도움요청 대기 목록 조건(접수 시각 from 포함·to 미포함). */
+  /**
+   * 도움요청 대기 목록 조건(접수 시각 from 포함·to 미포함).
+   *
+   * @param state null = 모든 상태(0.35.0 state=ALL)
+   * @param newestFirst 최근 접수 먼저(0.35.0 sort=NEWEST — 라이더 상세 기록), 아니면 오래된 것 먼저
+   */
   public record HelpFilter(
-      String state,
+      @Nullable String state,
       @Nullable String category,
       @Nullable String mfcId,
       @Nullable String riderId,
       @Nullable Instant from,
-      @Nullable Instant to) {}
+      @Nullable Instant to,
+      boolean newestFirst) {}
 
   /** 대기 목록 한 줄 — 배송의 주문·센터를 붙인다. */
   public record StaffHelpRow(
       HelpRow help, @Nullable String orderId, @Nullable String mfcId, int evidenceCount) {}
 
-  /** 도움요청 대기 목록(오래된 것 먼저). */
+  /** 도움요청 대기 목록(기본 오래된 것 먼저). */
   public List<StaffHelpRow> staffHelps(HelpFilter f, int limit, int offset) {
     StringBuilder sql =
         new StringBuilder(
@@ -1295,9 +1301,9 @@ public class ExecutionStore {
                 + helpColumns("h.")
                 + ", d.order_id, d.mfc_id, jsonb_array_length(h.evidence_refs)"
                 + " FROM help_request h LEFT JOIN execution_delivery d"
-                + " ON d.delivery_id = h.delivery_id WHERE h.state = ?");
+                + " ON d.delivery_id = h.delivery_id WHERE TRUE");
     List<Object> args = new java.util.ArrayList<>();
-    args.add(f.state());
+    eq(sql, args, "h.state", f.state());
     eq(sql, args, "h.category", f.category());
     eq(sql, args, "d.mfc_id", f.mfcId());
     eq(sql, args, "h.rider_id", f.riderId());
@@ -1309,7 +1315,11 @@ public class ExecutionStore {
       sql.append(" AND h.created_at < ?");
       args.add(ts(f.to()));
     }
-    sql.append(" ORDER BY h.created_at, h.delivery_id, h.request_id LIMIT ? OFFSET ?");
+    sql.append(
+        f.newestFirst()
+            ? " ORDER BY h.created_at DESC, h.delivery_id DESC, h.request_id DESC"
+            : " ORDER BY h.created_at, h.delivery_id, h.request_id");
+    sql.append(" LIMIT ? OFFSET ?");
     args.add(limit);
     args.add(offset);
     return jdbc.query(
