@@ -400,6 +400,58 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
         .isEqualTo(400);
   }
 
+  /** 0.32.0(R-11 — 라이더 백오피스 라이더 상세): 직원 라이더 거르기 — 그 라이더의 라이더 문의만, 최근 접수 순. */
+  @Test
+  void staffFiltersInquiriesByRider() {
+    String rider = "RD-" + UUID.randomUUID().toString().substring(0, 8);
+    String riderTok = TestJwt.rider(rider);
+    String otherRider = TestJwt.rider("RD-" + UUID.randomUUID().toString().substring(0, 8));
+    String ops = TestJwt.operator("ro-r11", List.of("RIDER_OPS"), List.of());
+    String agent = TestJwt.operator("cs-r11", List.of("CS_AGENT"), List.of());
+    String admin = TestJwt.operator("admin-r11", List.of("OPERATOR_ADMIN"), List.of());
+    List<String> ids = new java.util.ArrayList<>();
+    for (String category : List.of("SETTLEMENT", "APP_ERROR")) {
+      Res created =
+          send("POST", riderTok, "/inquiries", Map.of("category", category, "body", "x"), null);
+      assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+      ids.add(0, created.body().path("inquiryId").asString());
+    }
+    String others =
+        send("POST", otherRider, "/inquiries", Map.of("category", "OTHER", "body", "y"), null)
+            .body()
+            .path("inquiryId")
+            .asString();
+
+    for (String staff : List.of(ops, admin)) {
+      Res byRider = send("GET", staff, "/inquiries?riderId=" + rider, null, null);
+      assertThat(byRider.status()).as(byRider.body().toString()).isEqualTo(200);
+      assertThat(byRider.body().path("items").findValuesAsString("inquiryId"))
+          .containsExactlyElementsOf(ids);
+    }
+    assertThat(send("GET", ops, "/inquiries?riderId=RD-none", null, null).body().path("items"))
+        .isEmpty();
+    // 라이더 토큰은 무시(늘 본인 것)
+    assertThat(
+            send("GET", otherRider, "/inquiries?riderId=" + rider, null, null)
+                .body()
+                .path("items")
+                .findValuesAsString("inquiryId"))
+        .containsExactly(others);
+    // 라이더 문의를 못 보는 상담원 403, 고객 문의 거르기와 같이 주면 400
+    assertThat(send("GET", agent, "/inquiries?riderId=" + rider, null, null).status())
+        .isEqualTo(403);
+    for (String q :
+        List.of(
+            "&customerId=CU-x",
+            "&orderId=ORD-1",
+            "&deliveryIssue=DELAYED",
+            "&requesterType=CUSTOMER")) {
+      assertThat(send("GET", admin, "/inquiries?riderId=" + rider + q, null, null).status())
+          .as(q)
+          .isEqualTo(400);
+    }
+  }
+
   /** 라이더 문의(0.13.0 — 라이더 앱 요청 §11-4, 사용자 "추천대로"): 지원센터(RIDER_OPS)가 답하고 상담원과 나뉜다. */
   @Test
   void riderAsksSupportCenterAnswers() {

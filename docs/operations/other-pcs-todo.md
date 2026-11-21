@@ -150,7 +150,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 2 — backoffice 영역(사용자 확정 2026-11-13, 로그인 마무리 뒤 시작)
 - [ ] **BF-4·R-12 센터 거르기**(2026-11-23 PC 1 — 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기 #390): bff `views/claims`·`views/rider-complaints`·`views/pending-work`·`work-counts` `centerId`, case `rider-complaints/counts`·`obligations` `centerId`. 클레임 원천 CL-8 은 PC 1.
-- [ ] **R-11 직원 문의 목록 `riderId` 거르기**(2026-11-21 delivery — `case-service.md` R-11, 사용자 "응"): `GET /inquiries?riderId=` — 그 라이더의 라이더 문의만(RIDER_OPS·OPERATOR_ADMIN), 탈퇴 라이더 포함. 받는 화면 라이더 백오피스 라이더 상세 "문의"(PC 5). 급함 낮음
+- [x] **R-11 직원 문의 목록 `riderId` 거르기**(2026-11-21 delivery — `case-service.md` R-11, 사용자 "응"): `GET /inquiries?riderId=` — 그 라이더의 라이더 문의만(RIDER_OPS·OPERATOR_ADMIN), 탈퇴 라이더 포함. 받는 화면 라이더 백오피스 라이더 상세 "문의"(PC 5). 급함 낮음 — **구현**(2026-11-21 case-service 0.32.0, 못 보는 직원 403)
 - [x] **CS-MFC-Q 품질 사고 고객 영향 → 고객 사건**(2026-11-19 PC 3 — `case-service.md` CS-MFC-Q): mfc-quality `QualityIncidentImpactAssessed`(영향 LOT 이 나간 주문) 구독 → 고객센터 사건, caseId 를 돌려줄 사건 모양 정하기(PC 3 가 구독 붙임)
 
 - **2026-11-16 인수인계 예정**(사용자 2026-11-15) — 그 전에 사용자가 브라우저·mfc_app 등 화면 확인을 마친다. 경계 확정(2026-11-15 사용자 "너의 추천대로"): backoffice-bff·case-service, 클라이언트 `web/backoffice`·`web/hr-backoffice`·`web/core`·`web/ui`(로그인·세션 코드는 PC 1 만). audit-service 는 PC 1 에 남는다(`pc-split.md` §1-1). **인수인계 문서 `docs/backoffice/HANDOVER.md`** — 시작하면 먼저 읽는다.

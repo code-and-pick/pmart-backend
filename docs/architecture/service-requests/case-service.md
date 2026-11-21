@@ -139,6 +139,7 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **탈퇴한 라이더도** 기록은 riderId 로 남으니 그대로 나와야 한다(rider 0.20.0 탈퇴 라이더 상세에서 씀).
 - 받는 화면: pmart-clients `web/rider-backoffice/src/features/riders/RiderPages.tsx` 라이더 상세 "문의" 구역(PC 5 — 이 요청이 배포되면 붙임).
 - 급함: 낮음(지금은 지원센터 메뉴에서 찾으면 됨).
+- **구현**(2026-11-21 PC 2, case-service 0.32.0 — PR 대기): `GET /inquiries?riderId=` 그 라이더의 라이더 문의만(탈퇴한 라이더도 — customer_id 열 = 남긴 라이더), 최근 접수 순. 라이더 문의를 못 보는 직원(CS_AGENT 등) **403**(빈 목록으로 보이지 않게 — customerId 와 같음). customerId·orderId·deliveryIssue·requesterType=CUSTOMER 와 같이 주면 400. 고객·라이더 토큰은 무시. 경로 변경 없음.
 
 ## R-12. 라이더 컴플레인 수·CS 후속 목록 센터 거르기 `centerId` (2026-11-23, 보낸 영역 platform — 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기 #390)
 - **왜**: 2호점 목포 MFC — 통합 백오피스 센터 고르기(pmart-clients #390). 아래는 서버에 센터 조건이 없어 "모든 센터"로만 보인다. `GET /cases` 는 이미 `centerId` 가 있다.

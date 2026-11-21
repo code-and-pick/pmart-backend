@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.31.0
+  version: 0.32.0
   description: |
+    **0.32.0(2026-11-21 — R-11, PC 5 요청·사용자 "응")**: 직원 `GET /inquiries?riderId=` — 그 라이더의 라이더 문의(탈퇴한 라이더도 그대로, 최근 접수 순), 라이더 문의를 못 보는 직원 403. customerId 와 같이 주거나 고객 문의 거르기(orderId·deliveryIssue·requesterType=CUSTOMER)와 같이 주면 400. 고객·라이더 토큰은 무시. 추가 조건만.
     **0.31.0(2026-11-20 — CS-MFC-Q, PC 3 요청·사용자 "추천대로")**: 사건 종류 `MFC_QUALITY_IMPACT`(품질 사고 고객 영향) — mfc-quality `QualityIncidentImpactAssessed`(mfc.quality.v1) 의 **영향 주문마다** 하나, 상담원 팀(CS_AGENT 가 집고 닫음, 관리자 모두, 센터 관리자는 자기 센터(mfcId) 보기만, 지원센터에게는 안 보임), P2, 기한 1시간(표시만), subject ORDER(orderId), refs incidentId·orderId·lotId. 다음 판단에서 늘어난 주문만 새로 열고 이미 연(닫은 것 포함) 주문은 그대로, 0건은 안 엶. 사람이 닫기(자동 종결 없음). 사건 ID 는 `CaseOpened`(type MFC_QUALITY_IMPACT, refs incidentId·orderId)로 mfc-quality 가 받는다.
     **0.30.0(2026-11-20 — 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게")**: 0.28.0 ① 닫기 막기(409 FAILURE_DECISION_PENDING)를 뺌 — 전달 실패 결정 전인 라이더 도움요청·전달 실패 사건도 닫힌다. 닫으면 delivery-execution 이 `CaseClosed` 로 그 전달 실패를 확정하고 반납 배송을 만든다(execution 1a2f0feb). 라이더가 전달을 계속해야 하면 닫기 전에 execution `failure-decisions` REJECT. ② 재개 이력(RIDER_REOPENED)은 그대로.
     **0.29.0(2026-11-19 — 백오피스 "고객" 메뉴 BF-2, 사용자 "진행해")**: 직원 `GET /inquiries?customerId=` — 그 고객의 고객 문의(상담원 접수 포함), 고객 문의를 못 보는 직원 403.
@@ -858,6 +859,7 @@ paths:
         - { name: requesterType, in: query, schema: { $ref: '#/components/schemas/InquiryRequesterType' }, description: '운영자 거르기(0.13.0). 비우면 볼 수 있는 것 전부 — CS_AGENT 는 고객 문의, RIDER_OPS 는 라이더 문의. 볼 수 없는 종류를 고르면 403. 고객 문의를 못 보는 직원이 orderId 로 거르면 403', x-added-in: '2026-11-16' }
         - { name: deliveryIssue, in: query, schema: { $ref: '#/components/schemas/InquiryDeliveryIssue' }, description: '배송 신고 종류로 거르기(0.23.0 — 상담원이 지연 신고 DELAYED 만 보기 등). 배송 신고는 고객 문의에만 있다 — 고객 문의를 못 보는 직원이 거르면 403(orderId 와 같음). 고객은 본인 것 안에서', x-added-in: '2026-11-18' }
         - { name: customerId, in: query, x-added-in: '2026-11-19', schema: { type: string, maxLength: 64 }, description: '(0.29.0 — 백오피스 "고객" 상세 BF-2) 직원 고객 거르기 — 그 고객의 **고객 문의**(상담원 접수 STAFF_INTAKE 포함, 라이더 문의 제외). 고객 문의를 못 보는 직원 403(orderId 와 같음). 고객·라이더 토큰은 무시(늘 본인 것)' }
+        - { name: riderId, in: query, x-added-in: '2026-11-21', schema: { type: string, maxLength: 64 }, description: '(0.32.0 — R-11 라이더 백오피스 라이더 상세) 직원 라이더 거르기 — 그 라이더의 **라이더 문의**만(탈퇴한 라이더도), 최근 접수 순. 라이더 문의를 못 보는 직원(CS_AGENT 등) 403. customerId·orderId·deliveryIssue·requesterType=CUSTOMER 와 같이 주면 400. 고객·라이더 토큰은 무시(늘 본인 것)' }
       responses:
         '200':
           description: OK

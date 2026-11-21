@@ -192,6 +192,8 @@ public class InquiryService {
       @Nullable String orderId,
       /** 직원 고객 거르기(0.29.0 — 백오피스 "고객" 상세 BF-2). 고객·라이더 토큰은 무시(늘 본인). */
       @Nullable String customerFilter,
+      /** 직원 라이더 거르기(0.32.0 — R-11 라이더 백오피스 라이더 상세). 고객·라이더 토큰은 무시(늘 본인). */
+      @Nullable String riderFilter,
       @Nullable String requesterType,
       @Nullable String deliveryIssue,
       @Nullable String cursor,
@@ -210,6 +212,21 @@ public class InquiryService {
       java.util.Set<String> readable = readableTypes(p);
       if (readable.isEmpty()) {
         throw new PmartException(ErrorCode.FORBIDDEN, "문의 목록을 볼 권한이 없습니다.");
+      }
+      String rider = blankToNull(riderFilter);
+      if (rider != null
+          && (blankToNull(customerFilter) != null
+              || blankToNull(orderId) != null
+              || deliveryIssue != null
+              || InquiryRules.CUSTOMER.equals(requesterType))) {
+        // 라이더 문의에는 고객·주문·배송 신고가 없다 — 같이 주면 늘 0건이라 잘못된 요청으로
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED,
+            "riderId 는 고객 문의 거르기(customerId·orderId·deliveryIssue)와 같이 쓸 수 없습니다.");
+      }
+      if (rider != null && !readable.contains(InquiryRules.RIDER)) {
+        // 못 보는 직원에게 0건으로 보이지 않게 403(customerId 와 같음)
+        throw new PmartException(ErrorCode.FORBIDDEN, "라이더 문의를 볼 권한이 없습니다.");
       }
       if (requesterType != null && !readable.contains(requesterType)) {
         throw new PmartException(ErrorCode.FORBIDDEN, "그 종류의 문의를 볼 권한이 없습니다.");
@@ -231,6 +248,11 @@ public class InquiryService {
         customerId = customerFilter.strip();
         staffIntake = true;
         type = InquiryRules.CUSTOMER;
+      }
+      if (rider != null) {
+        // 라이더 문의의 customer_id 열 = 남긴 라이더(탈퇴해도 행은 그대로)
+        customerId = rider.strip();
+        type = InquiryRules.RIDER;
       }
     }
     List<InquiryRow> rows =
