@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.19.0
+  version: 0.20.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -494,6 +494,7 @@ paths:
         - { name: operatingStatus, in: query, schema: { $ref: '#/components/schemas/OperatingStatus' } }
         - { name: operatingMfcId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: vehicleType, in: query, schema: { $ref: '#/components/schemas/VehicleType' } }
+        - { name: withdrawn, in: query, schema: { type: boolean, default: false }, x-added-in: '2026-11-21', description: '(0.20.0) true 면 탈퇴한 라이더만(탈퇴 최근 순, sort 무시) — 라이더 백오피스 "탈퇴함" 필터. 기본은 탈퇴 안 한 라이더만' }
         - { name: sort, in: query, schema: { type: string, enum: [JOINED_DESC, STATE_CHANGED_DESC], default: JOINED_DESC } }
         - { name: page, in: query, schema: { type: integer, minimum: 0, maximum: 1000, default: 0 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
@@ -540,6 +541,7 @@ paths:
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: riderId, in: path, required: true, schema: { type: string } }
+        - { name: includeWithdrawn, in: query, schema: { type: boolean, default: false }, x-added-in: '2026-11-21', description: '(0.20.0) true 면 탈퇴한 라이더도 돌려준다(withdrawnAt 있음 — 이름·전화는 탈퇴 때 지워져 nameMasked null·phoneMasked 빈 문자열). 라이더 백오피스 탈퇴 라이더 기록 보기. 계정 제한·원문 열람은 탈퇴 라이더에 계속 404' }
       responses:
         '200':
           description: OK
@@ -1297,6 +1299,7 @@ components:
         stateChangedAt: { type: string, format: date-time }
         joinedAt: { type: string, format: date-time }
         signupStatus: { $ref: '#/components/schemas/SignupStatus' }
+        withdrawnAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.20.0) 탈퇴 시각 — withdrawn=true·includeWithdrawn 일 때만 값이 있다' }
     SignupStatus:
       type: string
       x-added-in: '2026-11-17'
@@ -1316,6 +1319,7 @@ components:
               riderId: { type: string }
               riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', description: '화면용 라이더 번호 6자리(ADR-0070)' }
               nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자, 예 김*수). 탈퇴로 이름이 지워졌으면 null' }
+              withdrawn: { type: boolean, x-added-in: '2026-11-21', description: '(0.20.0) 탈퇴한 라이더(번호만, 이름 null) — 지난 배송·수행료 화면에서 "탈퇴함" 표기' }
     StaffRiderSearchResult:
       type: object
       x-added-in: '2026-11-15'
@@ -1330,6 +1334,7 @@ components:
       properties:
         riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 6자리(ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
         signupStatus: { $ref: '#/components/schemas/SignupStatus' }
+        withdrawnAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.20.0) 탈퇴 시각 — withdrawn=true·includeWithdrawn 일 때만 값이 있다' }
         signupDecidedBy: { type: [string, 'null'], description: '(0.9.0) 승인한 주체 — 지금은 AUTO(자동 승인)' }
         bankAccountRegistered: { type: boolean, description: '(0.10.0 — 라이더 백오피스 요청 #2) 정산계좌 등록 여부만(계좌번호·예금주는 주지 않는다)', x-added-in: '2026-11-18' }
         bankName: { type: [string, 'null'], description: '(0.10.0) 등록된 계좌의 은행 이름(금융결제원 코드 → 이름). 없으면 null', x-added-in: '2026-11-18' }

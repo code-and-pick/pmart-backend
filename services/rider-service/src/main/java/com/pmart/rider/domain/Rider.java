@@ -30,7 +30,9 @@ public record Rider(
     Instant joinedAt,
     List<Area> deliveryAreas,
     @Nullable String licenseMasked,
-    @Nullable String riderNumber) {
+    @Nullable String riderNumber,
+    /** 탈퇴 시각(2026-11-21 — 직원 탈퇴 라이더 보기). 탈퇴 안 했으면 null. */
+    @Nullable Instant withdrawnAt) {
 
   public enum OperatingStatus {
     OFF_DUTY,
@@ -94,7 +96,8 @@ public record Rider(
         joinedAt,
         deliveryAreas,
         licenseMasked,
-        riderNumber);
+        riderNumber,
+        withdrawnAt);
   }
 
   /** 새 배차를 받을 수 있는 상태(운행 중·신규배차 ON·제한 없음). */

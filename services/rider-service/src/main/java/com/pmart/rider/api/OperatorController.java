@@ -68,6 +68,7 @@ public class OperatorController implements OperatorApi {
       @Nullable OperatingStatus operatingStatus,
       @Nullable String operatingMfcId,
       @Nullable VehicleType vehicleType,
+      @Nullable Boolean withdrawn,
       String sort,
       Integer page,
       Integer size) {
@@ -86,7 +87,10 @@ public class OperatorController implements OperatorApi {
                 vehicleType == null ? null : vehicleType.getValue(),
                 "STATE_CHANGED_DESC".equals(sort),
                 blankToNull(riderNumber),
-                ids(riderIds)),
+                ids(riderIds),
+                Boolean.TRUE.equals(withdrawn)
+                    ? RiderStore.Search.Scope.WITHDRAWN
+                    : RiderStore.Search.Scope.ACTIVE),
             size + 1, // 한 줄 더 읽어 다음 쪽이 있는지 본다
             page * size); // 건너뛸 수는 쪽 크기 기준(page ≤ 1000, size ≤ 50 — 계약)
     boolean more = rows.size() > size;
@@ -118,13 +122,15 @@ public class OperatorController implements OperatorApi {
                                 .nameMasked(
                                     r.name() == null || r.name().isBlank()
                                         ? null
-                                        : RiderViews.maskName(r.name())))
+                                        : RiderViews.maskName(r.name()))
+                                .withdrawn(r.withdrawnAt() != null))
                     .toList()));
   }
 
   @Override
-  public ResponseEntity<StaffRiderDetail> getRiderForStaff(String riderId) {
-    Rider r = staff.detail(riderId);
+  public ResponseEntity<StaffRiderDetail> getRiderForStaff(
+      String riderId, @Nullable Boolean includeWithdrawn) {
+    Rider r = staff.detail(riderId, Boolean.TRUE.equals(includeWithdrawn));
     return ResponseEntity.ok(
         new StaffRiderDetail()
             .riderId(r.riderId())
@@ -150,7 +156,7 @@ public class OperatorController implements OperatorApi {
                                 .agreedAt(RiderViews.time(c.agreedAt())))
                     .toList())
             .nameMasked(r.name() == null ? null : RiderViews.maskName(r.name()))
-            .phoneMasked(RiderViews.maskPhone(r.phone()))
+            .phoneMasked(r.phone() == null ? "" : RiderViews.maskPhone(r.phone()))
             .vehicleType(VehicleType.fromValue(r.vehicleType()))
             .deliveryAreas(
                 r.deliveryAreas().stream()
@@ -168,7 +174,8 @@ public class OperatorController implements OperatorApi {
                     .reason(r.restrictionReason())
                     .until(RiderViews.time(r.restrictionUntil())))
             .lastHeartbeatAt(RiderViews.time(r.lastHeartbeatAt()))
-            .joinedAt(RiderViews.time(r.joinedAt())));
+            .joinedAt(RiderViews.time(r.joinedAt()))
+            .withdrawnAt(RiderViews.time(r.withdrawnAt())));
   }
 
   @Override
@@ -196,7 +203,7 @@ public class OperatorController implements OperatorApi {
         .riderNumber(r.riderNumber())
         .version(r.version())
         .nameMasked(r.name() == null ? null : RiderViews.maskName(r.name()))
-        .phoneMasked(RiderViews.maskPhone(r.phone()))
+        .phoneMasked(r.phone() == null ? "" : RiderViews.maskPhone(r.phone()))
         .vehicleType(VehicleType.fromValue(r.vehicleType()))
         .operatingStatus(OperatingStatus.fromValue(r.operatingStatus().name()))
         .newDispatchEnabled(r.newDispatchEnabled())
@@ -204,6 +211,7 @@ public class OperatorController implements OperatorApi {
         .restriction(AccountRestriction.fromValue(r.restriction().name()))
         .restrictionUntil(RiderViews.time(r.restrictionUntil()))
         .stateChangedAt(RiderViews.time(r.stateChangedAt()))
+        .withdrawnAt(RiderViews.time(r.withdrawnAt()))
         .joinedAt(RiderViews.time(r.joinedAt()))
         // 가입 승인(2026-11-17 — 정책 전까지 자동 승인)
         .signupStatus(com.pmart.rider.api.generated.model.SignupStatus.APPROVED);

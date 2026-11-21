@@ -86,15 +86,27 @@ public class StaffRiderService {
       throw forbidden("라이더 표기 조회 권한이 없습니다.");
     }
     return store.search(
-        new RiderStore.Search(null, null, null, null, null, null, false, null, riderIds),
+        // 탈퇴한 라이더도 번호는 보인다(이름은 지워져 null — 2026-11-21 탈퇴 라이더 기록 보기)
+        new RiderStore.Search(
+            null, null, null, null, null, null, false, null, riderIds, RiderStore.Search.Scope.ALL),
         clock.instant(),
         riderIds.size(),
         0);
   }
 
-  public Rider detail(String riderId) {
+  /**
+   * 직원 상세. {@code includeWithdrawn} 이면 탈퇴한 라이더도(2026-11-21 — 라이더 백오피스 "탈퇴한 라이더의 수행료·상담 기록 보기",
+   * 개인정보는 탈퇴 때 이미 비었다). 제한·원문 열람 같은 조치는 계속 탈퇴 라이더를 찾지 못한다.
+   */
+  public Rider detail(String riderId, boolean includeWithdrawn) {
     requireStaff();
-    return get(riderId);
+    if (!includeWithdrawn) {
+      return get(riderId);
+    }
+    return store
+        .findIncludingWithdrawn(riderId)
+        .map(r -> r.asOf(clock.instant()))
+        .orElseThrow(() -> PmartException.notFound("RIDER_NOT_FOUND", "가입한 라이더가 아닙니다."));
   }
 
   /** 상세의 동의 목록(직원 — 상세와 같은 권한, 2026-11-18). */

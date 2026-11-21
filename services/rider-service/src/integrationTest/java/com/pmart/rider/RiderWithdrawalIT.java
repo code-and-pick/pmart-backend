@@ -186,6 +186,49 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
                 .retrieve()
                 .toEntity(String.class));
     assertThat(found.path("items")).isEmpty();
+    // 탈퇴 라이더 모아 보기(0.20.0 — 라이더 백오피스): withdrawn=true 면 탈퇴한 라이더만, 개인정보 없이
+    JsonNode gone = staffGet("/riders?withdrawn=true&riderId=" + rider);
+    assertThat(gone.path("items")).hasSize(1);
+    assertThat(gone.path("items").get(0).path("riderNumber").asString()).isEqualTo(number);
+    assertThat(gone.path("items").get(0).path("withdrawnAt").isNull()).isFalse();
+    assertThat(gone.path("items").get(0).path("nameMasked").isNull()).isTrue();
+    assertThat(gone.path("items").get(0).toString()).doesNotContain(phone);
+    assertThat(staffGet("/riders?withdrawn=true&riderId=" + fresh).path("items")).isEmpty();
+    // 상세: 기본은 404 그대로, includeWithdrawn 이면 탈퇴 시각과 함께
+    assertThat(
+            http.get()
+                .uri("/riders/{id}", rider)
+                .header("Authorization", "Bearer " + ops)
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+    JsonNode detail = staffGet("/riders/" + rider + "?includeWithdrawn=true");
+    assertThat(detail.path("riderId").asString()).isEqualTo(rider);
+    assertThat(detail.path("withdrawnAt").isNull()).isFalse();
+    assertThat(detail.toString()).doesNotContain(phone);
+    // 화면 표기 묶음: 탈퇴 라이더도 번호는 보이고 withdrawn 표시, 이름 없음
+    JsonNode names = staffGet("/riders/display-names?riderIds=" + rider + "," + fresh);
+    assertThat(names.path("items")).hasSize(2);
+    for (JsonNode n : names.path("items")) {
+      boolean isOld = n.path("riderId").asString().equals(rider);
+      assertThat(n.path("withdrawn").asBoolean()).isEqualTo(isOld);
+      if (isOld) {
+        assertThat(n.path("riderNumber").asString()).isEqualTo(number);
+        assertThat(n.path("nameMasked").isNull()).isTrue();
+      }
+    }
+  }
+
+  private JsonNode staffGet(String uri) {
+    String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
+    return json(
+        http.get()
+            .uri(uri)
+            .header("Authorization", "Bearer " + ops)
+            .retrieve()
+            .toEntity(String.class));
   }
 
   private void blockers(String rider, String json) {

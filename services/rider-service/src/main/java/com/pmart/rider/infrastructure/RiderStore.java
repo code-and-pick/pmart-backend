@@ -42,7 +42,7 @@ public class RiderStore {
           + " bank_account_number, bank_holder_name, residence_road, residence_detail,"
           + " operating_status, new_dispatch_enabled, operating_mfc_id, state_changed_at,"
           + " one_at_a_time, dispatch_mode, restriction, restriction_reason, restriction_until,"
-          + " last_heartbeat_at, joined_at, license_masked, rider_number";
+          + " last_heartbeat_at, joined_at, license_masked, rider_number, withdrawn_at";
 
   private final JdbcTemplate jdbc;
 
@@ -149,6 +149,11 @@ public class RiderStore {
         "SELECT " + COLUMNS + " FROM rider WHERE rider_id = ? AND withdrawn_at IS NULL", riderId);
   }
 
+  /** 탈퇴한 라이더도 포함(2026-11-21 — 직원 상세 includeWithdrawn). 개인정보는 탈퇴 때 이미 비어 있다. */
+  public Optional<Rider> findIncludingWithdrawn(String riderId) {
+    return one("SELECT " + COLUMNS + " FROM rider WHERE rider_id = ?", riderId);
+  }
+
   /** 트랜잭션 끝까지 그 라이더 행을 잡는다. */
   public Optional<Rider> lock(String riderId) {
     return one(
@@ -175,7 +180,15 @@ public class RiderStore {
       @Nullable String vehicleType,
       boolean byStateChange,
       @Nullable String riderNumber,
-      java.util.@Nullable List<String> riderIds) {
+      java.util.@Nullable List<String> riderIds,
+      Scope scope) {
+
+    /** 탈퇴 여부 범위(2026-11-21): 기본 ACTIVE, 탈퇴 라이더 모아 보기 WITHDRAWN(탈퇴 최근 순), 화면 표기 묶음 ALL. */
+    public enum Scope {
+      ACTIVE,
+      WITHDRAWN,
+      ALL
+    }
 
     public Search(
         @Nullable String riderId,
@@ -194,7 +207,8 @@ public class RiderStore {
           vehicleType,
           byStateChange,
           null,
-          null);
+          null,
+          Scope.ACTIVE);
     }
   }
 
@@ -202,7 +216,14 @@ public class RiderStore {
   public List<Rider> search(Search s, Instant now, int limit, int offset) {
     List<Object> args = new ArrayList<>();
     StringBuilder sql =
-        new StringBuilder("SELECT " + COLUMNS + " FROM rider WHERE withdrawn_at IS NULL");
+        new StringBuilder(
+            "SELECT "
+                + COLUMNS
+                + switch (s.scope()) {
+                  case ACTIVE -> " FROM rider WHERE withdrawn_at IS NULL";
+                  case WITHDRAWN -> " FROM rider WHERE withdrawn_at IS NOT NULL";
+                  case ALL -> " FROM rider WHERE TRUE";
+                });
     if (s.riderId() != null) {
       sql.append(" AND rider_id = ?");
       args.add(s.riderId());
@@ -243,9 +264,11 @@ public class RiderStore {
       args.add(s.vehicleType());
     }
     sql.append(
-        s.byStateChange()
-            ? " ORDER BY state_changed_at DESC, rider_id"
-            : " ORDER BY joined_at DESC, rider_id");
+        s.scope() == Search.Scope.WITHDRAWN
+            ? " ORDER BY withdrawn_at DESC, rider_id"
+            : s.byStateChange()
+                ? " ORDER BY state_changed_at DESC, rider_id"
+                : " ORDER BY joined_at DESC, rider_id");
     sql.append(" LIMIT ? OFFSET ?");
     args.add(limit);
     args.add(offset);
@@ -531,7 +554,8 @@ public class RiderStore {
               x.joinedAt(),
               List.copyOf(areas.getOrDefault(x.riderId(), List.of())),
               x.licenseMasked(),
-              x.riderNumber()));
+              x.riderNumber(),
+              x.withdrawnAt()));
     }
     return out;
   }
@@ -563,7 +587,8 @@ public class RiderStore {
             instant(rs, "joined_at"),
             List.of(),
             rs.getString("license_masked"),
-            rs.getString("rider_number")));
+            rs.getString("rider_number"),
+            instantOrNull(rs, "withdrawn_at")));
   }
 
   private static Instant instant(ResultSet rs, String col) throws SQLException {
