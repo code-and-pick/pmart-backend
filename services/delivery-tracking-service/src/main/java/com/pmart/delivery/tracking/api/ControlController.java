@@ -65,17 +65,28 @@ public class ControlController implements ControlApi {
     r.setActiveDeliveries(
         i.active().stream()
             .map(
-                a ->
-                    new ControlRiderActiveDeliveriesInner()
-                        .deliveryId(a.deliveryId())
-                        .stage(
-                            a.stage() == null
-                                ? null
-                                : ControlRiderActiveDeliveriesInner.StageEnum.fromValue(a.stage()))
-                        .pickedUp(a.pickedUp())
-                        .etaPickup(time(a.etaPickup()))
-                        .etaDrop(time(a.etaDrop()))
-                        .deliveryNumber(a.deliveryNumber()))
+                v -> {
+                  var a = v.a();
+                  return new ControlRiderActiveDeliveriesInner()
+                      .deliveryId(a.deliveryId())
+                      .stage(
+                          a.stage() == null
+                              ? null
+                              : ControlRiderActiveDeliveriesInner.StageEnum.fromValue(a.stage()))
+                      .pickedUp(a.pickedUp())
+                      .etaPickup(time(a.etaPickup()))
+                      .etaDrop(time(a.etaDrop()))
+                      .deliveryNumber(a.deliveryNumber())
+                      .promisedAt(time(a.promisedAt()))
+                      .delayed(v.delayed())
+                      .dropArea(
+                          v.areaLat() == null || v.areaLng() == null
+                              ? null
+                              : new com.pmart.delivery.tracking.api.generated.model
+                                      .ControlRiderActiveDeliveriesInnerDropArea()
+                                  .lat(BigDecimal.valueOf(v.areaLat()))
+                                  .lng(BigDecimal.valueOf(v.areaLng())));
+                })
             .toList());
     return r;
   }

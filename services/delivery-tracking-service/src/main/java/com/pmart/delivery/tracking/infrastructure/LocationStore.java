@@ -124,7 +124,10 @@ public class LocationStore {
       boolean pickedUp,
       @Nullable Instant etaPickup,
       @Nullable Instant etaDrop,
-      @Nullable String deliveryNumber) {}
+      @Nullable String deliveryNumber,
+      @Nullable Instant promisedAt,
+      @Nullable Double dropLat,
+      @Nullable Double dropLng) {}
 
   /** 라이더마다 마지막으로 끝난(CLOSED·EXPIRED) 진행 중 배송의 시각(2026-11-18 — 관제 대기 시작). */
   public Map<String, Instant> lastEndedOf(List<String> riderIds) {
@@ -152,7 +155,7 @@ public class LocationStore {
     String in = String.join(",", Collections.nCopies(riderIds.size(), "?"));
     return jdbc.query(
         "SELECT a.rider_id, a.delivery_id, p.stage, a.picked_up_at, a.eta_pickup, a.eta_drop,"
-            + " p.order_number, p.delivery_seq FROM"
+            + " p.order_number, p.delivery_seq, p.promised_at, a.drop_lat, a.drop_lng FROM"
             + " rider_active_delivery a LEFT JOIN delivery_progress p ON p.delivery_id ="
             + " a.delivery_id WHERE a.state = 'ACTIVE' AND a.rider_id IN ("
             + in
@@ -169,7 +172,10 @@ public class LocationStore {
                     ? null
                     : "D"
                         + rs.getString(7)
-                        + (rs.getInt(8) > 1 ? "-" + rs.getInt(8) : "")), // ADR-0085
+                        + (rs.getInt(8) > 1 ? "-" + rs.getInt(8) : ""), // ADR-0085
+                rs.getTimestamp(9) == null ? null : rs.getTimestamp(9).toInstant(),
+                rs.getObject(10, Double.class),
+                rs.getObject(11, Double.class)),
         riderIds.toArray());
   }
 

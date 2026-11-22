@@ -261,11 +261,16 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
             "orderNumber",
             "74939255",
             "acceptedAt",
-            Instant.now().toString()));
+            Instant.now().toString(),
+            "promisedAt",
+            Instant.now().minusSeconds(1800).toString()));
     awaitCount(
         "SELECT count(*) FROM delivery_progress WHERE delivery_id = '"
             + dlv
-            + "' AND order_number = '74939255'");
+            + "' AND order_number = '74939255' AND promised_at IS NOT NULL");
+    jdbc.update(
+        "UPDATE rider_active_delivery SET drop_lat = 35.16378, drop_lng = 129.05312 WHERE delivery_id = ?",
+        dlv);
     String ops = TestJwt.operator("ro-ctl", List.of("RIDER_OPS"), List.of());
     ResponseEntity<String> res = control(ops, "MFC-CTL");
     assertThat(res.getStatusCode().value()).as(res.getBody()).isEqualTo(200);
@@ -292,6 +297,13 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(b.path("newDispatchEnabled").asBoolean()).isFalse();
     assertThat(b.path("activeDeliveries").get(0).path("deliveryNumber").asString())
         .isEqualTo("D74939255-2"); // ADR-0085
+    // 관제 지연·대략 위치(0.14.0): 약속 30분 전 → 약속 + 20분 넘음, 배송지는 소수 둘째 자리
+    JsonNode act = b.path("activeDeliveries").get(0);
+    assertThat(act.path("delayed").asBoolean()).isTrue();
+    assertThat(act.path("promisedAt").isString()).isTrue();
+    assertThat(act.path("dropArea").path("lat").asDouble()).isEqualTo(35.16);
+    assertThat(act.path("dropArea").path("lng").asDouble()).isEqualTo(129.05);
+    assertThat(res.getBody()).doesNotContain("35.16378");
     // 접속·대기(2026-11-18): 운행 시작 그대로, 배송 0건 + 신규배차 켬 → 대기 시작 = 켠 시각, 신규배차 끔 → 대기 아님
     assertThat(Instant.parse(a.path("onDutySince").asString())).isEqualTo(now.minusSeconds(3600));
     assertThat(Instant.parse(a.path("waitingSince").asString())).isEqualTo(now.minusSeconds(1800));

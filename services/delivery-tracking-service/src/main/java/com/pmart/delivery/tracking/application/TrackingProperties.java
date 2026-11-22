@@ -38,7 +38,8 @@ public record TrackingProperties(
     @Nullable String dispatchBaseUrl,
     @Nullable String orderBaseUrl,
     @Nullable String riderBaseUrl,
-    @Nullable Duration receiptCheckAfter) {
+    @Nullable Duration receiptCheckAfter,
+    @Nullable Duration delayAlertAfter) {
 
   public TrackingProperties {
     lowAccuracyM = lowAccuracyM == null ? 100.0 : lowAccuracyM;
@@ -61,6 +62,8 @@ public record TrackingProperties(
         orderBaseUrl == null || orderBaseUrl.isBlank() ? "http://order-service:8201" : orderBaseUrl;
     // 고객에게 받았는지 묻기(2026-11-17 사용자 "도착예정 시간보다 20분이 지나면")
     receiptCheckAfter = receiptCheckAfter == null ? Duration.ofMinutes(20) : receiptCheckAfter;
+    // 관제 지연 표시(2026-11-23 사용자 "지연 기준 시간은 이미 있잖아") — dispatch delay-alert-after(약속 + 20분)와 같은 값
+    delayAlertAfter = delayAlertAfter == null ? Duration.ofMinutes(20) : delayAlertAfter;
     // 라이더 관제(2026-11-17) — 센터의 운행 중 라이더
     riderBaseUrl =
         riderBaseUrl == null || riderBaseUrl.isBlank() ? "http://rider-service:8403" : riderBaseUrl;

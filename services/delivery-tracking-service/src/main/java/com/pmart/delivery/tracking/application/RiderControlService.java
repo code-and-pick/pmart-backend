@@ -26,13 +26,36 @@ public class RiderControlService {
       LocationStore.@Nullable Latest location,
       @Nullable Long staleSinceSeconds,
       boolean stale,
-      List<LocationStore.Active> active,
+      List<ActiveView> active,
       @Nullable Instant waitingSince,
       boolean locationShared) {}
 
   /** 위치 공유(2026-11-19 사용자 "신규배차도 끄고 배송 중인 것도 없으면 위치 공유가 안 되어야") — 진행 중 배송이 있거나 신규배차를 켠 라이더만. */
   static boolean shares(boolean newDispatchEnabled, boolean hasActive) {
     return newDispatchEnabled || hasActive;
+  }
+
+  /**
+   * 진행 중 배송 한 건(2026-11-23 — 사용자 "대략 위치로 보이게", "지연 기준 시간은 이미 있잖아"): 대략 배송지 = 소수 둘째 자리(약 1km — 라이더
+   * 제안 dropAreaPoint 와 같은 반올림), delayed = 약속 + delayAlertAfter(20분)를 예상 도착(없으면 지금)이 넘음.
+   */
+  public record ActiveView(
+      LocationStore.Active a,
+      @Nullable Double areaLat,
+      @Nullable Double areaLng,
+      boolean delayed) {}
+
+  static @Nullable Double area(@Nullable Double v) {
+    return v == null ? null : Math.round(v * 100) / 100.0;
+  }
+
+  static boolean delayed(
+      @Nullable Instant promisedAt, @Nullable Instant etaDrop, Instant now, Duration after) {
+    if (promisedAt == null) {
+      return false;
+    }
+    Instant expected = etaDrop != null && etaDrop.isAfter(now) ? etaDrop : now;
+    return expected.isAfter(promisedAt.plus(after));
   }
 
   public record Board(List<Item> items, Instant asOf) {}
@@ -86,7 +109,19 @@ public class RiderControlService {
                       l,
                       since,
                       stale,
-                      mine,
+                      mine.stream()
+                          .map(
+                              a ->
+                                  new ActiveView(
+                                      a,
+                                      area(a.dropLat()),
+                                      area(a.dropLng()),
+                                      delayed(
+                                          a.promisedAt(),
+                                          a.etaDrop(),
+                                          now,
+                                          props.delayAlertAfter())))
+                          .toList(),
                       waitingSince(r.availableSince(), mine.isEmpty(), lastEnded.get(r.riderId())),
                       shared);
                 })

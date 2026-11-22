@@ -49,6 +49,14 @@ public class ProgressStore {
         deliveryId);
   }
 
+  /** 약속 시각 사본(2026-11-23 — DeliveryAssigned.promisedAt, 관제 지연 표시). */
+  public void promised(String deliveryId, java.time.Instant promisedAt) {
+    jdbc.update(
+        "UPDATE delivery_progress SET promised_at = ? WHERE delivery_id = ?",
+        java.sql.Timestamp.from(promisedAt),
+        deliveryId);
+  }
+
   /** 배송 목적 사본(TR-4, 2026-11-19 — DeliveryCreated.purpose). */
   public void purpose(String deliveryId, String purpose) {
     jdbc.update(

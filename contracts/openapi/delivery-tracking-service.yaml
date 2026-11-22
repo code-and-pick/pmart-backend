@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -304,6 +304,15 @@ components:
               pickedUp: { type: boolean }
               etaPickup: { type: [string, 'null'], format: date-time }
               etaDrop: { type: [string, 'null'], format: date-time }
+              promisedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-23', description: '(0.14.0) 배송 약속 시각(dispatch DeliveryAssigned.promisedAt 사본 — 이 배포 전 배정은 null)' }
+              delayed: { type: boolean, x-added-in: '2026-11-23', description: '(0.14.0 — 사용자 "지연 기준 시간은 이미 있잖아") 예상 도착(없거나 지났으면 지금)이 약속 + 20분(pmart.tracking.delay-alert-after — dispatch delay-alert-after 와 같은 값)을 넘음. 약속을 모르면 false' }
+              dropArea:
+                type: [object, 'null']
+                x-added-in: '2026-11-23'
+                description: '(0.14.0 — 사용자 "대략 위치로 보이게") 배송지 대략 위치 — 위도·경도 소수 둘째 자리 반올림(약 1km, 라이더 제안 dropAreaPoint 와 같음). 정확한 주소·좌표는 배송 상세의 전달지(열람 기록). 좌표를 아직 모르면 null'
+                properties:
+                  lat: { type: number }
+                  lng: { type: number }
     RiderLocation:
       type: object
       properties:
