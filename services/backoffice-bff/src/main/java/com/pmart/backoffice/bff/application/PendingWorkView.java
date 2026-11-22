@@ -64,12 +64,12 @@ public class PendingWorkView {
   }
 
   /**
-   * 화면 응답 — {@link #collect()} 에 MFC 재시도한 직원 "이름 · 사번"(lastRetry.operator, 0.17.0 ADR-0070·HR-4)을
-   * 붙인다. 실패해도 목록은 그대로(이름만 null + unavailableSources hr-service).
+   * 화면 응답 — {@link #collect(String)} 에 MFC 재시도한 직원 "이름 · 사번"(lastRetry.operator, 0.17.0
+   * ADR-0070·HR-4)을 붙인다. 실패해도 목록은 그대로(이름만 null + unavailableSources hr-service).
    */
   @SuppressWarnings("unchecked")
-  public Map<String, Object> view() {
-    Map<String, Object> out = collect();
+  public Map<String, Object> view(@Nullable String centerId) {
+    Map<String, Object> out = collect(centerId);
     List<Map<String, Object>> items = (List<Map<String, Object>>) out.get("items");
     List<Map<String, Object>> sources = (List<Map<String, Object>>) out.get("sources");
     List<String> unavailable = (List<String>) out.get("unavailableSources");
@@ -134,8 +134,14 @@ public class PendingWorkView {
   }
 
   /** 처리 대기 모음(이름 붙이기 전) — 지금 일 건수(WorkCountsView)는 이것만 센다(hr 를 부르지 않음). */
-  Map<String, Object> collect() {
+  Map<String, Object> collect(@Nullable String centerId) {
     PmartPrincipal p = requireAdmin();
+    // 0.24.0 BF-4: 센터를 고르면 원천마다 mfcId 로 거른다. 멈춘 사가는 센터가 없어 못 거름 → centerUnfilteredSources
+    String center = centerId == null || centerId.isBlank() ? null : centerId.strip();
+    List<String> centerUnfiltered = new ArrayList<>();
+    if (center != null) {
+      centerUnfiltered.add(ORCHESTRATION);
+    }
     String token =
         PmartPrincipal.currentTokenValue()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자 토큰이 필요합니다."));
@@ -174,7 +180,7 @@ public class PendingWorkView {
     }
 
     try {
-      JsonNode issues = clients.openFulfillmentIssues(token);
+      JsonNode issues = clients.openFulfillmentIssues(token, center);
       for (JsonNode f : issues.path("items")) {
         Map<String, Object> i = new LinkedHashMap<>();
         i.put("kind", "FULFILLMENT_ISSUE");
@@ -204,7 +210,7 @@ public class PendingWorkView {
 
     boolean truncated = false;
     if (mfcLists) {
-      truncated = mfcItems(token, now, items, sources, unavailable);
+      truncated = mfcItems(token, center, now, items, sources, unavailable);
     }
 
     items.sort(Comparator.comparing(i -> String.valueOf(i.get("since"))));
@@ -214,6 +220,7 @@ public class PendingWorkView {
     out.put("unavailableSources", unavailable);
     out.put("items", items);
     out.put("truncated", truncated);
+    out.put("centerUnfilteredSources", centerUnfiltered);
     log.debug("처리 대기 {}건 by {}", items.size(), p.subject());
     return out;
   }
@@ -432,12 +439,13 @@ public class PendingWorkView {
   /** MFC 두 목록(F-4, 설정으로 켰을 때만). 원천 장애면 그 항목 없이 unavailableSources. */
   private boolean mfcItems(
       String token,
+      @Nullable String center,
       Instant now,
       List<Map<String, Object>> items,
       List<Map<String, Object>> sources,
       List<String> unavailable) {
     try {
-      JsonNode stops = clients.failedStopRequests(token);
+      JsonNode stops = clients.failedStopRequests(token, center);
       for (JsonNode s : stops.path("items")) {
         Map<String, Object> i = new LinkedHashMap<>();
         i.put("kind", "MFC_STOP_FAILED");
@@ -455,7 +463,7 @@ public class PendingWorkView {
         i.put("source", stamp(MFC, now, "CURRENT", "DIRECT"));
         items.add(i);
       }
-      JsonNode handovers = clients.rejectedHandovers(token);
+      JsonNode handovers = clients.rejectedHandovers(token, center);
       for (JsonNode h : handovers.path("items")) {
         Map<String, Object> i = new LinkedHashMap<>();
         i.put("kind", "MFC_HANDOVER_REJECTED");

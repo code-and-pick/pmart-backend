@@ -61,6 +61,8 @@ public class RecordListViews {
       @Nullable String orderId,
       @Nullable String orderNumber,
       @Nullable String customerId,
+      /** 0.24.0 BF-4 — 원주문 이행 센터(claim 0.13.0 CL-8 mfcId 로 그대로). */
+      @Nullable String centerId,
       @Nullable String type,
       @Nullable String state,
       @Nullable Integer size,
@@ -96,6 +98,7 @@ public class RecordListViews {
     Map<String, Object> q = new LinkedHashMap<>();
     put(q, "orderId", orderId);
     put(q, "customerId", customerId);
+    put(q, "mfcId", centerId);
     put(q, "type", type);
     put(q, "state", state);
     q.put("size", clamp(size));

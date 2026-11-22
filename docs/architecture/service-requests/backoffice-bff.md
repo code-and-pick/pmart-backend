@@ -52,3 +52,4 @@
 - **요청**: `GET /views/claims`(→ claim CL-8 `mfcId`), `GET /views/rider-complaints`(→ case `centerId`), `GET /views/pending-work`·`/views/work-counts`(묶는 원천마다 센터 인자를 넘기고, 센터를 못 거르는 원천은 응답에 표시)에 선택 `centerId`(bff 의 다른 view 와 같은 이름).
 - 원천 쪽: claim CL-8(PC 1), case R-12(PC 2).
 - **범위 밖(사용자 결정)**: `views/unified-lookup`(통합 조회) — 그대로.
+- **구현 1차**(2026-11-23 PC 2, bff 0.24.0 — PR 대기): `views/claims` centerId → claim mfcId(CL-8), `views/pending-work` 이행 확인·MFC 중지 실패·인계 거절은 원천 mfcId 로(멈춘 사가는 센터가 없어 못 거름), `views/work-counts` PENDING_WORK 같은 규칙·DELIVERIES execution mfcId(CASES·OBLIGATIONS·SHIFT_HANDOVERS·INQUIRIES·APPROVALS 는 범위 밖 — 모든 센터). 못 거른 원천은 응답 `centerUnfilteredSources`. **`views/rider-complaints` 는 case R-12 뒤 2차.**

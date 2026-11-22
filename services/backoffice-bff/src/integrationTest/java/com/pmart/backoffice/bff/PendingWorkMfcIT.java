@@ -175,6 +175,33 @@ class PendingWorkMfcIT {
             .withHeader("Authorization", equalTo("Bearer " + ADMIN)));
   }
 
+  /** 0.24.0 BF-4: 센터를 고르면 이행 확인·MFC 목록은 mfcId 로, 멈춘 사가는 못 거름 → centerUnfilteredSources. */
+  @Test
+  void centerIsPassedToSourcesThatCanFilter() {
+    Res all = call("GET", "/views/pending-work", ADMIN, null);
+    assertThat(all.body().path("centerUnfilteredSources")).as("센터 안 고르면 빈 배열").isEmpty();
+    order.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/fulfillment-issues"))
+            .withQueryParam("mfcId", com.github.tomakehurst.wiremock.client.WireMock.absent()));
+
+    Res r = call("GET", "/views/pending-work?centerId=MFC-MOKPO-01", ADMIN, null);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("centerUnfilteredSources").toString())
+        .isEqualTo("[\"order-orchestration-service\"]");
+    for (String path : List.of("/api/v1/stop-requests", "/api/v1/package-handovers")) {
+      mfc.verify(
+          getRequestedFor(urlPathEqualTo(path)).withQueryParam("mfcId", equalTo("MFC-MOKPO-01")));
+    }
+    order.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/fulfillment-issues"))
+            .withQueryParam("mfcId", equalTo("MFC-MOKPO-01")));
+    orch.verify(
+        0,
+        getRequestedFor(urlPathEqualTo("/api/v1/internal/stuck-sagas"))
+            .withQueryParam(
+                "mfcId", com.github.tomakehurst.wiremock.client.WireMock.matching(".*")));
+  }
+
   @Test
   void halfReadMfcIsDroppedAndReportedUnavailable() {
     mfc.stubFor(

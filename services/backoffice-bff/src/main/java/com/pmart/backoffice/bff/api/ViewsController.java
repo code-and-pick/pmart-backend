@@ -160,15 +160,16 @@ public class ViewsController implements ViewsApi {
   }
 
   @Override
-  public ResponseEntity<GetWorkCountsView200Response> getWorkCountsView() {
+  public ResponseEntity<GetWorkCountsView200Response> getWorkCountsView(@Nullable String centerId) {
     return ResponseEntity.ok(
-        mapper.convertValue(workCounts.view(), GetWorkCountsView200Response.class));
+        mapper.convertValue(workCounts.view(centerId), GetWorkCountsView200Response.class));
   }
 
   @Override
-  public ResponseEntity<GetPendingWorkView200Response> getPendingWorkView() {
+  public ResponseEntity<GetPendingWorkView200Response> getPendingWorkView(
+      @Nullable String centerId) {
     return ResponseEntity.ok(
-        mapper.convertValue(pendingWork.view(), GetPendingWorkView200Response.class));
+        mapper.convertValue(pendingWork.view(centerId), GetPendingWorkView200Response.class));
   }
 
   @Override
@@ -205,13 +206,15 @@ public class ViewsController implements ViewsApi {
       @Nullable String orderId,
       @Nullable String orderNumber,
       @Nullable String customerId,
+      @Nullable String centerId,
       @Nullable String type,
       @Nullable String state,
       Integer size,
       @Nullable String cursor) {
     return ResponseEntity.ok(
         mapper.convertValue(
-            recordLists.claims(orderId, orderNumber, customerId, type, state, size, cursor),
+            recordLists.claims(
+                orderId, orderNumber, customerId, centerId, type, state, size, cursor),
             GetClaimsView200Response.class));
   }
 

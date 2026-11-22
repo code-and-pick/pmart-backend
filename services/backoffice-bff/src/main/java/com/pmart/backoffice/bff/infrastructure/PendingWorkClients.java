@@ -48,7 +48,8 @@ public class PendingWorkClients {
     return parse(raw);
   }
 
-  public JsonNode openFulfillmentIssues(String bearerToken) {
+  public JsonNode openFulfillmentIssues(
+      String bearerToken, @org.jspecify.annotations.Nullable String mfcId) {
     String raw =
         Downstream.call(
             "order fulfillment-issues",
@@ -56,10 +57,13 @@ public class PendingWorkClients {
                 order
                     .get()
                     .uri(
-                        u ->
-                            u.path("/api/v1/fulfillment-issues")
-                                .queryParam("state", "OPEN")
-                                .build())
+                        u -> {
+                          var b = u.path("/api/v1/fulfillment-issues").queryParam("state", "OPEN");
+                          if (mfcId != null) {
+                            b.queryParam("mfcId", mfcId);
+                          }
+                          return b.build();
+                        })
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + bearerToken)
                     .header("X-Source-System", "backoffice-bff")
                     .retrieve()
@@ -71,14 +75,22 @@ public class PendingWorkClients {
    * MFC 실패로 멈춘 중지 요청 목록(PC 3 요청 F-4 — <b>아직 없다</b>, 경로·모양은 그쪽이 정하면 맞춘다). 운영자 토큰 전달. 설정 {@code
    * pmart.bff.mfc-pending-lists} 가 켜졌을 때만 부른다.
    */
-  public JsonNode failedStopRequests(String bearerToken) {
-    return mfcList("mfc stop-requests", "/api/v1/stop-requests", "failed", "true", bearerToken);
+  public JsonNode failedStopRequests(
+      String bearerToken, @org.jspecify.annotations.Nullable String mfcId) {
+    return mfcList(
+        "mfc stop-requests", "/api/v1/stop-requests", "failed", "true", mfcId, bearerToken);
   }
 
   /** MFC 재고가 거절한 인계 목록(F-4 — mfc-fulfillment 0.9.0). {@link #failedStopRequests} 와 같다. */
-  public JsonNode rejectedHandovers(String bearerToken) {
+  public JsonNode rejectedHandovers(
+      String bearerToken, @org.jspecify.annotations.Nullable String mfcId) {
     return mfcList(
-        "mfc package-handovers", "/api/v1/package-handovers", "status", "REJECTED", bearerToken);
+        "mfc package-handovers",
+        "/api/v1/package-handovers",
+        "status",
+        "REJECTED",
+        mfcId,
+        bearerToken);
   }
 
   /** MFC 목록 한 쪽 크기(MFC 상한 200)·최대 쪽 수 — 넘으면 truncated. */
@@ -90,7 +102,13 @@ public class PendingWorkClients {
    * MFC 목록을 커서로 끝까지(최대 {@link #MFC_MAX_PAGES} 쪽) 읽어 {@code {items, truncated}} 로 합친다(0.9.1 — 전에는
    * 200건 한 쪽만). 한 쪽이라도 실패하면 예외 — 반만 읽힌 목록을 내보내지 않는다(호출 쪽이 MFC 항목 전체를 뺀다).
    */
-  private JsonNode mfcList(String what, String path, String key, String value, String bearerToken) {
+  private JsonNode mfcList(
+      String what,
+      String path,
+      String key,
+      String value,
+      @org.jspecify.annotations.Nullable String mfcId,
+      String bearerToken) {
     ArrayNode all = mapper.createArrayNode();
     String cursor = null;
     boolean truncated = false;
@@ -107,6 +125,9 @@ public class PendingWorkClients {
                                 u.path(path)
                                     .queryParam(key, value)
                                     .queryParam("size", MFC_PAGE_SIZE);
+                            if (mfcId != null) {
+                              b.queryParam("mfcId", mfcId);
+                            }
                             if (c != null) {
                               b.queryParam("cursor", c);
                             }

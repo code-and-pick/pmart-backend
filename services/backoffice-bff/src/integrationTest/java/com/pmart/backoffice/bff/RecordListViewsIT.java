@@ -152,6 +152,11 @@ class RecordListViewsIT {
     claim.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/claims"))
             .withQueryParam("customerId", equalTo("CU-1")));
+    // 0.24.0 BF-4: 센터 → claim 0.13.0 CL-8 mfcId 그대로
+    assertThat(get("/views/claims?centerId=MFC-MOKPO-01").status()).isEqualTo(200);
+    claim.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/claims"))
+            .withQueryParam("mfcId", equalTo("MFC-MOKPO-01")));
   }
 
   @Test

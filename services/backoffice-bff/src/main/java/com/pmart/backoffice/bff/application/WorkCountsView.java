@@ -58,7 +58,7 @@ public class WorkCountsView {
     this.clock = clock;
   }
 
-  public Map<String, Object> view() {
+  public Map<String, Object> view(@Nullable String centerId) {
     PmartPrincipal p =
         PmartPrincipal.current()
             .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
@@ -74,15 +74,24 @@ public class WorkCountsView {
     List<Map<String, Object>> sources = new ArrayList<>();
     List<String> unavailable = new ArrayList<>();
 
+    // 0.24.0 BF-4(사용자 "주문에 붙은 것만"): 처리 대기·배송만 센터로 거른다. 사건 지표 스냅샷·승인은 범위 밖 —
+    // 모든 센터 그대로 + centerUnfilteredSources
+    String center = centerId == null || centerId.isBlank() ? null : centerId.strip();
+    List<String> centerUnfiltered = new ArrayList<>();
+    if (center != null) {
+      centerUnfiltered.add(Source.CASE.system);
+      centerUnfiltered.add(APPROVAL);
+    }
     caseCounts(token, now, counts, sources, unavailable);
-    pendingWorkCounts(counts, sources, unavailable);
+    pendingWorkCounts(center, counts, sources, unavailable, centerUnfiltered);
     approvalCounts(token, now, counts, sources, unavailable);
-    deliveryCounts(token, now, counts, sources, unavailable);
+    deliveryCounts(token, center, now, counts, sources, unavailable);
 
     Map<String, Object> out = new LinkedHashMap<>();
     out.put("composedAt", now.toString());
     out.put("sources", sources);
     out.put("unavailableSources", unavailable);
+    out.put("centerUnfilteredSources", centerUnfiltered);
     out.put("counts", counts);
     return out;
   }
@@ -132,10 +141,13 @@ public class WorkCountsView {
 
   @SuppressWarnings("unchecked")
   private void pendingWorkCounts(
+      @Nullable String center,
       List<Map<String, Object>> counts,
       List<Map<String, Object>> sources,
-      List<String> unavailable) {
-    Map<String, Object> pw = pendingWork.collect();
+      List<String> unavailable,
+      List<String> centerUnfiltered) {
+    Map<String, Object> pw = pendingWork.collect(center);
+    centerUnfiltered.addAll((List<String>) pw.get("centerUnfilteredSources"));
     boolean complete = !Boolean.TRUE.equals(pw.get("truncated"));
     Map<String, Long> byKind = new TreeMap<>();
     for (Map<String, Object> i : (List<Map<String, Object>>) pw.get("items")) {
@@ -212,6 +224,7 @@ public class WorkCountsView {
 
   private void deliveryCounts(
       String token,
+      @Nullable String center,
       Instant now,
       List<Map<String, Object>> counts,
       List<Map<String, Object>> sources,
@@ -223,7 +236,12 @@ public class WorkCountsView {
     // 예전 쪽 넘김으로(PC 1 검토 "count API 로 바꾸길")
     try {
       JsonNode body =
-          clients.get(Source.EXECUTION, token, "/deliveries/counts", Map.of(), Map.of());
+          clients.get(
+              Source.EXECUTION,
+              token,
+              "/deliveries/counts",
+              Map.of(),
+              center == null ? Map.of() : Map.of("mfcId", center));
       for (JsonNode c : body.path("counts")) {
         String state = text(c, "key");
         long n = c.path("count").asLong(0);
@@ -254,6 +272,9 @@ public class WorkCountsView {
           }
           Map<String, Object> q = new LinkedHashMap<>();
           q.put("state", state);
+          if (center != null) {
+            q.put("mfcId", center);
+          }
           q.put("size", DELIVERY_PAGE);
           if (cursor != null) {
             q.put("cursor", cursor);

@@ -157,12 +157,12 @@ class WorkCountsViewIT {
   record Res(int status, JsonNode body) {}
 
   Res counts(String token) {
+    return counts(token, "/views/work-counts");
+  }
+
+  Res counts(String token, String uri) {
     var e =
-        http.get()
-            .uri("/views/work-counts")
-            .headers(h -> h.setBearerAuth(token))
-            .retrieve()
-            .toEntity(String.class);
+        http.get().uri(uri).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
     return new Res(
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
@@ -257,6 +257,33 @@ class WorkCountsViewIT {
    * 0.21.0(PC 5 DE-7): 배송 상태별 수를 counts 한 번으로 — 쪽 넘김 없음, 끝나지 않은 상태만·0 은 줄 없음, capped 면
    * complete=false.
    */
+  /** 0.24.0 BF-4: 배송 수는 execution mfcId 로, 사건 지표·승인·멈춘 사가는 못 거름(범위 밖) → centerUnfilteredSources. */
+  @Test
+  void centerFiltersDeliveriesAndListsUnfilteredSources() {
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries/counts"))
+            .atPriority(1)
+            .willReturn(
+                json(200, "{\"counts\":[{\"key\":\"UNASSIGNED\",\"count\":2,\"capped\":false}]}")));
+    assertThat(counts(ADMIN).body().path("centerUnfilteredSources")).isEmpty();
+
+    Res r = counts(ADMIN, "/views/work-counts?centerId=MFC-MOKPO-01");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    List<String> unfiltered = new java.util.ArrayList<>();
+    r.body().path("centerUnfilteredSources").forEach(n -> unfiltered.add(n.asString()));
+    assertThat(unfiltered)
+        .containsExactlyInAnyOrder(
+            "case-service", "approval-service", "order-orchestration-service");
+    execution.verify(
+        com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
+                urlPathEqualTo("/api/v1/deliveries/counts"))
+            .withQueryParam("mfcId", equalTo("MFC-MOKPO-01")));
+    order.verify(
+        com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor(
+                urlPathEqualTo("/api/v1/fulfillment-issues"))
+            .withQueryParam("mfcId", equalTo("MFC-MOKPO-01")));
+  }
+
   @Test
   void deliveryCountsUseCountsEndpointWhenAvailable() {
     execution.stubFor(
