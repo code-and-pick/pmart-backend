@@ -46,9 +46,14 @@ public class ExecutionStore {
       @Nullable Integer deliverySeq,
       @Nullable Instant promisedAt) {
 
-    /** 화면 배송 번호(ADR-0070) = 화면용 주문번호-순번. 둘 중 하나라도 모르면 null. */
+    /**
+     * 화면 배송 번호(ADR-0085) = D + 화면용 주문번호, 같은 주문의 두 번째 배송부터 -순번(D74939255, D74939255-2). 둘 중 하나라도 모르면
+     * null.
+     */
     public @Nullable String deliveryNumber() {
-      return orderNumber == null || deliverySeq == null ? null : orderNumber + "-" + deliverySeq;
+      return orderNumber == null || deliverySeq == null
+          ? null
+          : "D" + orderNumber + (deliverySeq > 1 ? "-" + deliverySeq : "");
     }
 
     /** 고객 반품 회수(CL-1, 2026-11-17) — 고객 집에서 받아 MFC 로. */

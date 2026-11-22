@@ -167,7 +167,9 @@ public class LocationStore {
                 rs.getTimestamp(6) == null ? null : rs.getTimestamp(6).toInstant(),
                 rs.getString(7) == null || rs.getObject(8) == null
                     ? null
-                    : rs.getString(7) + "-" + rs.getInt(8)),
+                    : "D"
+                        + rs.getString(7)
+                        + (rs.getInt(8) > 1 ? "-" + rs.getInt(8) : "")), // ADR-0085
         riderIds.toArray());
   }
 

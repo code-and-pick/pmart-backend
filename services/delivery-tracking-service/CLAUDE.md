@@ -47,3 +47,4 @@
 
 - **관제 위치 공유(2026-11-19, 0.12.0 — 사용자 "신규배차도 끄고 배송 중인 것도 없으면 위치 공유가 안 되어야")**: `RiderControlService.shares` — 진행 중 배송이 있거나 신규배차 켬일 때만 `location`, 쉬는 중이면 null·`locationShared` false·stale false. 라이더 앱도 그때 올리지 않게 요청.
 - **TR-4 곧 도착(2026-11-19, V8 — 사용자 300m)**: `ApproachWatch`(`approach-check-interval` 10초) — 픽업 뒤 감시 중 배송, 라이더 마지막 위치(정상·안 끊김)가 전달지 직선 `approach-distance-m` 안 처음이면 `RiderApproachingCustomer`(delivery.tracking.v1 — deliveryId·orderId·purpose(DeliveryCreated 사본 `delivery_progress.purpose`)·distanceM·at, 배송당 한 번 `approach_notified_at`). **설정 없으면 꺼짐** — pmart-config 에 300(PC 1).
+- **짧은 배송 번호(2026-11-22 — ADR-0085)**: 화면 `deliveryNumber` = `D` + 주문번호, 같은 주문 두 번째 배송부터 `-순번`(`D74939255`·`D74939255-2`). 만드는 곳이 execution `ExecutionStore.deliveryNumber`·dispatch `RiderAssignmentHistory.deliveryNumber`·tracking `LocationStore` 세 곳 — 바꾸면 같이.

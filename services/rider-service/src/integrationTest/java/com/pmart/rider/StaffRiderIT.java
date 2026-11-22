@@ -95,7 +95,7 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
     assertThat(json(get(OPS, "/riders?riderId=" + rider)).path("items")).hasSize(1);
     // 화면용 라이더 번호(2026-11-18, ADR-0070): 6자리, 가입 때 정해짐 — 번호로·여러 ID 로 찾기
     String number = row.path("riderNumber").asString();
-    assertThat(number).matches("[1-9][0-9]{5}");
+    assertThat(number).matches("R[1-9][0-9]{3}"); // ADR-0085 R + 4자리
     assertThat(json(get(OPS, "/riders/" + rider)).path("riderNumber").asString()).isEqualTo(number);
     assertThat(
             json(get(OPS, "/riders?riderNumber=" + number))
@@ -104,6 +104,16 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
                 .path("riderId")
                 .asString())
         .isEqualTo(rider);
+    // ADR-0085 — r4785·4785 도 같은 번호
+    for (String q : List.of(number.toLowerCase(java.util.Locale.ROOT), number.substring(1))) {
+      assertThat(
+              json(get(OPS, "/riders?riderNumber=" + q))
+                  .path("items")
+                  .get(0)
+                  .path("riderId")
+                  .asString())
+          .isEqualTo(rider);
+    }
     assertThat(json(get(OPS, "/riders?riderIds=" + rider + ",RD-none")).path("items")).hasSize(1);
     // 부분 번호·이름으로는 찾지 않는다
     assertThat(get(OPS, "/riders?phone=" + phone.substring(3)).getStatusCode().value())
@@ -122,7 +132,7 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
       JsonNode one = names.path("items").get(0);
       assertThat(one.path("riderId").asString()).isEqualTo(rider);
       assertThat(one.path("nameMasked").asString()).isEqualTo("김**더");
-      assertThat(one.path("riderNumber").asString()).matches("[1-9][0-9]{5}");
+      assertThat(one.path("riderNumber").asString()).matches("R[1-9][0-9]{3}");
       assertThat(one.has("phoneMasked")).isFalse();
       assertThat(one.has("operatingStatus")).isFalse();
     }

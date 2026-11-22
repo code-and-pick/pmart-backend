@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-tracking-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
     라이더 위치(좌표·갱신 시각·정확도), 이동 이력, 권역 내/외·GPS 오류·갱신 지연 기록, 거리·이동시간 행렬(카카오모빌리티 길찾기 — ADR-0058, 직선거리로 대신하지 않는다), ETA, 지연 자동 알림 트리거, 실시간 푸시의 정본. (docs/architecture/service-map.md §7)
     배송 상태 확정(execution)은 소유하지 않는다. GPS만으로 픽업·전달을 처리하지 않는다.
@@ -267,7 +267,7 @@ components:
       required: [riderId, stale, activeDeliveries]
       properties:
         riderId: { type: string }
-        riderNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.10.0) 화면용 라이더 번호 6자리(rider — ADR-0070)' }
+        riderNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.10.0) 화면용 라이더 번호(rider 값 그대로 — ADR-0085 R + 4자리, 예 R4785)' }
         nameMasked: { type: [string, 'null'] }
         vehicleType: { type: [string, 'null'] }
         newDispatchEnabled: { type: boolean }
@@ -299,7 +299,7 @@ components:
             required: [deliveryId]
             properties:
               deliveryId: { type: string }
-              deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.11.0) 화면 배송 번호 = 화면용 주문번호-순번(ADR-0070). 배정 사건의 주문번호·생성 사건의 순번 사본, 모르면 null' }
+              deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(ADR-0085, 2026-11-22) D + 화면용 주문번호, 같은 주문의 두 번째 배송부터 -순번 — 예 D74939255·D74939255-2. 그 전 설명: (0.11.0) 화면 배송 번호 = 화면용 주문번호-순번(ADR-0070). 배정 사건의 주문번호·생성 사건의 순번 사본, 모르면 null' }
               stage: { type: [string, 'null'], enum: [UNASSIGNED, TO_STORE, AT_STORE, TO_CUSTOMER, AT_CUSTOMER, DONE, null] }
               pickedUp: { type: boolean }
               etaPickup: { type: [string, 'null'], format: date-time }

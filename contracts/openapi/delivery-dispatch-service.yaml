@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.13.2
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-22, ADR-0085): 배정 이력 deliveryNumber 가 D + 주문번호(두 번째 배송부터 -순번).
     0.13.2(2026-11-20 — PC 1 PR 세션 LAN 발견): 제안 `Offer.source` 에 `FAILED_RETURN`(같은 라이더 반납 바로 배정 기록, 0.6.0 부터 저장하던 값) — 계약에 빠져 그 배송의 `GET /deliveries/{id}/dispatch` 가 500 이었음.
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
     라이더 정본(rider), 수행 상태(execution), 인계 확정(mfc-fulfillment), 주문 취소(order/claim), 배달료 정산(execution)은 소유하지 않는다.
@@ -277,7 +278,7 @@ paths:
                         assignedAt: { type: string, format: date-time }
                         deliveryState: { type: string, description: 배차 쪽 지금 상태 }
                         outcome: { type: string, enum: [CURRENT, DONE, RELEASED, CANCELLED] }
-                        deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.10.0) 화면 배송 번호 = 화면용 주문번호-순번(예 74939255-1, ADR-0070). 주문번호를 아직 모르면 null' }
+                        deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(ADR-0085, 2026-11-22) D + 화면용 주문번호, 같은 주문의 두 번째 배송부터 -순번 — 예 D74939255·D74939255-2. 그 전 설명: (0.10.0) 화면 배송 번호 = 화면용 주문번호-순번(예 74939255-1, ADR-0070). 주문번호를 아직 모르면 null' }
                         cancellation:
                           type: [object, 'null']
                           properties:

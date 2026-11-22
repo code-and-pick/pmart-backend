@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.20.0
+  version: 0.21.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -488,7 +488,7 @@ paths:
       parameters:
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 }, description: 라이더 ID 완전 일치 }
         - { name: phone, in: query, schema: { type: string, maxLength: 20 }, description: '전화번호 완전 일치(숫자 10~11자리, 하이픈 무시)' }
-        - { name: riderNumber, in: query, schema: { type: string, maxLength: 6 }, x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 6자리 완전 일치' }
+        - { name: riderNumber, in: query, schema: { type: string, maxLength: 8 }, x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 완전 일치. (0.21.0, ADR-0085) R4785·r4785·4785 를 같은 번호로 본다' }
         - { name: riderIds, in: query, schema: { type: string, maxLength: 3400 }, x-added-in: '2026-11-18', description: '(0.12.0) 라이더 ID 여럿(쉼표, 50개까지) — 배송 목록 등에서 라이더 번호·가린 이름을 한 번에 붙일 때' }
         - { name: restriction, in: query, schema: { $ref: '#/components/schemas/AccountRestriction' } }
         - { name: operatingStatus, in: query, schema: { $ref: '#/components/schemas/OperatingStatus' } }
@@ -905,7 +905,7 @@ paths:
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: state, in: query, schema: { type: string, enum: [COMPLETED, REJECTED] } }
-        - { name: riderNumber, in: query, schema: { type: string, maxLength: 20 } }
+        - { name: riderNumber, in: query, schema: { type: string, maxLength: 20 }, description: '라이더 번호 완전 일치(0.21.0 — R4785·4785 같음)' }
         - { name: page, in: query, schema: { type: integer, minimum: 0, maximum: 1000, default: 0 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:
@@ -1228,7 +1228,7 @@ components:
       type: object
       properties:
         riderId: { type: string }
-        riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 6자리(ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
+        riderNumber: { type: [string, 'null'], pattern: '^R[1-9][0-9]{3,4}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호(ADR-0085 R + 4자리 예 R4785, 거의 다 차면 5자리 — 2026-11-22 기존 6자리를 바꿈. ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
         version: { type: integer }
         name: { type: string }
         phoneMasked: { type: string }
@@ -1286,7 +1286,7 @@ components:
       x-added-in: '2026-11-15'
       properties:
         riderId: { type: string }
-        riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 6자리(ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
+        riderNumber: { type: [string, 'null'], pattern: '^R[1-9][0-9]{3,4}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호(ADR-0085 R + 4자리 예 R4785, 거의 다 차면 5자리 — 2026-11-22 기존 6자리를 바꿈. ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
         version: { type: integer }
         nameMasked: { type: [string, 'null'], description: '이름 첫·끝 글자(예 김*수)' }
         phoneMasked: { type: string, description: '예 010****5678' }
@@ -1317,7 +1317,7 @@ components:
             required: [riderId]
             properties:
               riderId: { type: string }
-              riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', description: '화면용 라이더 번호 6자리(ADR-0070)' }
+              riderNumber: { type: [string, 'null'], pattern: '^R[1-9][0-9]{3,4}$', description: '화면용 라이더 번호 R + 4자리(ADR-0085, 예 R4785)' }
               nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자, 예 김*수). 탈퇴로 이름이 지워졌으면 null' }
               withdrawn: { type: boolean, x-added-in: '2026-11-21', description: '(0.20.0) 탈퇴한 라이더(번호만, 이름 null) — 지난 배송·수행료 화면에서 "탈퇴함" 표기' }
     StaffRiderSearchResult:
@@ -1332,7 +1332,7 @@ components:
       type: object
       x-added-in: '2026-11-15'
       properties:
-        riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 6자리(ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
+        riderNumber: { type: [string, 'null'], pattern: '^R[1-9][0-9]{3,4}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호(ADR-0085 R + 4자리 예 R4785, 거의 다 차면 5자리 — 2026-11-22 기존 6자리를 바꿈. ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
         signupStatus: { $ref: '#/components/schemas/SignupStatus' }
         withdrawnAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-21', description: '(0.20.0) 탈퇴 시각 — withdrawn=true·includeWithdrawn 일 때만 값이 있다' }
         signupDecidedBy: { type: [string, 'null'], description: '(0.9.0) 승인한 주체 — 지금은 AUTO(자동 승인)' }
@@ -1403,7 +1403,7 @@ components:
       required: [riderId, vehicleType, operating, restriction]
       properties:
         riderId: { type: string }
-        riderNumber: { type: [string, 'null'], pattern: '^[1-9][0-9]{5}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호 6자리(ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
+        riderNumber: { type: [string, 'null'], pattern: '^R[1-9][0-9]{3,4}$', x-added-in: '2026-11-18', description: '(0.12.0) 화면용 라이더 번호(ADR-0085 R + 4자리 예 R4785, 거의 다 차면 5자리 — 2026-11-22 기존 6자리를 바꿈. ADR-0070 — 가입 때 서버가 정함, 바뀌지 않음). 화면은 가린 이름과 함께 "김*수 · 482913"' }
         nameMasked: { type: [string, 'null'], description: 첫·끝 글자만 }
         vehicleType: { $ref: '#/components/schemas/VehicleType' }
         operating: { $ref: '#/components/schemas/OperatingState' }

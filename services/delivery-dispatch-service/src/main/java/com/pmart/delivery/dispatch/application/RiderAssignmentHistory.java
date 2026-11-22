@@ -103,9 +103,11 @@ public class RiderAssignmentHistory {
         offset);
   }
 
-  /** 화면 배송 번호(ADR-0070) = 화면용 주문번호-순번. 둘 중 하나라도 모르면 null. */
+  /** 화면 배송 번호(ADR-0085) = D + 화면용 주문번호, 두 번째 배송부터 -순번(D74939255, D74939255-2). 모르면 null. */
   public static @Nullable String deliveryNumber(
       @Nullable String orderNumber, @Nullable Integer seq) {
-    return orderNumber == null || seq == null ? null : orderNumber + "-" + seq;
+    return orderNumber == null || seq == null
+        ? null
+        : "D" + orderNumber + (seq > 1 ? "-" + seq : "");
   }
 }

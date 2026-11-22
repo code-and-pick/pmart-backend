@@ -86,7 +86,7 @@ public class OperatorController implements OperatorApi {
                 blankToNull(operatingMfcId),
                 vehicleType == null ? null : vehicleType.getValue(),
                 "STATE_CHANGED_DESC".equals(sort),
-                blankToNull(riderNumber),
+                riderNumberQuery(riderNumber),
                 ids(riderIds),
                 Boolean.TRUE.equals(withdrawn)
                     ? RiderStore.Search.Scope.WITHDRAWN
@@ -242,6 +242,19 @@ public class OperatorController implements OperatorApi {
     return s == null || s.isBlank() ? null : s.strip();
   }
 
+  /**
+   * 라이더 번호 찾기 입력(ADR-0085): {@code R4785}·{@code r4785}·{@code 4785} 를 같은 번호로 본다(공백 무시). 그 밖은 그대로
+   * 완전 일치(없으면 빈 결과).
+   */
+  static @Nullable String riderNumberQuery(@Nullable String s) {
+    String v = blankToNull(s);
+    if (v == null) {
+      return null;
+    }
+    v = v.replaceAll("\\s", "").toUpperCase(java.util.Locale.ROOT);
+    return v.matches("[0-9]{4,5}") ? "R" + v : v;
+  }
+
   @Override
   public ResponseEntity<RiderRestrictionRecord> changeRiderRestriction(
       String riderId,
@@ -279,7 +292,7 @@ public class OperatorController implements OperatorApi {
       listRiderWithdrawalsForStaff(
           @Nullable String state, @Nullable String riderNumber, Integer page, Integer size) {
     List<RiderStore.StaffWithdrawal> rows =
-        staff.withdrawals(state, blankToNull(riderNumber), size + 1, page * size);
+        staff.withdrawals(state, riderNumberQuery(riderNumber), size + 1, page * size);
     boolean more = rows.size() > size;
     List<RiderStore.StaffWithdrawal> items = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(

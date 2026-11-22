@@ -1822,7 +1822,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             + "' AND delivery_seq = 1");
     JsonNode found = body(staffGet("/deliveries?orderNumber=" + number, ops));
     assertThat(found.path("items").get(0).path("deliveryNumber").asString())
-        .isEqualTo(number + "-1");
+        .isEqualTo("D" + number); // ADR-0085 — 첫 배송은 순번 없이
     assertThat(found.path("items").size()).isEqualTo(1);
     assertThat(found.path("items").get(0).path("deliveryId").asString()).isEqualTo(id);
     assertThat(found.path("items").get(0).path("orderNumber").asString()).isEqualTo(number);
@@ -1844,7 +1844,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     JsonNode batch = body(staffGet("/deliveries?deliveryIds=" + id + ",DLV-none", ops));
     assertThat(batch.path("items").size()).isEqualTo(1);
     assertThat(batch.path("items").get(0).path("deliveryNumber").asString())
-        .isEqualTo(number + "-1");
+        .isEqualTo("D" + number); // ADR-0085 — 첫 배송은 순번 없이
     String many =
         String.join(
             ",", java.util.stream.IntStream.range(0, 51).mapToObj(k -> "DLV-" + k).toList());

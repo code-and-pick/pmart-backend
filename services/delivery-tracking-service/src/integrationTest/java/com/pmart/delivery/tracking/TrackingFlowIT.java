@@ -204,7 +204,7 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
                                         "riderId",
                                         r1,
                                         "riderNumber",
-                                        "482913",
+                                        "R4829",
                                         "nameMasked",
                                         "김*수",
                                         "vehicleType",
@@ -284,14 +284,14 @@ class TrackingFlowIT extends PostgresKafkaContainerSupport {
     assertThat(a.path("locationShared").asBoolean()).isTrue();
     assertThat(b.path("locationShared").asBoolean()).isTrue(); // 신규배차 끔이어도 배송 중이면 공유
     assertThat(a.path("nameMasked").asString()).isEqualTo("김*수");
-    assertThat(a.path("riderNumber").asString()).isEqualTo("482913"); // 화면용 라이더 번호(ADR-0070)
+    assertThat(a.path("riderNumber").asString()).isEqualTo("R4829"); // 화면용 라이더 번호(ADR-0070)
     assertThat(a.path("location").path("lat").asDouble()).isEqualTo(35.1585);
     assertThat(a.path("stale").asBoolean()).isFalse();
     assertThat(b.path("location").isNull() || b.path("location").isMissingNode()).isTrue();
     assertThat(b.path("stale").asBoolean()).isTrue();
     assertThat(b.path("newDispatchEnabled").asBoolean()).isFalse();
     assertThat(b.path("activeDeliveries").get(0).path("deliveryNumber").asString())
-        .isEqualTo("74939255-2");
+        .isEqualTo("D74939255-2"); // ADR-0085
     // 접속·대기(2026-11-18): 운행 시작 그대로, 배송 0건 + 신규배차 켬 → 대기 시작 = 켠 시각, 신규배차 끔 → 대기 아님
     assertThat(Instant.parse(a.path("onDutySince").asString())).isEqualTo(now.minusSeconds(3600));
     assertThat(Instant.parse(a.path("waitingSince").asString())).isEqualTo(now.minusSeconds(1800));
