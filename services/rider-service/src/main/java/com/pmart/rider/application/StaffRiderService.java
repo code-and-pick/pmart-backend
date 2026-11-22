@@ -56,10 +56,32 @@ public class StaffRiderService {
   private final AuditClient audit;
   private final Clock clock;
 
-  public StaffRiderService(RiderStore store, AuditClient audit, Clock clock) {
+  private final com.pmart.rider.infrastructure.DispatchClient dispatch;
+  private static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(StaffRiderService.class);
+
+  public StaffRiderService(
+      RiderStore store,
+      AuditClient audit,
+      Clock clock,
+      com.pmart.rider.infrastructure.DispatchClient dispatch) {
+    this.dispatch = dispatch;
     this.store = store;
     this.audit = audit;
     this.clock = clock;
+  }
+
+  /** 라이더 여럿의 맡은 배송 수(0.24.0 — dispatch 내부 조회, 쪽마다 한 번). 못 읽으면 빈 표 — 화면은 null 로 "모름"(0 이 아님). */
+  public java.util.Map<String, Integer> activeDeliveryCounts(List<String> riderIds) {
+    if (riderIds.isEmpty()) {
+      return java.util.Map.of();
+    }
+    try {
+      return dispatch.activeDeliveryCounts(riderIds);
+    } catch (RuntimeException e) {
+      log.warn("진행 중 배송 수 생략 reason={}", e.getClass().getSimpleName());
+      return java.util.Map.of();
+    }
   }
 
   /** limit·offset 은 따로 받는다 — 다음 쪽 확인용으로 limit 을 하나 늘려도 건너뛸 수가 바뀌지 않게(PC 1 #17 검토). */

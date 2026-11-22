@@ -126,6 +126,34 @@ public class InternalController implements InternalApi {
   }
 
   @Override
+  public ResponseEntity<
+          com.pmart.delivery.dispatch.api.generated.model.GetRiderActiveDeliveryCounts200Response>
+      getRiderActiveDeliveryCounts(String riderIds) {
+    java.util.List<String> ids =
+        java.util.Arrays.stream(riderIds.split(","))
+            .map(String::strip)
+            .filter(x -> !x.isEmpty())
+            .distinct()
+            .toList();
+    if (ids.isEmpty() || ids.size() > 50) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "riderIds 는 1~50개입니다.");
+    }
+    return ResponseEntity.ok(
+        new com.pmart.delivery.dispatch.api.generated.model
+                .GetRiderActiveDeliveryCounts200Response()
+            .items(
+                queries.activeDeliveryCounts(ids).stream()
+                    .map(
+                        e ->
+                            new com.pmart.delivery.dispatch.api.generated.model
+                                    .GetRiderActiveDeliveryCounts200ResponseItemsInner()
+                                .riderId(e.getKey())
+                                .count(e.getValue()))
+                    .toList()));
+  }
+
+  @Override
   public ResponseEntity<GetRiderActiveDeliveries200Response> getRiderActiveDeliveries(
       String riderId) {
     return ResponseEntity.ok(

@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.14.0
+  version: 0.15.0
   description: |
+    0.15.0(2026-11-23, 라이더 백오피스 라이더 목록 "진행 중 n" — 사용자 요청): 내부 `GET /internal/riders/active-delivery-counts?riderIds=` — 라이더 여럿의 맡은 배송 수(ASSIGNED·PICKED_UP) 한 번에. rider-service 직원 목록이 부른다.
     0.14.0(2026-11-22, ADR-0085): 배정 이력 deliveryNumber 가 D + 주문번호(두 번째 배송부터 -순번).
     0.13.2(2026-11-20 — PC 1 PR 세션 LAN 발견): 제안 `Offer.source` 에 `FAILED_RETURN`(같은 라이더 반납 바로 배정 기록, 0.6.0 부터 저장하던 값) — 계약에 빠져 그 배송의 `GET /deliveries/{id}/dispatch` 가 500 이었음.
     배송(delivery, 독립 배송번호; 분할·회수·재배송 각각 별도 번호·원주문 연결), 배차 요청, 배차 시도(attemptId)·제안(offerId)·응답, 반경 단계 탐색(1km→2km→3km [외부 참고값]), 응답 대기 1분, 동시 수락 1명 확정, 재시도(최대 2회·10분 [외부 참고값]), 배차 취소, 늦은 수락 분류의 정본. (docs/architecture/service-map.md §7)
@@ -557,6 +558,36 @@ paths:
                 properties:
                   riderId: { type: string }
                   deliveryIds: { type: array, items: { type: string } }
+
+  /internal/riders/active-delivery-counts:
+    get:
+      tags: [internal]
+      summary: '[rider→dispatch] 라이더 여럿이 맡고 있는 배송 수 (0.15.0 — 라이더 백오피스 목록 "진행 중 n")'
+      x-added-in: '2026-11-23'
+      description: |
+        `/internal/riders/{riderId}/active-deliveries` 와 같은 기준(ASSIGNED·PICKED_UP — 배정됐고 아직 끝나지 않은 배송, 사본 아님)을 라이더 여럿에 한 번에.
+        rider-service 직원 라이더 목록(`GET /riders`)이 한 쪽마다 한 번 부른다. 준 라이더마다 한 줄(맡은 배송이 없거나 없는 라이더는 0). 50명까지.
+      operationId: getRiderActiveDeliveryCounts
+      parameters:
+        - { name: riderIds, in: query, required: true, schema: { type: string, maxLength: 3400 }, description: 쉼표로 구분한 라이더 ID(50개까지) }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [riderId, count]
+                      properties:
+                        riderId: { type: string }
+                        count: { type: integer }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /internal/deliveries/{deliveryId}/redelivery-releases:
     post:

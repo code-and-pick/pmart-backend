@@ -899,6 +899,24 @@ public class DispatchStore {
             args.toArray()));
   }
 
+  /** 라이더 여럿의 맡은(ASSIGNED·PICKED_UP) 배송 수 — 없는 라이더는 결과에 없다(부른 쪽이 0). 0.15.0. */
+  public java.util.Map<String, Integer> activeDeliveryCounts(Collection<String> riderIds) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    if (riderIds.isEmpty()) {
+      return out;
+    }
+    String in = String.join(",", java.util.Collections.nCopies(riderIds.size(), "?"));
+    jdbc.query(
+        "SELECT rider_id, count(*) FROM delivery WHERE state IN ('ASSIGNED', 'PICKED_UP') AND rider_id IN ("
+            + in
+            + ") GROUP BY rider_id",
+        rs -> {
+          out.put(rs.getString(1), rs.getInt(2));
+        },
+        riderIds.toArray());
+    return out;
+  }
+
   /** 라이더가 맡고 있는(ASSIGNED·PICKED_UP) 배송(배송 ID 순) — 정지 라이더 로그인 끊기 시점(rider-auth, 2026-11-15). */
   public List<String> activeDeliveryIds(String riderId) {
     return jdbc.queryForList(

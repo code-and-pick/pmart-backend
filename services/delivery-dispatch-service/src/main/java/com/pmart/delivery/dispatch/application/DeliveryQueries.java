@@ -89,6 +89,14 @@ public class DeliveryQueries {
     return store.activeDeliveryIds(riderId);
   }
 
+  /** 라이더 여럿의 맡은 배송 수(0.15.0 — rider-service 직원 목록). 준 순서대로, 없으면 0. */
+  public List<java.util.Map.Entry<String, Integer>> activeDeliveryCounts(List<String> riderIds) {
+    java.util.Map<String, Integer> counts = store.activeDeliveryCounts(riderIds);
+    return riderIds.stream()
+        .map(id -> java.util.Map.entry(id, counts.getOrDefault(id, 0)))
+        .toList();
+  }
+
   private DeliveryRow get(String deliveryId) {
     return store
         .delivery(deliveryId)

@@ -46,7 +46,10 @@ import tools.jackson.databind.ObjectMapper;
       baseUrlProperties = {"pmart.rider.execution-base-url"}),
   @ConfigureWireMock(
       name = "center",
-      baseUrlProperties = {"pmart.rider.center-master-base-url"})
+      baseUrlProperties = {"pmart.rider.center-master-base-url"}),
+  @ConfigureWireMock(
+      name = "dispatch",
+      baseUrlProperties = {"pmart.rider.dispatch-base-url"})
 })
 class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
 
@@ -63,6 +66,9 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("center")
   WireMockServer center;
 
+  @InjectWireMock("dispatch")
+  WireMockServer dispatch;
+
   RestClient http;
 
   @BeforeEach
@@ -74,6 +80,34 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
             .build();
     execution.resetAll();
     center.resetAll();
+    dispatch.resetAll();
+  }
+
+  /** 직원 목록 "진행 중 n"(0.24.0): dispatch 수를 붙이고, 못 읽으면 null(목록은 그대로). */
+  @Test
+  void staffListCarriesActiveDeliveryCountOrNull() {
+    String rider = "RD-act-" + UUID.randomUUID();
+    assertThat(signup(rider, phone()).getStatusCode().value()).isEqualTo(201);
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/active-delivery-counts"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"items\":[{\"riderId\":\"" + rider + "\",\"count\":2}]}")));
+    JsonNode row = staffRiders("riderId=" + rider).path("items").get(0);
+    assertThat(row.path("activeDeliveryCount").asInt()).isEqualTo(2);
+
+    dispatch.resetAll();
+    dispatch.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/active-delivery-counts"))
+            .willReturn(aResponse().withStatus(503)));
+    JsonNode down = staffRiders("riderId=" + rider).path("items").get(0);
+    assertThat(down.path("riderId").asString()).isEqualTo(rider);
+    assertThat(
+            down.path("activeDeliveryCount").isNull()
+                || down.path("activeDeliveryCount").isMissingNode())
+        .isTrue();
   }
 
   /** 배달 지역 바꾸기(2026-11-23 — 사용자 "운행을 쉴 때만, 한 곳만, 바로 반영"). */
@@ -411,6 +445,16 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
   private long count(String sql, Object... args) {
     Long n = jdbc.queryForObject(sql, Long.class, args);
     return n == null ? 0 : n;
+  }
+
+  private JsonNode staffRiders(String query) {
+    String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
+    return json(
+        http.get()
+            .uri("/riders?" + query)
+            .header("Authorization", "Bearer " + ops)
+            .retrieve()
+            .toEntity(String.class));
   }
 
   private JsonNode staffWithdrawals(String query) {

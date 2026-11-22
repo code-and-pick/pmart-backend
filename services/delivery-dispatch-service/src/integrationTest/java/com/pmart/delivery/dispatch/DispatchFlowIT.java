@@ -443,6 +443,18 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
                     .toEntity(String.class))
                 .path("deliveryIds"))
         .isEmpty();
+    // 라이더 여럿의 맡은 배송 수(0.15.0 — rider-service 직원 목록 "진행 중 n"): 준 순서대로, 없는 라이더 0
+    JsonNode counts =
+        body(
+            http.get()
+                .uri("/internal/riders/active-delivery-counts?riderIds={a},RD-none", rider)
+                .header("X-Source-System", "rider-service")
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(counts.path("items").get(0).path("riderId").asString()).isEqualTo(rider);
+    assertThat(counts.path("items").get(0).path("count").asInt())
+        .isEqualTo(active.path("deliveryIds").size());
+    assertThat(counts.path("items").get(1).path("count").asInt()).isZero();
 
     send(
         "PackageHandedOver",

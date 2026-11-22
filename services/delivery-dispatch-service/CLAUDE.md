@@ -87,3 +87,4 @@
 - **제안 출처 FAILED_RETURN(2026-11-20, 계약 0.13.2)**: 같은 라이더 반납 바로 배정 기록(`assignFailedReturn`, 0.6.0 부터)의 `Offer.source` 가 계약 enum 에 없어 그 배송 배차 상세가 500 이었다(#296 대체로 원래 라이더 배정이 늘며 LAN 에서 드러남) — enum 에 추가.
 - **배정 사건 약속 시각(2026-11-21)**: `DeliveryAssigned.promisedAt`(배송 `promised_at`, 있을 때만) — execution 직원 배송 목록의 배송별 지연 표시(라이더 백오피스 대시보드).
 - **짧은 배송 번호(2026-11-22 — ADR-0085)**: 화면 `deliveryNumber` = `D` + 주문번호, 같은 주문 두 번째 배송부터 `-순번`(`D74939255`·`D74939255-2`). 만드는 곳이 execution `ExecutionStore.deliveryNumber`·dispatch `RiderAssignmentHistory.deliveryNumber`·tracking `LocationStore` 세 곳 — 바꾸면 같이.
+- **라이더 여럿 맡은 배송 수(2026-11-23, 0.15.0)**: 내부 `GET /internal/riders/active-delivery-counts?riderIds=`(50명, 준 순서대로, 없으면 0) — rider-service 직원 목록 "진행 중 n".

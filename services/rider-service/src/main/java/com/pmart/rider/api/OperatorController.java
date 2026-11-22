@@ -99,7 +99,7 @@ public class OperatorController implements OperatorApi {
     List<Rider> items = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(
         new StaffRiderSearchResult()
-            .items(items.stream().map(OperatorController::summary).toList())
+            .items(summariesWithActive(items))
             .page(page)
             .size(items.size())
             .hasNext(more));
@@ -197,6 +197,16 @@ public class OperatorController implements OperatorApi {
             .fields(v.fields().stream().map(f -> RiderPiiField.fromValue(f.name())).toList())
             .name(v.name())
             .phone(v.phone()));
+  }
+
+  /** 0.24.0 — 쪽마다 dispatch 한 번으로 맡은 배송 수를 붙인다(못 읽으면 null). 탈퇴 라이더 목록은 부르지 않는다. */
+  private List<StaffRiderSummary> summariesWithActive(List<Rider> items) {
+    List<String> ids =
+        items.stream().filter(r -> r.withdrawnAt() == null).map(Rider::riderId).toList();
+    java.util.Map<String, Integer> counts = staff.activeDeliveryCounts(ids);
+    return items.stream()
+        .map(r -> summary(r).activeDeliveryCount(counts.get(r.riderId())))
+        .toList();
   }
 
   private static StaffRiderSummary summary(Rider r) {
