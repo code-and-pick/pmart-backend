@@ -94,6 +94,11 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
         .isEqualTo("UNCONFIRMED_EARNING");
     assertThat(rejected.path("items").get(0).path("riderNumber").asString()).isEqualTo(number);
     assertThat(get(rider, "/riders/withdrawals").getStatusCode().value()).isEqualTo(403);
+    // RS-7 — 배달 지역 센터로 거르기
+    assertThat(staffWithdrawals("riderNumber=" + number + "&mfcId=MFC-IT-1").path("items"))
+        .hasSize(1);
+    assertThat(staffWithdrawals("riderNumber=" + number + "&mfcId=MFC-MOKPO-01").path("items"))
+        .isEmpty();
 
     // 2) 제한 검토 중(이 서비스) — execution 은 비었어도 막는다
     blockers(rider, "[]");

@@ -2065,6 +2065,21 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
     JsonNode queue = body(staffGet("/surcharge-requests?riderId=" + rider, ops));
     assertThat(queue.path("items").get(0).path("requestId").asString()).isEqualTo(reqId);
+    // RS-7(2026-11-23) — 그 배송의 센터로 거르기
+    String mfc =
+        jdbc.queryForObject(
+            "SELECT mfc_id FROM execution_delivery WHERE delivery_id = ?", String.class, id);
+    assertThat(
+            body(staffGet("/surcharge-requests?riderId=" + rider + "&mfcId=" + mfc, ops))
+                .path("items")
+                .get(0)
+                .path("requestId")
+                .asString())
+        .isEqualTo(reqId);
+    assertThat(
+            body(staffGet("/surcharge-requests?riderId=" + rider + "&mfcId=MFC-NONE", ops))
+                .path("items"))
+        .isEmpty();
     ResponseEntity<String> ok =
         http.post()
             .uri("/surcharge-requests/{id}/decisions", reqId)
@@ -2851,6 +2866,20 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
     JsonNode queue = body(staffGet("/rider-earnings/adjustment-queue?riderId=" + rider, cs));
     assertThat(queue.path("items")).hasSize(2); // 상담원은 보기만
+    // RS-7 — 그 배송의 센터로 거르기
+    assertThat(
+            body(staffGet(
+                    "/rider-earnings/adjustment-queue?riderId=" + rider + "&mfcId=MFC-NONE", cs))
+                .path("items"))
+        .isEmpty();
+    String qMfc =
+        jdbc.queryForObject(
+            "SELECT mfc_id FROM execution_delivery WHERE delivery_id = ?", String.class, paid);
+    assertThat(
+            body(staffGet(
+                    "/rider-earnings/adjustment-queue?riderId=" + rider + "&mfcId=" + qMfc, cs))
+                .path("items"))
+        .isNotEmpty();
     String e1 = earningId(paid);
     String e2 = earningId(withheld);
     assertThat(adjust(e1, cs, "CUSTOMER", "고객 부재 확인", "a-cs").getStatusCode().value())

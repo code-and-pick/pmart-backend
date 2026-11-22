@@ -88,7 +88,17 @@ public class StaffRiderService {
     return store.search(
         // 탈퇴한 라이더도 번호는 보인다(이름은 지워져 null — 2026-11-21 탈퇴 라이더 기록 보기)
         new RiderStore.Search(
-            null, null, null, null, null, null, false, null, riderIds, RiderStore.Search.Scope.ALL),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false,
+            null,
+            riderIds,
+            RiderStore.Search.Scope.ALL,
+            null),
         clock.instant(),
         riderIds.size(),
         0);
@@ -199,10 +209,11 @@ public class StaffRiderService {
   public List<RiderStore.StaffWithdrawal> withdrawals(
       @org.jspecify.annotations.Nullable String state,
       @org.jspecify.annotations.Nullable String riderNumber,
+      @org.jspecify.annotations.Nullable String mfcId,
       int limit,
       int offset) {
     requireStaff();
-    return store.staffWithdrawals(state, riderNumber, limit, offset);
+    return store.staffWithdrawals(state, riderNumber, mfcId, limit, offset);
   }
 
   /** OPERATOR_ADMIN·RIDER_OPS·CS_AGENT 만. */

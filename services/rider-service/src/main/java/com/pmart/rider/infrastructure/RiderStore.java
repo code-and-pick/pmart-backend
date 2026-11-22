@@ -181,7 +181,8 @@ public class RiderStore {
       boolean byStateChange,
       @Nullable String riderNumber,
       java.util.@Nullable List<String> riderIds,
-      Scope scope) {
+      Scope scope,
+      @Nullable String areaMfcId) {
 
     /** 탈퇴 여부 범위(2026-11-21): 기본 ACTIVE, 탈퇴 라이더 모아 보기 WITHDRAWN(탈퇴 최근 순), 화면 표기 묶음 ALL. */
     public enum Scope {
@@ -208,7 +209,8 @@ public class RiderStore {
           byStateChange,
           null,
           null,
-          Scope.ACTIVE);
+          Scope.ACTIVE,
+          null);
     }
   }
 
@@ -262,6 +264,13 @@ public class RiderStore {
     if (s.vehicleType() != null) {
       sql.append(" AND vehicle_type = ?");
       args.add(s.vehicleType());
+    }
+    if (s.areaMfcId() != null) {
+      // RS-7(2026-11-23): 배달 지역에 그 센터가 있는 라이더 — 운행 여부와 무관
+      sql.append(
+          " AND EXISTS (SELECT 1 FROM rider_delivery_area a WHERE a.rider_id = rider.rider_id AND"
+              + " a.mfc_id = ?)");
+      args.add(s.areaMfcId());
     }
     sql.append(
         s.scope() == Search.Scope.WITHDRAWN
@@ -773,14 +782,19 @@ public class RiderStore {
       Instant requestedAt,
       @Nullable Instant completedAt) {}
 
-  /** 최근 신청 순. state·riderNumber 는 없으면 거르지 않는다. */
+  /** 최근 신청 순. state·riderNumber·mfcId(배달 지역, RS-7) 는 없으면 거르지 않는다. */
   public List<StaffWithdrawal> staffWithdrawals(
-      @Nullable String state, @Nullable String riderNumber, int limit, int offset) {
+      @Nullable String state,
+      @Nullable String riderNumber,
+      @Nullable String mfcId,
+      int limit,
+      int offset) {
     return jdbc.query(
         "SELECT w.rider_id, r.rider_number, w.state, w.blockers::text, w.reason, w.requested_at,"
             + " w.completed_at FROM rider_withdrawal w LEFT JOIN rider r ON r.rider_id = w.rider_id"
             + " WHERE (CAST(? AS varchar) IS NULL OR w.state = ?) AND (CAST(? AS varchar) IS NULL OR"
-            + " r.rider_number = ?) ORDER BY w.requested_at DESC, w.rider_id, w.request_id LIMIT ?"
+            + " r.rider_number = ?) AND (CAST(? AS varchar) IS NULL OR EXISTS (SELECT 1 FROM"
+            + " rider_delivery_area a WHERE a.rider_id = w.rider_id AND a.mfc_id = ?)) ORDER BY w.requested_at DESC, w.rider_id, w.request_id LIMIT ?"
             + " OFFSET ?",
         (rs, i) -> {
           java.sql.Timestamp done = rs.getTimestamp(7);
@@ -797,6 +811,8 @@ public class RiderStore {
         state,
         riderNumber,
         riderNumber,
+        mfcId,
+        mfcId,
         limit,
         offset);
   }

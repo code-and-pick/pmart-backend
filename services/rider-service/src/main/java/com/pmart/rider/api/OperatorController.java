@@ -67,6 +67,7 @@ public class OperatorController implements OperatorApi {
       @Nullable AccountRestriction restriction,
       @Nullable OperatingStatus operatingStatus,
       @Nullable String operatingMfcId,
+      @Nullable String mfcId,
       @Nullable VehicleType vehicleType,
       @Nullable Boolean withdrawn,
       String sort,
@@ -90,7 +91,8 @@ public class OperatorController implements OperatorApi {
                 ids(riderIds),
                 Boolean.TRUE.equals(withdrawn)
                     ? RiderStore.Search.Scope.WITHDRAWN
-                    : RiderStore.Search.Scope.ACTIVE),
+                    : RiderStore.Search.Scope.ACTIVE,
+                blankToNull(mfcId)),
             size + 1, // 한 줄 더 읽어 다음 쪽이 있는지 본다
             page * size); // 건너뛸 수는 쪽 크기 기준(page ≤ 1000, size ≤ 50 — 계약)
     boolean more = rows.size() > size;
@@ -290,9 +292,14 @@ public class OperatorController implements OperatorApi {
   @Override
   public ResponseEntity<com.pmart.rider.api.generated.model.ListRiderWithdrawalsForStaff200Response>
       listRiderWithdrawalsForStaff(
-          @Nullable String state, @Nullable String riderNumber, Integer page, Integer size) {
+          @Nullable String state,
+          @Nullable String riderNumber,
+          @Nullable String mfcId,
+          Integer page,
+          Integer size) {
     List<RiderStore.StaffWithdrawal> rows =
-        staff.withdrawals(state, riderNumberQuery(riderNumber), size + 1, page * size);
+        staff.withdrawals(
+            state, riderNumberQuery(riderNumber), blankToNull(mfcId), size + 1, page * size);
     boolean more = rows.size() > size;
     List<RiderStore.StaffWithdrawal> items = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(

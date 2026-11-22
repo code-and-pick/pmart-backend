@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.36.0
+  version: 0.37.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
+    0.37.0(2026-11-23, RS-7 — 사용자 "센터를 고르면 그 해당 센터에 해당하는 라이더 정보"): 추가 배달료 신청 `GET /surcharge-requests`·수행료 조정 대기 `GET /rider-earnings/adjustment-queue` 에 mfcId(그 배송의 센터). 권한은 그대로.
     0.36.0(2026-11-22, ADR-0085 — 사용자 "배송 D28767701 이렇게 주문번호 재사용하는데 구분 가게 앞에 D"): 화면 배송 번호 deliveryNumber 가 D + 주문번호(두 번째 배송부터 -순번). 찾기 orderNumber 는 그대로 숫자 8자리 — 화면이 D·-순번을 떼고 보낸다.
     0.35.0(2026-11-21, 라이더 백오피스 라이더 상세 "도움요청" 구역 — 사용자 "응"): 직원 도움요청 목록 `GET /delivery-help-requests` 에 state=ALL(모든 상태)·sort(OLDEST 기본·NEWEST). 기본값은 그대로(OPEN·오래된 것 먼저).
     0.2.0(2026-11-13, PR #8 H2 — 픽업한 배송은 전달 완료까지 진행 중): 배정 사건 구독 → 가게 도착 → 픽업 완료(모든 포장 PackageHandedOver, DE-1) → 고객 도착 → 증빙 사진 올리기 → 전달 완료(DeliveryCompleted). 상태 조회·내 배송.
@@ -903,6 +904,7 @@ paths:
       parameters:
         - { name: state, in: query, schema: { type: string, enum: [REQUESTED, APPROVED, REJECTED] }, description: '(0.22.2, 2026-11-18) 비우면 **모든 상태**(최근 신청부터) — 라이더 백오피스 "전체" 탭. 상태를 주면 그 상태만(오래된 것부터). 예전에는 비우면 REQUESTED 였다' }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 }, x-added-in: '2026-11-23', description: '(0.37.0, RS-7 — 라이더 백오피스 센터 고르기) 그 배송의 센터(execution_delivery.mfcId)가 이 센터인 것만. 권한은 그대로(보기 거르기)' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -1153,6 +1155,7 @@ paths:
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 }, x-added-in: '2026-11-23', description: '(0.37.0, RS-7 — 라이더 백오피스 센터 고르기) 그 배송의 센터(execution_delivery.mfcId)가 이 센터인 것만. 권한은 그대로(보기 거르기)' }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:

@@ -68,12 +68,16 @@ public class EarningAdjustments {
   }
 
   /** 조정 대기 목록(오래된 것 먼저). */
-  public List<EarningRow> queue(String riderId, int limit, int offset) {
+  public List<EarningRow> queue(
+      @org.jspecify.annotations.Nullable String riderId,
+      @org.jspecify.annotations.Nullable String mfcId,
+      int limit,
+      int offset) {
     PmartPrincipal p = staff();
     if (!(p.hasRole("OPERATOR_ADMIN") || p.hasRole("RIDER_OPS") || p.hasRole("CS_AGENT"))) {
       throw ExecutionService.forbidden("수행료 조정 대기는 라이더 운영·관리자·상담원만 볼 수 있습니다.");
     }
-    return store.earningsNeedingAdjustment(riderId, limit, offset);
+    return store.earningsNeedingAdjustment(riderId, mfcId, limit, offset);
   }
 
   @Transactional

@@ -115,6 +115,11 @@ class StaffRiderIT extends PostgresKafkaContainerSupport {
           .isEqualTo(rider);
     }
     assertThat(json(get(OPS, "/riders?riderIds=" + rider + ",RD-none")).path("items")).hasSize(1);
+    // RS-7(2026-11-23) — 배달 지역 센터로 거르기(운행 여부와 무관), 다른 센터면 빈 목록
+    assertThat(json(get(OPS, "/riders?riderId=" + rider + "&mfcId=MFC-IT-1")).path("items"))
+        .hasSize(1);
+    assertThat(json(get(OPS, "/riders?riderId=" + rider + "&mfcId=MFC-MOKPO-01")).path("items"))
+        .isEmpty();
     // 부분 번호·이름으로는 찾지 않는다
     assertThat(get(OPS, "/riders?phone=" + phone.substring(3)).getStatusCode().value())
         .isEqualTo(400);

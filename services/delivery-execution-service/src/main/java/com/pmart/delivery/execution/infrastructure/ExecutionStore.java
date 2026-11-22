@@ -1597,12 +1597,19 @@ public class ExecutionStore {
       " NOT calculable AND settlement_state NOT IN ('ADJUSTED', 'PAYING', 'PAID')";
 
   public List<EarningRow> earningsNeedingAdjustment(
-      @Nullable String riderId, int limit, int offset) {
+      @Nullable String riderId, @Nullable String mfcId, int limit, int offset) {
     List<Object> args = new java.util.ArrayList<>();
     StringBuilder sql = new StringBuilder(EARNING_SELECT + " WHERE" + NEEDS_ADJUSTMENT);
     if (riderId != null) {
       sql.append(" AND rider_id = ?");
       args.add(riderId);
+    }
+    if (mfcId != null) {
+      // RS-7(2026-11-23): 그 배송의 센터
+      sql.append(
+          " AND EXISTS (SELECT 1 FROM execution_delivery d WHERE d.delivery_id ="
+              + " rider_earning.delivery_id AND d.mfc_id = ?)");
+      args.add(mfcId);
     }
     sql.append(" ORDER BY recorded_at, earning_id LIMIT ? OFFSET ?");
     args.add(limit);

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.21.0
+  version: 0.22.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -493,6 +493,7 @@ paths:
         - { name: restriction, in: query, schema: { $ref: '#/components/schemas/AccountRestriction' } }
         - { name: operatingStatus, in: query, schema: { $ref: '#/components/schemas/OperatingStatus' } }
         - { name: operatingMfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 }, x-added-in: '2026-11-23', description: '(0.22.0, RS-7 — 라이더 백오피스 센터 고르기) 배달 지역(deliveryAreas[].mfcId)에 이 센터가 있는 라이더만. operatingMfcId 와 함께면 AND. 권한은 그대로(보기 거르기)' }
         - { name: vehicleType, in: query, schema: { $ref: '#/components/schemas/VehicleType' } }
         - { name: withdrawn, in: query, schema: { type: boolean, default: false }, x-added-in: '2026-11-21', description: '(0.20.0) true 면 탈퇴한 라이더만(탈퇴 최근 순, sort 무시) — 라이더 백오피스 "탈퇴함" 필터. 기본은 탈퇴 안 한 라이더만' }
         - { name: sort, in: query, schema: { type: string, enum: [JOINED_DESC, STATE_CHANGED_DESC], default: JOINED_DESC } }
@@ -906,6 +907,7 @@ paths:
       parameters:
         - { name: state, in: query, schema: { type: string, enum: [COMPLETED, REJECTED] } }
         - { name: riderNumber, in: query, schema: { type: string, maxLength: 20 }, description: '라이더 번호 완전 일치(0.21.0 — R4785·4785 같음)' }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 }, x-added-in: '2026-11-23', description: '(0.22.0, RS-7) 라이더 배달 지역에 이 센터가 있는 신청만(탈퇴해도 배달 지역은 남아 탈퇴 시점 값)' }
         - { name: page, in: query, schema: { type: integer, minimum: 0, maximum: 1000, default: 0 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
       responses:

@@ -74,9 +74,13 @@ public class StaffController implements StaffApi {
   public ResponseEntity<
           com.pmart.delivery.execution.api.generated.model.ListSurchargeRequests200Response>
       listSurchargeRequests(
-          @Nullable String state, @Nullable String riderId, Integer size, @Nullable String cursor) {
+          @Nullable String state,
+          @Nullable String riderId,
+          @Nullable String mfcId,
+          Integer size,
+          @Nullable String cursor) {
     int offset = offset(cursor);
-    var rows = surcharges.list(state, blankToNull(riderId), size + 1, offset);
+    var rows = surcharges.list(state, blankToNull(riderId), blankToNull(mfcId), size + 1, offset);
     boolean more = rows.size() > size;
     var page = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(
@@ -509,9 +513,10 @@ public class StaffController implements StaffApi {
   @Override
   public ResponseEntity<
           com.pmart.delivery.execution.api.generated.model.ListEarningAdjustmentQueue200Response>
-      listEarningAdjustmentQueue(@Nullable String riderId, Integer size, @Nullable String cursor) {
+      listEarningAdjustmentQueue(
+          @Nullable String riderId, @Nullable String mfcId, Integer size, @Nullable String cursor) {
     int offset = offset(cursor);
-    var rows = adjustments.queue(blankToNull(riderId), size + 1, offset);
+    var rows = adjustments.queue(blankToNull(riderId), blankToNull(mfcId), size + 1, offset);
     boolean more = rows.size() > size;
     var page = more ? rows.subList(0, size) : rows;
     return ResponseEntity.ok(
