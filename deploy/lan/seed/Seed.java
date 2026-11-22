@@ -438,14 +438,34 @@ public class Seed {
 
   // ---------- 배송 권역 ----------
 
+  /**
+   * 시험 권역 = {@code serviceability}(센터 {@code mfcId}) + {@code serviceability.extraZones}(권역마다 자기 {@code mfcId} —
+   * 2026-11-22 2호점 목포 MFC-MOKPO-01, 시뮬레이터 R-39). 매핑 버전은 전체 교체라 모든 시험 권역을 한 버전에 담는다.
+   */
   void serviceability(String mfcId) throws Exception {
     Map<String, Object> z = map(data, "serviceability");
+    List<Map<String, Object>> all = new ArrayList<>();
+    Map<String, Object> main = new LinkedHashMap<>(z);
+    main.put("mfcId", mfcId);
+    all.add(main);
+    if (z.get("extraZones") != null) {
+      List<Map<String, Object>> extra = list(z, "extraZones");
+      all.addAll(extra);
+    }
     Map<String, Object> in = map(z, "inside");
     Res probe = check(in);
     if (probe.status() == 200) {
       Object version = probe.map().get("mappingVersion");
-      if ("SERVICEABLE".equals(probe.map().get("result")) && mfcId.equals(probe.map().get("mfcId"))) {
-        say("배송 권역: 발효 버전 " + version + " 에 시험 권역 있음 → 건너뜀");
+      boolean allThere = true;
+      for (Map<String, Object> zz : all) {
+        Res r = zz == main ? probe : check(map(zz, "inside"));
+        allThere &=
+            r.status() == 200
+                && "SERVICEABLE".equals(r.map().get("result"))
+                && str(zz, "mfcId").equals(r.map().get("mfcId"));
+      }
+      if (allThere) {
+        say("배송 권역: 발효 버전 " + version + " 에 시험 권역 " + all.size() + "개 있음 → 건너뜀");
         return;
       }
       // 매핑 버전은 전체 교체라 기존 권역이 사라진다. 발효 중인 권역이 모두 seed 권역(Z-SEED-*)일 때만 바꾼다(시험 위치 이전).
@@ -458,40 +478,49 @@ public class Seed {
         say("배송 권역: 다른 매핑(버전 " + version + ")이 발효 중 → 시험 권역을 넣지 않음");
         return;
       }
-      say("배송 권역: 발효 버전 " + version + " 의 seed 권역 → " + str(z, "name") + " 로 교체");
+      say("배송 권역: 발효 버전 " + version + " 의 seed 권역 → 시험 권역 " + all.size() + "개로 교체");
     } else {
       probe.expect("배송 판정(발효 버전 없음 확인)", 422);
     }
-    Map<String, Object> box = map(z, "box");
-    double x0 = dbl(box, "minLng"), y0 = dbl(box, "minLat"), x1 = dbl(box, "maxLng"), y1 = dbl(box, "maxLat");
-    List<Object> ring =
-        List.of(List.of(x0, y0), List.of(x1, y0), List.of(x1, y1), List.of(x0, y1), List.of(x0, y0));
-    Map<String, Object> zone = new LinkedHashMap<>();
-    zone.put("zoneId", str(z, "zoneId"));
-    zone.put("mfcId", mfcId);
-    zone.put("name", str(z, "name"));
-    zone.put("geometry", Map.of("type", "Polygon", "coordinates", List.of(ring)));
-    Map<String, Object> out = map(z, "outside");
+    List<Object> zones = new ArrayList<>();
+    List<Object> tests = new ArrayList<>();
+    for (Map<String, Object> zz : all) {
+      Map<String, Object> box = map(zz, "box");
+      double x0 = dbl(box, "minLng"), y0 = dbl(box, "minLat"), x1 = dbl(box, "maxLng"), y1 = dbl(box, "maxLat");
+      List<Object> ring =
+          List.of(List.of(x0, y0), List.of(x1, y0), List.of(x1, y1), List.of(x0, y1), List.of(x0, y0));
+      Map<String, Object> zone = new LinkedHashMap<>();
+      zone.put("zoneId", str(zz, "zoneId"));
+      zone.put("mfcId", str(zz, "mfcId"));
+      zone.put("name", str(zz, "name"));
+      zone.put("geometry", Map.of("type", "Polygon", "coordinates", List.of(ring)));
+      zones.add(zone);
+      Map<String, Object> zin = map(zz, "inside");
+      tests.add(Map.of("label", str(zin, "label"), "lat", zin.get("lat"), "lng", zin.get("lng"),
+          "expectedResult", "SERVICEABLE", "expectedMfcId", str(zz, "mfcId")));
+      Map<String, Object> out = map(zz, "outside");
+      tests.add(Map.of("label", str(out, "label"), "lat", out.get("lat"), "lng", out.get("lng"),
+          "expectedResult", "OUT_OF_AREA"));
+    }
     Map<String, Object> draft = new LinkedHashMap<>();
-    draft.put("zones", List.of(zone));
-    draft.put("changeSummary", "pmart-seed 시험 권역 1개");
-    draft.put(
-        "testAddresses",
-        List.of(
-            Map.of("label", str(in, "label"), "lat", in.get("lat"), "lng", in.get("lng"),
-                "expectedResult", "SERVICEABLE", "expectedMfcId", mfcId),
-            Map.of("label", str(out, "label"), "lat", out.get("lat"), "lng", out.get("lng"),
-                "expectedResult", "OUT_OF_AREA")));
+    draft.put("zones", zones);
+    draft.put("changeSummary", "pmart-seed 시험 권역 " + zones.size() + "개");
+    draft.put("testAddresses", tests);
     Res created = send("POST", "/serviceability-versions", md, draft, null);
     created.expect("권역 매핑 초안", 201);
     say("배송 권역 초안 버전 " + map(created.map(), "version").get("version"));
     approve(map(created.map(), "approvalRequest"), "배송 권역");
-    await(
-        "배송 권역 발효",
-        () -> {
-          Res r = check(in);
-          return r.status() == 200 && "SERVICEABLE".equals(r.map().get("result"));
-        });
+    for (Map<String, Object> zz : all) {
+      Map<String, Object> zin = map(zz, "inside");
+      await(
+          "배송 권역 발효 " + str(zz, "zoneId"),
+          () -> {
+            Res r = check(zin);
+            return r.status() == 200
+                && "SERVICEABLE".equals(r.map().get("result"))
+                && str(zz, "mfcId").equals(r.map().get("mfcId"));
+          });
+    }
   }
 
   Res check(Map<String, Object> point) throws Exception {

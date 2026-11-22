@@ -48,7 +48,18 @@
     "name": "시험 권역(부산진구 일대)",
     "box": { "minLng": 129.02, "minLat": 35.14, "maxLng": 129.08, "maxLat": 35.19 },
     "inside": { "label": "서면역 부근", "lat": 35.1578, "lng": 129.0597 },
-    "outside": { "label": "해운대해수욕장 부근", "lat": 35.1587, "lng": 129.1604 }
+    "outside": { "label": "해운대해수욕장 부근", "lat": 35.1587, "lng": 129.1604 },
+    "extraZones": [
+      {
+        "_comment": "2호점 목포 MFC(2026-11-22, 시뮬레이터 R-39 — 사용자 \"목포 MFC 만들어줘\"). 목포 시내(상동·하당동·옥암동·용해동·산정동·석현동)를 덮는 사각형 시험 권역. 남악(무안)은 뺌. 센터는 mfc 쪽(center-master)이 따로 등록.",
+        "zoneId": "Z-SEED-MOKPO",
+        "mfcId": "MFC-MOKPO-01",
+        "name": "시험 권역(목포 시내)",
+        "box": { "minLng": 126.36, "minLat": 34.77, "maxLng": 126.455, "maxLat": 34.85 },
+        "inside": { "label": "목포 평화광장 부근", "lat": 34.7985, "lng": 126.4334 },
+        "outside": { "label": "무안국제공항 부근", "lat": 34.9914, "lng": 126.3828 }
+      }
+    ]
   },
   "products": [
     {

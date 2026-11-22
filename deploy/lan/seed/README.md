@@ -12,7 +12,7 @@ java deploy/lan/seed/Seed.java --initial-stock --initial-stock-skus E-00000008,E
 - 시험 직원 `seed-md`(MD, 센터 `MFC-SEED-01`)·`seed-approver`(PRODUCT·DISPLAY·PRICE·SERVICEABILITY·CENTER_MASTER·INVENTORY 승인)의 역할·센터를 맞춘다(관리자 claude-dev). 계정은 만들지 않는다(hr-service 로 등록). Keycloak 비밀번호는 실행마다 무작위로 정하고 저장하지 않는다(발의자 ≠ 승인자 규칙 때문에 두 계정).
 - 순서: 센터·시간표 → 카테고리 트리 → 배송 권역 → 상품 → 콘텐츠·대표 이미지(합성 PNG) → 기본가 → MFC 취급 ON → (--initial-stock) 초기 재고. 이미 있으면 건너뛴다(상품은 바코드로 확인). 초기 재고 말고는 다시 돌려도 안전하다.
 - 초기 재고는 INITIAL_STOCK 승인 → mfc-inbound 초기 보유 반입 → mfc-inventory 전기(D2, 조정으로 넣지 않음). 반영은 `GET /initial-stock-loads?approvalId=` 로 확인한다.
-- 다른 카테고리 트리나 권역 매핑이 이미 발효 중이면 덮어쓰지 않는다(트리 발효본은 그대로 쓰고, 권역은 넣지 않는다). 발효 중인 권역이 모두 seed 권역(`Z-SEED-*`)이면 `seed-data.json` 의 권역으로 새 버전을 올려 교체한다.
+- 다른 카테고리 트리나 권역 매핑이 이미 발효 중이면 덮어쓰지 않는다(트리 발효본은 그대로 쓰고, 권역은 넣지 않는다). 발효 중인 권역이 모두 seed 권역(`Z-SEED-*`)이면 `seed-data.json` 의 권역으로 새 버전을 올려 교체한다. 시험 권역은 `serviceability`(센터 `mfcId`) + `serviceability.extraZones`(권역마다 자기 `mfcId`) — 2026-11-22 2호점 목포 `Z-SEED-MOKPO` → `MFC-MOKPO-01`(시뮬레이터 R-39). 모두 한 버전에 담고, 시험 점이 모두 맞는 센터로 판정되면 건너뛴다.
 - 센터가 이미 있어도 이름·주소·좌표가 `seed-data.json` 과 다르면 CENTER_MASTER 승인(UPDATE_PROFILE)으로 맞춘다. 시험 위치: 부산진구(업무 문서의 초기 부산 MFC 5곳 중 하나) — 2026-11-16 부산진구지점 실제 주소 "부산 부산진구 동천로 109 삼한골든게이트 2층"(35.158501, 129.062021)로 바꿈(그 전 서면 부근 시험 좌표). 권역 `inside` 시험 점(서면역 부근)은 고객 쪽 시험 좌표라 그대로.
 - 데이터: `seed-data.json`. 모두 합성(상품명 `[시험] …`). `local-reference/` 캡처 자료는 쓰지 않는다.
 
