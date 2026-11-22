@@ -2,6 +2,7 @@ package com.pmart.cases.application;
 
 import com.pmart.cases.domain.CsIntakeRules;
 import com.pmart.cases.domain.InquiryRules;
+import com.pmart.cases.domain.ProfanityRules;
 import com.pmart.cases.infrastructure.InquiryPhotoStore;
 import com.pmart.cases.infrastructure.InquiryPhotoStore.PhotoRow;
 import com.pmart.cases.infrastructure.InquiryStore;
@@ -151,10 +152,11 @@ public class InquiryService {
                 () -> {
                   Instant now = clock.instant();
                   String id = "INQ-" + UUID.randomUUID();
+                  String caseId = "CASE-" + UUID.randomUUID();
                   store.insert(
                       new InquiryRow(
                           id,
-                          "CASE-" + UUID.randomUUID(),
+                          caseId,
                           customerId,
                           cmd.category(),
                           blankToNull(cmd.orderId()),
@@ -172,6 +174,25 @@ public class InquiryService {
                           cmd.deliveryIssue(),
                           null));
                   attach(id, customerId, cmd.photoIds(), 0);
+                  // 0.35.0 R-14: 고객 문의 욕설 자동 인식 → customer 가 7일 정지(CU-7). 문의는 그대로 받는다. 글·단어 로그 금지
+                  if (InquiryRules.CUSTOMER.equals(requesterType)
+                      && ProfanityRules.contains(props.profanity(), cmd.title(), cmd.body())) {
+                    Map<String, Object> pd = new LinkedHashMap<>();
+                    pd.put("customerId", customerId);
+                    pd.put("inquiryId", id);
+                    pd.put("caseId", caseId);
+                    pd.put("source", "INQUIRY");
+                    pd.put("detectedAt", now.toString());
+                    events.publish(
+                        "CustomerProfanityDetected",
+                        1,
+                        "Case",
+                        caseId,
+                        1L,
+                        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "case-service"),
+                        pd);
+                    log.info("inquiry profanity detected id={}", id);
+                  }
                   log.info(
                       "inquiry received id={} requester={} category={}",
                       id,

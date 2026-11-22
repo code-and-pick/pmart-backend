@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/CustomerProfanityDetected.v1.json",
+  "title": "CustomerProfanityDetected",
+  "description": "고객 문의에서 금칙어(욕설)를 자동으로 찾은 사실 — 글·걸린 단어는 싣지 않는다. 발행 case(2026-11-23 R-14, POST /inquiries 고객 문의 — 제목·본문을 설정 pmart.cases.profanity-words 와 대조, 상담원 접수 STAFF_INTAKE 는 제외). 구독 customer(CU-7 — 7일 정지 + 고객 알림 \"7일 계정 정지\", 사용자 2026-11-23). 문의 자체는 그대로 접수된다. 토픽 platform.case.v1.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "CustomerProfanityDetected"
+        },
+        "aggregateType": {
+          "const": "Case"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "customerId",
+            "inquiryId",
+            "caseId",
+            "source",
+            "detectedAt"
+          ],
+          "properties": {
+            "customerId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "inquiryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "INQUIRY"
+              ],
+              "description": "어디서 찾았나 — 지금은 고객 문의만(리뷰는 review 몫)"
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

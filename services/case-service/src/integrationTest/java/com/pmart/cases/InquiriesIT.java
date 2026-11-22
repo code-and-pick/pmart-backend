@@ -40,7 +40,8 @@ import tools.jackson.databind.ObjectMapper;
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.cases.order-service-base-url=${order.url}",
-      "pmart.messaging.outbox.delete-after-insert=false"
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "pmart.cases.profanity-words[0]=테스트금칙어"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({@ConfigureWireMock(name = "order", baseUrlProperties = "order.url")})
@@ -398,6 +399,47 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
         .isEqualTo(403);
     assertThat(send("GET", agent, "/inquiries?deliveryIssue=LATE", null, null).status())
         .isEqualTo(400);
+  }
+
+  /** 0.35.0 R-14: 고객 문의에서 금칙어를 찾으면 CustomerProfanityDetected(글·단어 없음), 문의는 그대로 받는다. 라이더 문의는 아님. */
+  @Test
+  void customerInquiryWithProfanityRaisesEventWithoutText() {
+    String me = "CU-" + UUID.randomUUID();
+    String tok = TestJwt.customer(me);
+    Res bad =
+        send(
+            "POST",
+            tok,
+            "/inquiries",
+            Map.of("category", "OTHER", "title", "문의", "body", "이거 테스트 금칙어 아니냐"),
+            null);
+    assertThat(bad.status()).as(bad.body().toString()).isEqualTo(201);
+    String id = bad.body().path("inquiryId").asString();
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'CustomerProfanityDetected' AND payload::text LIKE ?",
+            String.class,
+            "%" + id + "%");
+    assertThat(payload)
+        .contains(me)
+        .contains("INQUIRY")
+        .doesNotContain("금칙어")
+        .doesNotContain("아니냐");
+
+    Res clean =
+        send("POST", tok, "/inquiries", Map.of("category", "OTHER", "body", "상자가 젖었어요"), null);
+    String riderTok = TestJwt.rider("RD-" + UUID.randomUUID().toString().substring(0, 8));
+    Res rider =
+        send("POST", riderTok, "/inquiries", Map.of("category", "OTHER", "body", "테스트금칙어"), null);
+    assertThat(rider.status()).isEqualTo(201);
+    for (Res r : List.of(clean, rider)) {
+      assertThat(
+              jdbc.queryForObject(
+                  "SELECT count(*) FROM outbox_event WHERE type = 'CustomerProfanityDetected' AND payload::text LIKE ?",
+                  Integer.class,
+                  "%" + r.body().path("inquiryId").asString() + "%"))
+          .isZero();
+    }
   }
 
   /** 0.32.0(R-11 — 라이더 백오피스 라이더 상세): 직원 라이더 거르기 — 그 라이더의 라이더 문의만, 최근 접수 순. */
