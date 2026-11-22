@@ -15,8 +15,8 @@ info:
     **0.18.0(2026-11-19 — ADR-0070 이어서, 웹 요청 backend-display-numbers-in-responses)**: 클레임 목록 `/views/claims`(주문번호)·라이더 컴플레인 목록 `/views/rider-complaints`(배송 번호·주문번호·라이더·기록한 직원) — 웹이 줄마다 번호를 묻지 않게 bff 한 번으로. case·claim 에 다른 서비스 값을 사본으로 두지 않는다.
     **0.17.0(2026-11-19 — ADR-0070 직원 표시, hr 0.8.0 HR-4)**: 처리자·요청자 칸에 `OperatorLabel`(이름 · 사번) — 승인함 `requestedByLabel`, 처리 대기 `lastRetry.operator`, 사건함 `assignee`. hr-service `GET /hr/employee-labels`(직원 토큰, 화면 응답 하나에 50개씩 한 번) — 덤이라 실패면 이름·사번만 null + unavailableSources hr-service(403·404 는 장애 아님), 운영자 ID 는 그대로(상세 "시스템 번호" 칸).
     **0.16.0(2026-11-18 — approval 0.4.0 AP-3)**: 승인함 `decidableByMe` 거르기·항목 `viewerCanDecide`·`viewerDecideBlockedReason`(approval 판정 그대로), 지금 일 건수 APPROVALS 에 key DECIDABLE_BY_ME 줄.
-    **화면 번호(0.14.0, 2026-11-18 — ADR-0070)**: 목록·표에는 화면 번호를 보인다 — 주문 `orderNumber`(8자리), 배송 `deliveryNumber`("주문번호-순번", 예 74939255-2 — 옆에 type·purpose 로 종류 표시),
-    라이더 `rider`(RiderDisplay — 가린 이름 + 라이더 번호 6자리). 시스템 ID(orderId·deliveryId·riderId)는 그대로 실어 링크·상세의 "시스템 번호" 칸에 쓴다. 화면 번호는 원천 값 그대로(없으면 null —
+    **화면 번호(0.14.0, 2026-11-18 — ADR-0070)**: 목록·표에는 화면 번호를 보인다 — 주문 `orderNumber`(8자리), 배송 `deliveryNumber`(ADR-0085 — "D + 주문번호", 같은 주문의 두 번째 배송부터 -순번, 예 D74939255·D74939255-2 — 옆에 type·purpose 로 종류 표시),
+    라이더 `rider`(RiderDisplay — 가린 이름 + 라이더 번호, ADR-0085 예 R4785). 시스템 ID(orderId·deliveryId·riderId)는 그대로 실어 링크·상세의 "시스템 번호" 칸에 쓴다. 화면 번호는 원천 값 그대로(없으면 null —
     옛 기록·번호 전 주문, 화면은 시스템 ID 끝 8자리를 회색으로). 라이더 번호는 rider-service `GET /riders?riderIds=`(직원 토큰, 화면 응답 하나에 50개씩 한 번) — 덤이라 실패면
     번호·이름만 null 이고 unavailableSources 에 rider-service(화면은 그대로). **0.15.0**: 403(이 직원은 라이더를 못 봄 — 예: 센터 관리자)은 장애가 아니라 번호·이름만 null, unavailableSources 에 넣지 않는다.
 servers:
@@ -396,7 +396,7 @@ paths:
                                   id: { type: string }
                                   state: { type: [string, 'null'], description: '배송 state / 주문 status — 원천 값 그대로' }
                                   version: { type: [integer, 'null'] }
-                                  displayNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 번호 — DELIVERY 는 배송 번호("주문번호-순번", execution deliveryNumber), ORDER 는 주문번호 8자리, HELP_REQUEST 는 null' }
+                                  displayNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 번호 — DELIVERY 는 배송 번호(ADR-0085 예 D74939255·D74939255-2, execution deliveryNumber), ORDER 는 주문번호 8자리, HELP_REQUEST 는 null' }
                                   orderNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0) DELIVERY 는 그 배송의 주문번호(execution orderSummary.orderNumber), ORDER 는 displayNumber 와 같음' }
                                   lastRiderMessageAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.6.0) HELP_REQUEST 만 — 도움요청 대화의 라이더 마지막 메시지 시각(execution DE-2)' }
                                   lastSupportMessageAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.6.0) HELP_REQUEST 만 — 지원센터 마지막 메시지 시각' }
@@ -524,7 +524,7 @@ paths:
                           type: object
                           properties:
                             deliveryId: { type: string }
-                            deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 배송 번호 "주문번호-순번" — execution 값 그대로' }
+                            deliveryNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0, ADR-0070) 화면 배송 번호(ADR-0085 예 D74939255, 두 번째 배송부터 D74939255-2) — execution 값 그대로' }
                             orderId: { type: string }
                             orderNumber: { type: [string, 'null'], x-added-in: '2026-11-18', description: '(0.14.0) 화면 주문번호 8자리 — execution 값 그대로(배정 전 null 일 수 있음)' }
                             mfcId: { type: [string, 'null'] }
@@ -959,7 +959,7 @@ components:
         riderId: { type: [string, 'null'] }
         rider: { $ref: '#/components/schemas/RiderDisplay' }
         deliveryId: { type: [string, 'null'] }
-        deliveryNumber: { type: [string, 'null'], description: 화면 배송 번호(주문번호-순번, execution 값 그대로) }
+        deliveryNumber: { type: [string, 'null'], description: "화면 배송 번호(ADR-0085 예 D74939255, 두 번째 배송부터 D74939255-2 — execution 값 그대로)" }
         orderId: { type: [string, 'null'] }
         orderNumber: { type: [string, 'null'], description: 화면용 주문번호(배송 상세의 orderSummary.orderNumber) }
         recordedBy: { type: [string, 'null'], description: 기록한 직원 운영자 ID }
@@ -978,7 +978,7 @@ components:
       description: '(0.14.0, ADR-0070) 라이더 화면 표시 — "김*수 · 482913". 번호·이름은 rider-service 값 그대로, 못 읽었거나 없는 라이더(탈퇴 등)면 null'
       properties:
         riderId: { type: string, description: 시스템 ID — 링크·상세용 }
-        riderNumber: { type: [string, 'null'], description: 라이더 번호 6자리 }
+        riderNumber: { type: [string, 'null'], description: "라이더 번호(ADR-0085 예 R4785 — rider 값 그대로, 자릿수를 가정하지 않는다)" }
         nameMasked: { type: [string, 'null'], description: '가린 이름(첫·끝 글자)' }
     SourceStamp:
       type: object
