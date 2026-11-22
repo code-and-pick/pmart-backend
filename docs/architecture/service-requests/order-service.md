@@ -100,3 +100,13 @@
 - **권한 결정(2026-11-23 사용자, PC 3 전달 — pmart-clients `docs/handoff/mfc-backoffice/2026-11-23-backend-order-metrics-supervisor.md`)**: MFC_SUPERVISOR 도 연다 — **토큰 센터만**(mfcId 필수·검사, 다른 센터 403). 범위 = O-11 계열 + 지금 있는 `summary`·`top-products`(O-8 의 OPERATOR_ADMIN 만을 이만큼 바꿈). OPERATOR_ADMIN 은 그대로 모든 센터. 매출 정의·개인정보 없음 그대로.
 - **카테고리(3번) 확인(PC 1, 2026-11-23)**: 주문 줄에 카테고리 사본이 없다(order 마이그레이션 V1~V9 에 category 열 없음) — 상품별 카테고리는 product 공개 트리(또는 search 색인)에서 붙여야 한다. 구현 때 정함.
 - **구현(2026-11-23, PC 1 — order 0.20.0)**: 1 `GET /orders/metrics/series`(HOUR·DAY·WEEKDAY_HOUR, sku·categoryId) 2 권한(summary·top-products·series 모두 — 관리자 모든 센터, 센터 관리자 mfcId 필수·토큰 센터만) 3 top-products `categoryId`·`categoryName`·거르기(product 지금 값 5분 사본 — 주문 때 사본 아님) 4 WEEKDAY_HOUR 합·평균(`days` 분모, 366일). 카테고리 목록은 product 공개 `GET /categories/tree` 를 화면이 직접. 시험 order check 94 통과. 회신 `docs/handoff/clients/mfc-backoffice/2026-11-23-reply-order-metrics-supervisor.md`.
+
+## O-12. 고객별 구매 요약 — 고객 분류용 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
+- **왜**: 고객 상세·목록의 고객 분류와 "최근 주문일" 거르기.
+- **사용자 결정(2026-11-23) 고객 분류**: 신규 = 가입 1달 이내 · 우수 = 3개월 안 구매금액 100만원 이상 · 휴면 = 1년 동안 구매 없음 · 위험 = 6개월 이상 구매 없음 · 그 밖 일반. (가입일은 customer, 구매는 order — bff 가 둘을 합쳐 이름을 붙인다)
+- **필요한 것**: 고객 ID 여러 개(50개)로 `{customerId, lastOrderAt, orderCount, amount3m}`(구매 = 확정 주문, 금액 = 승인 금액 — O-8 과 같은 정의, 환불 빼는지 알려 주세요). 목록 거르기용으로 "마지막 구매일 기간" 으로 고객 ID 를 찾는 길도.
+
+## O-13. 고객 분석 지표 — 구매 빈도·누적 구매액·재구매율·이탈률 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
+- **사용자 결정(2026-11-23)**: **이탈률 = 한 번 사고 다시는 안 산 고객의 비율**.
+- **필요한 것**: 기간(가입·첫 구매 기준) 안 고객의 분자·분모 — 이탈 = 주문 1건 고객 / 주문 1건 이상 고객, 재구매 = 주문 2건 이상 고객 / 주문 1건 이상 고객, 누적 구매액·평균 구매 횟수. 비율은 화면이 계산(BO-28 — 분자·분모 그대로).
+- 고객 한 명 칸: 누적 구매액·구매 횟수·첫·마지막 구매일(O-12 와 같이 줘도 됨).

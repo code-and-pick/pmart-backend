@@ -39,3 +39,18 @@
 - **받는 쪽**: backoffice-bff `views/customer`(PC 2 — `backoffice-bff.md` BF-2)가 고객 + 최근 주문·클레임·문의·접수 건을 한 번에 묶는다. 화면은 프론트 백오피스.
 - 개인정보: 응답은 가린 값만, 원문·찾는 전화번호는 로그 금지.
 - **상태(2026-11-20, PC 1)**: 1단계 구현 customer **0.11.0**. 찾기 `GET /customers?customerNumber=|phone=|customerIds=`(셋 중 하나만 — 둘 이상·없음 400, 전화는 01로 시작 10~11자리·하이픈 무시, 프로필 휴대폰 번호 기준, 같은 번호 여러 계정이면 가입 순 20개까지), 상세 `GET /customers/{id}`(customerNumber·nameMasked·phoneMasked·emailMasked·status·socialProvider·phoneVerified·joinedAt — 가입 방식 값은 문자열, 없을 수 있음), 원문 `POST /customers/{id}/pii-reveals`(사유 2~200자, fields NAME·PHONE, audit subjectType CUSTOMER·caseRef `CUSTOMER:<id>`, 기록 실패 503 원문 없음). 게이트웨이 라우트 `/api/v1/customers/**`(pmart-config). 2단계(동의 현황·배송지 목록)는 아직. LAN 배포(2026-11-20 905bffe7).
+
+## CU-5. 직원 고객 목록·검색 — 이름 검색, 가입일·상태 거르기 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
+- **왜**: 통합 백오피스 "고객 관리" 목록(회원번호·이름·연락처·가입일·상태·최근 주문일). 지금은 고객번호·전화 완전 일치 찾기만 있어 목록을 못 만든다.
+- **필요한 것**: `GET /customers` 목록(쪽 넘김, 가린 값만) — 거르기 이름(부분 일치?)·전화·회원번호·가입일 기간·상태, 가입 최근 순.
+- **정할 것(PC 1)**: 이름 검색을 어떻게 할지(개인정보 원문 검색 — ADR-0062 와 맞는지, 완전 일치만 허용할지). 최근 구매일 거르기는 order 값이라 O-12 와 같이 보기.
+- 받는 쪽: backoffice-bff `views/customer-search` 확장(PC 2).
+
+## CU-6. 고객 최근 활동일 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
+- **필요한 것**: 고객 상세(`GET /customers/{id}`)와 목록에 `lastActiveAt`(마지막 로그인 또는 앱 사용 — 정의는 PC 1 이 정해 주세요). 가입 경로(socialProvider)·가입일·이메일(가림)은 이미 있음.
+
+## CU-7. 계정 이용제한 — 사유 "욕설 사용" (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
+- **사용자 결정(2026-11-23)**: 계정 상태 관리 — 정상·이용제한·정지·탈퇴, 제한 사유·해제. 사유 예: **욕설 사용**.
+- **지금**: `AccountStatus` = ACTIVE·WITHDRAW_PENDING·WITHDRAW_COMPLETED 뿐 — 제한·정지 없음.
+- **필요한 것**: 직원이 제한·정지를 걸고 푸는 명령(사유 필수, 누가·언제 기록 — audit), 상태 이력, 고객 상세·목록에 상태.
+- **아직 정해지지 않은 것(사용자 확인 필요 — PC 2 가 사용자에게 물을 예정)**: 제한·정지가 각각 무엇을 막는지(주문·문의·리뷰·로그인), 거는 역할(CS_AGENT·OPERATOR_ADMIN), 승인 필요 여부, 고객 알림, 기간(자동 해제).

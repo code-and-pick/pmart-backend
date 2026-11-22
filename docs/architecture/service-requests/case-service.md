@@ -146,3 +146,7 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **요청**: `GET /rider-complaints/counts`·`GET /obligations`(CS 후속)에 선택 `centerId` — 주문·배송에 붙은 건의 센터(사건의 centerId 와 같은 뜻). 센터 없는 건은 센터를 고르면 빠진다(그 뜻을 계약에 적기).
 - **범위 밖(사용자 결정)**: 고객·라이더 문의, 문의 만족도, 교대 인계, 접수 건 통계(sla 외) — 센터 없는 건이 많아 "모든 센터" 그대로.
 - **구현**(2026-11-23 PC 2, case-service 0.33.0 — PR 대기): `GET /rider-complaints`·`/counts`·`GET /obligations` 에 선택 `centerId`. 라이더 컴플레인은 새 칸 `center_id`(V21) — 기록 때 dispatch 배정 `mfcId` 를 저장, 0.33.0 전 기록은 NULL(센터를 고르면 빠짐 — 보정 없음). 후속 처리는 그 사건의 centerId(센터 관리자는 자기 센터 안에서만). 응답 RiderComplaint(Summary) 에 `centerId`. 경로 변경 없음.
+
+## R-13. 고객 상담 메모 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
+- **사용자 결정(2026-11-23)**: 상담사가 쓴다. **고치기·지우기는 쓴 사람만.**
+- 고객 단위 내부 메모(특이사항·인수인계) — 접수 건 메모(0.10.0)와 따로. 받는 쪽 bff 고객 상세.
