@@ -35,7 +35,9 @@ public class LookupClients {
     /** 직원 "이름 · 사번"(HR-4 hr 0.8.0 `GET /hr/employee-labels`, 2026-11-19). */
     HR("hr-service"),
     /** 고객 찾기·상세(BF-2, CU-4 customer 0.11.0, 2026-11-20). */
-    CUSTOMER("customer-service");
+    CUSTOMER("customer-service"),
+    /** 고객 정보 열람 기록(BF-5, audit 0.3.0 `GET /pii-access-logs` — OPERATOR_ADMIN 만, 2026-11-23). */
+    AUDIT("audit-service");
 
     public final String system;
 
@@ -61,6 +63,7 @@ public class LookupClients {
     urls.put(Source.RIDER, props.riderBaseUrl());
     urls.put(Source.HR, props.hrBaseUrl());
     urls.put(Source.CUSTOMER, props.customerBaseUrl());
+    urls.put(Source.AUDIT, props.auditBaseUrl());
     Map<Source, RestClient> built = new java.util.EnumMap<>(Source.class);
     urls.forEach((k, v) -> built.put(k, builder.clone().baseUrl(v).build()));
     this.clients = java.util.Collections.unmodifiableMap(built);

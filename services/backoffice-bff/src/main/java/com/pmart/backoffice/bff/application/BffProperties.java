@@ -19,6 +19,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param riderBaseUrl rider-service(화면 라이더 번호·가린 이름 — ADR-0070, 2026-11-18)
  * @param hrBaseUrl hr-service(처리자·요청자 "이름 · 사번" — ADR-0070, HR-4 hr 0.8.0, 2026-11-19)
  * @param customerBaseUrl customer-service(고객 찾기·상세 — BF-2, CU-4 customer 0.11.0, 2026-11-20)
+ * @param auditBaseUrl audit-service(고객 정보 열람 기록 — BF-5, 2026-11-23)
  * @param mfcPendingLists 처리 대기에 MFC 목록을 읽을지(0.8.0 부터 기본 true — PC 3 F-4 목록 API 가 생김,
  *     mfc-fulfillment 0.9.0. 끄려면 false)
  */
@@ -36,7 +37,8 @@ public record BffProperties(
     @Nullable String riderBaseUrl,
     @Nullable String hrBaseUrl,
     @Nullable String customerBaseUrl,
-    @Nullable Boolean mfcPendingLists) {
+    @Nullable Boolean mfcPendingLists,
+    @Nullable String auditBaseUrl) {
 
   public BffProperties {
     approvalBaseUrl = or(approvalBaseUrl, "http://approval-service:8505");
@@ -51,6 +53,7 @@ public record BffProperties(
     riderBaseUrl = or(riderBaseUrl, "http://rider-service:8403");
     hrBaseUrl = or(hrBaseUrl, "http://hr-service:8512");
     customerBaseUrl = or(customerBaseUrl, "http://customer-service:8103");
+    auditBaseUrl = or(auditBaseUrl, "http://audit-service:8503");
     mfcPendingLists = mfcPendingLists == null || mfcPendingLists; // 0.8.0: F-4 생김 — 기본 켬(끄려면 false)
   }
 

@@ -41,6 +41,10 @@ import tools.jackson.databind.JsonNode;
 public class CustomerViews {
 
   static final int CELL_SIZE = 10;
+
+  /** 0.25.0 배송 칸 — 주문 하나의 배송 최대(재발송·회수 포함). */
+  static final int DELIVERIES_PER_ORDER = 5;
+
   private static final Logger log = LoggerFactory.getLogger(CustomerViews.class);
 
   private final LookupClients clients;
@@ -289,6 +293,11 @@ public class CustomerViews {
         r.put("openedAt", text(cl, "openedAt"));
         r.put("closedAt", text(cl, "closedAt"));
         r.put("refundState", text(cl.path("refund"), "state"));
+        // 0.25.0 BF-5: 사유 코드(글 없음)·환불 금액
+        r.put("reason", text(cl, "reason"));
+        r.put("refundRequestedAmount", number(cl.path("refund").path("requestedAmount")));
+        r.put("refundedAmount", number(cl.path("refund").path("refundedAmount")));
+        r.put("refundCompletedAt", text(cl.path("refund"), "completedAt"));
         rows.add(r);
       }
       Map<String, Object> cellMap = new LinkedHashMap<>();
@@ -296,7 +305,141 @@ public class CustomerViews {
       cellMap.put("items", rows);
       body.put("claims", cellMap);
     }
+
+    // 0.25.0 BF-5: 클레임 종류별 수(반복 클레임) — claim StatusCounts 그대로
+    JsonNode claimCounts =
+        cell(
+            Source.CLAIM,
+            token,
+            "/claims/counts",
+            Map.of("customerId", customerId, "by", "type"),
+            failed);
+    if (claimCounts == null) {
+      body.put("claimCounts", null);
+    } else {
+      List<Map<String, Object>> rows = new ArrayList<>();
+      for (JsonNode n : claimCounts.path("counts")) {
+        Map<String, Object> r = new LinkedHashMap<>();
+        r.put("key", text(n, "key"));
+        r.put("count", n.path("count").asLong(0));
+        rows.add(r);
+      }
+      body.put("claimCounts", Map.of("counts", rows));
+    }
+
+    body.put("deliveries", deliveries(token, orders, used, failed));
+    body.put("piiAccessLogs", piiAccessLogs(token, customerId, used, failed));
     return out(now, used, failed, body);
+  }
+
+  static final List<String> DELIVERY_FIELDS =
+      List.of(
+          "deliveryId",
+          "deliveryNumber",
+          "orderId",
+          "orderNumber",
+          "type",
+          "purpose",
+          "mfcId",
+          "state",
+          "riderId",
+          "completionMethod",
+          "createdAt",
+          "firstAssignedAt",
+          "pickedUpAt",
+          "completedAt",
+          "promisedAt");
+
+  /**
+   * 0.25.0 BF-5 배송 이력 — 주문 칸의 주문마다 execution {@code /deliveries?orderId=}(직원 토큰). 한 번 장애·403 이면 남은
+   * 주문은 부르지 않고 칸 null + unavailableSources(반만 보이지 않게). 주문 칸이 null 이면 null.
+   */
+  @SuppressWarnings("unchecked")
+  private @Nullable Map<String, Object> deliveries(
+      String token, @Nullable JsonNode orders, Set<Source> used, Set<Source> failed) {
+    if (orders == null) {
+      return null;
+    }
+    List<Map<String, Object>> rows = new ArrayList<>();
+    for (JsonNode o : orders.path("items")) {
+      String orderId = text(o, "orderId");
+      if (orderId == null) {
+        continue;
+      }
+      used.add(Source.EXECUTION);
+      JsonNode page =
+          cell(
+              Source.EXECUTION,
+              token,
+              "/deliveries",
+              Map.of("orderId", orderId, "size", DELIVERIES_PER_ORDER),
+              failed);
+      if (page == null) {
+        return null;
+      }
+      rows.addAll((List<Map<String, Object>>) cellOut(page, false, DELIVERY_FIELDS).get("items"));
+    }
+    return Map.of("items", rows);
+  }
+
+  /**
+   * 0.25.0 BF-5 이 고객 정보 열람 기록 — audit 이 OPERATOR_ADMIN 만 보여 주므로 그 밖 직원은 부르지 않고 null(장애 아님). 열람한 직원은
+   * "이름 · 사번"(hr — 실패면 이름만 null).
+   */
+  private @Nullable Map<String, Object> piiAccessLogs(
+      String token, String customerId, Set<Source> used, Set<Source> failed) {
+    boolean admin = PmartPrincipal.current().map(p -> p.hasRole("OPERATOR_ADMIN")).orElse(false);
+    if (!admin) {
+      return null;
+    }
+    used.add(Source.AUDIT);
+    JsonNode page =
+        cell(
+            Source.AUDIT,
+            token,
+            "/pii-access-logs",
+            Map.of("subjectType", "CUSTOMER", "subjectRef", customerId, "size", CELL_SIZE),
+            failed);
+    if (page == null) {
+      return null;
+    }
+    List<Map<String, Object>> rows = new ArrayList<>();
+    List<String> staff = new ArrayList<>();
+    for (JsonNode n : page.path("items")) {
+      Map<String, Object> r = new LinkedHashMap<>();
+      String actor = text(n.path("actor"), "actorId");
+      r.put("occurredAt", text(n, "occurredAt"));
+      r.put("actorId", actor);
+      r.put("accessType", text(n, "accessType"));
+      List<String> fields = new ArrayList<>();
+      n.path("fields").forEach(f -> fields.add(f.asString()));
+      r.put("fields", fields);
+      r.put("purpose", text(n, "purpose"));
+      r.put("screen", text(n, "screen"));
+      rows.add(r);
+      if (actor != null) {
+        staff.add(actor);
+      }
+    }
+    Map<String, JsonNode> labels = null;
+    if (!staff.isEmpty()) {
+      used.add(Source.HR);
+      labels = OperatorLabels.lookup(clients, token, staff);
+      if (labels == null) {
+        failed.add(Source.HR);
+      }
+    }
+    for (Map<String, Object> r : rows) {
+      r.put("actorLabel", OperatorLabels.of((String) r.get("actorId"), labels));
+    }
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("hasMore", text(page.path("page"), "nextCursor") != null);
+    m.put("items", rows);
+    return m;
+  }
+
+  private static @Nullable Long number(JsonNode n) {
+    return n.isNumber() ? n.asLong() : null;
   }
 
   /** 클레임 칸 주문번호 — 404 는 value null(번호 없음), 그 밖 실패는 down(원천 장애). */

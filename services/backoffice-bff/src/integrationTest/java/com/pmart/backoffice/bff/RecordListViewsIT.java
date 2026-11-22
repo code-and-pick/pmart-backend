@@ -235,6 +235,23 @@ class RecordListViewsIT {
     assertThat(down.body().path("unavailableSources").toString()).contains("claim-service");
   }
 
+  /** 0.25.0 BF-4 2차: 센터 → case 0.33.0 centerId 그대로, 줄 centerId. */
+  @Test
+  void riderComplaintsPassCenter() {
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/rider-complaints"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"items\":[{\"complaintId\":\"RCP-1\",\"centerId\":\"MFC-MOKPO-01\"}],\"page\":{}}")));
+    Res r = get("/views/rider-complaints?centerId=MFC-MOKPO-01");
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("items").get(0).path("centerId").asString()).isEqualTo("MFC-MOKPO-01");
+    cases.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/rider-complaints"))
+            .withQueryParam("centerId", equalTo("MFC-MOKPO-01")));
+  }
+
   @Test
   void riderComplaintsGetDeliveryOrderRiderAndStaffLabels() {
     cases.stubFor(

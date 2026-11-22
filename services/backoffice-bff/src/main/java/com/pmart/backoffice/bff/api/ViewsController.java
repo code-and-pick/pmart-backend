@@ -225,6 +225,7 @@ public class ViewsController implements ViewsApi {
       @Nullable String complaintType,
       @Nullable OffsetDateTime from,
       @Nullable OffsetDateTime to,
+      @Nullable String centerId,
       Integer size,
       @Nullable String cursor) {
     return ResponseEntity.ok(
@@ -235,6 +236,7 @@ public class ViewsController implements ViewsApi {
                 complaintType,
                 from == null ? null : from.toInstant().toString(),
                 to == null ? null : to.toInstant().toString(),
+                centerId,
                 size,
                 cursor),
             GetRiderComplaintsView200Response.class));

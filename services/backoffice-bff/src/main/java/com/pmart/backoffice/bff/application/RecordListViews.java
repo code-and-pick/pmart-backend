@@ -155,12 +155,15 @@ public class RecordListViews {
       @Nullable String complaintType,
       @Nullable String from,
       @Nullable String to,
+      /** 0.25.0 BF-4 2차 — case 0.33.0 R-12 centerId 그대로. */
+      @Nullable String centerId,
       @Nullable Integer size,
       @Nullable String cursor) {
     String token = token();
     Instant now = clock.instant();
     Map<String, Object> q = new LinkedHashMap<>();
     put(q, "riderId", riderId);
+    put(q, "centerId", centerId);
     put(q, "deliveryId", deliveryId);
     put(q, "complaintType", complaintType);
     put(q, "from", from);
@@ -186,6 +189,7 @@ public class RecordListViews {
       i.put("complaintType", text(c, "complaintType"));
       i.put("recordedVia", text(c, "source"));
       i.put("recordedBy", text(c, "recordedBy"));
+      i.put("centerId", text(c, "centerId"));
       i.put("recordedAt", text(c, "recordedAt"));
       items.add(i);
       add(deliveryIds, text(c, "deliveryId"));

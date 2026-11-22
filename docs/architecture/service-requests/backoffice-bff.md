@@ -52,9 +52,10 @@
 - **요청**: `GET /views/claims`(→ claim CL-8 `mfcId`), `GET /views/rider-complaints`(→ case `centerId`), `GET /views/pending-work`·`/views/work-counts`(묶는 원천마다 센터 인자를 넘기고, 센터를 못 거르는 원천은 응답에 표시)에 선택 `centerId`(bff 의 다른 view 와 같은 이름).
 - 원천 쪽: claim CL-8(PC 1), case R-12(PC 2).
 - **범위 밖(사용자 결정)**: `views/unified-lookup`(통합 조회) — 그대로.
-- **구현 1차**(2026-11-23 PC 2, bff 0.24.0 — PR 대기): `views/claims` centerId → claim mfcId(CL-8), `views/pending-work` 이행 확인·MFC 중지 실패·인계 거절은 원천 mfcId 로(멈춘 사가는 센터가 없어 못 거름), `views/work-counts` PENDING_WORK 같은 규칙·DELIVERIES execution mfcId(CASES·OBLIGATIONS·SHIFT_HANDOVERS·INQUIRIES·APPROVALS 는 범위 밖 — 모든 센터). 못 거른 원천은 응답 `centerUnfilteredSources`. **`views/rider-complaints` 는 case R-12 뒤 2차.**
+- **구현 1차**(2026-11-23 PC 2, bff 0.24.0 — PR 대기): `views/claims` centerId → claim mfcId(CL-8), `views/pending-work` 이행 확인·MFC 중지 실패·인계 거절은 원천 mfcId 로(멈춘 사가는 센터가 없어 못 거름), `views/work-counts` PENDING_WORK 같은 규칙·DELIVERIES execution mfcId(CASES·OBLIGATIONS·SHIFT_HANDOVERS·INQUIRIES·APPROVALS 는 범위 밖 — 모든 센터). 못 거른 원천은 응답 `centerUnfilteredSources`. **`views/rider-complaints` 는 case R-12 뒤 2차.** **2차 구현**(2026-11-23 bff 0.25.0 — `views/rider-complaints?centerId` → case 0.33.0 centerId, 줄 `centerId`).
 
 ## BF-5. 고객 상세 넓히기 — 배송·환불·활동 기록·분류 (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "고객관리" 목록 — "그 세션에 바로 보내")
 - **1차(원천 있음, PC 2)**: 주문 칸 상품·금액·취소, 배송 이력(execution·dispatch), 환불(claim), 관리자 활동 기록(audit 열람·작업 기록), 문의 처리 상태·담당, 클레임 종류별 수.
 - **2차(원천 요청 뒤)**: 목록·검색(CU-5), 최근 활동일(CU-6), 계정 상태(CU-7), 분류·분석(O-12·O-13), 결제(PY-1), 리뷰(RV-1), 쿠폰(PRM-1).
 - **고객 분류 규칙(사용자 결정 2026-11-23)**: 신규 가입 1달 이내, 우수 3개월 안 구매 100만원 이상, 휴면 1년 구매 없음, 위험 6개월 이상 구매 없음(휴면 우선), 그 밖 일반.
+- **1차 구현**(2026-11-23 PC 2, bff 0.25.0 — PR 대기): 고객 상세에 `deliveries`(execution 주문마다 — 상태·담당 MFC·배정·픽업·완료)·`claimCounts`(종류별 수 — 반복 클레임)·`piiAccessLogs`(audit 열람 기록 — OPERATOR_ADMIN 만), 클레임 줄 사유 코드·환불 금액. **아직 없음**: 작업 기록(audit `/audit-entries` 501), 문의 담당 상담원·주문 상품 이름(원천 목록에 없음), 상담 메모 칸(case 0.34.0 배포 뒤 다음 PR).

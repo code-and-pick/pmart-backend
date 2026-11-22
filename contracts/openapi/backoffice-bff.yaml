@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.24.0
+  version: 0.25.0
   description: |
+    **0.25.0(2026-11-23 — BF-5 1차, 사용자 "고객관리" 목록 "1. 시작해"; BF-4 2차)**: 고객 상세 `views/customer/{id}` 에 칸 셋 — `deliveries`(주문 칸 주문마다 execution `GET /deliveries?orderId=` — 배송 상태·담당 MFC·배차·완료·실패), `claimCounts`(claim `GET /claims/counts?customerId=&by=type` — 반복 클레임), `piiAccessLogs`(audit `GET /pii-access-logs?subjectType=CUSTOMER&subjectRef=` — 이 고객 정보를 누가·언제·왜 열람했는지, **OPERATOR_ADMIN 만** — 그 밖은 부르지 않고 null). 클레임 칸 줄에 `reason`(사유 코드 — 글 없음)·환불 `refundRequestedAmount`·`refundedAmount`·`refundCompletedAt`. `views/rider-complaints` 에 선택 `centerId`(case 0.33.0 R-12 — 센터 없는 기록은 빠짐)와 줄 `centerId`.
     **0.24.0(2026-11-23 — BF-4, 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기)**: 선택 `centerId` — `GET /views/claims`(→ claim 0.13.0 CL-8 `mfcId` = 원주문 이행 센터), `GET /views/pending-work`(이행 확인 필요·MFC 중지 실패·인계 거절은 원천 `mfcId` 로 거름, 멈춘 사가는 센터가 없어 못 거름), `GET /views/work-counts`(PENDING_WORK 위와 같음, DELIVERIES 는 execution `mfcId`; CASES·OBLIGATIONS·SHIFT_HANDOVERS·INQUIRIES·APPROVALS 는 범위 밖 — 모든 센터 그대로). 못 거른 원천은 응답 `centerUnfilteredSources`. 라이더 컴플레인은 case R-12 뒤.
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
     조회는 원천별 asOf·postedAt·신선도·확인 등급(직접확인/사본/불명)을 그대로 노출하며 기준시각이 다른 수량은 합산하지 않는다.
@@ -262,6 +263,9 @@ paths:
           - `csIntakes` = case `GET /cs-intakes?customerRef=&size=10`(경로·종류·받은 직원 "이름 · 사번" — 요약 글 없음)
         **호출한 직원의 토큰**으로. 칸 원천이 실패하거나 403 이면 그 칸만 null + unavailableSources(0건으로 바꾸지 않음). 직원 이름(hr) 실패는 이름만 null.
           - `claims`(0.23.0) = claim `GET /claims?customerId=&size=10`(claim 0.10.0 CL-7 — 순번 `claimSeq`·종류·상태·환불 상태, 사유 글 없음) + 주문번호(같은 화면 주문 칸에 있으면 그 값, 없으면 order `/orders/lookups/{id}` — 한 번 장애면 남은 주문 안 부름, 404 는 null)
+          - `deliveries`(0.25.0) = 주문 칸의 주문마다 execution `GET /deliveries?orderId=&size=5`(한 번 장애면 남은 주문은 부르지 않고 칸 null) — 배송 번호·상태·종류·담당 MFC·배정·픽업·완료 시각·완료 방식. 주문 칸이 null 이면 null.
+          - `claimCounts`(0.25.0) = claim `GET /claims/counts?customerId=&by=type`(종류별 수 — 반복 클레임 확인).
+          - `piiAccessLogs`(0.25.0) = audit `GET /pii-access-logs?subjectType=CUSTOMER&subjectRef=&size=10`(열람한 직원 "이름 · 사번"·시각·항목·목적 — 원문 없음). **OPERATOR_ADMIN 만**(audit 가 관리자만) — 그 밖 직원은 부르지 않고 null(unavailableSources 에 넣지 않음). 상태 변경 같은 작업 기록은 audit `/audit-entries` 가 아직 501 이라 없음.
         원문 열람은 화면이 customer `POST /customers/{id}/pii-reveals` 를 직접(사유·감사 기록).
       operationId: getCustomerView
       x-pmart-user-types: [OPERATOR]
@@ -304,6 +308,7 @@ paths:
         - { name: complaintType, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: centerId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 64 }, description: '(0.25.0 BF-4 2차, case 0.33.0 R-12) 배송 센터 — 센터 없는 기록(0.33.0 전)은 센터를 주면 빠진다' }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -971,6 +976,7 @@ components:
         orderId: { type: [string, 'null'] }
         orderNumber: { type: [string, 'null'], description: 화면용 주문번호(배송 상세의 orderSummary.orderNumber) }
         recordedBy: { type: [string, 'null'], description: 기록한 직원 운영자 ID }
+        centerId: { type: [string, 'null'], x-added-in: '2026-11-23', description: '(0.25.0, case 0.33.0) 배송 센터 — 0.33.0 전 기록은 null' }
         recordedByLabel: { $ref: '#/components/schemas/OperatorLabel' }
     OperatorLabel:
       type: [object, 'null']
@@ -1170,6 +1176,65 @@ components:
                   openedAt: { type: [string, 'null'], format: date-time }
                   closedAt: { type: [string, 'null'], format: date-time }
                   refundState: { type: [string, 'null'], description: claim refund.state 그대로(NONE·IN_PROGRESS·COMPLETED·FAILED) }
+                  reason: { type: [string, 'null'], x-added-in: '2026-11-23', description: '(0.25.0) claim reason 코드 그대로(ClaimReason — 글 없음)' }
+                  refundRequestedAmount: { type: [integer, 'null'], format: int64, x-added-in: '2026-11-23', description: '(0.25.0) claim refund.requestedAmount' }
+                  refundedAmount: { type: [integer, 'null'], format: int64, x-added-in: '2026-11-23', description: '(0.25.0) claim refund.refundedAmount' }
+                  refundCompletedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-23' }
+        deliveries:
+          type: [object, 'null']
+          x-added-in: '2026-11-23'
+          description: (0.25.0 BF-5) 주문 칸 주문들의 배송 — 원천 실패·403 이면 null
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  deliveryId: { type: [string, 'null'] }
+                  deliveryNumber: { type: [string, 'null'] }
+                  orderId: { type: [string, 'null'] }
+                  orderNumber: { type: [string, 'null'] }
+                  type: { type: [string, 'null'] }
+                  purpose: { type: [string, 'null'] }
+                  mfcId: { type: [string, 'null'] }
+                  state: { type: [string, 'null'] }
+                  riderId: { type: [string, 'null'] }
+                  completionMethod: { type: [string, 'null'] }
+                  createdAt: { type: [string, 'null'], format: date-time }
+                  firstAssignedAt: { type: [string, 'null'], format: date-time }
+                  pickedUpAt: { type: [string, 'null'], format: date-time }
+                  completedAt: { type: [string, 'null'], format: date-time }
+                  promisedAt: { type: [string, 'null'], format: date-time }
+        claimCounts:
+          type: [object, 'null']
+          x-added-in: '2026-11-23'
+          description: (0.25.0 BF-5) 클레임 종류별 수(claim StatusCounts 그대로 — 0 까지 모든 종류) — 원천 실패·403 이면 null
+          properties:
+            counts:
+              type: array
+              items:
+                type: object
+                properties:
+                  key: { type: string }
+                  count: { type: integer, format: int64 }
+        piiAccessLogs:
+          type: [object, 'null']
+          x-added-in: '2026-11-23'
+          description: (0.25.0 BF-5) 이 고객 정보 열람 기록 최근 10건 — OPERATOR_ADMIN 만(그 밖 null), 원천 실패면 null + unavailableSources
+          properties:
+            hasMore: { type: boolean }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  occurredAt: { type: [string, 'null'], format: date-time }
+                  actorId: { type: [string, 'null'], description: 열람한 직원 운영자 ID }
+                  actorLabel: { $ref: '#/components/schemas/OperatorLabel' }
+                  accessType: { type: [string, 'null'] }
+                  fields: { type: array, items: { type: string } }
+                  purpose: { type: [string, 'null'] }
+                  screen: { type: [string, 'null'] }
     ComposedView:
       type: object
       description: 모든 화면 응답의 공통 머리. 원천별 asOf 목록과 조회 실패 원천을 분리해 보여준다.

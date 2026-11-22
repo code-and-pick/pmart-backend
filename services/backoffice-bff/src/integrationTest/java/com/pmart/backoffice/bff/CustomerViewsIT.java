@@ -43,11 +43,14 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(name = "order", baseUrlProperties = "pmart.bff.order-base-url"),
   @ConfigureWireMock(name = "case", baseUrlProperties = "pmart.bff.case-base-url"),
   @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url"),
-  @ConfigureWireMock(name = "claim", baseUrlProperties = "pmart.bff.claim-base-url")
+  @ConfigureWireMock(name = "claim", baseUrlProperties = "pmart.bff.claim-base-url"),
+  @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
+  @ConfigureWireMock(name = "audit", baseUrlProperties = "pmart.bff.audit-base-url")
 })
 class CustomerViewsIT {
 
   static final String CS = TestJwt.operator("op-cs", List.of("CS_AGENT"), List.of());
+  static final String ADMIN = TestJwt.operator("op-admin", List.of("OPERATOR_ADMIN"), List.of());
 
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
@@ -67,11 +70,17 @@ class CustomerViewsIT {
   @InjectWireMock("claim")
   WireMockServer claim;
 
+  @InjectWireMock("execution")
+  WireMockServer execution;
+
+  @InjectWireMock("audit")
+  WireMockServer audit;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(customer, order, cases, hr, claim)) {
+    for (WireMockServer w : List.of(customer, order, cases, hr, claim, execution, audit)) {
       w.resetAll();
     }
     http =
@@ -84,8 +93,12 @@ class CustomerViewsIT {
   record Res(int status, JsonNode body) {}
 
   Res get(String path) {
+    return get(CS, path);
+  }
+
+  Res get(String token, String path) {
     var e =
-        http.get().uri(path).headers(h -> h.setBearerAuth(CS)).retrieve().toEntity(String.class);
+        http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
     return new Res(
         e.getStatusCode().value(), mapper.readTree(e.getBody() == null ? "{}" : e.getBody()));
   }
@@ -227,13 +240,33 @@ class CustomerViewsIT {
                     200,
                     """
                     {"items":[{"claimId":"CL-1","claimSeq":1,"orderId":"ORD-1","type":"RETURN","state":"REQUESTED",
-                      "reason":"DAMAGED","channel":"CS","openedAt":"2026-11-19T04:00:00Z","refund":{"state":"IN_PROGRESS"}},
+                      "reason":"DAMAGED","channel":"CS","openedAt":"2026-11-19T04:00:00Z",
+                      "refund":{"state":"IN_PROGRESS","requestedAmount":5000,"refundedAmount":0}},
                      {"claimId":"CL-2","claimSeq":1,"orderId":"ORD-9","type":"CANCEL","state":"COMPLETED",
                       "openedAt":"2026-11-18T04:00:00Z","closedAt":"2026-11-18T05:00:00Z"}],
                      "page":{"nextCursor":"c3"}}""")));
     order.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/orders/lookups/ORD-9"))
             .willReturn(json(200, "{\"orderId\":\"ORD-9\",\"orderNumber\":\"51234567\"}")));
+
+    claim.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/claims/counts"))
+            .withQueryParam("customerId", equalTo("CU-1"))
+            .withQueryParam("by", equalTo("type"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"counts\":[{\"key\":\"CANCEL\",\"count\":1,\"capped\":false},{\"key\":\"RETURN\",\"count\":3,\"capped\":false}]}")));
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries"))
+            .withQueryParam("orderId", equalTo("ORD-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"deliveryId":"DLV-1","deliveryNumber":"D74939255","orderId":"ORD-1","orderNumber":"74939255",
+                      "type":"FORWARD","mfcId":"MFC-1","state":"DELIVERED","riderId":"RD-1","createdAt":"2026-11-19T01:10:00Z",
+                      "completedAt":"2026-11-19T02:00:00Z","completionMethod":"HANDED","dropAddress":"부산 어딘가"}]}""")));
 
     Res r = get("/views/customer/CU-1");
 
@@ -268,7 +301,23 @@ class CustomerViewsIT {
         .as("주문 칸 값 — order 단건 안 부름")
         .isEqualTo("74939255");
     assertThat(cl.path("items").get(0).path("refundState").asString()).isEqualTo("IN_PROGRESS");
-    assertThat(cl.path("items").get(0).has("reason")).as("사유는 싣지 않음").isFalse();
+    assertThat(cl.path("items").get(0).path("reason").asString())
+        .as("사유 코드(0.25.0)")
+        .isEqualTo("DAMAGED");
+    assertThat(cl.path("items").get(0).path("refundRequestedAmount").asLong()).isEqualTo(5000);
+    assertThat(cl.path("items").get(0).path("refundedAmount").asLong()).isZero();
+    // 0.25.0 BF-5: 클레임 종류별 수·배송 이력, 열람 기록은 관리자만(상담원은 부르지 않음)
+    assertThat(r.body().path("claimCounts").path("counts").toString())
+        .contains("RETURN")
+        .contains("3");
+    JsonNode dl = r.body().path("deliveries").path("items");
+    assertThat(dl).hasSize(1);
+    assertThat(dl.get(0).path("deliveryNumber").asString()).isEqualTo("D74939255");
+    assertThat(dl.get(0).path("state").asString()).isEqualTo("DELIVERED");
+    assertThat(dl.get(0).path("mfcId").asString()).isEqualTo("MFC-1");
+    assertThat(dl.get(0).has("dropAddress")).as("주소 없음").isFalse();
+    assertThat(r.body().path("piiAccessLogs").isNull()).isTrue();
+    audit.verify(0, WireMock.anyRequestedFor(WireMock.anyUrl()));
     assertThat(cl.path("items").get(1).path("orderNumber").asString()).isEqualTo("51234567");
     assertThat(cl.path("items").get(1).path("refundState").isNull()).isTrue();
     order.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/orders/lookups/ORD-1")));
@@ -278,6 +327,59 @@ class CustomerViewsIT {
           WireMock.anyRequestedFor(WireMock.anyUrl())
               .withHeader("Authorization", equalTo("Bearer " + CS)));
     }
+  }
+
+  /** 0.25.0 BF-5: 관리자는 열람 기록(이름 · 사번), 배송 원천 장애면 배송 칸만 null. */
+  @Test
+  void adminSeesPiiAccessLogsAndDeliveryOutageIsOnlyThatCell() {
+    customer.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customers/CU-1"))
+            .willReturn(json(200, "{\"customerId\":\"CU-1\",\"status\":\"ACTIVE\"}")));
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/lookups"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"items\":[{\"orderId\":\"ORD-1\"},{\"orderId\":\"ORD-2\"}],\"page\":{\"hasNext\":false}}")));
+    execution.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/deliveries")).willReturn(aResponse().withStatus(503)));
+    audit.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/pii-access-logs"))
+            .withQueryParam("subjectType", equalTo("CUSTOMER"))
+            .withQueryParam("subjectRef", equalTo("CU-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"piiAccessLogId":"PA-1","occurredAt":"2026-11-23T01:00:00Z","actor":{"actorId":"op-cs","actorType":"OPERATOR"},
+                      "subjectType":"CUSTOMER","subjectRef":"CU-1","accessType":"VIEW","fields":["NAME","PHONE"],"purpose":"CS_CALLBACK","screen":"customer-detail"}],
+                     "page":{"nextCursor":"n1"}}""")));
+    hr.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/hr/employee-labels"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"items\":[{\"operatorId\":\"op-cs\",\"name\":\"이상담\",\"employeeNo\":\"P2026-00007\"}]}")));
+
+    Res r = get(ADMIN, "/views/customer/CU-1");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode logs = r.body().path("piiAccessLogs");
+    assertThat(logs.path("hasMore").asBoolean()).isTrue();
+    assertThat(logs.path("items").get(0).path("actorLabel").path("name").asString())
+        .isEqualTo("이상담");
+    assertThat(logs.path("items").get(0).path("fields").toString())
+        .isEqualTo("[\"NAME\",\"PHONE\"]");
+    audit.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/pii-access-logs"))
+            .withHeader("Authorization", equalTo("Bearer " + ADMIN)));
+    assertThat(r.body().path("deliveries").isNull()).as("배송 칸만 확인 불가").isTrue();
+    assertThat(r.body().path("unavailableSources").toString())
+        .contains("delivery-execution-service");
+    execution.verify(
+        0,
+        getRequestedFor(urlPathEqualTo("/api/v1/deliveries"))
+            .withQueryParam("orderId", equalTo("ORD-2")));
   }
 
   @Test
