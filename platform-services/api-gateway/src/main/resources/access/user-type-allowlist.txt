@@ -98,6 +98,7 @@ GET /api/v1/customer-assistant/faqs/{faqId} CUSTOMER
 GET /api/v1/customer-assistant/questions CUSTOMER
 GET /api/v1/customer-assistant/questions/{answerId} CUSTOMER
 GET /api/v1/customer-assistant/recent-orders CUSTOMER
+GET /api/v1/customer-notes OPERATOR
 GET /api/v1/customers OPERATOR
 GET /api/v1/customers/{customerId} OPERATOR
 GET /api/v1/deliveries OPERATOR
@@ -437,6 +438,9 @@ POST /api/v1/content-import-batches/{batchId}/submissions OPERATOR
 POST /api/v1/coupon-campaigns/{promotionId}/downloads CUSTOMER
 POST /api/v1/cs-intakes OPERATOR
 POST /api/v1/customer-assistant/questions CUSTOMER
+POST /api/v1/customer-notes OPERATOR
+POST /api/v1/customer-notes/{noteId}/deletions OPERATOR
+POST /api/v1/customer-notes/{noteId}/revisions OPERATOR
 POST /api/v1/customers/{customerId}/pii-reveals OPERATOR
 POST /api/v1/deliveries/{deliveryId}/assignment-cancellations OPERATOR,RIDER
 POST /api/v1/deliveries/{deliveryId}/completions RIDER
