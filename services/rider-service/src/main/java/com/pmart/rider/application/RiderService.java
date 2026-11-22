@@ -117,6 +117,8 @@ public class RiderService {
   private final Clock clock;
 
   private final com.pmart.rider.infrastructure.AddressClient addresses;
+  private final com.pmart.rider.infrastructure.CenterClient centers;
+  private final com.pmart.rider.infrastructure.ExecutionClient executions;
 
   public RiderService(
       RiderStore store,
@@ -126,8 +128,12 @@ public class RiderService {
       Clock clock,
       LicenseHasher licenses,
       com.pmart.rider.infrastructure.AddressClient addresses,
-      org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones) {
+      org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones,
+      com.pmart.rider.infrastructure.CenterClient centers,
+      com.pmart.rider.infrastructure.ExecutionClient executions) {
     this.phones = phones;
+    this.centers = centers;
+    this.executions = executions;
     this.addresses = addresses;
     this.licenses = licenses;
     this.store = store;
@@ -262,6 +268,37 @@ public class RiderService {
   }
 
   /** 거주지 도로명주소가 실제 주소인지(라이더 앱 요청 §12 — 사용자 "서버가 주소 변환으로 확인"). 없으면(null) 검사하지 않는다. */
+  private static boolean sameAreas(List<Rider.Area> now, List<Rider.Area> next) {
+    return now.stream()
+        .map(Rider.Area::mfcId)
+        .collect(java.util.stream.Collectors.toSet())
+        .equals(next.stream().map(Rider.Area::mfcId).collect(java.util.stream.Collectors.toSet()));
+  }
+
+  /**
+   * 배달 지역 바꾸기 앞 확인(2026-11-23 라이더 앱 요청): 고른 센터가 운영 중인 MFC 가 아니면 422
+   * MFC_NOT_AVAILABLE(center-master), 진행 중 배송이 있으면 409 INVALID_STATE(execution — 쉬는 중이어도 픽업한 배송이 남을
+   * 수 있다). 못 부르면 503.
+   */
+  private void requireAreaChangeAllowed(String riderId, List<Rider.Area> areas) {
+    if (areas.isEmpty()) {
+      return; // 아래 빈 목록 400 이 먼저
+    }
+    for (Rider.Area a : areas) {
+      if (!centers.activeMfc(a.mfcId())) {
+        throw new PmartException(
+            "MFC_NOT_AVAILABLE",
+            HttpStatus.UNPROCESSABLE_CONTENT,
+            "운영 중인 MFC 가 아닙니다. 픽업지 목록에서 고르세요.",
+            false,
+            List.of());
+      }
+    }
+    if (executions.withdrawalBlockers(riderId).contains("ACTIVE_DELIVERY")) {
+      throw PmartException.invalidState("진행 중인 배송이 있어 배달 지역을 바꿀 수 없습니다. 배송을 마친 뒤 바꾸세요.");
+    }
+  }
+
   private void requireRealAddress(@Nullable String roadAddress) {
     if (roadAddress == null) {
       return;
@@ -305,6 +342,10 @@ public class RiderService {
     String riderId = requireRider();
     requireBankCode(c.bankCode());
     requireRealAddress(c.residenceRoad()); // 외부 호출 — 트랜잭션 밖
+    boolean areasChange = c.areas() != null && !sameAreas(get(riderId).deliveryAreas(), c.areas());
+    if (areasChange) {
+      requireAreaChangeAllowed(riderId, c.areas()); // 외부 호출 — 트랜잭션 밖
+    }
     idempotency.execute(
         new RequestKey(sourceSystem, requestId, "updateMyRider", riderId),
         Map.of("change", c, "expectedVersion", String.valueOf(expectedVersion)),
@@ -360,7 +401,18 @@ public class RiderService {
             if (c.areas().isEmpty()) {
               throw new PmartException(ErrorCode.VALIDATION_FAILED, "배달지역을 하나 이상 두세요.");
             }
-            store.replaceAreas(riderId, c.areas());
+            if (areasChange) {
+              // 배달 지역 바꾸기(2026-11-23 사용자 "운행을 쉴 때만, 바로 반영"): 운행 중이면 409. 진행 중 배송은 위에서 확인.
+              if (r.operatingStatus() == Rider.OperatingStatus.ON_DUTY) {
+                throw PmartException.invalidState("운행 중에는 배달 지역을 바꿀 수 없습니다. 운행을 종료한 뒤 바꾸세요.");
+              }
+              store.replaceAreas(riderId, c.areas());
+              // 쉬는 동안 남은 운행 센터가 새 지역 밖이면 새 지역 첫 센터로(옛 앱이 그 값을 보내 MFC_NOT_IN_AREAS 가 나지 않게)
+              if (r.operatingMfcId() != null
+                  && c.areas().stream().noneMatch(a -> a.mfcId().equals(r.operatingMfcId()))) {
+                store.setOperatingMfc(riderId, c.areas().get(0).mfcId());
+              }
+            }
           }
           return riderId;
         });

@@ -40,10 +40,14 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.messaging.outbox.delete-after-insert=false"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock(
-    @ConfigureWireMock(
-        name = "execution",
-        baseUrlProperties = {"pmart.rider.execution-base-url"}))
+@EnableWireMock({
+  @ConfigureWireMock(
+      name = "execution",
+      baseUrlProperties = {"pmart.rider.execution-base-url"}),
+  @ConfigureWireMock(
+      name = "center",
+      baseUrlProperties = {"pmart.rider.center-master-base-url"})
+})
 class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
 
   static final String BLOCKERS = "/api/v1/internal/riders/%s/withdrawal-blockers";
@@ -56,6 +60,9 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("execution")
   WireMockServer execution;
 
+  @InjectWireMock("center")
+  WireMockServer center;
+
   RestClient http;
 
   @BeforeEach
@@ -66,6 +73,46 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     execution.resetAll();
+    center.resetAll();
+  }
+
+  /** 배달 지역 바꾸기(2026-11-23 — 사용자 "운행을 쉴 때만, 한 곳만, 바로 반영"). */
+  @Test
+  void deliveryAreaChangeOnlyWhileOffDutyToActiveMfc() {
+    String rider = "RD-area-" + UUID.randomUUID();
+    assertThat(signup(rider, phone()).getStatusCode().value()).isEqualTo(201);
+    centerIs("MFC-MOKPO-01", "MFC", "ACTIVE");
+    centerIs("MFC-PLANNED", "MFC", "PLANNED");
+    blockers(rider, "[]");
+
+    // 운행 중이면 409
+    assertThat(state(rider, "ON_DUTY", "s-1").getStatusCode().value()).isEqualTo(200);
+    ResponseEntity<String> onDuty = areas(rider, "MFC-MOKPO-01", "a-1");
+    assertThat(onDuty.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(onDuty).path("code").asString()).isEqualTo("INVALID_STATE");
+    assertThat(state(rider, "OFF_DUTY", "s-2").getStatusCode().value()).isEqualTo(200);
+
+    // 운영하지 않는 센터·없는 센터 422
+    assertThat(json(areas(rider, "MFC-PLANNED", "a-2")).path("code").asString())
+        .isEqualTo("MFC_NOT_AVAILABLE");
+    assertThat(json(areas(rider, "MFC-NONE", "a-3")).path("code").asString())
+        .isEqualTo("MFC_NOT_AVAILABLE");
+
+    // 진행 중 배송이 있으면 409
+    blockers(rider, "[\"ACTIVE_DELIVERY\"]");
+    centerIs("MFC-MOKPO-01", "MFC", "ACTIVE");
+    assertThat(areas(rider, "MFC-MOKPO-01", "a-4").getStatusCode().value()).isEqualTo(409);
+
+    // 쉬는 중·배송 없음 → 바로 반영, 남은 운행 센터도 새 지점으로
+    blockers(rider, "[\"UNCONFIRMED_EARNING\"]");
+    centerIs("MFC-MOKPO-01", "MFC", "ACTIVE");
+    assertThat(areas(rider, "MFC-MOKPO-01", "a-5").getStatusCode().value()).isEqualTo(200);
+    JsonNode me = json(get(rider, "/riders/me"));
+    assertThat(me.path("deliveryAreas").get(0).path("mfcId").asString()).isEqualTo("MFC-MOKPO-01");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT operating_mfc_id FROM rider WHERE rider_id = ?", String.class, rider))
+        .isIn("MFC-MOKPO-01", null);
   }
 
   @Test
@@ -234,6 +281,51 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
             .header("Authorization", "Bearer " + ops)
             .retrieve()
             .toEntity(String.class));
+  }
+
+  private void centerIs(String id, String type, String state) {
+    center.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/centers/" + id))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"centerId\":\""
+                            + id
+                            + "\",\"type\":\""
+                            + type
+                            + "\",\"state\":\""
+                            + state
+                            + "\"}")));
+  }
+
+  private ResponseEntity<String> state(String rider, String status, String key) {
+    return http.put()
+        .uri("/riders/me/state")
+        .headers(
+            h -> {
+              h.setBearerAuth(TestJwt.rider(rider));
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "rider-app");
+            })
+        .body(Map.of("status", status, "newDispatchEnabled", false))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  private ResponseEntity<String> areas(String rider, String mfcId, String key) {
+    return http.patch()
+        .uri("/riders/me")
+        .headers(
+            h -> {
+              h.setBearerAuth(TestJwt.rider(rider));
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "rider-app");
+            })
+        .body(Map.of("deliveryAreas", List.of(Map.of("mfcId", mfcId))))
+        .retrieve()
+        .toEntity(String.class);
   }
 
   private void blockers(String rider, String json) {

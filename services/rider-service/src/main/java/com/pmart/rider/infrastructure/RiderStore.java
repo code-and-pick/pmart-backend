@@ -132,6 +132,11 @@ public class RiderStore {
     }
   }
 
+  /** 쉬는 동안의 운행 센터만 바꾼다(배달 지역 바꾸기 — 2026-11-23). 운행 상태·버전은 그대로(같은 트랜잭션의 프로필 갱신이 버전을 올림). */
+  public void setOperatingMfc(String riderId, String mfcId) {
+    jdbc.update("UPDATE rider SET operating_mfc_id = ? WHERE rider_id = ?", mfcId, riderId);
+  }
+
   public void replaceAreas(String riderId, List<Area> areas) {
     jdbc.update("DELETE FROM rider_delivery_area WHERE rider_id = ?", riderId);
     for (Area a : areas) {
