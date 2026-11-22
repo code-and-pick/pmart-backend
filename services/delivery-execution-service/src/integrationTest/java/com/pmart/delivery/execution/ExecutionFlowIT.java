@@ -121,6 +121,93 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /** BR-24(사용자 2026-11-14): 배정 라이더에게 픽업 뒤 ~ 전달 완료 전만, 고객 전화번호 그대로, 저장 안 함(no-store). */
+  /** 배송 품질·효율·사고 통계(0.38.0): 배정일 기준, 고객 수령 확인은 지연·배송 소요에서 빠짐, 사고는 배송의 도움요청 종류별. */
+  @Test
+  void deliveryMetricsCountQualityAndIncidents() {
+    String mfc = "MFC-MET-" + UUID.randomUUID().toString().substring(0, 6);
+    String rider = "RD-met-" + UUID.randomUUID();
+    java.time.Instant at = java.time.Instant.now().minusSeconds(3600);
+    java.sql.Timestamp assigned = java.sql.Timestamp.from(at);
+    java.sql.Timestamp arrived = java.sql.Timestamp.from(at.plusSeconds(300));
+    java.sql.Timestamp picked = java.sql.Timestamp.from(at.plusSeconds(600));
+    java.sql.Timestamp promised = java.sql.Timestamp.from(at.plusSeconds(1500));
+    String[] ids = new String[4];
+    for (int i = 0; i < ids.length; i++) {
+      ids[i] = "DLV-met-" + UUID.randomUUID();
+    }
+    // 0 정시 완료(픽업→완료 900초), 1 늦은 완료(1500초), 2 고객 수령 확인(판정 빠짐), 3 실패
+    Object[][] rows = {
+      {ids[0], "COMPLETED", java.sql.Timestamp.from(at.plusSeconds(1500)), "FACE"},
+      {ids[1], "COMPLETED", java.sql.Timestamp.from(at.plusSeconds(2100)), "FACE"},
+      {ids[2], "COMPLETED", java.sql.Timestamp.from(at.plusSeconds(3000)), "CUSTOMER_CONFIRMED"},
+      {ids[3], "FAILED", null, null},
+    };
+    for (Object[] r : rows) {
+      jdbc.update(
+          "INSERT INTO execution_delivery (delivery_id, type, state, mfc_id, rider_id, assigned_at,"
+              + " picked_up_at, completed_at, method, promised_at, created_at, updated_at) VALUES"
+              + " (?, 'FORWARD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          r[0],
+          r[1],
+          mfc,
+          rider,
+          assigned,
+          picked,
+          r[2],
+          r[3],
+          promised,
+          assigned,
+          assigned);
+      jdbc.update(
+          "INSERT INTO execution_history (delivery_id, state, occurred_at, recorded_at, actor)"
+              + " VALUES (?, 'ARRIVED_AT_STORE', ?, ?, 'RIDER')",
+          r[0],
+          arrived,
+          arrived);
+    }
+    jdbc.update(
+        "INSERT INTO help_request (request_id, delivery_id, rider_id, category, stage, state,"
+            + " created_at, resolved_at) VALUES ('hr-met-1', ?, ?, 'ADDRESS_ISSUE', 'PICKED_UP',"
+            + " 'RESOLVED', ?, ?)",
+        ids[3],
+        rider,
+        picked,
+        java.sql.Timestamp.from(at.plusSeconds(1200)));
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode m = body(staffGet("/delivery-metrics?mfcId=" + mfc, ops));
+    JsonNode row = m.path("rows").get(0);
+    assertThat(row.path("riderId").asString()).isEqualTo(rider);
+    assertThat(row.path("assigned").asInt()).isEqualTo(4);
+    assertThat(row.path("completed").asInt()).isEqualTo(3);
+    assertThat(row.path("failed").asInt()).isEqualTo(1);
+    assertThat(row.path("judged").asInt()).isEqualTo(2);
+    assertThat(row.path("late").asInt()).isEqualTo(1);
+    assertThat(row.path("deliveryCount").asInt()).isEqualTo(2);
+    assertThat(row.path("deliverySeconds").asInt()).isEqualTo(1200); // (900 + 1500) / 2
+    assertThat(row.path("pickupWaitSeconds").asInt()).isEqualTo(300);
+    JsonNode inc = m.path("incidents").get(0);
+    assertThat(inc.path("category").asString()).isEqualTo("ADDRESS_ISSUE");
+    assertThat(inc.path("resolved").asInt()).isEqualTo(1);
+    assertThat(inc.path("resolveSeconds").asInt()).isEqualTo(600);
+    // 라이더 상세: riderId 로 그 라이더만
+    assertThat(
+            body(staffGet("/delivery-metrics?mfcId=" + mfc + "&riderId=RD-none", ops)).path("rows"))
+        .isEmpty();
+    // 그 센터 아닌 운영자 403, 기간 31일 넘으면 400
+    assertThat(
+            staffGet(
+                    "/delivery-metrics?mfcId=" + mfc,
+                    TestJwt.operator("OP-X", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER")))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
+    assertThat(
+            staffGet("/delivery-metrics?from=2026-01-01&to=2026-03-01", ops)
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+  }
+
   @Test
   void dropInfoOnlyForAssignedRiderBetweenPickupAndCompletion() {
     String id = "DLV-" + UUID.randomUUID();

@@ -16,10 +16,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class DispatchMetricsController implements DispatchMetricsApi {
 
   private final OnTimeMetrics metrics;
+  private final com.pmart.delivery.dispatch.application.DispatchEfficiency efficiency;
   private final Clock clock;
 
-  public DispatchMetricsController(OnTimeMetrics metrics, Clock clock) {
+  public DispatchMetricsController(
+      OnTimeMetrics metrics,
+      com.pmart.delivery.dispatch.application.DispatchEfficiency efficiency,
+      Clock clock) {
     this.metrics = metrics;
+    this.efficiency = efficiency;
     this.clock = clock;
   }
 
@@ -42,5 +47,48 @@ public class DispatchMetricsController implements DispatchMetricsApi {
                                 .pending(r.pending()))
                     .toList())
             .asOf(clock.instant().atOffset(ZoneOffset.UTC)));
+  }
+
+  /** 배차 효율(0.16.0) — 규칙은 {@link com.pmart.delivery.dispatch.application.DispatchEfficiency}. */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.dispatch.api.generated.model.GetDispatchMetrics200Response>
+      getDispatchMetrics(@Nullable LocalDate from, @Nullable LocalDate to, @Nullable String mfcId) {
+    var r = efficiency.get(from, to, mfcId);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.dispatch.api.generated.model.GetDispatchMetrics200Response()
+            .from(r.from())
+            .to(r.to())
+            .rows(
+                r.rows().stream()
+                    .map(
+                        x ->
+                            new com.pmart.delivery.dispatch.api.generated.model
+                                    .GetDispatchMetrics200ResponseRowsInner()
+                                .date(x.date())
+                                .mfcId(x.mfcId())
+                                .created(x.created())
+                                .assigned(x.assigned())
+                                .avgAssignSeconds(x.avgAssignSeconds())
+                                .reassigned(x.reassigned())
+                                .failedRounds(x.failedRounds())
+                                .autoCancelled(x.autoCancelled())
+                                .offersSent(x.offersSent())
+                                .offersAccepted(x.offersAccepted())
+                                .offersRejected(x.offersRejected())
+                                .offersExpired(x.offersExpired())
+                                .assignedByAi(x.assignedByAi())
+                                .assignedByList(x.assignedByList())
+                                .assignedByFailedReturn(x.assignedByFailedReturn()))
+                    .toList())
+            .failureReasons(
+                r.reasons().stream()
+                    .map(
+                        x ->
+                            new com.pmart.delivery.dispatch.api.generated.model
+                                    .GetDispatchMetrics200ResponseFailureReasonsInner()
+                                .reason(x.reason())
+                                .rounds(x.rounds()))
+                    .toList()));
   }
 }

@@ -1,9 +1,10 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.37.0
+  version: 0.38.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
+    0.38.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /delivery-metrics` 배송 품질·효율(날짜·센터·라이더별 배정·완료·실패·취소·지연·픽업 대기·배송 소요)과 사고(도움요청 종류별 건수·처리 시간).
     0.37.0(2026-11-23, RS-7 — 사용자 "센터를 고르면 그 해당 센터에 해당하는 라이더 정보"): 추가 배달료 신청 `GET /surcharge-requests`·수행료 조정 대기 `GET /rider-earnings/adjustment-queue` 에 mfcId(그 배송의 센터). 권한은 그대로.
     0.36.0(2026-11-22, ADR-0085 — 사용자 "배송 D28767701 이렇게 주문번호 재사용하는데 구분 가게 앞에 D"): 화면 배송 번호 deliveryNumber 가 D + 주문번호(두 번째 배송부터 -순번). 찾기 orderNumber 는 그대로 숫자 8자리 — 화면이 D·-순번을 떼고 보낸다.
     0.35.0(2026-11-21, 라이더 백오피스 라이더 상세 "도움요청" 구역 — 사용자 "응"): 직원 도움요청 목록 `GET /delivery-help-requests` 에 state=ALL(모든 상태)·sort(OLDEST 기본·NEWEST). 기본값은 그대로(OPEN·오래된 것 먼저).
@@ -954,6 +955,68 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
+  /delivery-metrics:
+    get:
+      tags: [staff]
+      summary: (0.38.0) 배송 품질·효율·사고 통계 — 날짜·센터·라이더별
+      x-added-in: '2026-11-23'
+      description: |
+        라이더 백오피스 "운영 통계"·라이더 상세 "성과"(2026-11-23 사용자 요청). 고객 배송(FORWARD·RESHIPMENT)만, 날짜 = 배정 시각(assigned_at)의 Asia/Seoul 날짜(배정된 적 없는 배송은 빠짐).
+        rows 는 (date, mfcId, riderId) 묶음 — 화면이 날짜별·센터별·라이더별로 더한다(평균은 *Count 로 가중해 다시 낸다).
+        - assigned: 그 묶음에 배정된 배송. completed·failed(전달 실패 확정)·cancelled: 지금 상태 기준(진행 중은 셋 다 아님).
+        - late: 전달 완료가 약속(promisedAt — dispatch 배정 사건 사본, 2026-11-21 부터) 뒤. judged: 약속이 있고 실제 전달 시각이 있는 완료(고객 수령 확인·자동 완료는 전달 시각이 실제가 아니라 뺀다 — 정시 배송률과 같은 규칙). 지연율 = late / judged.
+        - pickupWait*: 가게 도착(ARRIVED_AT_STORE 첫 기록) → 픽업 완료. delivery*: 픽업 완료 → 전달 완료(실제 전달 시각만). *Seconds 는 평균 초, *Count 는 평균에 든 건수(없으면 0·null).
+        incidents: 같은 기간·조건 배송의 도움요청(배송 실패 대화 DELIVERY_FAILURE 포함) 종류별 — 건수, 끝난 건수, 평균 처리 초(접수 → 끝남).
+        from·to 날짜(포함, 기본 최근 7일, 최대 31일). riderId 를 주면 그 라이더만(라이더 상세). OPERATOR_ADMIN·RIDER_OPS·CS_AGENT 는 모든 센터, 그 밖 운영자는 mfcId(그 센터 권한) 필수.
+      operationId: getDeliveryMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, rows, incidents]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      required: [date, mfcId, riderId, assigned, completed, failed, cancelled, late, judged, pickupWaitCount, deliveryCount]
+                      properties:
+                        date: { type: string, format: date }
+                        mfcId: { type: string }
+                        riderId: { type: string }
+                        assigned: { type: integer }
+                        completed: { type: integer }
+                        failed: { type: integer }
+                        cancelled: { type: integer }
+                        late: { type: integer }
+                        judged: { type: integer }
+                        pickupWaitSeconds: { type: [integer, 'null'] }
+                        pickupWaitCount: { type: integer }
+                        deliverySeconds: { type: [integer, 'null'] }
+                        deliveryCount: { type: integer }
+                  incidents:
+                    type: array
+                    items:
+                      type: object
+                      required: [category, count, resolved]
+                      properties:
+                        category: { $ref: '#/components/schemas/HelpCategory' }
+                        count: { type: integer }
+                        resolved: { type: integer }
+                        resolveSeconds: { type: [integer, 'null'] }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
   /delivery-stats:
     get:
       tags: [staff]

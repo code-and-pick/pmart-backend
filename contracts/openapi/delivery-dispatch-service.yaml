@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
+    0.16.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /metrics/dispatch` 배차 효율(날짜·센터별 배차 요청·배정·평균 배차 소요·재배차·실패 회차·자동 취소·제안 수락률·배정 출처, 실패 사유).
     0.15.0(2026-11-23, 라이더 백오피스 라이더 목록 "진행 중 n" — 사용자 요청): 내부 `GET /internal/riders/active-delivery-counts?riderIds=` — 라이더 여럿의 맡은 배송 수(ASSIGNED·PICKED_UP) 한 번에. rider-service 직원 목록이 부른다.
     0.14.0(2026-11-22, ADR-0085): 배정 이력 deliveryNumber 가 D + 주문번호(두 번째 배송부터 -순번).
     0.13.2(2026-11-20 — PC 1 PR 세션 LAN 발견): 제안 `Offer.source` 에 `FAILED_RETURN`(같은 라이더 반납 바로 배정 기록, 0.6.0 부터 저장하던 값) — 계약에 빠져 그 배송의 `GET /deliveries/{id}/dispatch` 가 500 이었음.
@@ -500,6 +501,72 @@ paths:
                         unjudged: { type: integer }
                         pending: { type: integer }
                   asOf: { type: string, format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /metrics/dispatch:
+    get:
+      tags: [dispatch-metrics]
+      summary: (0.16.0) 배차 효율 — 날짜·센터별
+      x-added-in: '2026-11-23'
+      description: |
+        라이더 백오피스 "운영 통계"(2026-11-23 사용자 요청 — 배차 효율·MFC별 비교). 배송 단위, 날짜 = 배송이 만들어진 때의 Asia/Seoul 날짜.
+        대상: 고객 배송(FORWARD·RESHIPMENT). 주문 취소로 없어진 배송(cancel_reason ORDER_CANCELLED)은 뺀다(on-time 과 같음).
+        - created: 대상 배송 수. assigned: 라이더가 정해진 적 있는 배송(지금 배정 시각 assigned_at 있음).
+        - avgAssignSeconds: 배정까지 걸린 평균 초 = assigned_at − 첫 배차 시도 시작(시도가 없으면 배송 생성). 배정된 배송만, 없으면 null.
+        - reassigned: 재배차 시도(trigger REASSIGN — 배정 뒤 취소·제한으로 다시 찾음)가 있던 배송 수.
+        - failedRounds: 실패로 끝난 배차 시도 회차 합(FAILED — 사람 못 구함·만료·거절·장애, 다음 회차는 자동 재요청).
+        - autoCancelled: 배차 불가 자동 취소(약속 + 30분, claim 이 받음 — auto_cancel_result ACCEPTED).
+        - offers*: 그 배송들에 보낸 제안(같은 배송의 여러 회차 포함) — sent = 전체, accepted·rejected·expired.
+        - assignedBy*: 배정된 수락 제안의 출처 — AI 추천(AI_RECOMMENDED), 일반 배차모드 배달리스트(DELIVERY_LIST), 전달 실패 반납 바로 배정(FAILED_RETURN). 직원 수동 배차는 없다.
+        failureReasons: 같은 배송들의 실패 시도 사유별 회차(NO_RIDER·EXPIRED·REPEATED_REJECTION·SYSTEM_FAILURE).
+        from·to 날짜(포함, 기본 오늘, 최대 31일). OPERATOR_ADMIN·RIDER_OPS·CS_AGENT 는 모든 센터, 그 밖 운영자는 mfcId(그 센터 권한) 필수.
+      operationId: getDispatchMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, rows, failureReasons]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      required: [date, mfcId, created, assigned, reassigned, failedRounds, autoCancelled, offersSent, offersAccepted, offersRejected, offersExpired, assignedByAi, assignedByList, assignedByFailedReturn]
+                      properties:
+                        date: { type: string, format: date }
+                        mfcId: { type: string }
+                        created: { type: integer }
+                        assigned: { type: integer }
+                        avgAssignSeconds: { type: [integer, 'null'] }
+                        reassigned: { type: integer }
+                        failedRounds: { type: integer }
+                        autoCancelled: { type: integer }
+                        offersSent: { type: integer }
+                        offersAccepted: { type: integer }
+                        offersRejected: { type: integer }
+                        offersExpired: { type: integer }
+                        assignedByAi: { type: integer }
+                        assignedByList: { type: integer }
+                        assignedByFailedReturn: { type: integer }
+                  failureReasons:
+                    type: array
+                    items:
+                      type: object
+                      required: [reason, rounds]
+                      properties:
+                        reason: { type: string }
+                        rounds: { type: integer }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 

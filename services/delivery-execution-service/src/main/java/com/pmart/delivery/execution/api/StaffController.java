@@ -47,6 +47,8 @@ public class StaffController implements StaffApi {
   private final com.pmart.delivery.execution.application.DeliveryStats stats;
   private final com.pmart.delivery.execution.application.ExecutionService execution;
 
+  private final com.pmart.delivery.execution.application.DeliveryMetrics metrics;
+
   public StaffController(
       StaffQueries queries,
       HelpRequestService helps,
@@ -57,7 +59,9 @@ public class StaffController implements StaffApi {
       com.pmart.delivery.execution.application.StatusCorrectionService corrections,
       com.pmart.delivery.execution.application.SurchargeService surcharges,
       com.pmart.delivery.execution.application.DeliveryStats stats,
-      com.pmart.delivery.execution.application.ExecutionService execution) {
+      com.pmart.delivery.execution.application.ExecutionService execution,
+      com.pmart.delivery.execution.application.DeliveryMetrics metrics) {
+    this.metrics = metrics;
     this.stats = stats;
     this.execution = execution;
     this.corrections = corrections;
@@ -544,5 +548,56 @@ public class StaffController implements StaffApi {
             .fault(
                 com.pmart.delivery.execution.api.generated.model.EarningFault.fromValue(a.fault()))
             .earning(ExecutionViews.earning(a.earning())));
+  }
+
+  /**
+   * 배송 품질·효율·사고 통계(0.38.0) — 규칙은 {@link com.pmart.delivery.execution.application.DeliveryMetrics}.
+   */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.GetDeliveryMetrics200Response>
+      getDeliveryMetrics(
+          java.time.@Nullable LocalDate from,
+          java.time.@Nullable LocalDate to,
+          @Nullable String mfcId,
+          @Nullable String riderId) {
+    var r = metrics.get(from, to, mfcId, riderId);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.GetDeliveryMetrics200Response()
+            .from(r.from())
+            .to(r.to())
+            .rows(
+                r.rows().stream()
+                    .map(
+                        x ->
+                            new com.pmart.delivery.execution.api.generated.model
+                                    .GetDeliveryMetrics200ResponseRowsInner()
+                                .date(x.date())
+                                .mfcId(x.mfcId())
+                                .riderId(x.riderId())
+                                .assigned(x.assigned())
+                                .completed(x.completed())
+                                .failed(x.failed())
+                                .cancelled(x.cancelled())
+                                .late(x.late())
+                                .judged(x.judged())
+                                .pickupWaitSeconds(x.pickupWaitSeconds())
+                                .pickupWaitCount(x.pickupWaitCount())
+                                .deliverySeconds(x.deliverySeconds())
+                                .deliveryCount(x.deliveryCount()))
+                    .toList())
+            .incidents(
+                r.incidents().stream()
+                    .map(
+                        x ->
+                            new com.pmart.delivery.execution.api.generated.model
+                                    .GetDeliveryMetrics200ResponseIncidentsInner()
+                                .category(
+                                    com.pmart.delivery.execution.api.generated.model.HelpCategory
+                                        .fromValue(x.category()))
+                                .count(x.count())
+                                .resolved(x.resolved())
+                                .resolveSeconds(x.resolveSeconds()))
+                    .toList()));
   }
 }

@@ -677,6 +677,39 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(row.path("late").asInt()).isEqualTo(2);
     assertThat(row.path("due").asInt()).isEqualTo(3);
     assertThat(row.path("unjudged").asInt()).isEqualTo(1);
+
+    // 배차 효율(0.16.0): 생성일 기준, 주문 취소로 없어진 배송은 빠짐 — 5건 중 4건. 배정 시각을 정한 1건은 평균 배차 소요가 있다
+    jdbc.update(
+        "UPDATE delivery SET assigned_at = created_at + interval '120 seconds' WHERE delivery_id = ?",
+        ids[0]);
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    JsonNode eff =
+        body(
+            http.get()
+                .uri("/metrics/dispatch?from={d}&to={d}&mfcId={m}", today, today, mfc)
+                .header(
+                    "Authorization",
+                    "Bearer " + TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of()))
+                .retrieve()
+                .toEntity(String.class));
+    JsonNode er = eff.path("rows").get(0);
+    assertThat(er.path("mfcId").asString()).isEqualTo(mfc);
+    assertThat(er.path("created").asInt()).isEqualTo(4);
+    assertThat(er.path("assigned").asInt()).isPositive();
+    assertThat(er.path("avgAssignSeconds").isNumber()).isTrue();
+    assertThat(eff.path("failureReasons").isArray()).isTrue();
+    assertThat(
+            http.get()
+                .uri("/metrics/dispatch?mfcId={m}", mfc)
+                .header(
+                    "Authorization",
+                    "Bearer "
+                        + TestJwt.operator("OP-X", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER")))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
     // 그 센터 아닌 운영자 403
     assertThat(
             http.get()
