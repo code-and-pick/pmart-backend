@@ -17,6 +17,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *     /oauth2/token})
  * @param connectTimeout 연결 제한(기본 2초)
  * @param readTimeout 응답 제한(기본 5초)
+ * @param profileBaseUrl 네이버 프로필 API 기준 주소(기본 {@code https://openapi.naver.com}, 경로 {@code
+ *     /v1/nid/me} — 2026-11-22 RA-1 이메일)
  */
 @ConfigurationProperties(prefix = "pmart.rider-auth.naver")
 public record NaverExchangeProperties(
@@ -25,9 +27,11 @@ public record NaverExchangeProperties(
     @Nullable String callbackUrl,
     @Nullable String tokenBaseUrl,
     @Nullable Duration connectTimeout,
-    @Nullable Duration readTimeout) {
+    @Nullable Duration readTimeout,
+    @Nullable String profileBaseUrl) {
 
   public static final String DEFAULT_TOKEN_BASE_URL = "https://nid.naver.com";
+  public static final String DEFAULT_PROFILE_BASE_URL = "https://openapi.naver.com";
 
   public NaverExchangeProperties {
     clientIds =
@@ -40,6 +44,10 @@ public record NaverExchangeProperties(
         tokenBaseUrl == null || tokenBaseUrl.isBlank() ? DEFAULT_TOKEN_BASE_URL : tokenBaseUrl;
     connectTimeout = connectTimeout == null ? Duration.ofSeconds(2) : connectTimeout;
     readTimeout = readTimeout == null ? Duration.ofSeconds(5) : readTimeout;
+    profileBaseUrl =
+        profileBaseUrl == null || profileBaseUrl.isBlank()
+            ? DEFAULT_PROFILE_BASE_URL
+            : profileBaseUrl.strip().replaceAll("/+$", "");
   }
 
   /** 토큰 요청 {@code client_id}(첫 번째). 없으면 null. */

@@ -303,6 +303,43 @@ public class RiderAuthStore {
         subject);
   }
 
+  /** 이 라이더의 그 제공자 sub 들(2026-11-22 RA-1 ① — 탈퇴 때 카카오 연결 끊기). 로그 금지. */
+  public java.util.List<String> subjects(String riderId, String provider) {
+    return jdbc.queryForList(
+        "SELECT provider_subject FROM rider_identity WHERE rider_id = ? AND provider = ?",
+        String.class,
+        riderId,
+        provider);
+  }
+
+  /** 네이버 가린 이메일 잠시 보관(RA-1 ④, V4). 같은 sub 는 덮어쓴다. 지난 것은 이때 함께 지운다. */
+  public void holdNaverEmail(
+      String subjectHash, String emailMasked, Instant expiresAt, Instant now) {
+    jdbc.update("DELETE FROM naver_email_hold WHERE expires_at < ?", Timestamp.from(now));
+    jdbc.update(
+        "INSERT INTO naver_email_hold (subject_hash, email_masked, expires_at) VALUES (?, ?, ?)"
+            + " ON CONFLICT (subject_hash) DO UPDATE SET email_masked = EXCLUDED.email_masked,"
+            + " expires_at = EXCLUDED.expires_at",
+        subjectHash,
+        emailMasked,
+        Timestamp.from(expiresAt));
+  }
+
+  /** 보관한 가린 이메일을 꺼내고 지운다(기한 안의 것만). */
+  public Optional<String> takeNaverEmail(String subjectHash, Instant now) {
+    return jdbc
+        .query(
+            "DELETE FROM naver_email_hold WHERE subject_hash = ? RETURNING email_masked, expires_at",
+            (rs, n) ->
+                rs.getTimestamp("expires_at").toInstant().isAfter(now)
+                    ? rs.getString("email_masked")
+                    : null,
+            subjectHash)
+        .stream()
+        .filter(java.util.Objects::nonNull)
+        .findFirst();
+  }
+
   /** 라이더 주체의 로그인 수단(2026-11-19 — rider-service 같은 번호 안내). 계정 하나 = 제공자 하나. */
   public record IdentityInfo(
       String provider,

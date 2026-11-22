@@ -50,7 +50,11 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock(
     @ConfigureWireMock(
         name = "naver",
-        baseUrlProperties = {"pmart.rider-auth.naver.token-base-url"}))
+        baseUrlProperties = {
+          "pmart.rider-auth.naver.token-base-url",
+          "pmart.rider-auth.naver.profile-base-url",
+          "pmart.rider-auth.rider-base-url"
+        }))
 class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
 
   static final String CLIENT_ID = "naver-client-id";
@@ -82,12 +86,19 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
   }
 
   Res exchange(String key, String code, String redirectUri, String state) {
+    return exchange(key, code, redirectUri, state, null);
+  }
+
+  Res exchange(String key, String code, String redirectUri, String state, String purpose) {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("authorizationCode", code);
     body.put("codeVerifier", VERIFIER);
     body.put("redirectUri", redirectUri);
     if (state != null) {
       body.put("state", state);
+    }
+    if (purpose != null) {
+      body.put("purpose", purpose);
     }
     return http.post()
         .uri("/rider-auth/naver-token-exchanges")
@@ -223,5 +234,163 @@ class NaverCodeExchangeIT extends PostgresKafkaContainerSupport {
     assertThat(r.status()).isEqualTo(400);
     assertThat(r.body().path("code").asString()).isEqualTo("VALIDATION_FAILED");
     naver.verify(0, postRequestedFor(urlPathEqualTo("/oauth2/token")));
+  }
+
+  // ---- 2026-11-22 RA-1: 탈퇴 재인증 끊기·가입 전 끊기·가린 이메일
+
+  @Autowired com.pmart.riderauth.infrastructure.RiderAuthStore store;
+
+  /** 서명 없는 모양만 id_token — 서버는 sub 를 키로만 읽는다. */
+  static String idTokenFor(String sub) {
+    java.util.Base64.Encoder b64 = java.util.Base64.getUrlEncoder().withoutPadding();
+    return b64.encodeToString("{\"alg\":\"none\"}".getBytes())
+        + "."
+        + b64.encodeToString(("{\"sub\":\"" + sub + "\"}").getBytes())
+        + ".sig";
+  }
+
+  void naverIssues(String sub, String email) {
+    naverReturns(
+        200,
+        "{\"access_token\":\"at-ra1\",\"id_token\":\""
+            + idTokenFor(sub)
+            + "\",\"expires_in\":3600}");
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo("/v1/nid/me"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"resultcode\":\"00\",\"message\":\"success\",\"response\":{\"id\":\"x\""
+                            + (email == null ? "" : ",\"email\":\"" + email + "\"")
+                            + "}}")));
+    naver.stubFor(
+        post(urlPathEqualTo("/oauth2.0/token"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"access_token\":\"at-ra1\",\"result\":\"success\"}")));
+  }
+
+  int unlinkCalls() {
+    return naver
+        .findAll(
+            postRequestedFor(urlPathEqualTo("/oauth2.0/token"))
+                .withFormParam("grant_type", equalTo("delete")))
+        .size();
+  }
+
+  @Test
+  void withdrawalPurposeUnlinksNaverAfterReadingProfile() {
+    String sub = "nv-" + UUID.randomUUID();
+    String rider = "RD-" + UUID.randomUUID();
+    store.insertAccount(rider, java.time.Instant.now());
+    store.insertIdentity("NAVER", sub, rider, java.time.Instant.now());
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/" + rider))
+            .willReturn(aResponse().withStatus(200).withBody("{}")));
+    naverIssues(sub, null);
+
+    Res r = exchange(UUID.randomUUID().toString(), "c-w", CALLBACK, null, "WITHDRAWAL");
+    assertThat(r.status()).isEqualTo(200);
+    naver.verify(1, WireMock.getRequestedFor(urlPathEqualTo("/v1/nid/me")));
+    naver.verify(
+        1,
+        postRequestedFor(urlPathEqualTo("/oauth2.0/token"))
+            .withFormParam("grant_type", equalTo("delete"))
+            .withFormParam("client_id", equalTo(CLIENT_ID))
+            .withFormParam("client_secret", equalTo(SECRET))
+            .withFormParam("access_token", equalTo("at-ra1"))
+            .withFormParam("service_provider", equalTo("NAVER")));
+  }
+
+  @Test
+  void loginUnlinksOnlyWhenSignupNotFinished() {
+    // 처음(연결 없음) → 끊음
+    naverIssues("nv-" + UUID.randomUUID(), null);
+    assertThat(exchange(UUID.randomUUID().toString(), "c1", CALLBACK, null).status())
+        .isEqualTo(200);
+    assertThat(unlinkCalls()).isEqualTo(1);
+
+    // 연결은 있지만 rider-service 에 가입 전(404) → 끊음
+    naver.resetRequests();
+    String pendingSub = "nv-" + UUID.randomUUID();
+    String pending = "RD-" + UUID.randomUUID();
+    store.insertAccount(pending, java.time.Instant.now());
+    store.insertIdentity("NAVER", pendingSub, pending, java.time.Instant.now());
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/" + pending))
+            .willReturn(aResponse().withStatus(404)));
+    naverIssues(pendingSub, null);
+    assertThat(exchange(UUID.randomUUID().toString(), "c2", CALLBACK, null).status())
+        .isEqualTo(200);
+    assertThat(unlinkCalls()).isEqualTo(1);
+
+    // 가입한 라이더(200) → 끊지 않음
+    naver.resetRequests();
+    String memberSub = "nv-" + UUID.randomUUID();
+    String member = "RD-" + UUID.randomUUID();
+    store.insertAccount(member, java.time.Instant.now());
+    store.insertIdentity("NAVER", memberSub, member, java.time.Instant.now());
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/" + member))
+            .willReturn(aResponse().withStatus(200).withBody("{}")));
+    naverIssues(memberSub, null);
+    assertThat(exchange(UUID.randomUUID().toString(), "c3", CALLBACK, null).status())
+        .isEqualTo(200);
+    assertThat(unlinkCalls()).isZero();
+
+    // rider-service 장애(500) → 판단을 건너뛰고 끊지 않음, 교환은 200
+    naver.resetRequests();
+    String oddSub = "nv-" + UUID.randomUUID();
+    String odd = "RD-" + UUID.randomUUID();
+    store.insertAccount(odd, java.time.Instant.now());
+    store.insertIdentity("NAVER", oddSub, odd, java.time.Instant.now());
+    naver.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/" + odd))
+            .willReturn(aResponse().withStatus(500)));
+    naverIssues(oddSub, null);
+    assertThat(exchange(UUID.randomUUID().toString(), "c4", CALLBACK, null).status())
+        .isEqualTo(200);
+    assertThat(unlinkCalls()).isZero();
+  }
+
+  @Test
+  void unlinkFailureDoesNotFailExchange() {
+    naverIssues("nv-" + UUID.randomUUID(), null);
+    naver.stubFor(post(urlPathEqualTo("/oauth2.0/token")).willReturn(aResponse().withStatus(500)));
+    Res r = exchange(UUID.randomUUID().toString(), "c-f", CALLBACK, null, "WITHDRAWAL");
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(unlinkCalls()).isEqualTo(1);
+  }
+
+  @Test
+  void holdsOnlyMaskedEmailBySubjectHashForTenMinutes() {
+    String sub = "nv-" + UUID.randomUUID();
+    naverIssues(sub, "rider.kim@naver.com");
+    assertThat(exchange(UUID.randomUUID().toString(), "c-e", CALLBACK, null).status())
+        .isEqualTo(200);
+
+    java.util.List<Map<String, Object>> rows =
+        jdbc.queryForList("SELECT subject_hash, email_masked FROM naver_email_hold");
+    assertThat(rows)
+        .anySatisfy(
+            row -> {
+              assertThat(row.get("subject_hash").toString()).doesNotContain(sub).hasSize(64);
+              assertThat(row.get("email_masked").toString())
+                  .doesNotContain("rider.kim")
+                  .doesNotContain("naver.com")
+                  .contains("@");
+            });
+    String hash = com.pmart.riderauth.application.NaverCodeExchangeService.subjectHash(sub);
+    assertThat(store.takeNaverEmail(hash, java.time.Instant.now())).isPresent();
+    // 한 번 꺼내면 지워진다
+    assertThat(store.takeNaverEmail(hash, java.time.Instant.now())).isEmpty();
+    // 10분 지난 것은 꺼내지 않는다
+    store.holdNaverEmail(
+        hash, "a***@n***", java.time.Instant.now().minusSeconds(1), java.time.Instant.now());
+    assertThat(store.takeNaverEmail(hash, java.time.Instant.now())).isEmpty();
   }
 }

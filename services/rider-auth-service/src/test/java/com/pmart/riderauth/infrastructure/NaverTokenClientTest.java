@@ -13,16 +13,19 @@ class NaverTokenClientTest {
 
   final NaverTokenClient client =
       new NaverTokenClient(
-          new NaverExchangeProperties(null, null, null, null, null, null),
+          new NaverExchangeProperties(null, null, null, null, null, null, null),
           JsonMapper.builder().build());
 
   @Test
-  void returnsOnlyIdToken() {
-    assertThat(
-            client.interpret(
-                new Response(
-                    200, "{\"access_token\":\"a\",\"refresh_token\":\"r\",\"id_token\":\"i\"}")))
-        .isEqualTo("i");
+  void returnsIdTokenAndAccessTokenNotRefresh() {
+    NaverTokenClient.Tokens t =
+        client.interpret(
+            new Response(
+                200,
+                "{\"access_token\":\"AT-SECRET\",\"refresh_token\":\"r\",\"id_token\":\"ID-SECRET\"}"));
+    assertThat(t.idToken()).isEqualTo("ID-SECRET");
+    assertThat(t.accessToken()).isEqualTo("AT-SECRET");
+    assertThat(t.toString()).doesNotContain("AT-SECRET", "ID-SECRET");
   }
 
   @Test

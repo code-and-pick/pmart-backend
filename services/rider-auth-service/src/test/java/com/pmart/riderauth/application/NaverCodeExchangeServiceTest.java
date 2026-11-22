@@ -26,7 +26,8 @@ class NaverCodeExchangeServiceTest {
 
   NaverCodeExchangeService service(String secret, String callback) {
     return new NaverCodeExchangeService(
-        new NaverExchangeProperties(List.of(" cid ", "other"), secret, callback, null, null, null),
+        new NaverExchangeProperties(
+            List.of(" cid ", "other"), secret, callback, null, null, null, null),
         naver,
         idempotency);
   }
@@ -54,7 +55,9 @@ class NaverCodeExchangeServiceTest {
   void missingClientIdOrCallbackIsConfigRequired() {
     NaverCodeExchangeService noId =
         new NaverCodeExchangeService(
-            new NaverExchangeProperties(null, "s", CALLBACK, null, null, null), naver, idempotency);
+            new NaverExchangeProperties(null, "s", CALLBACK, null, null, null, null),
+            naver,
+            idempotency);
     assertThatThrownBy(() -> noId.exchange("k", "rider-app", "c", VERIFIER, CALLBACK, null))
         .hasMessageContaining("client-ids");
     assertThatThrownBy(
@@ -84,10 +87,46 @@ class NaverCodeExchangeServiceTest {
               assertThat(e.clientId()).isEqualTo("cid");
               assertThat(e.clientSecret()).isEqualTo("s");
               assertThat(e.state()).isEqualTo("st");
-              return "id.token";
+              return new NaverTokenClient.Tokens("id.token", null);
             });
     assertThat(service("s", CALLBACK).exchange("k", "rider-app", "c", VERIFIER, CALLBACK, "st"))
         .isEqualTo("id.token");
+  }
+
+  @Test
+  void withdrawalUnlinksWithAccessTokenAfterProfile() {
+    runIdempotentActionDirectly();
+    when(naver.exchange(any())).thenReturn(new NaverTokenClient.Tokens("id.token", "at"));
+    when(naver.profile("at")).thenReturn(NaverTokenClient.Profile.NONE);
+    service("s", CALLBACK).exchange("k", "rider-app", "c", VERIFIER, CALLBACK, null, true);
+    org.mockito.InOrder order = org.mockito.Mockito.inOrder(naver);
+    order.verify(naver).profile("at");
+    order.verify(naver).unlink("cid", "s", "at");
+  }
+
+  @Test
+  void noAccessTokenMeansNoProfileNoUnlink() {
+    runIdempotentActionDirectly();
+    when(naver.exchange(any())).thenReturn(new NaverTokenClient.Tokens("id.token", null));
+    service("s", CALLBACK).exchange("k", "rider-app", "c", VERIFIER, CALLBACK, null, true);
+    org.mockito.Mockito.verify(naver, org.mockito.Mockito.never()).profile(any());
+    org.mockito.Mockito.verify(naver, org.mockito.Mockito.never()).unlink(any(), any(), any());
+  }
+
+  @Test
+  void loginWithoutStoreNeverUnlinks() {
+    runIdempotentActionDirectly();
+    when(naver.exchange(any())).thenReturn(new NaverTokenClient.Tokens("id.token", "at"));
+    when(naver.profile("at")).thenReturn(NaverTokenClient.Profile.NONE);
+    service("s", CALLBACK).exchange("k", "rider-app", "c", VERIFIER, CALLBACK, null);
+    org.mockito.Mockito.verify(naver, org.mockito.Mockito.never()).unlink(any(), any(), any());
+  }
+
+  @Test
+  void subjectHashIsStableHexNotTheSubject() {
+    String h = NaverCodeExchangeService.subjectHash("naver-sub-1");
+    assertThat(h).hasSize(64).doesNotContain("naver-sub-1");
+    assertThat(NaverCodeExchangeService.subjectHash("naver-sub-1")).isEqualTo(h);
   }
 
   @Test
@@ -119,7 +158,9 @@ class NaverCodeExchangeServiceTest {
 
   @Test
   void propertiesToStringHidesSecret() {
-    assertThat(new NaverExchangeProperties(List.of("cid"), "TOPSECRET", CALLBACK, null, null, null))
+    assertThat(
+            new NaverExchangeProperties(
+                List.of("cid"), "TOPSECRET", CALLBACK, null, null, null, null))
         .asString()
         .doesNotContain("TOPSECRET");
   }

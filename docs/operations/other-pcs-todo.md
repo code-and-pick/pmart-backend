@@ -67,7 +67,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] (2026-11-19 delivery) MFC 백오피스 "배차 지연" 목록 + "배차 불가로 취소" — dispatch `GET /dispatch-delays`(0.12.0), claim CL-5. 요청 `service-requests/mfc-backoffice-staff-apis.md` 끝 절 — **끝**(2026-11-20 정리: 화면 있음 — pmart-clients web/mfc-backoffice DispatchDelayPage)
 
 ## PC 5 — delivery 영역
-- [ ] **RA-1 라이더 소셜 로그인 "동의는 처음 가입할 때만"**(2026-11-22 PC 1 — 사용자 "라이더쪽을 수정해야해, 소셜로그인부분때문에", 요청서 `docs/architecture/service-requests/rider-auth-service.md` RA-1): ① 탈퇴 때 카카오 연결 끊기(라이더 카카오 Admin 키 — 사용자에게) ② 탈퇴 때 네이버 끊기 ③ 네이버 가입 전 끊기(rider-service 가입 여부 내부 조회 필요) ④ 네이버 이메일 → 가린 이메일. 고객 auth-service 구현을 같은 모양으로. 라이더 앱 몫은 요청서 끝.
+- [x] **RA-1 라이더 소셜 로그인 "동의는 처음 가입할 때만"**(2026-11-22 PC 1 — 사용자 "라이더쪽을 수정해야해, 소셜로그인부분때문에", 요청서 `docs/architecture/service-requests/rider-auth-service.md` RA-1): ① 탈퇴 때 카카오 연결 끊기(라이더 카카오 Admin 키 — 사용자에게) ② 탈퇴 때 네이버 끊기 ③ 네이버 가입 전 끊기(rider-service 가입 여부 내부 조회 필요) ④ 네이버 이메일 → 가린 이메일. 고객 auth-service 구현을 같은 모양으로. 라이더 앱 몫은 요청서 끝. — **구현(2026-11-22 PC 5, rider-auth 0.4.0·V4, 브랜치 `delivery/rider-social-consent-once`)** — rider-service 변경 없음(기존 `GET /internal/riders/{id}` 로 가입 판단). 남음: 라이더 카카오 Admin 키(사용자·PC 1), 라이더 앱(탈퇴 네이버 재인증 purpose WITHDRAWAL 등)
 - [ ] **DD-6 정시 배송 지표 시간 칸**(2026-11-21 PC 3 — MFC 백오피스 대시보드 시간대별 추이): `GET /metrics/on-time-deliveries` 에 `bucket=HOUR`(줄 `hour` +09:00, 7일), 있으면 좋음 WEEK·MONTH(366일) — 요청서 `delivery-dispatch-service.md` DD-6, 같은 모양은 mfc-fulfillment 0.34.0 피킹 지표
 - [x] **RS-MFC 라이더 화면 표기를 MFC 직원에게**(2026-11-19 PC 3 — `rider-service.md` RS-MFC): `GET /riders?riderIds=` 가 MFC_SUPERVISOR·MFC_WORKER 에 403 → 라이더 번호·가린 이름만 주는 조회를 열어 주기(ADR-0070, MFC 백오피스 인계 화면)
 

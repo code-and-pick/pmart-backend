@@ -33,7 +33,8 @@ public class LoginsController implements LoginsApi {
             body.getAuthorizationCode(),
             body.getCodeVerifier(),
             body.getRedirectUri(),
-            body.getState());
+            body.getState(),
+            body.getPurpose() == ExchangeNaverCodeRequest.PurposeEnum.WITHDRAWAL);
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .body(new ExchangeNaverCode200Response().idToken(idToken));

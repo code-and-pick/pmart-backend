@@ -160,6 +160,12 @@ public class RiderLoginService {
                   return null;
                 }
               }
+              if ("NAVER".equals(provider)) {
+                // 네이버 ID 토큰에는 이메일이 없다 — 코드 교환 때 묶어 둔 가린 이메일(2026-11-22 RA-1 ④)
+                store
+                    .takeNaverEmail(NaverCodeExchangeService.subjectHash(identity.subject()), now)
+                    .ifPresent(m -> store.setEmailMasked(provider, identity.subject(), m));
+              }
               String state = store.accountState(riderId).orElse("ACTIVE");
               if (!"ACTIVE".equals(state)) {
                 throw new PmartException(
