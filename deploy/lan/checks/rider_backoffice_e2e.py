@@ -20,6 +20,7 @@
 """
 import base64
 import os
+import re
 import sys
 import time
 import uuid
@@ -102,7 +103,7 @@ def main():
     if row:
         check("C 관제 — 가린 이름만", "*" in (row.get("nameMasked") or ""), "")
         # 2026-11-18: 라이더 번호(ADR-0070)·운행 시작·대기 시작(신규배차 켬·배송 0건)
-        check("C 관제 — 라이더 번호 6자리", len(row.get("riderNumber") or "") == 6, row.get("riderNumber") or "없음")
+        check("C 관제 — 라이더 번호 R + 4자리(ADR-0085)", re.fullmatch(r"R[1-9][0-9]{3,4}", row.get("riderNumber") or "") is not None, row.get("riderNumber") or "없음")
         check("C 관제 — 운행 시작·대기 시작", bool(row.get("onDutySince")) and bool(row.get("waitingSince")), "")
     if sup:
         s, _ = http("GET", f"/rider-locations?mfcId={MFC}", sup)
@@ -184,8 +185,8 @@ def main():
         s, b = http("GET", f"/deliveries/{done['deliveryId']}/drop-location", admin)
         check("G 직원 전달지 — 끝난 배송 409(주소 안 줌)", s == 409 and "roadAddress" not in b, f"HTTP {s} {b.get('code', '')}")
     numbered = [i for i in recent.get("items", []) if i.get("orderNumber")]
-    check("G 화면 배송 번호 = 주문번호-순번",
-          bool(numbered) and all((i.get("deliveryNumber") or "").startswith(i["orderNumber"] + "-") for i in numbered),
+    check("G 화면 배송 번호 = D + 주문번호(두 번째부터 -순번, ADR-0085)",
+          bool(numbered) and all(re.fullmatch("D" + i["orderNumber"] + r"(-[2-9]|-[1-9][0-9]+)?", i.get("deliveryNumber") or "") for i in numbered),
           ", ".join(i.get("deliveryNumber") or "없음" for i in numbered[:3]))
     if sup:
         s, _ = http("GET", "/deliveries/DLV-none-claude/drop-location", sup)
