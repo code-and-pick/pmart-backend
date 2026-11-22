@@ -145,3 +145,4 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **왜**: 2호점 목포 MFC — 통합 백오피스 센터 고르기(pmart-clients #390). 아래는 서버에 센터 조건이 없어 "모든 센터"로만 보인다. `GET /cases` 는 이미 `centerId` 가 있다.
 - **요청**: `GET /rider-complaints/counts`·`GET /obligations`(CS 후속)에 선택 `centerId` — 주문·배송에 붙은 건의 센터(사건의 centerId 와 같은 뜻). 센터 없는 건은 센터를 고르면 빠진다(그 뜻을 계약에 적기).
 - **범위 밖(사용자 결정)**: 고객·라이더 문의, 문의 만족도, 교대 인계, 접수 건 통계(sla 외) — 센터 없는 건이 많아 "모든 센터" 그대로.
+- **구현**(2026-11-23 PC 2, case-service 0.33.0 — PR 대기): `GET /rider-complaints`·`/counts`·`GET /obligations` 에 선택 `centerId`. 라이더 컴플레인은 새 칸 `center_id`(V21) — 기록 때 dispatch 배정 `mfcId` 를 저장, 0.33.0 전 기록은 NULL(센터를 고르면 빠짐 — 보정 없음). 후속 처리는 그 사건의 centerId(센터 관리자는 자기 센터 안에서만). 응답 RiderComplaint(Summary) 에 `centerId`. 경로 변경 없음.

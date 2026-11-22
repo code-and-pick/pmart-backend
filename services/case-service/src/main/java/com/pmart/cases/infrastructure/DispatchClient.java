@@ -22,8 +22,12 @@ public class DispatchClient {
 
   public static final String DISPATCH = "delivery-dispatch-service";
 
-  /** 조회 결과. riderId 가 null 이면 배정 라이더 없음(notFoundCode 에 dispatch 코드). */
-  public record Assignment(@Nullable String riderId, @Nullable String notFoundCode) {}
+  /**
+   * 조회 결과. riderId 가 null 이면 배정 라이더 없음(notFoundCode 에 dispatch 코드). mfcId = 배송 센터(0.33.0 R-12, 없으면
+   * null).
+   */
+  public record Assignment(
+      @Nullable String riderId, @Nullable String notFoundCode, @Nullable String mfcId) {}
 
   private final RestClient client;
   private final ObjectMapper mapper;
@@ -60,7 +64,7 @@ public class DispatchClient {
                       JsonNode n =
                           body.length == 0 ? mapper.createObjectNode() : mapper.readTree(body);
                       if (s == 404) {
-                        return new Assignment(null, n.path("code").asString("NOT_FOUND"));
+                        return new Assignment(null, n.path("code").asString("NOT_FOUND"), null);
                       }
                       if (s >= 400) {
                         throw HttpClientErrorException.create(
@@ -71,9 +75,10 @@ public class DispatchClient {
                             StandardCharsets.UTF_8);
                       }
                       String riderId = n.path("riderId").asString("");
+                      String mfcId = n.path("mfcId").asString("");
                       return riderId.isBlank()
-                          ? new Assignment(null, "ASSIGNMENT_NOT_FOUND")
-                          : new Assignment(riderId, null);
+                          ? new Assignment(null, "ASSIGNMENT_NOT_FOUND", null)
+                          : new Assignment(riderId, null, mfcId.isBlank() ? null : mfcId);
                     }));
   }
 }

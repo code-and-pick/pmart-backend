@@ -27,7 +27,9 @@ public class RiderComplaintStore {
       String source,
       @Nullable String note,
       String recordedBy,
-      Instant recordedAt) {}
+      Instant recordedAt,
+      /** 0.33.0 R-12 — 배송 센터(기록 때 dispatch 배정 mfcId). 이전 기록은 null. */
+      @Nullable String centerId) {}
 
   /** 목록 조건. 모두 선택. from 이상 to 미만. */
   public record Filter(
@@ -35,11 +37,13 @@ public class RiderComplaintStore {
       @Nullable String deliveryId,
       @Nullable String complaintType,
       @Nullable Instant from,
-      @Nullable Instant to) {}
+      @Nullable Instant to,
+      /** 0.33.0 R-12 — 주면 그 센터만(센터 없는 기록은 빠진다). */
+      @Nullable String centerId) {}
 
   private static final String COLS =
       "complaint_id, case_id, rider_id, delivery_id, order_id, inquiry_id, complaint_type,"
-          + " source, note, recorded_by, recorded_at";
+          + " source, note, recorded_by, recorded_at, center_id";
 
   private final JdbcTemplate jdbc;
 
@@ -49,7 +53,7 @@ public class RiderComplaintStore {
 
   public void insert(ComplaintRow r) {
     jdbc.update(
-        "INSERT INTO rider_complaint (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO rider_complaint (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         r.complaintId(),
         r.caseId(),
         r.riderId(),
@@ -60,7 +64,8 @@ public class RiderComplaintStore {
         r.source(),
         r.note(),
         r.recordedBy(),
-        Timestamp.from(r.recordedAt()));
+        Timestamp.from(r.recordedAt()),
+        r.centerId());
   }
 
   public Optional<ComplaintRow> find(String complaintId) {
@@ -108,6 +113,10 @@ public class RiderComplaintStore {
       sql.append(" AND recorded_at < ?");
       args.add(Timestamp.from(f.to()));
     }
+    if (f.centerId() != null) {
+      sql.append(" AND center_id = ?");
+      args.add(f.centerId());
+    }
     sql.append(" GROUP BY complaint_type");
     Map<String, Long> out = new java.util.LinkedHashMap<>();
     jdbc.query(
@@ -142,6 +151,10 @@ public class RiderComplaintStore {
       sql.append(" AND recorded_at < ?");
       args.add(Timestamp.from(f.to()));
     }
+    if (f.centerId() != null) {
+      sql.append(" AND center_id = ?");
+      args.add(f.centerId());
+    }
     if (cursor != null) {
       sql.append(
           " AND (recorded_at, complaint_id) < (SELECT recorded_at, complaint_id FROM"
@@ -165,6 +178,7 @@ public class RiderComplaintStore {
         rs.getString("source"),
         rs.getString("note"),
         rs.getString("recorded_by"),
-        rs.getTimestamp("recorded_at").toInstant());
+        rs.getTimestamp("recorded_at").toInstant(),
+        rs.getString("center_id"));
   }
 }

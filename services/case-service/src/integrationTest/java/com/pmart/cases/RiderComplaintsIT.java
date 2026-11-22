@@ -94,6 +94,11 @@ class RiderComplaintsIT extends PostgresKafkaContainerSupport {
   }
 
   void assigned(String deliveryId, String riderId) {
+    assigned(deliveryId, riderId, null);
+  }
+
+  /** 0.33.0 R-12: 배정 응답의 mfcId(없으면 빼고). */
+  void assigned(String deliveryId, String riderId, @Nullable String mfcId) {
     dispatch.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/deliveries/" + deliveryId + "/assignment"))
             .willReturn(
@@ -105,6 +110,7 @@ class RiderComplaintsIT extends PostgresKafkaContainerSupport {
                             + deliveryId
                             + "\",\"riderId\":\""
                             + riderId
+                            + (mfcId == null ? "" : "\",\"mfcId\":\"" + mfcId)
                             + "\",\"state\":\"PICKED_UP\",\"version\":3}")));
   }
 
@@ -327,6 +333,48 @@ class RiderComplaintsIT extends PostgresKafkaContainerSupport {
     dispatch.verify(
         0,
         getRequestedFor(urlPathEqualTo("/api/v1/internal/deliveries/" + delivery + "/assignment")));
+  }
+
+  /** 0.33.0 R-12: 기록 때 배정 mfcId 를 센터로 저장, 목록·수를 센터로 거른다(센터 없는 기록은 빠진다). */
+  @Test
+  void centerFromDispatchIsStoredAndFiltersListAndCounts() {
+    String agent = TestJwt.operator("cs-r12", List.of("CS_AGENT"), List.of());
+    String rider = id("RD");
+    String mokpo = id("MFC");
+    String busan = id("MFC");
+    String d1 = id("DLV");
+    String d2 = id("DLV");
+    String d3 = id("DLV");
+    assigned(d1, rider, mokpo);
+    assigned(d2, rider, busan);
+    assigned(d3, rider);
+    String c1 = record(agent, d1, "REPORT");
+    String c2 = record(agent, d2, "DAMAGE");
+    String c3 = record(agent, d3, "REPORT");
+
+    assertThat(get(agent, "/rider-complaints/" + c1).body().path("centerId").asString())
+        .isEqualTo(mokpo);
+    assertThat(get(agent, "/rider-complaints/" + c3).body().path("centerId").isNull())
+        .as("배정에 센터가 없으면 null")
+        .isTrue();
+    Res byCenter = get(agent, "/rider-complaints?riderId=" + rider + "&centerId=" + mokpo);
+    assertThat(byCenter.status()).isEqualTo(200);
+    assertThat(byCenter.body().path("items").findValuesAsString("complaintId")).containsExactly(c1);
+    assertThat(byCenter.body().path("items").get(0).path("centerId").asString()).isEqualTo(mokpo);
+    assertThat(
+            get(agent, "/rider-complaints?riderId=" + rider)
+                .body()
+                .path("items")
+                .findValuesAsString("complaintId"))
+        .as("센터를 안 주면 전부")
+        .containsExactly(c3, c2, c1);
+    JsonNode counts =
+        get(agent, "/rider-complaints/counts?riderId=" + rider + "&centerId=" + busan).body();
+    java.util.Map<String, Long> byType = new java.util.HashMap<>();
+    counts
+        .path("counts")
+        .forEach(c -> byType.put(c.path("key").asString(), c.path("count").asLong()));
+    assertThat(byType).containsEntry("DAMAGE", 1L).containsEntry("REPORT", 0L);
   }
 
   @Test

@@ -329,6 +329,8 @@ public class ObligationService {
       @Nullable String owner,
       @Nullable String state,
       @Nullable String caseId,
+      /** 0.33.0 R-12 — 그 사건의 센터(사건 centerId). 센터 없는 사건은 빠진다. */
+      @Nullable String centerId,
       int size,
       @Nullable String cursor) {
     PmartPrincipal p = operator();
@@ -338,7 +340,7 @@ public class ObligationService {
     ObligationStore.Filter f =
         new ObligationStore.Filter(
             CaseRules.visibleKinds(roles),
-            CaseRules.centerScoped(roles) ? p.centerScope() : null,
+            centers(CaseRules.centerScoped(roles) ? p.centerScope() : null, blankToNull(centerId)),
             blankToNull(owner),
             state == null || state.isBlank() ? ObligationRules.OPEN_STATES : Set.of(state.strip()),
             blankToNull(caseId));
@@ -349,6 +351,15 @@ public class ObligationService {
       out.add(view(r));
     }
     return new Page(out, next);
+  }
+
+  /** 보이는 센터 범위(센터 관리자) ∩ 고른 센터. 고른 센터가 범위 밖이면 빈 목록(store 가 0건). */
+  private static java.util.@Nullable Collection<String> centers(
+      java.util.@Nullable Collection<String> scope, @Nullable String chosen) {
+    if (chosen == null) {
+      return scope;
+    }
+    return scope == null || scope.contains(chosen) ? List.of(chosen) : List.of();
   }
 
   /** 사건 상세의 의무(사건을 이미 볼 수 있다고 확인한 뒤). */

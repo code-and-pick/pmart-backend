@@ -67,10 +67,11 @@ public class ObligationsController implements ObligationsApi {
       @Nullable String owner,
       @Nullable String state,
       @Nullable String caseId,
+      @Nullable String centerId,
       Integer size,
       @Nullable String cursor) {
     ObligationService.Page page =
-        obligations.list(owner, state, caseId, size == null ? 20 : size, cursor);
+        obligations.list(owner, state, caseId, centerId, size == null ? 20 : size, cursor);
     return ResponseEntity.ok(
         new ListObligations200Response()
             .items(page.items().stream().map(ObligationsController::toModel).toList())

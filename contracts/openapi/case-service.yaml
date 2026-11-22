@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.32.0
+  version: 0.33.0
   description: |
+    **0.33.0(2026-11-23 — R-12, 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기)**: 선택 `centerId` — `GET /rider-complaints`·`/rider-complaints/counts`(컴플레인 기록 때 dispatch 배정의 `mfcId` 를 새 칸 `centerId` 로 저장 — 0.33.0 전 기록은 센터 없음), `GET /obligations`(그 사건의 centerId — `GET /cases` 와 같은 뜻, 센터 관리자는 자기 센터 안에서만). **센터를 주면 센터가 없는 건은 빠진다.** 추가 조건·칸만.
     **0.32.0(2026-11-21 — R-11, PC 5 요청·사용자 "응")**: 직원 `GET /inquiries?riderId=` — 그 라이더의 라이더 문의(탈퇴한 라이더도 그대로, 최근 접수 순), 라이더 문의를 못 보는 직원 403. customerId 와 같이 주거나 고객 문의 거르기(orderId·deliveryIssue·requesterType=CUSTOMER)와 같이 주면 400. 고객·라이더 토큰은 무시. 추가 조건만.
     **0.31.0(2026-11-20 — CS-MFC-Q, PC 3 요청·사용자 "추천대로")**: 사건 종류 `MFC_QUALITY_IMPACT`(품질 사고 고객 영향) — mfc-quality `QualityIncidentImpactAssessed`(mfc.quality.v1) 의 **영향 주문마다** 하나, 상담원 팀(CS_AGENT 가 집고 닫음, 관리자 모두, 센터 관리자는 자기 센터(mfcId) 보기만, 지원센터에게는 안 보임), P2, 기한 1시간(표시만), subject ORDER(orderId), refs incidentId·orderId·lotId. 다음 판단에서 늘어난 주문만 새로 열고 이미 연(닫은 것 포함) 주문은 그대로, 0건은 안 엶. 사람이 닫기(자동 종결 없음). 사건 ID 는 `CaseOpened`(type MFC_QUALITY_IMPACT, refs incidentId·orderId)로 mfc-quality 가 받는다.
     **0.30.0(2026-11-20 — 사용자 "지원센터에서 처리완료하면 아예 배차 취소되게")**: 0.28.0 ① 닫기 막기(409 FAILURE_DECISION_PENDING)를 뺌 — 전달 실패 결정 전인 라이더 도움요청·전달 실패 사건도 닫힌다. 닫으면 delivery-execution 이 `CaseClosed` 로 그 전달 실패를 확정하고 반납 배송을 만든다(execution 1a2f0feb). 라이더가 전달을 계속해야 하면 닫기 전에 execution `failure-decisions` REJECT. ② 재개 이력(RIDER_REOPENED)은 그대로.
@@ -512,6 +513,7 @@ paths:
         - { name: owner, in: query, schema: { type: string, enum: [DELIVERY_OPS, ORDER_OPS, CS] } }
         - { name: state, in: query, schema: { type: string, enum: [OPEN, PARTIALLY_RESOLVED, RESOLVED, WAIVED, FAILED] } }
         - { name: caseId, in: query, schema: { type: string } }
+        - { name: centerId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 64 }, description: '(0.33.0 R-12) 그 사건의 센터(사건 centerId — GET /cases 와 같은 뜻). 센터가 없는 사건의 후속 처리는 센터를 주면 빠진다. 센터 관리자는 자기 센터 밖이면 빈 목록' }
         - $ref: '_common.yaml#/components/parameters/PageSize'
         - $ref: '_common.yaml#/components/parameters/PageCursor'
       responses:
@@ -1462,6 +1464,7 @@ paths:
         - { name: complaintType, in: query, schema: { $ref: '#/components/schemas/RiderComplaintType' } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: centerId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 64 }, description: '(0.33.0 R-12) 배송의 센터(기록 때 dispatch 배정 mfcId) — 센터를 주면 센터가 없는 컴플레인(0.33.0 전 기록·배정에 센터 없음)은 빠진다' }
       responses:
         '200':
           description: OK
@@ -1490,6 +1493,7 @@ paths:
         - { name: deliveryId, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: centerId, in: query, x-added-in: '2026-11-23', schema: { type: string, maxLength: 64 }, description: '(0.33.0 R-12) 배송의 센터(기록 때 dispatch 배정 mfcId) — 센터를 주면 센터가 없는 컴플레인(0.33.0 전 기록·배정에 센터 없음)은 빠진다' }
       responses:
         '200':
           description: OK
@@ -1740,6 +1744,7 @@ components:
         deliveryId: { type: string }
         orderId: { type: string, nullable: true }
         inquiryId: { type: string, nullable: true }
+        centerId: { type: [string, 'null'], x-added-in: '2026-11-23', description: '(0.33.0 R-12) 배송의 센터 — 기록 때 dispatch 배정 mfcId. 0.33.0 전 기록·배정에 센터가 없으면 null' }
         complaintType: { $ref: '#/components/schemas/RiderComplaintType' }
         source: { type: string, description: '접수 경로(지금 CS_AGENT)' }
         recordedBy: { type: string, description: 기록한 직원 ID }

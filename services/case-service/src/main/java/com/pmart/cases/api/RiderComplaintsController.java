@@ -53,7 +53,8 @@ public class RiderComplaintsController implements RiderComplaintsApi {
       @Nullable String deliveryId,
       @Nullable RiderComplaintType complaintType,
       @Nullable OffsetDateTime from,
-      @Nullable OffsetDateTime to) {
+      @Nullable OffsetDateTime to,
+      @Nullable String centerId) {
     var page =
         service.list(
             new Filter(
@@ -61,7 +62,8 @@ public class RiderComplaintsController implements RiderComplaintsApi {
                 deliveryId,
                 complaintType == null ? null : complaintType.getValue(),
                 from == null ? null : from.toInstant(),
-                to == null ? null : to.toInstant()),
+                to == null ? null : to.toInstant(),
+                blankToNull(centerId)),
             cursor,
             size);
     var out = new ListRiderComplaints200Response();
@@ -78,7 +80,8 @@ public class RiderComplaintsController implements RiderComplaintsApi {
       @Nullable String riderId,
       @Nullable String deliveryId,
       @Nullable OffsetDateTime from,
-      @Nullable OffsetDateTime to) {
+      @Nullable OffsetDateTime to,
+      @Nullable String centerId) {
     var counts =
         service.countsByType(
             new Filter(
@@ -86,7 +89,8 @@ public class RiderComplaintsController implements RiderComplaintsApi {
                 deliveryId,
                 null,
                 from == null ? null : from.toInstant(),
-                to == null ? null : to.toInstant()));
+                to == null ? null : to.toInstant(),
+                blankToNull(centerId)));
     var out = new StatusCounts();
     out.setCounts(
         counts.entrySet().stream()
@@ -108,6 +112,10 @@ public class RiderComplaintsController implements RiderComplaintsApi {
     return ResponseEntity.ok(detail(service.get(complaintId)));
   }
 
+  private static @Nullable String blankToNull(@Nullable String s) {
+    return s == null || s.isBlank() ? null : s.strip();
+  }
+
   private static RiderComplaintSummary summary(ComplaintRow r) {
     var s = new RiderComplaintSummary();
     s.setComplaintId(r.complaintId());
@@ -116,6 +124,7 @@ public class RiderComplaintsController implements RiderComplaintsApi {
     s.setDeliveryId(r.deliveryId());
     s.setOrderId(r.orderId());
     s.setInquiryId(r.inquiryId());
+    s.setCenterId(r.centerId());
     s.setComplaintType(RiderComplaintType.fromValue(r.complaintType()));
     s.setSource(r.source());
     s.setRecordedBy(r.recordedBy());
@@ -131,6 +140,7 @@ public class RiderComplaintsController implements RiderComplaintsApi {
     d.setDeliveryId(r.deliveryId());
     d.setOrderId(r.orderId());
     d.setInquiryId(r.inquiryId());
+    d.setCenterId(r.centerId());
     d.setComplaintType(RiderComplaintType.fromValue(r.complaintType()));
     d.setSource(r.source());
     d.setRecordedBy(r.recordedBy());

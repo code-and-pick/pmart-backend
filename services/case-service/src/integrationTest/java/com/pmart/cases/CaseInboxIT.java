@@ -1145,6 +1145,22 @@ class CaseInboxIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("obligationId"))
         .containsExactly(contactId);
+    // 0.33.0 R-12: 사건의 센터로 거르기 — 센터 없는 사건은 센터를 주면 빠진다
+    String center = "MFC-OB-" + UUID.randomUUID().toString().substring(0, 8);
+    String byCenter = "/obligations?caseId=" + caseId + "&centerId=" + center;
+    assertThat(send("GET", ops, byCenter, null).body().path("items")).as("사건에 센터 없음").isEmpty();
+    jdbc.update("UPDATE case_record SET center_id = ? WHERE case_id = ?", center, caseId);
+    assertThat(
+            send("GET", ops, byCenter, null)
+                .body()
+                .path("items")
+                .findValuesAsString("obligationId"))
+        .containsExactlyInAnyOrder(pickupId, contactId, refundId);
+    assertThat(
+            send("GET", admin, "/obligations?caseId=" + caseId + "&centerId=MFC-OTHER", null)
+                .body()
+                .path("items"))
+        .isEmpty();
 
     // 상담원: 고객센터 의무만, 시도 기록은 상태 그대로, 면제는 관리자만
     Map<String, Object> callLog = Map.of("system", "cs-phone", "ref", "CALL-1", "kind", "LOG");

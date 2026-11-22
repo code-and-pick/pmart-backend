@@ -116,7 +116,8 @@ public class RiderComplaintService {
                           RiderComplaintRules.SOURCE_CS_AGENT,
                           blankToNull(cmd.note()),
                           p.subject(),
-                          now);
+                          now,
+                          a.mfcId());
                   store.insert(row);
                   events.publish(
                       EVENT_TYPE,
