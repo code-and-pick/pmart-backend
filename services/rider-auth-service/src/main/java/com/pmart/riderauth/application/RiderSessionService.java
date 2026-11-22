@@ -27,7 +27,16 @@ public class RiderSessionService {
 
   private static final Logger log = LoggerFactory.getLogger(RiderSessionService.class);
 
-  public record Current(String sessionId, String riderId, Instant issuedAt, Instant expiresAt) {}
+  /**
+   * @param provider 이 라이더의 로그인 수단(GOOGLE·KAKAO·NAVER, 2026-11-22 RA-1 — 앱이 탈퇴 재인증을 고른다). 연결이 없으면
+   *     null
+   */
+  public record Current(
+      String sessionId,
+      String riderId,
+      Instant issuedAt,
+      Instant expiresAt,
+      @org.jspecify.annotations.Nullable String provider) {}
 
   private final RiderAuthStore store;
   private final RiderTokens tokens;
@@ -134,7 +143,8 @@ public class RiderSessionService {
         s.sessionId(),
         s.riderId(),
         Objects.requireNonNull(jwt.getIssuedAt()),
-        Objects.requireNonNull(jwt.getExpiresAt()));
+        Objects.requireNonNull(jwt.getExpiresAt()),
+        store.identityOf(s.riderId()).map(RiderAuthStore.IdentityInfo::provider).orElse(null));
   }
 
   /** 이 서비스가 발급한 라이더 토큰만(다른 발급자·종류는 403). */

@@ -3,7 +3,7 @@ info:
   title: rider-auth-service
   version: 0.4.0
   description: |
-    0.4.0(2026-11-22 RA-1 — 사용자 "라이더쪽을 수정해야해, 소셜로그인부분때문에", 고객 auth-service 와 같게 "동의는 처음 가입할 때만"): 네이버 교환 본문 `purpose`(LOGIN 기본·WITHDRAWAL). WITHDRAWAL(탈퇴 재인증)이면 교환 뒤 네이버 앱 연결을 끊는다. LOGIN 은 그 네이버 계정으로 가입을 마친 라이더가 없을 때만 끊는다(동의만 하고 나가면 다음 로그인에 동의를 다시 받게). 교환 때 네이버 프로필 이메일을 가려 두었다가 로그인 때 가린 이메일로 남긴다. 탈퇴(RiderWithdrawn) 뒤 카카오 앱 연결 끊기(Admin 키가 있을 때). 응답 모양은 그대로.
+    0.4.0(2026-11-22 RA-1 — 사용자 "라이더쪽을 수정해야해, 소셜로그인부분때문에", 고객 auth-service 와 같게 "동의는 처음 가입할 때만"): 네이버 교환 본문 `purpose`(LOGIN 기본·WITHDRAWAL). WITHDRAWAL(탈퇴 재인증)이면 교환 뒤 네이버 앱 연결을 끊는다. LOGIN 은 그 네이버 계정으로 가입을 마친 라이더가 없을 때만 끊는다(동의만 하고 나가면 다음 로그인에 동의를 다시 받게). 현재 세션 조회에 `provider`. 교환 때 네이버 프로필 이메일을 가려 두었다가 로그인 때 가린 이메일로 남긴다. 탈퇴(RiderWithdrawn) 뒤 카카오 앱 연결 끊기(Admin 키가 있을 때). 응답 모양은 그대로.
     0.3.0(2026-11-20 BR-69 — 사용자 "응 해줘", ADR-0078): `POST /rider-auth/naver-token-exchanges` — 네이버는 client secret 없는 토큰 교환을 거절해 서버가 대신 교환하고 id_token 만 돌려준다.
     라이더 로그인·토큰 발급자(ADR-0054 결정 3·E·F, ADR-0055). 라이더 앱이 Google 로그인으로 받은 OpenID Connect ID 토큰을 Google 공개키(JWKS)로
     검증하고(서명·iss·aud=라이더용 웹 클라이언트 ID·exp), Google 계정(sub)을 내부 라이더 주체 RD-… 에 연결한 뒤 PMart 라이더 토큰(typ=RIDER)을 발급한다.
@@ -326,6 +326,7 @@ components:
         riderId: { type: string }
         issuedAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
+        provider: { type: [string, 'null'], enum: [GOOGLE, KAKAO, NAVER, null], x-added-in: '2026-11-22', description: '(0.4.0 RA-1) 이 라이더의 로그인 수단 — 앱이 탈퇴 전 재인증(네이버면 purpose WITHDRAWAL 교환)을 고른다. 연결이 없으면 null' }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

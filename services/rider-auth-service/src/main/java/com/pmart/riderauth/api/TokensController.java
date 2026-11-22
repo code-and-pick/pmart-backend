@@ -50,6 +50,8 @@ public class TokensController implements TokensApi {
             .sessionId(c.sessionId())
             .riderId(c.riderId())
             .issuedAt(RiderAuthMapping.odt(c.issuedAt()))
-            .expiresAt(RiderAuthMapping.odt(c.expiresAt())));
+            .expiresAt(RiderAuthMapping.odt(c.expiresAt()))
+            .provider(
+                c.provider() == null ? null : RiderSession.ProviderEnum.fromValue(c.provider())));
   }
 }

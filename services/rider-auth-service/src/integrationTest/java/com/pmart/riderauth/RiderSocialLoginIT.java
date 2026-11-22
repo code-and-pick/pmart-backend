@@ -224,6 +224,12 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
     assertThat(id.status()).isEqualTo(200);
     assertThat(id.body().path("provider").asString()).isEqualTo("KAKAO");
     assertThat(id.body().path("emailMasked").asString()).isEqualTo("k***@g***");
+    assertThat(
+            currentSession(r.body().path("tokens").path("accessToken").asString())
+                .body()
+                .path("provider")
+                .asString())
+        .isEqualTo("KAKAO");
   }
 
   /**
@@ -489,6 +495,8 @@ class RiderSocialLoginIT extends PostgresKafkaContainerSupport {
     Res current = currentSession(access);
     assertThat(current.status()).isEqualTo(200);
     assertThat(current.body().get("riderId").asString()).isEqualTo(riderId);
+    // 0.4.0 RA-1 — 로그인 수단(앱이 탈퇴 재인증을 고른다)
+    assertThat(current.body().path("provider").asString()).isEqualTo("GOOGLE");
 
     // 갱신(회전) → 같은 토큰 재사용은 TOKEN_REUSED 로 세션 폐기
     String refreshToken = first.body().get("tokens").get("refreshToken").asString();
