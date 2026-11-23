@@ -541,6 +541,67 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
     assertThat(eligibleIds("MFC-IT-1")).contains(rider);
   }
 
+  /**
+   * RS-8(2026-11-23): 문의 정지 단어 → 7일 정지(SUSPENDED, 찾은 시각 + 7일), RiderRestricted(SYSTEM). 같은 사건 다시 와도
+   * 한 번.
+   */
+  @Test
+  void profanityDetectedSuspendsSevenDays() {
+    String rider = "RD-pf-" + UUID.randomUUID();
+    assertThat(signup(rider, phone(), "k-" + rider).getStatusCode().value()).isEqualTo(201);
+    Instant detected = Instant.now().minusSeconds(60);
+    String json =
+        EventEnvelopeFixtures.envelope("RiderProfanityDetected")
+            .from("case-service")
+            .aggregate("Case", "CASE-pf-" + rider, 1)
+            .payload(
+                Map.of(
+                    "riderId",
+                    rider,
+                    "inquiryId",
+                    "INQ-pf",
+                    "caseId",
+                    "CASE-pf-" + rider,
+                    "source",
+                    "INQUIRY_MESSAGE",
+                    "detectedAt",
+                    detected.toString()))
+            .buildJson();
+    kafka.send("platform.case.v1", "CASE-pf-" + rider, json).join();
+    kafka.send("platform.case.v1", "CASE-pf-" + rider, json).join(); // 같은 사건 다시
+    long deadline = System.currentTimeMillis() + 30_000;
+    while (System.currentTimeMillis() < deadline
+        && !"SUSPENDED"
+            .equals(
+                jdbc.queryForObject(
+                    "SELECT restriction FROM rider WHERE rider_id = ?", String.class, rider))) {
+      Thread.onSpinWait();
+    }
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT restriction, restriction_until, new_dispatch_enabled FROM rider WHERE rider_id = ?",
+            rider);
+    assertThat(row.get("restriction")).isEqualTo("SUSPENDED");
+    assertThat(((java.sql.Timestamp) row.get("restriction_until")).toInstant())
+        .isCloseTo(
+            detected.plus(Duration.ofDays(7)),
+            org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.SECONDS));
+    assertThat(row.get("new_dispatch_enabled")).isEqualTo(false);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_restriction_history WHERE rider_id = ? AND changed_by ="
+                    + " 'system:case-profanity'",
+                Integer.class,
+                rider))
+        .isEqualTo(1);
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'RiderRestricted'",
+            String.class,
+            rider);
+    assertThat(payload).contains("SUSPENDED").doesNotContain("INQ-pf-글");
+  }
+
   /** RS-3(사용자 2026-11-14): 같은 종류 컴플레인 7일 안 서로 다른 배송 3건 이상 → 검토 대상, 운영자가 닫음. 자동 제재 없음. */
   @Test
   void repeatedComplaintsOpenAReviewForTheOperator() {
