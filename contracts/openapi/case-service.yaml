@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.35.0
+  version: 0.36.0
   description: |
+    **0.36.0(2026-11-23 — BF-5 고객 관리 "문의 담당 상담원", 사용자 "진행해")**: 직원 `GET /inquiries` 줄에 `lastAnsweredBy`(마지막으로 답한 직원 운영자 ID — 답변 표 author AGENT 의 가장 최근, 답 없으면 null). 고객·라이더 토큰에는 늘 null(직원 ID 를 내보내지 않음). 추가 칸만.
     **0.35.0(2026-11-23 — R-14, 사용자 "욕설이니까 자동으로 인식해서", 금칙어 목록 = 설정 "추천대로")**: API 모양 변화 없음. 고객 `POST /inquiries` 의 제목·본문을 설정 `pmart.cases.profanity-words`(대소문자·띄어쓰기·문장부호 무시)와 대조해 맞으면 사건 `CustomerProfanityDetected`(platform.case.v1 — customerId·inquiryId·caseId·source INQUIRY·detectedAt, 글·단어 없음)를 낸다. 문의는 그대로 받는다. 라이더 문의·상담원 접수는 대상 아님. 목록이 비면 인식 안 함. 구독 customer(CU-7 — 7일 정지·고객 알림).
     **0.34.0(2026-11-23 — R-13, 사용자 "상담메모는 상담사가 쓸 수 있겠지. 수정은 적은 사람만 가능하고 삭제도 적은 사람만 가능함")**: 고객 상담 메모 `/customer-notes` — 상담원(CS_AGENT)이 쓰고, 상담원·관리자가 보고, 고치기·지우기는 쓴 사람만. 지우면 글은 DB 에서 지우고 누가·언제는 남김. 새 경로.
     **0.33.0(2026-11-23 — R-12, 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기)**: 선택 `centerId` — `GET /rider-complaints`·`/rider-complaints/counts`(컴플레인 기록 때 dispatch 배정의 `mfcId` 를 새 칸 `centerId` 로 저장 — 0.33.0 전 기록은 센터 없음), `GET /obligations`(그 사건의 centerId — `GET /cases` 와 같은 뜻, 센터 관리자는 자기 센터 안에서만). **센터를 주면 센터가 없는 건은 빠진다.** 추가 조건·칸만.
@@ -1917,6 +1918,7 @@ components:
           x-added-in: '2026-11-17'
         createdAt: { type: string, format: date-time }
         answeredAt: { type: string, format: date-time, nullable: true }
+        lastAnsweredBy: { type: [string, 'null'], x-added-in: '2026-11-23', description: '(0.36.0) 마지막으로 답한 직원 운영자 ID — 직원 목록에만(고객·라이더 토큰은 null), 답 없으면 null' }
         version: { type: integer }
     InquiryMessage:
       type: object

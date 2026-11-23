@@ -35,7 +35,36 @@ public class InquiryStore {
       @Nullable String deliveryId,
       @Nullable String deliveryIssue,
       /** 화면 문의 번호 Q-MMDD-일련(ADR-0070, V20 — DB 트리거가 매김). 넣을 때는 null. */
-      @Nullable String inquiryNumber) {}
+      @Nullable String inquiryNumber,
+      /** 마지막으로 답한 직원(0.36.0 — 답변 표 AGENT 의 가장 최근). 넣을 때는 null. */
+      @Nullable String lastAnsweredBy) {
+
+    /** 고객·라이더에게는 직원 ID 를 내보내지 않는다. */
+    public InquiryRow withoutStaff() {
+      return lastAnsweredBy == null
+          ? this
+          : new InquiryRow(
+              inquiryId,
+              caseId,
+              customerId,
+              category,
+              orderId,
+              title,
+              body,
+              origin,
+              status,
+              createdAt,
+              answeredAt,
+              version,
+              channel,
+              callerRelation,
+              requesterType,
+              deliveryId,
+              deliveryIssue,
+              inquiryNumber,
+              null);
+    }
+  }
 
   public record ReplyRow(
       String replyId, String authorType, String authorId, String body, Instant createdAt) {}
@@ -49,7 +78,9 @@ public class InquiryStore {
       "SELECT q.inquiry_id, q.case_id, q.customer_id, q.category, q.order_id, q.title, q.body,"
           + " q.origin, q.status, q.created_at, q.answered_at, q.version, q.requester_type,"
           + " q.delivery_id, q.delivery_issue, q.inquiry_number, i.channel,"
-          + " i.caller_relation FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
+          + " i.caller_relation, (SELECT r.author_id FROM cs_inquiry_reply r WHERE r.inquiry_id ="
+          + " q.inquiry_id AND r.author_type = 'AGENT' ORDER BY r.created_at DESC, r.seq DESC LIMIT 1)"
+          + " AS last_answered_by FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
           + " q.inquiry_id";
 
   private final JdbcTemplate jdbc;
@@ -266,6 +297,7 @@ public class InquiryStore {
         rs.getString("requester_type"),
         rs.getString("delivery_id"),
         rs.getString("delivery_issue"),
-        rs.getString("inquiry_number"));
+        rs.getString("inquiry_number"),
+        rs.getString("last_answered_by"));
   }
 }

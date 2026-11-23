@@ -148,6 +148,24 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
         send("POST", agent, "/inquiries/" + id + "/replies", Map.of("body", "앱을 다시 설치해 보세요"), 0);
     assertThat(replied.status()).as(replied.body().toString()).isEqualTo(200);
     assertThat(replied.body().path("status").asString()).isEqualTo("ANSWERED");
+    // 0.36.0: 직원 목록 줄에 마지막으로 답한 직원, 고객 본인 목록에는 없음
+    assertThat(
+            send("GET", admin, "/inquiries?customerId=" + me, null, null)
+                .body()
+                .path("items")
+                .get(0)
+                .path("lastAnsweredBy")
+                .asString())
+        .isEqualTo("cs-1");
+    assertThat(
+            send("GET", meTok, "/inquiries", null, null)
+                .body()
+                .path("items")
+                .get(0)
+                .path("lastAnsweredBy")
+                .isNull())
+        .as("고객에게 직원 ID 없음")
+        .isTrue();
     // 고객 알림용 사건(답변 내용 없음, N-2)
     String payload =
         jdbc.queryForObject(

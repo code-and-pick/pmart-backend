@@ -258,6 +258,7 @@ public class InquiriesController implements InquiriesApi {
     s.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     s.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     s.setVersion(r.version());
+    s.setLastAnsweredBy(r.lastAnsweredBy());
     return s;
   }
 

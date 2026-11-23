@@ -172,6 +172,7 @@ public class InquiryService {
                           requesterType,
                           blankToNull(cmd.deliveryId()),
                           cmd.deliveryIssue(),
+                          null,
                           null));
                   attach(id, customerId, cmd.photoIds(), 0);
                   // 0.35.0 R-14: 고객 문의 욕설 자동 인식 → customer 가 7일 정지(CU-7). 문의는 그대로 받는다. 글·단어 로그 금지
@@ -288,6 +289,10 @@ public class InquiryService {
             size);
     boolean more = rows.size() > size;
     List<InquiryRow> items = more ? rows.subList(0, size) : rows;
+    if (p.type() != PmartPrincipal.PrincipalType.OPERATOR) {
+      // 0.36.0: 마지막으로 답한 직원 ID 는 직원 목록에만
+      items = items.stream().map(InquiryRow::withoutStaff).toList();
+    }
     return new Page(List.copyOf(items), more ? items.get(items.size() - 1).inquiryId() : null);
   }
 
