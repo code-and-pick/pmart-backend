@@ -14,8 +14,10 @@ spring:
   # 이벤트 소비(Spring Cloud Stream, ADR-0035): 함수(빈) 이름 → 토픽. 함수를 더하거나 빼면 코드(PmartEventConsumer 빈)와 함께 바꾼다
   cloud:
     function:
-      definition: caseEvents
+      definition: caseEvents;deliveryEvents
     stream:
       bindings:
         caseEvents-in-0: # case RiderComplaintRecorded → 컴플레인 누적·제한 검토 대상(RS-3, 2026-11-14 — case 발행은 구현 전)
           destination: platform.case.v1
+        deliveryEvents-in-0: # 배송 도움요청 대화 금칙어 RiderHelpProfanityDetected → 7일 정지(2026-11-23)
+          destination: delivery.delivery.v1

@@ -44,13 +44,16 @@ public class HelpRequestService {
   private final RequestIdempotency idempotency;
   private final ObjectMapper mapper;
   private final Clock clock;
+  private final HelpProfanityGuard profanity;
 
   public HelpRequestService(
       ExecutionStore store,
       ExecutionEvents events,
       RequestIdempotency idempotency,
       ObjectMapper mapper,
-      Clock clock) {
+      Clock clock,
+      HelpProfanityGuard profanity) {
+    this.profanity = profanity;
     this.store = store;
     this.events = events;
     this.idempotency = idempotency;
@@ -75,6 +78,7 @@ public class HelpRequestService {
           com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
           "전달 불가는 실패 등록(POST …/failures)으로 알려 주세요 — 대화도 함께 열립니다.");
     }
+    profanity.rejectBlocked(detail); // 2026-11-23 금칙어 — 멱등 처리 밖
     return idempotency
         .execute(
             new RequestKey(source, requestId, "createHelpRequest", p.subject()),
@@ -118,6 +122,8 @@ public class HelpRequestService {
               }
               int version = store.bumpVersion(deliveryId, now);
               events.helpRequested(d, h, evidenceRefs, version);
+              profanity.reportSuspendable(
+                  deliveryId, requestId, p.subject(), "HELP_REQUEST", version, now, detail);
               log.info("배송 {} 도움요청 {} — {}", deliveryId, requestId, category); // 내용은 로그에 남기지 않는다
               return new Created(requestId, deliveryId, version, now);
             })
@@ -204,6 +210,9 @@ public class HelpRequestService {
       throw new PmartException(
           com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "메시지 내용을 입력해 주세요.");
     }
+    if (p.type() == PmartPrincipal.PrincipalType.RIDER) {
+      profanity.rejectBlocked(text); // 2026-11-23 금칙어 — 라이더 글만, 멱등 처리 밖
+    }
     String messageId =
         idempotency
             .execute(
@@ -280,6 +289,16 @@ public class HelpRequestService {
                           text,
                           mapper.writeValueAsString(photoRefs),
                           clock.instant());
+                  if ("RIDER".equals(senderType)) {
+                    profanity.reportSuspendable(
+                        deliveryId,
+                        requestId,
+                        p.subject(),
+                        "HELP_MESSAGE",
+                        delivery == null ? 0 : delivery.version(),
+                        saved.createdAt(),
+                        text);
+                  }
                   if ("SUPPORT".equals(senderType)) {
                     // 라이더 알림함(§11-5) — 같은 트랜잭션의 outbox
                     events.helpReplied(
@@ -300,6 +319,11 @@ public class HelpRequestService {
         v.help(),
         store.helpMessage(messageId).map(List::of).orElse(List.of()),
         p.type() != PmartPrincipal.PrincipalType.RIDER);
+  }
+
+  /** 금칙어 검사(전달 재개 메모 — ExecutionService). */
+  HelpProfanityGuard profanity() {
+    return profanity;
   }
 
   /** 답장 권한(DE-2). 관리자는 늘, 지원센터는 관리자 팀(ORDER_OPS)으로 넘기지 않은 건만. */

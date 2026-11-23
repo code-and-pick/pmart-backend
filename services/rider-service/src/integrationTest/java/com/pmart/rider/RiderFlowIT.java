@@ -542,6 +542,47 @@ class RiderFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 도움요청 대화 금칙어(2026-11-23 — 사용자 "응"): execution RiderHelpProfanityDetected(delivery.delivery.v1) →
+   * 같은 7일 정지.
+   */
+  @Test
+  void helpChatProfanitySuspendsSevenDays() {
+    String rider = "RD-hp-" + UUID.randomUUID();
+    assertThat(signup(rider, phone(), "k-" + rider).getStatusCode().value()).isEqualTo(201);
+    String json =
+        EventEnvelopeFixtures.envelope("RiderHelpProfanityDetected")
+            .from("delivery-execution-service")
+            .aggregate("Delivery", "DLV-hp-" + rider, 1)
+            .payload(
+                Map.of(
+                    "riderId",
+                    rider,
+                    "deliveryId",
+                    "DLV-hp-" + rider,
+                    "requestId",
+                    "HR-hp",
+                    "source",
+                    "HELP_MESSAGE",
+                    "detectedAt",
+                    Instant.now().toString()))
+            .buildJson();
+    kafka.send("delivery.delivery.v1", "DLV-hp-" + rider, json).join();
+    long deadline = System.currentTimeMillis() + 30_000;
+    while (System.currentTimeMillis() < deadline
+        && !"SUSPENDED"
+            .equals(
+                jdbc.queryForObject(
+                    "SELECT restriction FROM rider WHERE rider_id = ?", String.class, rider))) {
+      Thread.onSpinWait();
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT restriction_reason FROM rider WHERE rider_id = ?", String.class, rider))
+        .contains("배송 도움요청 대화")
+        .contains("DLV-hp-");
+  }
+
+  /**
    * RS-8(2026-11-23): 문의 정지 단어 → 7일 정지(SUSPENDED, 찾은 시각 + 7일), RiderRestricted(SYSTEM). 같은 사건 다시 와도
    * 한 번.
    */

@@ -33,6 +33,10 @@ import tools.jackson.databind.JsonNode;
 public class ProfanitySuspensions {
 
   public static final Set<String> TYPES = Set.of("RiderProfanityDetected");
+
+  /** 배송 도움요청 대화(2026-11-23 사용자 "응" — execution, delivery.delivery.v1). 같은 7일 정지. */
+  public static final Set<String> HELP_TYPES = Set.of("RiderHelpProfanityDetected");
+
   static final String ACTOR = "system:case-profanity";
   private static final Logger log = LoggerFactory.getLogger(ProfanitySuspensions.class);
 
@@ -76,11 +80,13 @@ public class ProfanitySuspensions {
     }
     String source = p.path("source").asString("INQUIRY");
     String reason =
-        "라이더 문의"
-            + ("INQUIRY_MESSAGE".equals(source) ? " 대화" : "")
-            + "에 위협·거친 말 — 자동 7일 정지(문의 "
-            + p.path("inquiryId").asString("")
-            + ")";
+        HELP_TYPES.contains(e.eventType())
+            ? "배송 도움요청 대화에 위협·거친 말 — 자동 7일 정지(배송 " + p.path("deliveryId").asString("") + ")"
+            : "라이더 문의"
+                + ("INQUIRY_MESSAGE".equals(source) ? " 대화" : "")
+                + "에 위협·거친 말 — 자동 7일 정지(문의 "
+                + p.path("inquiryId").asString("")
+                + ")";
     Rider.Restriction previous = r.restriction();
     store.updateRestriction(
         riderId, r.version(), Rider.Restriction.SUSPENDED.name(), reason, until);

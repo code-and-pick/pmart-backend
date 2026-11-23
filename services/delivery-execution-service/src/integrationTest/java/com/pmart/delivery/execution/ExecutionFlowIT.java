@@ -1163,6 +1163,50 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 도움요청 대화 금칙어(2026-11-23 — 사용자 "응"): 막기 단어는 422 BLOCKED_WORDS(글·사건 없음), 정지 단어는 글을 받고
+   * RiderHelpProfanityDetected(글·단어 없음). 직원 글은 보지 않는다.
+   */
+  @Test
+  void helpChatBlocksAndReportsProfanity() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    // 도움요청 내용에 막기 단어 → 422, 도움요청이 생기지 않음
+    ResponseEntity<String> blocked =
+        post(id, "help-requests", rider, Map.of("category", "OTHER", "detail", "시험 막기말 이에요"));
+    assertThat(blocked.getStatusCode().value()).isEqualTo(422);
+    assertThat(body(blocked).path("code").asString()).isEqualTo("BLOCKED_WORDS");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM help_request WHERE delivery_id = ?", Integer.class, id))
+        .isZero();
+    String requestId =
+        body(post(id, "help-requests", rider, Map.of("category", "ADDRESS_ISSUE")))
+            .path("resultId")
+            .asString();
+    String thread = "help-requests/" + requestId + "/messages";
+    assertThat(post(id, thread, rider, Map.of("body", "시험막기말")).getStatusCode().value())
+        .isEqualTo(422);
+    // 정지 단어 → 글은 받고 사건
+    assertThat(post(id, thread, rider, Map.of("body", "이건 시험 위협말")).getStatusCode().value())
+        .isEqualTo(201);
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type ="
+                + " 'RiderHelpProfanityDetected'",
+            String.class,
+            id);
+    assertThat(payload).contains(rider).contains("HELP_MESSAGE").doesNotContain("위협");
+    // 직원 글은 보지 않는다
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    assertThat(
+            staffPost("/deliveries/" + id + "/" + thread, ops, Map.of("body", "시험막기말"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(201);
+  }
+
+  /**
    * 도움요청 대화(0.6.0, 라이더 앱 요청 §11-3): 라이더 ↔ 지원센터 메시지. 라이더는 본인 사진만 붙이고 상담원 ID 는 못 본다, after 로 새 메시지만,
    * 쓸 권한 없는 직원 403·남의 라이더 404, 처리되면 409 HELP_REQUEST_CLOSED.
    */

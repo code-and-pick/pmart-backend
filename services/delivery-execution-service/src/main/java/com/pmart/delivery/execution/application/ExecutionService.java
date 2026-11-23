@@ -575,6 +575,7 @@ public class ExecutionService {
     if (text.length() > 300) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "메모는 300자까지입니다.");
     }
+    helps.getObject().profanity().rejectBlocked(text); // 2026-11-23 금칙어 — 메모가 대화 글이 된다
     return transition(
         "requestFailureResume",
         deliveryId,
@@ -619,6 +620,11 @@ public class ExecutionService {
                     + (text.isEmpty() ? "" : "\n" + text),
                 "[]",
                 now);
+            helps
+                .getObject()
+                .profanity()
+                .reportSuspendable(
+                    deliveryId, helpId, rider, "RESUME_REQUEST", d.version(), now, text);
           }
           return store.delivery(deliveryId).map(DeliveryRow::version).orElse(d.version() + 1);
         });

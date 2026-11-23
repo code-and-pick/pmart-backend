@@ -31,4 +31,16 @@ class RiderEventConsumers {
           }
         });
   }
+
+  /**
+   * 배송 사건(delivery.delivery.v1, 바인딩 {@code deliveryEvents-in-0} — 2026-11-23): 도움요청 대화 금칙어({@code
+   * RiderHelpProfanityDetected})만 받고 나머지 배송 사건은 버린다.
+   */
+  @Bean
+  PmartEventConsumer deliveryEvents(
+      EventConsumers consumers, com.pmart.rider.application.ProfanitySuspensions profanity) {
+    return consumers.of(
+        e -> com.pmart.rider.application.ProfanitySuspensions.HELP_TYPES.contains(e.eventType()),
+        profanity::on);
+  }
 }
