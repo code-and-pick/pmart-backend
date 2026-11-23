@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.25.0
+  version: 0.26.0
   description: |
+    **0.26.0(2026-11-23 — BF-5, case 0.34.0 R-13 배포 뒤)**: 고객 상세 `views/customer/{id}` 에 `customerNotes`(case `GET /customer-notes?customerId=&size=10` — 상담 메모 글·쓴 직원 "이름 · 사번"·고친 시각, 줄마다 `mine` = 부른 직원이 쓴 것 → 화면이 고치기·지우기 단추). **CS_AGENT·OPERATOR_ADMIN 만**(case 가 그 둘만) — 그 밖 직원은 부르지 않고 null. 쓰기·고치기·지우기는 화면이 case `/customer-notes` 를 직접.
     **0.25.0(2026-11-23 — BF-5 1차, 사용자 "고객관리" 목록 "1. 시작해"; BF-4 2차)**: 고객 상세 `views/customer/{id}` 에 칸 셋 — `deliveries`(주문 칸 주문마다 execution `GET /deliveries?orderId=` — 배송 상태·담당 MFC·배차·완료·실패), `claimCounts`(claim `GET /claims/counts?customerId=&by=type` — 반복 클레임), `piiAccessLogs`(audit `GET /pii-access-logs?subjectType=CUSTOMER&subjectRef=` — 이 고객 정보를 누가·언제·왜 열람했는지, **OPERATOR_ADMIN 만** — 그 밖은 부르지 않고 null). 클레임 칸 줄에 `reason`(사유 코드 — 글 없음)·환불 `refundRequestedAmount`·`refundedAmount`·`refundCompletedAt`. `views/rider-complaints` 에 선택 `centerId`(case 0.33.0 R-12 — 센터 없는 기록은 빠짐)와 줄 `centerId`.
     **0.24.0(2026-11-23 — BF-4, 사용자 "주문에 붙은 것만", 통합 백오피스 센터 고르기)**: 선택 `centerId` — `GET /views/claims`(→ claim 0.13.0 CL-8 `mfcId` = 원주문 이행 센터), `GET /views/pending-work`(이행 확인 필요·MFC 중지 실패·인계 거절은 원천 `mfcId` 로 거름, 멈춘 사가는 센터가 없어 못 거름), `GET /views/work-counts`(PENDING_WORK 위와 같음, DELIVERIES 는 execution `mfcId`; CASES·OBLIGATIONS·SHIFT_HANDOVERS·INQUIRIES·APPROVALS 는 범위 밖 — 모든 센터 그대로). 못 거른 원천은 응답 `centerUnfilteredSources`. 라이더 컴플레인은 case R-12 뒤.
     관리자 화면별 조회 조합·명령 전달 계층. 상태 없음, 정본 아님. (docs/architecture/service-map.md §8)
@@ -1217,6 +1218,24 @@ components:
                 properties:
                   key: { type: string }
                   count: { type: integer, format: int64 }
+        customerNotes:
+          type: [object, 'null']
+          x-added-in: '2026-11-23'
+          description: (0.26.0 BF-5, case 0.34.0 R-13) 고객 상담 메모 최근 10건(지운 것 없음) — CS_AGENT·OPERATOR_ADMIN 만(그 밖 null), 원천 실패면 null + unavailableSources
+          properties:
+            hasMore: { type: boolean }
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  noteId: { type: string }
+                  text: { type: [string, 'null'], description: 메모 글(내부 기록 — 직원 화면만) }
+                  authorId: { type: [string, 'null'] }
+                  authorLabel: { $ref: '#/components/schemas/OperatorLabel' }
+                  createdAt: { type: [string, 'null'], format: date-time }
+                  editedAt: { type: [string, 'null'], format: date-time }
+                  mine: { type: boolean, description: 부른 직원이 쓴 메모 — 고치기·지우기는 쓴 사람만(case 판정) }
         piiAccessLogs:
           type: [object, 'null']
           x-added-in: '2026-11-23'

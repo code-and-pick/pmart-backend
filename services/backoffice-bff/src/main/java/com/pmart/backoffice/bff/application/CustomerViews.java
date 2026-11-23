@@ -328,6 +328,7 @@ public class CustomerViews {
     }
 
     body.put("deliveries", deliveries(token, orders, used, failed));
+    body.put("customerNotes", customerNotes(token, customerId, used, failed));
     body.put("piiAccessLogs", piiAccessLogs(token, customerId, used, failed));
     return out(now, used, failed, body);
   }
@@ -431,6 +432,60 @@ public class CustomerViews {
     }
     for (Map<String, Object> r : rows) {
       r.put("actorLabel", OperatorLabels.of((String) r.get("actorId"), labels));
+    }
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("hasMore", text(page.path("page"), "nextCursor") != null);
+    m.put("items", rows);
+    return m;
+  }
+
+  /**
+   * 0.26.0 BF-5 고객 상담 메모(case 0.34.0 R-13) — case 가 CS_AGENT·OPERATOR_ADMIN 만 보여 주므로 그 밖 직원은 부르지 않고
+   * null. 쓴 직원 "이름 · 사번"(hr), {@code mine} = 부른 직원이 쓴 것. 글은 로그에 남기지 않는다.
+   */
+  private @Nullable Map<String, Object> customerNotes(
+      String token, String customerId, Set<Source> used, Set<Source> failed) {
+    PmartPrincipal p = PmartPrincipal.current().orElse(null);
+    if (p == null || !(p.hasRole("CS_AGENT") || p.hasRole("OPERATOR_ADMIN"))) {
+      return null;
+    }
+    used.add(Source.CASE);
+    JsonNode page =
+        cell(
+            Source.CASE,
+            token,
+            "/customer-notes",
+            Map.of("customerId", customerId, "size", CELL_SIZE),
+            failed);
+    if (page == null) {
+      return null;
+    }
+    List<Map<String, Object>> rows = new ArrayList<>();
+    List<String> staff = new ArrayList<>();
+    for (JsonNode n : page.path("items")) {
+      Map<String, Object> r = new LinkedHashMap<>();
+      String author = text(n, "authorId");
+      r.put("noteId", text(n, "noteId"));
+      r.put("text", text(n, "text"));
+      r.put("authorId", author);
+      r.put("createdAt", text(n, "createdAt"));
+      r.put("editedAt", text(n, "editedAt"));
+      r.put("mine", author != null && author.equals(p.subject()));
+      rows.add(r);
+      if (author != null) {
+        staff.add(author);
+      }
+    }
+    Map<String, JsonNode> labels = null;
+    if (!staff.isEmpty()) {
+      used.add(Source.HR);
+      labels = OperatorLabels.lookup(clients, token, staff);
+      if (labels == null) {
+        failed.add(Source.HR);
+      }
+    }
+    for (Map<String, Object> r : rows) {
+      r.put("authorLabel", OperatorLabels.of((String) r.get("authorId"), labels));
     }
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("hasMore", text(page.path("page"), "nextCursor") != null);

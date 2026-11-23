@@ -268,6 +268,10 @@ class CustomerViewsIT {
                       "type":"FORWARD","mfcId":"MFC-1","state":"DELIVERED","riderId":"RD-1","createdAt":"2026-11-19T01:10:00Z",
                       "completedAt":"2026-11-19T02:00:00Z","completionMethod":"HANDED","dropAddress":"부산 어딘가"}]}""")));
 
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customer-notes"))
+            .willReturn(json(200, "{\"items\":[],\"page\":{\"nextCursor\":null}}")));
+
     Res r = get("/views/customer/CU-1");
 
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
@@ -361,6 +365,19 @@ class CustomerViewsIT {
                     200,
                     "{\"items\":[{\"operatorId\":\"op-cs\",\"name\":\"이상담\",\"employeeNo\":\"P2026-00007\"}]}")));
 
+    cases.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customer-notes"))
+            .withQueryParam("customerId", equalTo("CU-1"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"noteId":"CNOTE-2","customerId":"CU-1","text":"다음 통화 때 환불 확인","authorId":"op-cs",
+                      "createdAt":"2026-11-23T02:00:00Z","editedAt":null,"deleted":false},
+                     {"noteId":"CNOTE-1","customerId":"CU-1","text":"관리자 메모","authorId":"op-admin",
+                      "createdAt":"2026-11-23T01:00:00Z","editedAt":"2026-11-23T01:30:00Z","deleted":false}],
+                     "page":{"nextCursor":null}}""")));
+
     Res r = get(ADMIN, "/views/customer/CU-1");
 
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
@@ -373,6 +390,14 @@ class CustomerViewsIT {
     audit.verify(
         getRequestedFor(urlPathEqualTo("/api/v1/pii-access-logs"))
             .withHeader("Authorization", equalTo("Bearer " + ADMIN)));
+    // 0.26.0 상담 메모 — 쓴 직원 이름, mine = 부른 직원(관리자)이 쓴 것
+    JsonNode notes = r.body().path("customerNotes").path("items");
+    assertThat(notes.findValuesAsString("noteId")).containsExactly("CNOTE-2", "CNOTE-1");
+    assertThat(notes.get(0).path("authorLabel").path("name").asString()).isEqualTo("이상담");
+    assertThat(notes.get(0).path("mine").asBoolean()).isFalse();
+    assertThat(notes.get(1).path("mine").asBoolean()).isTrue();
+    assertThat(notes.get(1).path("editedAt").asString()).isEqualTo("2026-11-23T01:30:00Z");
+    assertThat(r.body().path("customerNotes").path("hasMore").asBoolean()).isFalse();
     assertThat(r.body().path("deliveries").isNull()).as("배송 칸만 확인 불가").isTrue();
     assertThat(r.body().path("unavailableSources").toString())
         .contains("delivery-execution-service");
