@@ -3636,6 +3636,55 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   static final String PROMISED_AT = "2030-01-01T03:50:00Z";
 
+  /**
+   * 묶음 전달 순서(2026-11-23 라이더 앱 요청, 0.40.0): 배정 사건의 bundleId·stopSequence 를 라이더 배송·내 배송 목록에 그대로, 묶음
+   * 아니면 null.
+   */
+  @Test
+  void riderSeesBundleStopSequence() {
+    String rider = "RDR-" + UUID.randomUUID();
+    String bundle = "BND-" + UUID.randomUUID();
+    String a = "DLV-" + UUID.randomUUID();
+    String b = "DLV-" + UUID.randomUUID();
+    String single = "DLV-" + UUID.randomUUID();
+    for (String[] x : new String[][] {{a, "1"}, {b, "2"}}) {
+      String order = "ORD-" + UUID.randomUUID();
+      created(x[0], "SHP-" + UUID.randomUUID(), order);
+      Map<String, Object> p = new java.util.LinkedHashMap<>();
+      p.put("deliveryId", x[0]);
+      p.put("orderId", order);
+      p.put("riderId", rider);
+      p.put("assignmentVersion", 1);
+      p.put("acceptedAt", Instant.now().toString());
+      p.put("bundleId", bundle);
+      p.put("stopSequence", Integer.parseInt(x[1]));
+      send("delivery.delivery.v1", "DeliveryAssigned", "Delivery", x[0], p);
+    }
+    String order = "ORD-" + UUID.randomUUID();
+    created(single, "SHP-" + UUID.randomUUID(), order);
+    assigned(single, order, rider, 1);
+    awaitState(a, "ASSIGNED");
+    awaitState(b, "ASSIGNED");
+    awaitState(single, "ASSIGNED");
+
+    assertThat(view(b, rider).path("bundleId").asString()).isEqualTo(bundle);
+    assertThat(view(b, rider).path("stopSequence").asInt()).isEqualTo(2);
+    JsonNode one = view(single, rider);
+    assertThat(one.path("bundleId").isNull() || one.path("bundleId").isMissingNode()).isTrue();
+    assertThat(one.path("stopSequence").isNull() || one.path("stopSequence").isMissingNode())
+        .isTrue();
+    JsonNode mine = body(meGet("/riders/me/deliveries", rider));
+    Map<String, Integer> stops = new java.util.HashMap<>();
+    mine.path("items")
+        .forEach(
+            d -> {
+              if (bundle.equals(d.path("bundleId").asString(""))) {
+                stops.put(d.path("deliveryId").asString(), d.path("stopSequence").asInt());
+              }
+            });
+    assertThat(stops).containsEntry(a, 1).containsEntry(b, 2).hasSize(2);
+  }
+
   void assigned(String id, String order, String rider, int version) {
     Map<String, Object> p = new java.util.LinkedHashMap<>();
     p.put("deliveryId", id);

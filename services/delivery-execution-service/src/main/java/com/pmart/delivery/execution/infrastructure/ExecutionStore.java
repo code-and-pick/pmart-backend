@@ -44,7 +44,9 @@ public class ExecutionStore {
       @Nullable String mfcName,
       @Nullable String mfcPhone,
       @Nullable Integer deliverySeq,
-      @Nullable Instant promisedAt) {
+      @Nullable Instant promisedAt,
+      @Nullable String bundleId,
+      @Nullable Integer stopSequence) {
 
     /**
      * 화면 배송 번호(ADR-0085) = D + 화면용 주문번호, 같은 주문의 두 번째 배송부터 -순번(D74939255, D74939255-2). 둘 중 하나라도 모르면
@@ -149,7 +151,7 @@ public class ExecutionStore {
           + " assignment_version, assigned_at, picked_up_at, completed_at, method, evidence::text,"
           + " created_at, accepted_fee, vehicle_type, distance_m, failure::text, purpose, case_id,"
           + " origin_delivery_id, redelivery_destination_id, claim_id, return_lines::text,"
-          + " order_number, mfc_name, mfc_phone, delivery_seq, promised_at";
+          + " order_number, mfc_name, mfc_phone, delivery_seq, promised_at, bundle_id, stop_seq";
 
   private final JdbcTemplate jdbc;
 
@@ -1572,7 +1574,9 @@ public class ExecutionStore {
         rs.getString(27),
         rs.getString(28),
         rs.getObject(29, Integer.class),
-        instant(rs, 30));
+        instant(rs, 30),
+        rs.getString(31),
+        rs.getObject(32, Integer.class));
   }
 
   private static @Nullable Instant instant(ResultSet rs, int col) throws SQLException {

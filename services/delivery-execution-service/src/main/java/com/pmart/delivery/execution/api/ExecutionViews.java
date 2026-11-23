@@ -70,6 +70,8 @@ class ExecutionViews {
             .deliveryNumber(d.deliveryNumber())
             .mfcName(d.mfcName())
             .mfcPhone(d.mfcPhone())
+            .bundleId(d.bundleId())
+            .stopSequence(d.stopSequence())
             .originDeliveryId(d.originDeliveryId());
     if (d.claimReturn() && d.returnLinesJson() != null) {
       // 고객 반품 회수(DD-3) — 받을 상품·수량(라이더가 고객에게 받을 것). 이름은 orderSummary.items 의 같은 orderLineId
