@@ -48,3 +48,11 @@
 - **지금(임시)**: 화면은 actorId 그대로(또는 끝 8자리 회색).
 - **받으면**: 라이더 백오피스가 바로 붙임. 기본 백오피스는 PC 2 가 bff 화면 응답(승인함 requestedBy 등)에 붙일지 검토.
 - **회신(2026-11-19 PC 1)**: 구현·LAN 배포 — hr-service 0.8.0 **`GET /api/v1/hr/employee-labels?operatorIds=…`**(요청 예시 경로 대신 — 기존 `/hr/**` 라우트 안). 응답 `{items: [{operatorId, name, employeeNo}]}`(요청과 같은 모양), 1~50개(51개·형식 틀림 400), 퇴사자 포함, 모르는 ID 빠짐. **직원 토큰이면 누구나**(RIDER_OPS·CS_AGENT·MFC 역할 포함, 사용자 2026-11-19), 이름 안 가림. 이미지 ddfaea6e. 클라이언트 알림 `docs/handoff/clients/backoffice/2026-11-19-reply-code-names-and-operator-labels.md`·`docs/handoff/clients/rider-backoffice/2026-11-19-notice-employee-labels.md`. bff 화면 응답에 싣는 것은 PC 2 BF-1.
+
+## HR-5. 사번으로 운영자 찾기 — `GET /hr/employee-labels?employeeNos=` (2026-11-24, 보낸 영역 backoffice — PC 2, 통합백오피스 프론트 요청 pmart-clients `docs/handoff/backoffice/2026-11-24-backend-employee-by-number.md` #443)
+- **왜**: 교대 인계 "후임"·접수 건 "다른 사람에게 맡기기" 칸에 운영자 시스템 ID(OP-…)를 직접 넣게 되어 있는데 직원은 이 ID 를 모르고 **이름·사번**만 안다. hr 에는 ID → 이름·사번(`employee-labels`, HR-4)만 있고 반대 방향이 없다. `/hr/employees` 검색은 HR_ADMIN 전용.
+- **요청**: `GET /hr/employee-labels` 에 `employeeNos=P2026-00012,…`(최대 50, operatorIds 와 둘 중 하나) 거르기.
+  - 응답은 지금 모양 그대로 `{items:[{operatorId, name, employeeNo}]}`, 모르는 사번은 빠짐.
+  - 직원 토큰이면 누구나(HR-4 와 같은 범위 — ADR-0070, 직원끼리 이름 안 가림).
+  - (있으면 좋음) `activeOnly=true` — 재직자만.
+- 받는 화면: 백오피스 "사번 입력 → '[이름] · 사번 에게 넘겨요' 확인 → 운영자 ID 로 보냄". bff 변경 없음(화면이 hr 를 직접).
