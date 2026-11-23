@@ -121,12 +121,15 @@ public class ExecutionEventHandler {
           e.actor() != null && e.actor().type() == EventEnvelope.ActorType.OPERATOR
               ? e.actor().id()
               : null;
-      for (ExecutionStore.HelpRow h : store.openHelpsByCase(caseId)) {
+      // 사건의 도움요청을 먼저 닫는다 — 실패 확정이 배송 끝 자동 완료(system:delivery-ended)로 덮지 않게(CaseReopened 가 case: 로
+      // 닫은 것만 다시 연다)
+      List<ExecutionStore.HelpRow> open = store.openHelpsByCase(caseId);
+      int n = store.closeHelpByCase(caseId, p.path("outcome").asString(null), at);
+      for (ExecutionStore.HelpRow h : open) {
         if ("DELIVERY_FAILURE".equals(h.category())) {
           failures.confirmOnCaseClosed(h.deliveryId(), h.requestId(), caseId, closedBy);
         }
       }
-      int n = store.closeHelpByCase(caseId, p.path("outcome").asString(null), at);
       log.info("사건 {} 닫힘 → 도움요청 {}건 처리됨", caseId, n);
       return;
     }
@@ -243,6 +246,9 @@ public class ExecutionEventHandler {
           return;
         }
         Instant at = instant(p.path("acceptedAt"), e.occurredAt());
+        if (d.riderId() != null && !d.riderId().equals(p.path("riderId").asString(""))) {
+          HelpRequestService.closeOnRiderLeft(store, deliveryId, d.riderId(), now);
+        }
         store.assign(deliveryId, p.path("riderId").asString(), v, at, now);
         // 수락 당시 금액·조건(원문 §7.1) — 수행료 기준(2026-11-13)
         store.accepted(
@@ -282,6 +288,9 @@ public class ExecutionEventHandler {
         if (d.riderId() != null && !byRider(e)) {
           earnings.notCalculable(d, "UNASSIGNED", now); // 운영자·주문 사유 배차 취소 — 기준 없음(본인 취소는 수행료 없음)
         }
+        if (d.riderId() != null && !d.riderId().equals(newRider)) {
+          HelpRequestService.closeOnRiderLeft(store, deliveryId, d.riderId(), now);
+        }
         if (newRider == null || newRider.isBlank()) {
           store.unassign(deliveryId, v, now);
           store.history(
@@ -301,6 +310,7 @@ public class ExecutionEventHandler {
           earnings.notCalculable(d, "CANCELLED_BEFORE_PICKUP", now);
         }
         store.setState(deliveryId, "CANCELLED", now);
+        HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
         store.history(
             deliveryId,
             "CANCELLED",

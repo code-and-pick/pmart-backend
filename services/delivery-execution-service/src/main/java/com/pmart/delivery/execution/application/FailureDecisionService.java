@@ -211,6 +211,7 @@ public class FailureDecisionService {
       boolean customerReason = ExecutionRules.CUSTOMER_REASONS.contains(reason);
       store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
       store.history(deliveryId, "FAILED", now, "OPERATOR", historyRef, now);
+      HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
       events.returnPickupFailed(
           d,
           reason,
@@ -237,6 +238,7 @@ public class FailureDecisionService {
     failure.put("returnBy", returnBy);
     store.failure(deliveryId, "FAILED", mapper.writeValueAsString(failure), now);
     store.history(deliveryId, "FAILED", now, "OPERATOR", historyRef, now);
+    HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
     String reason = reported.path("reason").asString("OTHER");
     events.failed(d, reason, custody, goods, returnBy, operatorId, now);
     // 수행료(2026-11-17 사용자 "고객 귀책이면 라이더는 잘못 없으니 원래 측정돼 있던 수행료"): 고객 사유(부재·연락 두절·주소

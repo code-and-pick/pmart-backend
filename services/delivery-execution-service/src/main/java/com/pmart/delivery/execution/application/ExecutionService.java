@@ -468,6 +468,7 @@ public class ExecutionService {
           }
           store.completed(deliveryId, c.method(), mapper.writeValueAsString(evidence), now);
           store.history(deliveryId, "COMPLETED", now, "RIDER", evidenceId, now);
+          HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
           events.completed(d, delivered, c.method(), evidenceId, c.takenAt(), now);
           headingNext(d, now);
           earnings.completed(d, now); // 수락 당시 금액 → 확정 대기(사건 버전은 따로 올린다)
@@ -807,6 +808,7 @@ public class ExecutionService {
     evidence.put("takenAt", now.toString());
     store.completed(d.deliveryId(), method, mapper.writeValueAsString(evidence), now);
     store.history(d.deliveryId(), "COMPLETED", now, historyActor, evidenceId, now);
+    HelpRequestService.closeOnDeliveryEnded(store, d.deliveryId(), now);
     events.completed(d, delivered, method, evidenceId, "DOCUMENT", now, now, actor);
     headingNext(d, now);
     return store.delivery(d.deliveryId()).map(DeliveryRow::version).orElse(d.version() + 1);
@@ -946,6 +948,7 @@ public class ExecutionService {
           evidence.put("returned", returned);
           store.returnedToStore(deliveryId, mapper.writeValueAsString(evidence), now);
           store.history(deliveryId, "RETURNED_TO_STORE", now, "RIDER", evidenceId, now);
+          HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
           events.returnDelivered(d, lines, evidenceId, now);
           if (d.failedReturn() && !byOtherRider(d) && !customerCausedFailure(d)) {
             // 전달 실패 반납: 고객 사유가 아닌 실패면 앞 배송처럼 지원센터 조정(사용자 2026-11-17 "기존대로 수행료 조정")

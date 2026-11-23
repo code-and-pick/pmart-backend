@@ -1332,6 +1332,75 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(closed).path("code").asString()).isEqualTo("HELP_REQUEST_CLOSED");
   }
 
+  /**
+   * 배송이 끝나면 열린 도움요청 자동 완료(2026-11-23 라이더 앱 요청): resolvedBy system:delivery-ended·메모는 라이더에게도 보이고, 직원
+   * 답장은 409 HELP_REQUEST_CLOSED. 끝난 뒤에도 배정 라이더는 배송·도움요청·대화를 본다.
+   */
+  @Test
+  void openHelpRequestsCloseWhenDeliveryEnds() {
+    String id = "DLV-" + UUID.randomUUID();
+    String rider = "RDR-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID(), rider);
+    String requestId =
+        body(post(id, "help-requests", rider, Map.of("category", "ADDRESS_ISSUE")))
+            .path("resultId")
+            .asString();
+    String thread = "help-requests/" + requestId + "/messages";
+    assertThat(post(id, thread, rider, Map.of("body", "입구가 어디예요")).getStatusCode().value())
+        .isEqualTo(201);
+    assertThat(post(id, "customer-arrivals", rider, Map.of()).getStatusCode().value())
+        .isEqualTo(200);
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    assertThat(
+            post(id, "completions", rider, completion(List.of(photo), Instant.now().toString()))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+
+    JsonNode mine =
+        body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, TestJwt.rider(rider)));
+    assertThat(mine.path("state").asString()).isEqualTo("RESOLVED");
+    assertThat(mine.path("resolvedBy").asString()).isEqualTo("system:delivery-ended");
+    assertThat(mine.path("resolutionNote").asString()).isEqualTo("배송이 끝나 자동 완료");
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    ResponseEntity<String> reply =
+        staffPost("/deliveries/" + id + "/" + thread, ops, Map.of("body", "확인했어요"));
+    assertThat(reply.getStatusCode().value()).isEqualTo(409);
+    assertThat(body(reply).path("code").asString()).isEqualTo("HELP_REQUEST_CLOSED");
+    // 끝난 뒤 읽기 전용 화면 — 배정 라이더 본인은 404 가 아니다
+    assertThat(view(id, rider).path("state").asString()).isEqualTo("COMPLETED");
+    assertThat(
+            body(staffGet("/deliveries/" + id + "/help-requests", TestJwt.rider(rider)))
+                .path("items"))
+        .hasSize(1);
+    assertThat(
+            body(staffGet("/deliveries/" + id + "/" + thread, TestJwt.rider(rider))).path("items"))
+        .hasSize(1);
+  }
+
+  /** 배정이 다른 라이더로 바뀌면 빠진 라이더의 열린 도움요청을 닫는다(그 라이더는 배송을 더 볼 수 없다). */
+  @Test
+  void leavingRidersOpenHelpRequestsCloseOnReassignment() {
+    String id = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    created(id, "SHP-" + UUID.randomUUID(), order);
+    assigned(id, order, "RDR-A", 1);
+    awaitState(id, "ASSIGNED");
+    String requestId =
+        body(post(id, "help-requests", "RDR-A", Map.of("category", "STORE_WAITING")))
+            .path("resultId")
+            .asString();
+    assigned(id, order, "RDR-B", 2);
+    awaitSql(
+        "SELECT count(*) FROM help_request WHERE request_id = '"
+            + requestId
+            + "' AND state = 'RESOLVED'");
+    JsonNode h =
+        body(staffGet("/deliveries/" + id + "/help-requests/" + requestId, TestJwt.rider("RDR-A")));
+    assertThat(h.path("resolvedBy").asString()).isEqualTo("system:delivery-ended");
+    assertThat(h.path("resolutionNote").asString()).isEqualTo("배송에서 빠져 자동 완료");
+  }
+
   ResponseEntity<String> staffPost(String uri, String token, Object body) {
     return http.post()
         .uri(uri)

@@ -188,6 +188,36 @@ public class HelpRequestService {
     return requestId.equals(mapper.readTree(d.failureJson()).path("requestId").asString(""));
   }
 
+  /** 자동 완료한 쪽(사람이 아님) — 라이더 앱·백오피스가 그대로 보인다. */
+  public static final String ENDED_BY = "system:delivery-ended";
+
+  public static final String ENDED_NOTE = "배송이 끝나 자동 완료";
+  public static final String LEFT_NOTE = "배송에서 빠져 자동 완료";
+
+  /**
+   * 배송이 끝 상태(COMPLETED·FAILED·CANCELLED·RETURNED_TO_STORE)가 되면 열린 도움요청을 닫는다(2026-11-23 사용자 "배송 끝나면
+   * 처리 필요 없게 완료"). 사건함 사건은 그대로 열어 둔다 — 보상·사고 후속은 지원센터가 사건함에서 닫는다(그때 CaseClosed 는 이미 닫힌 도움요청을 건드리지
+   * 않고, CaseReopened 도 {@code case:} 가 닫은 것만 다시 연다). 사건은 내지 않는다(직원 처리함 닫기와 같다). 호출자 트랜잭션 안.
+   */
+  static void closeOnDeliveryEnded(ExecutionStore store, String deliveryId, Instant now) {
+    int n = store.closeOpenHelps(deliveryId, null, ENDED_BY, ENDED_NOTE, now);
+    if (n > 0) {
+      log.info("배송 {} 끝 → 열린 도움요청 {}건 자동 완료", deliveryId, n);
+    }
+  }
+
+  /** 배정이 풀리거나 다른 라이더로 바뀌었다 — 빠진 라이더의 열린 도움요청을 닫는다(그 라이더는 이 배송을 더 볼 수 없다). */
+  static void closeOnRiderLeft(
+      ExecutionStore store, String deliveryId, @Nullable String riderId, Instant now) {
+    if (riderId == null || riderId.isBlank()) {
+      return;
+    }
+    int n = store.closeOpenHelps(deliveryId, riderId, ENDED_BY, LEFT_NOTE, now);
+    if (n > 0) {
+      log.info("배송 {} 배정 바뀜 → 빠진 라이더의 도움요청 {}건 자동 완료", deliveryId, n);
+    }
+  }
+
   /** 닫힌 결정 대기 대화를 다시 연다 — 열었으면 HelpRequestReopened. 호출자 트랜잭션 안. */
   void reopenForPendingFailure(DeliveryRow d, HelpRow h, Instant now) {
     if (store.reopenHelp(d.deliveryId(), h.requestId())) {

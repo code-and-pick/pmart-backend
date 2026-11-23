@@ -1121,6 +1121,21 @@ public class ExecutionStore {
         > 0;
   }
 
+  /** 배송이 끝났거나 라이더가 배송에서 빠졌다(2026-11-23 라이더 앱 요청) — 아직 열린 도움요청을 닫는다. riderId 를 주면 그 라이더 것만. 닫은 수. */
+  public int closeOpenHelps(
+      String deliveryId, @Nullable String riderId, String by, String note, Instant now) {
+    return jdbc.update(
+        "UPDATE help_request SET state = 'RESOLVED', resolved_at = ?, resolved_by = ?,"
+            + " resolution_note = ? WHERE delivery_id = ? AND state <> 'RESOLVED'"
+            + " AND (CAST(? AS text) IS NULL OR rider_id = ?)",
+        ts(now),
+        by,
+        note,
+        deliveryId,
+        riderId,
+        riderId);
+  }
+
   public boolean resolveHelp(
       String deliveryId, String requestId, String by, @Nullable String note, Instant now) {
     return jdbc.update(

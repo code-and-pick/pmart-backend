@@ -405,9 +405,13 @@ public class StaffController implements StaffApi {
     return ResponseEntity.ok(ExecutionController.message(t.messages().get(0), true, mapper));
   }
 
-  /** 도움요청 단건 응답 — 라이더에게는 처리한 직원·메모를 숨긴다. */
+  /**
+   * 도움요청 단건 응답 — 라이더에게는 처리한 직원·메모를 숨긴다. 서버가 자동으로 닫은 것({@code system:} — 배송 끝, 2026-11-23)은 라이더에게도
+   * 보인다(직원 ID·메모가 아니다).
+   */
   static HelpRequest helpRequest(HelpRequestService.HelpView v, ObjectMapper mapper) {
     ExecutionStore.HelpRow h = v.help();
+    boolean show = v.staff() || (h.resolvedBy() != null && h.resolvedBy().startsWith("system:"));
     return new HelpRequest()
         .requestId(h.requestId())
         .deliveryId(h.deliveryId())
@@ -420,8 +424,8 @@ public class StaffController implements StaffApi {
         .evidenceRefs(mapper.readValue(h.evidenceRefsJson(), new TypeReference<List<String>>() {}))
         .createdAt(ExecutionViews.time(h.createdAt()))
         .resolvedAt(ExecutionViews.time(h.resolvedAt()))
-        .resolvedBy(v.staff() ? h.resolvedBy() : null)
-        .resolutionNote(v.staff() ? h.resolutionNote() : null);
+        .resolvedBy(show ? h.resolvedBy() : null)
+        .resolutionNote(show ? h.resolutionNote() : null);
   }
 
   private static StaffHelpRequestSummary help(ExecutionStore.StaffHelpRow r) {

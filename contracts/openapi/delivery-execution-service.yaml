@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.38.0
+  version: 0.39.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.38.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /delivery-metrics` 배송 품질·효율(날짜·센터·라이더별 배정·완료·실패·취소·지연·픽업 대기·배송 소요)과 사고(도움요청 종류별 건수·처리 시간).
@@ -1902,8 +1902,8 @@ components:
         evidenceRefs: { type: array, items: { type: string }, description: 0.4.0 }
         createdAt: { type: string, format: date-time }
         resolvedAt: { type: [string, 'null'], format: date-time, description: 0.4.0 }
-        resolvedBy: { type: [string, 'null'], description: 닫은 직원 ID(직원에게만, 0.4.0) }
-        resolutionNote: { type: [string, 'null'], description: 처리 메모(직원에게만, 0.4.0) }
+        resolvedBy: { type: [string, 'null'], description: "닫은 직원 ID(직원에게만, 0.4.0). 서버 자동 완료는 system:delivery-ended — 라이더에게도 보인다(0.39.0, 배송 끝·배송에서 빠짐)" }
+        resolutionNote: { type: [string, 'null'], description: "처리 메모(직원에게만, 0.4.0). 서버 자동 완료면 라이더에게도(0.39.0 — 배송이 끝나 자동 완료·배송에서 빠져 자동 완료)" }
         lastRiderMessageAt: { type: [string, 'null'], format: date-time, description: '대화의 라이더 마지막 메시지 시각 — 직원에게만(0.8.0 DE-2, 직원별 읽음은 화면이 기억)', x-added-in: '2026-11-17' }
         lastSupportMessageAt: { type: [string, 'null'], format: date-time, description: '지원센터 마지막 메시지 시각 — 직원에게만(0.8.0 DE-2)', x-added-in: '2026-11-17' }
     StaffHelpRequestSummary:
