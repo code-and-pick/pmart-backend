@@ -168,7 +168,13 @@ public class OperatorController implements OperatorApi {
                                 .mfcId(a.mfcId())
                                 .zoneId(a.zoneId().isEmpty() ? null : a.zoneId()))
                     .toList())
-            .operating(RiderViews.operating(r))
+            .operating(
+                RiderViews.operating(r)
+                    // 0.25.0 — dispatch 실시간, 탈퇴 라이더는 부르지 않음, 못 읽으면 null
+                    .activeDeliveryCount(
+                        r.withdrawnAt() == null
+                            ? staff.activeDeliveryCounts(List.of(r.riderId())).get(r.riderId())
+                            : null))
             .settings(RiderViews.settings(r))
             .restriction(
                 new StaffRiderDetailRestriction()

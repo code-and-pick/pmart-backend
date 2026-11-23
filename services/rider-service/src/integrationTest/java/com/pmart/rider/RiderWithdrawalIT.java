@@ -97,6 +97,20 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
                     .withBody("{\"items\":[{\"riderId\":\"" + rider + "\",\"count\":2}]}")));
     JsonNode row = staffRiders("riderId=" + rider).path("items").get(0);
     assertThat(row.path("activeDeliveryCount").asInt()).isEqualTo(2);
+    // 0.25.0 — 직원 상세·본인 운행 상태도 같은 값
+    String ops = TestJwt.operator("ro-1", List.of("RIDER_OPS"), List.of());
+    assertThat(
+            json(http.get()
+                    .uri("/riders/" + rider)
+                    .header("Authorization", "Bearer " + ops)
+                    .retrieve()
+                    .toEntity(String.class))
+                .path("operating")
+                .path("activeDeliveryCount")
+                .asInt())
+        .isEqualTo(2);
+    assertThat(json(get(rider, "/riders/me/state")).path("activeDeliveryCount").asInt())
+        .isEqualTo(2);
 
     dispatch.resetAll();
     dispatch.stubFor(
@@ -104,6 +118,12 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
             .willReturn(aResponse().withStatus(503)));
     JsonNode down = staffRiders("riderId=" + rider).path("items").get(0);
     assertThat(down.path("riderId").asString()).isEqualTo(rider);
+    JsonNode downState = json(get(rider, "/riders/me/state"));
+    assertThat(downState.path("status").asString()).isNotEmpty();
+    assertThat(
+            downState.path("activeDeliveryCount").isNull()
+                || downState.path("activeDeliveryCount").isMissingNode())
+        .isTrue();
     assertThat(
             down.path("activeDeliveryCount").isNull()
                 || down.path("activeDeliveryCount").isMissingNode())

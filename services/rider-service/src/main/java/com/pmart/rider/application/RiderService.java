@@ -119,6 +119,7 @@ public class RiderService {
   private final com.pmart.rider.infrastructure.AddressClient addresses;
   private final com.pmart.rider.infrastructure.CenterClient centers;
   private final com.pmart.rider.infrastructure.ExecutionClient executions;
+  private final com.pmart.rider.infrastructure.DispatchClient dispatch;
 
   public RiderService(
       RiderStore store,
@@ -130,7 +131,9 @@ public class RiderService {
       com.pmart.rider.infrastructure.AddressClient addresses,
       org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones,
       com.pmart.rider.infrastructure.CenterClient centers,
-      com.pmart.rider.infrastructure.ExecutionClient executions) {
+      com.pmart.rider.infrastructure.ExecutionClient executions,
+      com.pmart.rider.infrastructure.DispatchClient dispatch) {
+    this.dispatch = dispatch;
     this.phones = phones;
     this.centers = centers;
     this.executions = executions;
@@ -268,6 +271,15 @@ public class RiderService {
   }
 
   /** 거주지 도로명주소가 실제 주소인지(라이더 앱 요청 §12 — 사용자 "서버가 주소 변환으로 확인"). 없으면(null) 검사하지 않는다. */
+  /** 본인 진행 중 배송 수(0.25.0 — dispatch ASSIGNED·PICKED_UP). 못 읽으면 null(0 이 아님). */
+  public @Nullable Integer activeDeliveryCount(String riderId) {
+    try {
+      return dispatch.activeDeliveryCounts(List.of(riderId)).getOrDefault(riderId, 0);
+    } catch (RuntimeException e) {
+      return null;
+    }
+  }
+
   private static boolean sameAreas(List<Rider.Area> now, List<Rider.Area> next) {
     return now.stream()
         .map(Rider.Area::mfcId)

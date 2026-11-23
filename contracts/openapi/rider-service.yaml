@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.24.0
+  version: 0.25.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -1275,7 +1275,7 @@ components:
         status: { $ref: '#/components/schemas/OperatingStatus' }
         newDispatchEnabled: { type: boolean }
         mfcId: { type: string }
-        activeDeliveryCount: { type: integer, description: 진행 중 배송 수(execution 사본) }
+        activeDeliveryCount: { type: [integer, 'null'], description: '진행 중 배송 수. (0.25.0, 2026-11-23) dispatch 의 배정됐고 끝나지 않은 배송(ASSIGNED·PICKED_UP, 사본 아님) — 본인 GET /riders/me/state 와 직원 상세 GET /riders/{riderId} 에만 채운다(다른 응답은 null). dispatch 를 못 읽으면 null — 0 으로 보지 말 것' }
         changedAt: { type: string, format: date-time }
         version: { type: integer }
     DispatchSettings:

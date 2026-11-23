@@ -67,7 +67,10 @@ public class MeController implements MeApi {
 
   @Override
   public ResponseEntity<OperatingState> getMyOperatingState() {
-    return ResponseEntity.ok(RiderViews.operating(riders.me()));
+    var me = riders.me();
+    // 0.25.0 — 진행 중 배송 수(dispatch 실시간, 못 읽으면 null)
+    return ResponseEntity.ok(
+        RiderViews.operating(me).activeDeliveryCount(riders.activeDeliveryCount(me.riderId())));
   }
 
   @Override
