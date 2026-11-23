@@ -212,7 +212,8 @@ class CustomerViewsIT {
                     200,
                     """
                     {"items":[{"inquiryId":"INQ-1","inquiryNumber":"Q-1119-0001","category":"DELIVERY","status":"OPEN",
-                      "orderId":"ORD-1","title":"상자가 젖었어요","origin":"INQUIRY_PAGE","createdAt":"2026-11-19T02:00:00Z","version":1}],
+                      "orderId":"ORD-1","title":"상자가 젖었어요","origin":"INQUIRY_PAGE","createdAt":"2026-11-19T02:00:00Z","version":1,
+                      "lastAnsweredBy":"op-cs"}],
                      "page":{"nextCursor":null}}""")));
     cases.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/cs-intakes"))
@@ -291,6 +292,11 @@ class CustomerViewsIT {
     assertThat(inq.path("hasMore").asBoolean()).isFalse();
     assertThat(inq.path("items").get(0).path("inquiryNumber").asString()).isEqualTo("Q-1119-0001");
     assertThat(inq.path("items").get(0).has("title")).as("제목 없음").isFalse();
+    assertThat(inq.path("items").get(0).path("lastAnsweredBy").asString()).isEqualTo("op-cs");
+    assertThat(inq.path("items").get(0).path("lastAnsweredByLabel").path("name").asString())
+        .as("담당 상담원 이름(0.27.0) — 접수 칸과 같은 hr 한 번")
+        .isEqualTo("이상담");
+    hr.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/hr/employee-labels")));
 
     JsonNode in = r.body().path("csIntakes");
     assertThat(in.path("hasMore").asBoolean()).isTrue();

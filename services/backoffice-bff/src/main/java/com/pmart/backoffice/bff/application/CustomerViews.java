@@ -182,8 +182,7 @@ public class CustomerViews {
             "/inquiries",
             Map.of("customerId", customerId, "size", CELL_SIZE),
             failed);
-    body.put(
-        "inquiries",
+    Map<String, Object> inquiryCell =
         inquiries == null
             ? null
             : cellOut(
@@ -198,7 +197,9 @@ public class CustomerViews {
                     "origin",
                     "channel",
                     "createdAt",
-                    "answeredAt")));
+                    "answeredAt",
+                    "lastAnsweredBy"));
+    body.put("inquiries", inquiryCell);
 
     // 상담원 접수 — case customerRef(= accountId), 요약 글은 싣지 않는다
     used.add(Source.CASE);
@@ -235,6 +236,7 @@ public class CustomerViews {
           staff.add(s);
         }
       }
+      staff.addAll(answerers(inquiryCell));
       Map<String, JsonNode> labels = null;
       if (!staff.isEmpty()) {
         used.add(Source.HR);
@@ -246,7 +248,21 @@ public class CustomerViews {
       for (Map<String, Object> r : rows) {
         r.put("receivedByLabel", OperatorLabels.of((String) r.get("receivedBy"), labels));
       }
+      labelAnswerers(inquiryCell, labels);
       body.put("csIntakes", cellMap);
+    }
+    if (intakes == null && inquiryCell != null) {
+      // 상담원 접수 칸이 없어도 문의 담당자 이름은 한 번 조회로
+      List<String> staff = answerers(inquiryCell);
+      Map<String, JsonNode> labels = null;
+      if (!staff.isEmpty()) {
+        used.add(Source.HR);
+        labels = OperatorLabels.lookup(clients, token, staff);
+        if (labels == null) {
+          failed.add(Source.HR);
+        }
+      }
+      labelAnswerers(inquiryCell, labels);
     }
 
     // 클레임 — claim 0.10.0 CL-7 customerId 거르기(사유 글 없음), 주문번호는 주문 칸 값 → 없으면 order 단건
@@ -491,6 +507,31 @@ public class CustomerViews {
     m.put("hasMore", text(page.path("page"), "nextCursor") != null);
     m.put("items", rows);
     return m;
+  }
+
+  /** 0.27.0 문의 칸의 마지막 답변 직원(case 0.36.0 lastAnsweredBy). */
+  @SuppressWarnings("unchecked")
+  private static List<String> answerers(@Nullable Map<String, Object> inquiryCell) {
+    List<String> out = new ArrayList<>();
+    if (inquiryCell != null) {
+      for (Map<String, Object> r : (List<Map<String, Object>>) inquiryCell.get("items")) {
+        if (r.get("lastAnsweredBy") instanceof String s && !s.isBlank()) {
+          out.add(s);
+        }
+      }
+    }
+    return out;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void labelAnswerers(
+      @Nullable Map<String, Object> inquiryCell, @Nullable Map<String, JsonNode> labels) {
+    if (inquiryCell == null) {
+      return;
+    }
+    for (Map<String, Object> r : (List<Map<String, Object>>) inquiryCell.get("items")) {
+      r.put("lastAnsweredByLabel", OperatorLabels.of((String) r.get("lastAnsweredBy"), labels));
+    }
   }
 
   private static @Nullable Long number(JsonNode n) {
