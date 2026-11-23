@@ -9,9 +9,14 @@
   C. 명령 결과 조회(bff 0.12.0)           targetRef 없음 400, handover-retry 422
   D. 아직 없는 화면                       보충 현황·운행 관제 501
   E. (--cs) 상담원 계정                  토큰의 역할을 읽어 CS_AGENT 이고 관리자가 아니면 처리 대기·지표 403, 사건함·통합 조회 200
+  F. 2026-11-23 기능(관리자)              센터 거르기(bff 0.24.0·0.25.0 — claims·pending-work·work-counts·rider-complaints centerId, centerUnfilteredSources),
+                                         case 0.33.0 rider-complaints/counts·obligations centerId, case 0.36.0 문의 lastAnsweredBy,
+                                         고객 상세(bff 0.25.0~0.28.0 — deliveries·claimCounts·piiAccessLogs·customerNotes·문의 담당 이름·restriction)
+                                         고객은 클레임 → 주문 상세의 고객 ID 로 하나 고른다(값은 출력하지 않음). 그 단계 원천이 비면 건너뜀.
 
 실행: python -X utf8 -I deploy/lan/checks/backoffice_views_check.py [--cs]   (Windows 콘솔은 -X utf8 가 없으면 cp949 로 한글·— 출력이 깨진다)
   2026-11-18 첫 실행(PC 2, 관리자만): 15/15 통과 — CASE_SLA 200(LAN 배포 확인), 포장 인계·처리 대기·사건함 0건
+  2026-11-23 F 절 더함(PC 2) — 같은 날 수동 확인으로 모두 200(센터 거르기·고객 상세 여덟 칸·restriction NONE·담당 이름).
   --cs: 상담원 시험 계정(test-cs-rider@pmart.com)도 — PC 1 에서 받은 최신 비밀번호 파일이 있을 때만(옛 값으로 여러 번 실패하면 계정이 잠긴다).
 필요: deploy/lan/.secrets/keycloak-claude-dev-password(·--cs 면 keycloak-test-cs-rider@pmart.com-password).
 환경 변수: PMART_GATEWAY(기본 http://192.168.0.40:8080/api/v1), PMART_MFC(기본 MFC-SEED-01).
@@ -21,6 +26,7 @@ import datetime
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -38,6 +44,25 @@ results = []
 def get(path, token):
     req = urllib.request.Request(
         GW + BO + path,
+        method="GET",
+        headers={"Accept": "application/json, application/problem+json", "Authorization": "Bearer " + token},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.status, json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        text = e.read().decode() or "{}"
+        try:
+            return e.code, json.loads(text)
+        except ValueError:
+            return e.code, {}
+
+
+def get_api(path, token):
+    """bff 밖 원천(case·claim·order)을 게이트웨이로 — F 절. 429 를 피하려고 조금 쉰다."""
+    time.sleep(0.5)
+    req = urllib.request.Request(
+        GW + path,
         method="GET",
         headers={"Accept": "application/json, application/problem+json", "Authorization": "Bearer " + token},
     )
@@ -142,6 +167,54 @@ def not_built(admin):
     check("D 운행 관제 501(원천 서비스 없음)", s == 501, f"HTTP {s}")
 
 
+def features_1123(admin):
+    time.sleep(0.5)
+    s, b = get(f"/views/claims?centerId={MFC}&size=5", admin)
+    check("F 클레임 센터 거르기 200(bff 0.24.0)", s == 200 and isinstance(b.get("items"), list), f"HTTP {s}, 항목 {count(b, 'items')}")
+    for name, path in (("처리 대기", "/views/pending-work"), ("일 건수", "/views/work-counts")):
+        time.sleep(0.5)
+        s, b = get(f"{path}?centerId={MFC}", admin)
+        check(f"F {name} 센터 거르기 200 + centerUnfilteredSources", s == 200 and isinstance(b.get("centerUnfilteredSources"), list),
+              f"HTTP {s}, 못 거른 원천 {b.get('centerUnfilteredSources')}")
+    time.sleep(0.5)
+    s, b = get(f"/views/rider-complaints?centerId={MFC}&size=5", admin)
+    check("F 라이더 컴플레인 센터 거르기 200(bff 0.25.0)", s == 200 and isinstance(b.get("items"), list), f"HTTP {s}, 항목 {count(b, 'items')}")
+    s, _ = get_api(f"/rider-complaints/counts?centerId={MFC}", admin)
+    check("F case 라이더 컴플레인 수 센터 200(case 0.33.0)", s == 200, f"HTTP {s}")
+    s, b = get_api(f"/obligations?centerId={MFC}", admin)
+    check("F case 후속 처리 센터 200(case 0.33.0)", s == 200 and isinstance(b.get("items"), list), f"HTTP {s}, 항목 {count(b, 'items')}")
+    s, b = get_api("/inquiries?requesterType=CUSTOMER&size=20", admin)
+    answered = [i for i in b.get("items", []) if i.get("answeredAt")]
+    if answered:
+        check("F case 문의 lastAnsweredBy(case 0.36.0)", all(i.get("lastAnsweredBy") for i in answered), f"답변된 {len(answered)}건")
+    else:
+        print("  --   F case 문의 lastAnsweredBy — 답변된 고객 문의 없음(건너뜀)")
+    # 고객 하나: 클레임 → 주문 상세의 고객 ID(값 출력 없음)
+    _, c = get_api("/claims?size=1", admin)
+    order_id = ((c.get("items") or [{}])[0]).get("orderId")
+    if not order_id:
+        print("  --   F 고객 상세 — 클레임이 없어 고객을 못 고름(건너뜀)")
+        return
+    _, o = get_api(f"/orders/lookups/{order_id}", admin)
+    cust = o.get("customerId")
+    if not cust:
+        print("  --   F 고객 상세 — 주문에 고객 ID 없음(건너뜀)")
+        return
+    time.sleep(0.5)
+    s, d = get(f"/views/customer/{cust}", admin)
+    cells = ("orders", "inquiries", "csIntakes", "claims", "deliveries", "claimCounts", "piiAccessLogs", "customerNotes")
+    missing = [k for k in cells if d.get(k) is None]
+    check("F 고객 상세 200 + 여덟 칸(관리자)", s == 200 and not missing,
+          f"HTTP {s}, 빈 칸 {missing or '없음'}, 원천 장애 {d.get('unavailableSources')}")
+    head = d.get("customer", {})
+    check("F 고객 상세 restriction 칸(bff 0.28.0)", "restriction" in head and "restrictedUntil" in head, f"값 {head.get('restriction')}")
+    inq = (d.get("inquiries") or {}).get("items", [])
+    if any(i.get("lastAnsweredBy") for i in inq):
+        check("F 고객 상세 문의 담당 이름(bff 0.27.0)", all(i.get("lastAnsweredByLabel") for i in inq if i.get("lastAnsweredBy")), f"문의 {len(inq)}건")
+    else:
+        print("  --   F 고객 상세 문의 담당 이름 — 답한 문의 없음(건너뜀)")
+
+
 def cs_agent():
     secret = os.path.join(HERE, "..", ".secrets", f"keycloak-{CS_USER}-password")
     if not os.path.exists(secret):
@@ -169,6 +242,7 @@ def main():
     metrics(admin)
     command_result(admin)
     not_built(admin)
+    features_1123(admin)
     if "--cs" in sys.argv:
         cs_agent()
     else:

@@ -1,6 +1,17 @@
-# 백오피스(backoffice) 인수인계 (2026-11-15 작성, **2026-11-16 갱신 — PC 2 로 넘김**, **2026-11-18 PC 2 갱신 — §2·§4·§5·§6, 맨 위 "지금 상태"**)
+# 백오피스(backoffice) 인수인계 (2026-11-15 작성, **2026-11-16 갱신 — PC 2 로 넘김**, **2026-11-18 PC 2 갱신 — §2·§4·§5·§6, 맨 위 "지금 상태"**, **2026-11-23 PC 2 갱신 — 맨 위 "지금 상태(11-23)"·§5 끝·§6 각본 줄**)
 
-## 지금 상태 (2026-11-18 PC 2 — 이것부터)
+## 지금 상태 (2026-11-23 PC 2 — 이것부터)
+- **버전(모두 LAN 배포)**: **bff 0.28.0**, **case 0.37.1**. 열린 PC 2 PR 없음.
+- **11-19~23 한 것**
+  - bff: 0.22.0~0.23.0 고객 찾기·상세(BF-2, 클레임 칸), 상품별 결품(BF-3). 0.24.0 센터 거르기 1차(BF-4 — claims·pending-work·work-counts `centerId`, 못 거른 원천 `centerUnfilteredSources`). 0.25.0 고객 상세 `deliveries`·`claimCounts`·`piiAccessLogs`(관리자만)·클레임 사유 코드·환불 금액, rider-complaints `centerId`(BF-4 끝). 0.26.0 `customerNotes`. 0.27.0 문의 담당 상담원 `lastAnsweredBy(Label)`. 0.28.0 고객 `restriction`·`restrictedUntil`.
+  - case: 0.32.0 문의 `riderId` 거르기(R-11). 0.33.0 라이더 컴플레인·후속 처리 `centerId`(R-12, V21 `rider_complaint.center_id`). 0.34.0 고객 상담 메모 `/customer-notes`(R-13, V22 — 쓰기 상담원, 고치기·지우기 쓴 사람만). 0.35.0~0.37.0 금칙어(R-14 — **막기** `pmart.cases.blocked-words` → 422 BLOCKED_WORDS·정지 없음, **정지** `pmart.cases.profanity-words` → `CustomerProfanityDetected`·`RiderProfanityDetected`; 고객·라이더 문의, 라이더 문의 대화). 0.36.0 문의 `lastAnsweredBy`. 0.37.1 고객 새 문의 403 `ACCOUNT_RESTRICTED`(PC 1 이 CU-7 로 넣은 V23 사본 — 계약 설명만 PC 2).
+  - 금칙어 목록 값은 **저장소에 없다** — LAN pmart-config `case-service-lan.yml`(PC 1, ae6b5d4). 운영 프로필은 아직.
+- **다른 PC 를 기다리는 것(재촉하지 않음)**: PC 1 — 고객 목록·이름 검색 CU-5, 고객별 구매 요약·분류 O-12(순서 1), 최근 활동일 CU-6·결제 PY-1·쿠폰 PRM-1·리뷰 RV-1(순서 2), 고객 분석 O-13(순서 3), O-9·PD-1·PD-2·PD-3. PC 4 — AI 채팅 금칙어 CA-2. 원천이 들어오면 bff 고객 화면에 붙이고 웹에 알린다(BF-5 2차).
+- **끝난 다른 PC 일(PC 2 요청)**: CU-7 고객 이용제한·정지(customer 0.16.0), CA-3 FAQ 의견 `categoryTitle`(customer-assistant 0.4.1), RS-8 라이더 7일 정지(rider #378), CL-8 클레임 `mfcId`(claim 0.13.0).
+- **웹(같은 PC "통합백오피스 프론트")**: 위 bff·case 모두 알림 끝. 리뷰 신고(review 0.7.0)·FAQ 의견 집계(BR-91)·계정 제한(CU-7) 화면은 웹이 원천을 직접 부른다(프론트 #419·#421·#424·#425). 앱(고객앱·라이더앱) 422 BLOCKED_WORDS 안내는 handoff `docs/handoff/clients/all/2026-11-23-request-blocked-words-message.md`.
+- **LAN 확인**: `backoffice_views_check.py` F 절(11-23 기능) 포함 26/26(2026-11-23). 금칙어 422·정지는 고객·라이더 토큰이 필요해 아직 실제 확인 못 함(앱으로 확인).
+
+## 지금 상태 (2026-11-18 PC 2 — 옛 기록)
 - **백엔드에 열린 일 없음.** PC 2 몫 서비스 요청(R-1~R-8, BO-12)은 모두 구현·배포 또는 취소·거둠. 열린 PR 없음.
 - **최근(11-17~18)**: R-8 반품 회수 실패 → 상담원 사건(case 0.22.0), 반품 회수 실패 메모 claim 0.3.0 필드(0.22.x), 명령 결과 조회(bff 0.12.0), **지표 CASE_SLA**(case 0.24.0 `/cases/metrics/sla` + bff 0.13.0 `views/metrics`), 반품 끝남 이력 `CLAIM_CLOSED`(ClaimClosed 구독), 사건 이력 이름 목록(계약 0.24.1), LAN 확인 각본 `deploy/lan/checks/backoffice_views_check.py`.
 - **기다리는 것**: 결품률 지표 = PC 3 F-10(분모), 정시 배송률 = DD-4 누가 셀지 결정(사용자·PC 5, 급하지 않음), 반품 취소 회수비 판정 필드 = claim CL-2(PC 1) → 나오면 웹에 알림, 포장 인계 단계 표시 LAN 확인 = 진행 중 출고가 생길 때.
@@ -103,12 +114,17 @@ PC 1 이 만든 관련 백엔드(PC 1 영역, 화면이 쓴다):
 - **반품 회수 실패(R-8, 2026-11-17 "상담원 팀 (추천)"·"1시간 (추천)"·"사람이 닫기 (추천)")**: 새 팀 CS = 상담원(CS_AGENT)의 첫 사건함 쓰기 권한, 넘기기·교대 인계 없음, 자동 닫기 없음 — 반품이 끝나면 이력 CLAIM_CLOSED 만(2026-11-18).
 - **지표(2026-11-18 "일단 그렇게 하고" — 추천안 검토 뒤)**: BO-28(분모를 줄이지 않음, 분모 0 → N/A). CASE_SLA = 닫힌 건 기준(마지막 닫은 시각·그때 기한), 기한 없던 건은 판정 불가로 따로, 종류·팀별, 지금 기한 지난 건은 스냅샷으로. 결품률 = 줄 단위·사유별(수량 합산 안 함). 정시 배송률 = 누가 셀지 결정 뒤(DD-4). 결제 불명 = 지표로 만들지 않음(처리 대기·사건함). 운송·계획 밖 = 원천 없음.
 
+- **센터 고르기(2026-11-23 "주문에 붙은 것만")**: 클레임·라이더 컴플레인·처리 대기·일 건수만 센터로. 통합 조회·문의·만족도·교대 인계·사건 통계·승인은 "모든 센터". 멈춘 사가는 원천에 센터가 없어 못 거름 — PC 1 요청 자체가 "못 거르는 원천은 표시"라 따로 요청하지 않는다.
+- **고객 관리(2026-11-23)**: 분류 = 신규 가입 1달 이내·우수 3개월 100만원 이상·휴면 1년 구매 없음·위험 6개월 이상 구매 없음(겹치면 휴면 — 위험은 6개월~1년), 이탈률 = 한 번 사고 다시 안 산 고객 비율. 적립금 없음(Commerce §353). 상담 메모 = 상담원이 쓰고 고치기·지우기는 쓴 사람만.
+- **계정 제한(2026-11-23 CU-7)**: 이용제한 = 문의·리뷰 막기, 정지 = 주문·로그인까지. 늘 7일, 자동 해제, **고객은 영구 정지 없음**(라이더와 따로 — 라이더는 기한 없는 정지·해지 있음). 거는 길 = 정지 단어 자동(7일 정지) + 상담원·관리자가 사유 적고(제한·정지 고름). 고객 알림 "7일 계정 정지". 오인식은 상담원·관리자가 사유 적고 해제. CU-7 전에 쌓인 정지 사건은 detectedAt + 7일 안이면 남은 기간만.
+- **금칙어(2026-11-23)**: 욕설(A 40 + B 7) = 입력 막기·정지 없음, 위협·거친 말(C 5) = 받고 7일 정지. 적용 = 고객 문의·라이더 문의·라이더 문의 대화·AI 채팅(CA-2). 목록 정본 = pmart-config(사용자 승인 뒤 PC 1), 저장소·문서에 값을 적지 않는다.
+
 ## 6. 규칙·도구
 - PR: 포크 `backoffice/<주제>` 브랜치 → PC 1 검토·병합·배포. main push 금지. 저장소마다 PR 따로(backend·clients).
 - 일지: `docs/worklog/backoffice/YYYY-MM-DD.md`(첫 날 폴더를 만든다). 클라이언트 handoff: `docs/handoff/clients/backoffice/`(첫머리 `보낸 영역: backoffice`).
 - 새 화면이 고객·라이더 개인정보 원문을 보여 주면 **ADR-0062 방식**(기본 가림 + 사유 + audit 동기 기록, 기록 실패면 원문 없음). 개인정보·사유·메모는 로그 금지.
 - 직원 토큰: `deploy/lan/checks/staff_auth.py`(`staff_token(이름)`). 시험 계정 — `claude-dev`(OPERATOR_ADMIN), `test-cs-rider@pmart.com`(CS_AGENT·RIDER_OPS), `claude-approver`(HR_ADMIN 등 승인자), `claude-mfc-sup`(MFC_SUPERVISOR, MFC-SEED-01). 비밀번호 파일은 `deploy/lan/.secrets/`(PC 1 에서 복사, Git 아님).
-- **LAN 확인 각본(2026-11-18)**: `python -X utf8 -I deploy/lan/checks/backoffice_views_check.py [--cs]` — GET 만, 관리자 15개(첫 실행 15/15). `--cs` 는 최신 비밀번호 파일이 있을 때만(옛 값으로 실패가 쌓이면 계정이 잠김).
+- **LAN 확인 각본(2026-11-18, 11-23 F 절 더함)**: `python -X utf8 -I deploy/lan/checks/backoffice_views_check.py [--cs]` — GET 만, 관리자 26개(2026-11-23 26/26 — F 절은 센터 거르기·case 센터·lastAnsweredBy·고객 상세 여덟 칸·restriction·담당 이름, 고객은 클레임 → 주문 상세로 고름). `--cs` 는 최신 비밀번호 파일이 있을 때만(옛 값으로 실패가 쌓이면 계정이 잠김).
 - **같은 날 PR 여럿**: 그날 일지 줄은 한 PR 에만(`git merge-tree` 로 main·서로 충돌 없음 확인 — 사용자 2026-11-18). 계약 경로를 바꾸면 게이트웨이 허용 목록(`user-type-allowlist.txt`, `PMART_WRITE_ALLOWLIST=1 … UserTypeAllowlistFileTest`)도 같은 PR 에서 다시 만든다.
 - LAN 배포 직후 1~2분은 게이트웨이가 503 일 수 있다(Eureka 목록 갱신 전) — 기다렸다 다시.
 - Gradle 제한(workers 2·Xmx2g)은 PC 2 에 이미 적용 — PC 2 는 commerce·RAG 를 돌리는 LAN PC 라 무거운 시험 중 LAN 이 느리면 PC 1 에 알린다.
