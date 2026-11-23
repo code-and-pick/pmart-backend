@@ -63,3 +63,4 @@
   - 받는 쪽 이벤트: case 가 낼 `CustomerProfanityDetected`(R-14) 를 customer 가 구독해 정지를 거는 모양을 제안 — 모양은 PC 1 과 맞춘다.
   5. **오인식 해제(2026-11-23 사용자 "응")**: 욕설이 아닌데 걸린 정지는 상담원·관리자가 사유를 적고 직접 푼다. 금칙어 목록은 pmart-config(사용자 승인 뒤 PC 1 반영).
   6. **0.37.0 바뀜(2026-11-23 사용자)**: 욕설(A+B)은 **입력을 막고 정지 없음**, 정지는 위협·거친 말(C)만 — case 0.37.0 은 막기 목록 `pmart.cases.blocked-words`·정지 목록 `pmart.cases.profanity-words`. AI 채팅 CA-2(PC 4)도 같은 사건(source AI_CHAT). 라이더는 RS-8(PC 5).
+  7. **영구 정지 없음(2026-11-23 사용자 "고객 쪽에 영구 정지를 걸면 안 되지. 따로 만들고")**: 고객은 기한 없는 정지·영구 정지를 두지 않는다 — 정지는 늘 기한(7일)이 있다. 라이더(rider-service — 기한 없는 SUSPENDED·TERMINATED 있음)와 맞추지 않고 따로 간다.
