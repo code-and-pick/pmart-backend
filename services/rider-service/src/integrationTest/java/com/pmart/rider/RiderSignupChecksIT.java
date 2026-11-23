@@ -137,6 +137,62 @@ class RiderSignupChecksIT extends PostgresKafkaContainerSupport {
         .isEqualTo(503);
   }
 
+  /** 직원 상세 배달 지역 구역 이름(0.26.0 — PC 2): 지금 발효 권역의 이름, 권역에 없거나 못 읽으면 null. */
+  @Test
+  void staffDetailShowsZoneNameFromCurrentServiceability() {
+    String rider = "RD-" + UUID.randomUUID();
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("phone", phone());
+    body.put("name", "김라이더");
+    body.put("vehicleType", "BICYCLE");
+    body.put(
+        "deliveryAreas",
+        List.of(
+            Map.of("mfcId", "MFC-IT-1", "zoneId", "ZONE-A"),
+            Map.of("mfcId", "MFC-IT-2", "zoneId", "ZONE-GONE")));
+    body.put("consents", List.of(Map.of("consentType", "TERMS", "version", "2026-11")));
+    ResponseEntity<String> created =
+        http.post()
+            .uri("/riders/signups")
+            .headers(
+                h -> {
+                  h.setBearerAuth(TestJwt.rider(rider));
+                  h.set("Idempotency-Key", "k-" + UUID.randomUUID());
+                  h.set("X-Source-System", "rider-app");
+                })
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(created.getStatusCode().value()).as(created.getBody()).isEqualTo(201);
+    serviceability.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/serviceability-versions/current"))
+            .willReturn(
+                okJson(
+                    "{\"version\":3,\"zones\":[{\"zoneId\":\"ZONE-A\",\"mfcId\":\"MFC-IT-1\","
+                        + "\"name\":\"부산진구 서면\"}]}")));
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode areas = json(staffDetail(rider, ops)).path("deliveryAreas");
+    assertThat(areas.get(0).path("zoneName").asString()).isEqualTo("부산진구 서면");
+    assertThat(areas.get(1).path("zoneName").isNull()).isTrue();
+
+    // 권역 서비스 장애 — 상세는 그대로, 이름만 null
+    serviceability.resetAll();
+    serviceability.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/serviceability-versions/current"))
+            .willReturn(aResponse().withStatus(503)));
+    ResponseEntity<String> down = staffDetail(rider, ops);
+    assertThat(down.getStatusCode().value()).isEqualTo(200);
+    assertThat(json(down).path("deliveryAreas").get(0).path("zoneName").isNull()).isTrue();
+  }
+
+  private ResponseEntity<String> staffDetail(String rider, String token) {
+    return http.get()
+        .uri("/riders/{id}", rider)
+        .header("Authorization", "Bearer " + token)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   private static ResponseDefinitionBuilder okJson(String body) {
     return aResponse()
         .withStatus(200)

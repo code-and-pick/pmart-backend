@@ -57,6 +57,7 @@ public class StaffRiderService {
   private final Clock clock;
 
   private final com.pmart.rider.infrastructure.DispatchClient dispatch;
+  private final com.pmart.rider.infrastructure.ServiceabilityClient serviceability;
   private static final org.slf4j.Logger log =
       org.slf4j.LoggerFactory.getLogger(StaffRiderService.class);
 
@@ -64,11 +65,25 @@ public class StaffRiderService {
       RiderStore store,
       AuditClient audit,
       Clock clock,
-      com.pmart.rider.infrastructure.DispatchClient dispatch) {
+      com.pmart.rider.infrastructure.DispatchClient dispatch,
+      com.pmart.rider.infrastructure.ServiceabilityClient serviceability) {
     this.dispatch = dispatch;
+    this.serviceability = serviceability;
     this.store = store;
     this.audit = audit;
     this.clock = clock;
+  }
+
+  /**
+   * 지금 발효 권역의 구역 이름(2026-11-24 — 직원 상세 deliveryAreas[].zoneName). 못 읽으면 빈 표 — 화면은 null 이면 구역 ID.
+   */
+  public Map<String, String> zoneNames() {
+    try {
+      return serviceability.currentZoneNames();
+    } catch (RuntimeException e) {
+      log.warn("구역 이름 생략 reason={}", e.getClass().getSimpleName());
+      return Map.of();
+    }
   }
 
   /** 라이더 여럿의 맡은 배송 수(0.24.0 — dispatch 내부 조회, 쪽마다 한 번). 못 읽으면 빈 표 — 화면은 null 로 "모름"(0 이 아님). */

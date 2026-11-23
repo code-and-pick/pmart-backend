@@ -13,7 +13,6 @@ import com.pmart.rider.api.generated.model.RestrictionReviewDecision;
 import com.pmart.rider.api.generated.model.RiderPiiField;
 import com.pmart.rider.api.generated.model.RiderPiiReveal;
 import com.pmart.rider.api.generated.model.RiderPiiRevealRequest;
-import com.pmart.rider.api.generated.model.RiderProfileUpdateDeliveryAreasInner;
 import com.pmart.rider.api.generated.model.RiderRestrictionChange;
 import com.pmart.rider.api.generated.model.RiderRestrictionRecord;
 import com.pmart.rider.api.generated.model.StaffRiderDetail;
@@ -133,6 +132,11 @@ public class OperatorController implements OperatorApi {
   public ResponseEntity<StaffRiderDetail> getRiderForStaff(
       String riderId, @Nullable Boolean includeWithdrawn) {
     Rider r = staff.detail(riderId, Boolean.TRUE.equals(includeWithdrawn));
+    // 0.26.0 구역 이름 — 지역이 있을 때만 부른다, 못 읽으면 null
+    java.util.Map<String, String> zoneNames =
+        r.deliveryAreas().stream().anyMatch(a -> !a.zoneId().isEmpty())
+            ? staff.zoneNames()
+            : java.util.Map.of();
     return ResponseEntity.ok(
         new StaffRiderDetail()
             .riderId(r.riderId())
@@ -164,9 +168,11 @@ public class OperatorController implements OperatorApi {
                 r.deliveryAreas().stream()
                     .map(
                         a ->
-                            new RiderProfileUpdateDeliveryAreasInner()
+                            new com.pmart.rider.api.generated.model
+                                    .StaffRiderDetailDeliveryAreasInner()
                                 .mfcId(a.mfcId())
-                                .zoneId(a.zoneId().isEmpty() ? null : a.zoneId()))
+                                .zoneId(a.zoneId().isEmpty() ? null : a.zoneId())
+                                .zoneName(a.zoneId().isEmpty() ? null : zoneNames.get(a.zoneId())))
                     .toList())
             .operating(
                 RiderViews.operating(r)
