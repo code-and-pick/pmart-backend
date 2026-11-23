@@ -157,3 +157,4 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **할 것(PC 2)**: 고객 문의·추가 메시지를 받을 때 금칙어 목록(설정 — 새 프레임워크 없이 단어 목록 대조)과 맞춰 보고, 맞으면 이벤트(`CustomerProfanityDetected` — customerId·inquiryId·감지 시각, 글·단어는 싣지 않음)를 낸다. 계정 상태는 customer(CU-7)가 바꾼다.
 - **결정(2026-11-23 사용자 "추천대로, 응")**: 금칙어 목록은 설정 저장소(pmart-config `case-service.yml`)에 단어 목록으로 두고, 바꿀 때는 사용자 승인 뒤 PC 1 이 반영한다. 오인식(욕설이 아닌데 걸림)은 상담원·관리자가 사유를 적고 직접 해제(CU-7 직원 해제).
 - 리뷰 욕설 인식은 review-service(PC 1) 몫.
+- **0.37.0 바뀜(2026-11-23 사용자 "A는 문의나 채팅에 입력 자체가 안 되게, C는 걸리면 정지, B도" — B 는 막기, 막기는 정지 없음, 범위 "문의 + AI 채팅 + 라이더 문의 대화")**: 목록 둘 — **막기** `pmart.cases.blocked-words`(욕설 A+B — 고객·라이더 `POST /inquiries`·라이더 `POST /inquiries/{id}/messages` 422 BLOCKED_WORDS, 정지 없음), **정지** `pmart.cases.profanity-words`(위협·거친 말 C — 받고 고객 `CustomerProfanityDetected`·라이더 `RiderProfanityDetected`). AI 채팅은 customer-assistant CA-2(PC 4), 라이더 정지는 rider RS-8(PC 5). 목록 값은 저장소에 적지 않고 PC 1 에 메시지로.

@@ -11,17 +11,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param deliveryDispatchBaseUrl 라이더 컴플레인의 배정 라이더 조회(dispatch `GET
  *     /internal/deliveries/{id}/assignment`, 0.3.0). 없으면 컴플레인 기록만 422 CONFIG_REQUIRED
  * @param sla 사건함 종류별 처리 기한(0.4.0, 2026-11-16 — 표시만). 없으면 {@code CaseRules.DEFAULT_SLA}
- * @param profanityWords 고객 문의 욕설 자동 인식 금칙어(0.35.0 R-14 — 사용자 승인 뒤 PC 1 이 설정 저장소에 반영). 비우면 인식하지 않음
+ * @param profanityWords <b>정지 단어</b>(0.35.0 R-14, 0.37.0 부터 정지 목록 — 위협·거친 말). 문의·라이더 문의 대화에 들어 있으면
+ *     받되 정지 사건(Customer/RiderProfanityDetected)을 낸다. 사용자 승인 뒤 PC 1 이 설정 저장소에 반영. 비우면 없음
+ * @param blockedWords <b>막기 단어</b>(0.37.0 — 욕설). 들어 있으면 422 BLOCKED_WORDS 로 받지 않는다(정지 없음). 비우면 없음
  */
 @ConfigurationProperties("pmart.cases")
 public record CaseProperties(
     @Nullable String orderServiceBaseUrl,
     @Nullable String deliveryDispatchBaseUrl,
     java.util.@Nullable Map<String, java.time.Duration> sla,
-    java.util.@Nullable List<String> profanityWords) {
+    java.util.@Nullable List<String> profanityWords,
+    java.util.@Nullable List<String> blockedWords) {
 
-  /** 금칙어 — 없으면 빈 목록(인식 안 함). */
+  /** 정지 단어 — 없으면 빈 목록. */
   public java.util.List<String> profanity() {
     return profanityWords == null ? java.util.List.of() : profanityWords;
+  }
+
+  /** 막기 단어 — 없으면 빈 목록. */
+  public java.util.List<String> blocked() {
+    return blockedWords == null ? java.util.List.of() : blockedWords;
   }
 }

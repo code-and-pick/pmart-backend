@@ -2,7 +2,6 @@ package com.pmart.cases.application;
 
 import com.pmart.cases.domain.CsIntakeRules;
 import com.pmart.cases.domain.InquiryRules;
-import com.pmart.cases.domain.ProfanityRules;
 import com.pmart.cases.infrastructure.InquiryPhotoStore;
 import com.pmart.cases.infrastructure.InquiryPhotoStore.PhotoRow;
 import com.pmart.cases.infrastructure.InquiryStore;
@@ -62,6 +61,7 @@ public class InquiryService {
   private final RequestIdempotency idempotency;
   private final TransactionTemplate tx;
   private final EventPublisher events;
+  private final ProfanityGuard profanity;
   private final Clock clock;
 
   public InquiryService(
@@ -72,7 +72,9 @@ public class InquiryService {
       RequestIdempotency idempotency,
       TransactionTemplate tx,
       EventPublisher events,
-      Clock clock) {
+      Clock clock,
+      ProfanityGuard profanity) {
+    this.profanity = profanity;
     this.store = store;
     this.photos = photos;
     this.orders = orders;
@@ -143,6 +145,8 @@ public class InquiryService {
             List.of());
       }
     }
+    // 0.37.0: 막기 단어(욕설)는 받지 않는다 — 422, 정지 없음
+    profanity.rejectBlocked(cmd.title(), cmd.body());
     String inquiryId =
         idempotency
             .execute(
@@ -175,25 +179,17 @@ public class InquiryService {
                           null,
                           null));
                   attach(id, customerId, cmd.photoIds(), 0);
-                  // 0.35.0 R-14: 고객 문의 욕설 자동 인식 → customer 가 7일 정지(CU-7). 문의는 그대로 받는다. 글·단어 로그 금지
-                  if (InquiryRules.CUSTOMER.equals(requesterType)
-                      && ProfanityRules.contains(props.profanity(), cmd.title(), cmd.body())) {
-                    Map<String, Object> pd = new LinkedHashMap<>();
-                    pd.put("customerId", customerId);
-                    pd.put("inquiryId", id);
-                    pd.put("caseId", caseId);
-                    pd.put("source", "INQUIRY");
-                    pd.put("detectedAt", now.toString());
-                    events.publish(
-                        "CustomerProfanityDetected",
-                        1,
-                        "Case",
-                        caseId,
-                        1L,
-                        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "case-service"),
-                        pd);
-                    log.info("inquiry profanity detected id={}", id);
-                  }
+                  // 0.35.0 R-14·0.37.0: 정지 단어 → 정지 사건(고객 CU-7·라이더 PC 5). 문의는 그대로 받는다
+                  profanity.reportSuspendable(
+                      requesterType,
+                      customerId,
+                      id,
+                      caseId,
+                      "INQUIRY",
+                      1L,
+                      now,
+                      cmd.title(),
+                      cmd.body());
                   log.info(
                       "inquiry received id={} requester={} category={}",
                       id,

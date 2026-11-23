@@ -32,9 +32,15 @@ public class InquiryChatService {
   private final InquiryStore store;
   private final RequestIdempotency idempotency;
   private final Clock clock;
+  private final ProfanityGuard profanity;
 
   public InquiryChatService(
-      InquiryService inquiries, InquiryStore store, RequestIdempotency idempotency, Clock clock) {
+      InquiryService inquiries,
+      InquiryStore store,
+      RequestIdempotency idempotency,
+      Clock clock,
+      ProfanityGuard profanity) {
+    this.profanity = profanity;
     this.inquiries = inquiries;
     this.store = store;
     this.idempotency = idempotency;
@@ -57,6 +63,8 @@ public class InquiryChatService {
     if (p.type() != PmartPrincipal.PrincipalType.RIDER) {
       throw new PmartException(ErrorCode.FORBIDDEN, "문의 대화는 라이더 본인만 이어 씁니다. 지원센터는 답변(/replies)으로.");
     }
+    // 0.37.0: 막기 단어(욕설)는 받지 않는다 — 422, 정지 없음
+    profanity.rejectBlocked(body);
     String messageId =
         idempotency
             .execute(
@@ -79,7 +87,18 @@ public class InquiryChatService {
                         List.of());
                   }
                   String id = "IMS-" + UUID.randomUUID();
-                  store.addRequesterMessage(inquiryId, id, p.subject(), body, clock.instant());
+                  java.time.Instant now = clock.instant();
+                  store.addRequesterMessage(inquiryId, id, p.subject(), body, now);
+                  // 0.37.0: 정지 단어 → RiderProfanityDetected(rider-service 가 7일 정지 — PC 5)
+                  profanity.reportSuspendable(
+                      InquiryRules.RIDER,
+                      p.subject(),
+                      inquiryId,
+                      row.caseId(),
+                      "INQUIRY_MESSAGE",
+                      row.version() + 1L,
+                      now,
+                      body);
                   log.info("rider inquiry message id={} inquiry={}", id, inquiryId);
                   return id;
                 })

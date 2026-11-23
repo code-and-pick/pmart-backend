@@ -67,6 +67,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - [x] (2026-11-19 delivery) MFC 백오피스 "배차 지연" 목록 + "배차 불가로 취소" — dispatch `GET /dispatch-delays`(0.12.0), claim CL-5. 요청 `service-requests/mfc-backoffice-staff-apis.md` 끝 절 — **끝**(2026-11-20 정리: 화면 있음 — pmart-clients web/mfc-backoffice DispatchDelayPage)
 
 ## PC 5 — delivery 영역
+- [ ] **RS-8 라이더 문의 정지 단어 → 7일 정지**(2026-11-23 PC 2 — `rider-service.md` RS-8): case 0.37.0 `RiderProfanityDetected` 구독 → 7일 정지(자동 해제)·라이더 알림 "7일 계정 정지", 오인식은 지원센터·관리자가 사유 적고 해제
 - [ ] **RS-7 라이더 목록 센터로 거르기**(2026-11-23 PC 1 — 사용자 "센터를 고르면 그 해당 센터에 해당하는 라이더 정보", 요청서 `service-requests/rider-service.md` RS-7): `GET /riders?mfcId=`(배달 지역 기준)·`/riders/withdrawals?mfcId=`, mfcId 없는 execution·dispatch 직원 목록 판단. 권한은 그대로.
 - [x] **RA-1 라이더 소셜 로그인 "동의는 처음 가입할 때만"**(2026-11-22 PC 1 — 사용자 "라이더쪽을 수정해야해, 소셜로그인부분때문에", 요청서 `docs/architecture/service-requests/rider-auth-service.md` RA-1): ① 탈퇴 때 카카오 연결 끊기(라이더 카카오 Admin 키 — 사용자에게) ② 탈퇴 때 네이버 끊기 ③ 네이버 가입 전 끊기(rider-service 가입 여부 내부 조회 필요) ④ 네이버 이메일 → 가린 이메일. 고객 auth-service 구현을 같은 모양으로. 라이더 앱 몫은 요청서 끝. — **구현(2026-11-22 PC 5, rider-auth 0.4.0·V4, 브랜치 `delivery/rider-social-consent-once`)** — rider-service 변경 없음(기존 `GET /internal/riders/{id}` 로 가입 판단). 남음: 라이더 카카오 Admin 키(사용자·PC 1), 라이더 앱(탈퇴 네이버 재인증 purpose WITHDRAWAL 등)
 - [ ] **DD-6 정시 배송 지표 시간 칸**(2026-11-21 PC 3 — MFC 백오피스 대시보드 시간대별 추이): `GET /metrics/on-time-deliveries` 에 `bucket=HOUR`(줄 `hour` +09:00, 7일), 있으면 좋음 WEEK·MONTH(366일) — 요청서 `delivery-dispatch-service.md` DD-6, 같은 모양은 mfc-fulfillment 0.34.0 피킹 지표
@@ -140,6 +141,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 - 결과는 클라이언트 저장소 handoff 로 회신(백엔드는 읽기만).
 
 ## PC 4 — rag 영역(사용자 확정 2026-11-13, **2026-11-15 인수인계 — 시작해도 됨**)
+- [ ] **CA-2 AI 상담 채팅 금칙어**(2026-11-23 PC 2 — `customer-assistant-service.md` CA-2): 욕설(막기 목록)은 받지 않고 안내(정지 없음), 위협·거친 말(정지 목록)은 `CustomerProfanityDetected` source AI_CHAT. 목록 키는 PC 1 과
 - [ ] **AI-2·CA-1 상품 영양·알레르기 질문(2026-11-23 PC 1)**: search 0.11.0 결과의 `nutrition`·`allergens` 로 정해진 문장 — 목록에 없음은 "없다"가 아니라 "확인하지 못했어요". `docs/architecture/service-requests/ai-assistant-service.md` AI-2·`customer-assistant-service.md` CA-1
 - [ ] **AI-1 업무 도우미 질문 원문 저장**(2026-11-19 PC 2 — 백오피스 웹 요청, 요청서 `docs/architecture/service-requests/ai-assistant-service.md` AI-1): **2026-11-19 사용자 결정(추천대로)**: `store-question` 켜기, 질문 원문 보존 = 답변과 같이 90일, 본인만 보기, 본인 지우기(원문만 NULL), 소급 없음. ADR-0036 결정 필요 3 고침
 - [ ] **RAG 구조 개편 취소 알림(2026-11-19 사용자 "개편 일단 취소할거야")**: `docs/rag/planning/2026-11-18-es-hybrid-restructure-plan.md`·`…-es-restructure-decisions.md` 는 취소로 표시함(PC 1). RAG 전용 ES·1,024토큰 청킹·RRF 작업은 시작하지 않는다 — 지금 구현(pgvector) 그대로. 확인하면 이 줄을 지운다

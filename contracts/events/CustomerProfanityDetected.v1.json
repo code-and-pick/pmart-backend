@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/CustomerProfanityDetected.v1.json",
   "title": "CustomerProfanityDetected",
-  "description": "고객 문의에서 금칙어(욕설)를 자동으로 찾은 사실 — 글·걸린 단어는 싣지 않는다. 발행 case(2026-11-23 R-14, POST /inquiries 고객 문의 — 제목·본문을 설정 pmart.cases.profanity-words 와 대조, 상담원 접수 STAFF_INTAKE 는 제외). 구독 customer(CU-7 — 7일 정지 + 고객 알림 \"7일 계정 정지\", 사용자 2026-11-23). 문의 자체는 그대로 접수된다. 토픽 platform.case.v1.",
+  "description": "고객 글에서 **정지 단어**(위협·거친 말 — 0.37.0 부터 정지 목록)를 자동으로 찾은 사실 — 글·걸린 단어는 싣지 않는다. 발행 case(2026-11-23 R-14 — POST /inquiries 고객 문의 제목·본문을 설정 pmart.cases.profanity-words 와 대조, 상담원 접수 제외; 0.37.0 사용자 \"C는 걸리면 정지\"). 욕설(막기 목록 pmart.cases.blocked-words)은 사건 없이 422 로 받지 않는다. source AI_CHAT 은 customer-assistant(PC 4 — CA 요청) 가 같은 사건을 낼 때. 구독 customer(CU-7 — 7일 정지 + 고객 알림 \"7일 계정 정지\"). 글은 그대로 접수된다. 토픽 platform.case.v1.",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -38,9 +38,10 @@
             "source": {
               "type": "string",
               "enum": [
-                "INQUIRY"
+                "INQUIRY",
+                "AI_CHAT"
               ],
-              "description": "어디서 찾았나 — 지금은 고객 문의만(리뷰는 review 몫)"
+              "description": "어디서 찾았나 — INQUIRY 고객 문의(case), AI_CHAT AI 상담 채팅(customer-assistant, 0.37.0 에 값만 더함)"
             },
             "detectedAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"

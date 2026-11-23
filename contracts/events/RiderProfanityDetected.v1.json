@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderProfanityDetected.v1.json",
+  "title": "RiderProfanityDetected",
+  "description": "라이더 문의·문의 대화에서 정지 단어(위협·거친 말)를 자동으로 찾은 사실 — 글·걸린 단어는 싣지 않는다. 발행 case(2026-11-23 0.37.0, 사용자 \"C는 걸리면 정지\", 적용 범위 \"문의 + AI 채팅 + 라이더 문의 대화\"). 욕설(막기 목록)은 사건 없이 422. 구독 rider(PC 5 요청 — 7일 정지·라이더 알림). 글은 그대로 접수. 토픽 platform.case.v1.",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderProfanityDetected"
+        },
+        "aggregateType": {
+          "const": "Case"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "riderId",
+            "inquiryId",
+            "caseId",
+            "source",
+            "detectedAt"
+          ],
+          "properties": {
+            "riderId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "inquiryId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "caseId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "INQUIRY",
+                "INQUIRY_MESSAGE"
+              ]
+            },
+            "detectedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

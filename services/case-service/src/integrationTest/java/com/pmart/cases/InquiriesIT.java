@@ -41,7 +41,8 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.cases.order-service-base-url=${order.url}",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "pmart.cases.profanity-words[0]=테스트금칙어"
+      "pmart.cases.profanity-words[0]=테스트금칙어",
+      "pmart.cases.blocked-words[0]=막기금칙어"
     })
 @Import(TestJwtConfiguration.class)
 @EnableWireMock({@ConfigureWireMock(name = "order", baseUrlProperties = "order.url")})
@@ -458,6 +459,57 @@ class InquiriesIT extends PostgresKafkaContainerSupport {
                   "%" + r.body().path("inquiryId").asString() + "%"))
           .isZero();
     }
+  }
+
+  /** 0.37.0: 막기 단어는 422 로 받지 않고(정지 없음), 라이더 문의·대화의 정지 단어는 RiderProfanityDetected. */
+  @Test
+  void blockedWordsAreRejectedAndRiderSuspendWordsRaiseRiderEvent() {
+    String me = "CU-" + UUID.randomUUID();
+    Res blocked =
+        send(
+            "POST",
+            TestJwt.customer(me),
+            "/inquiries",
+            Map.of("category", "OTHER", "title", "막 기 금칙어", "body", "x"),
+            null);
+    assertThat(blocked.status()).as(blocked.body().toString()).isEqualTo(422);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("BLOCKED_WORDS");
+    assertThat(blocked.body().toString()).as("걸린 단어를 돌려주지 않음").doesNotContain("금칙어");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM cs_inquiry WHERE customer_id = ?", Integer.class, me))
+        .as("받지 않음")
+        .isZero();
+
+    String rider = "RD-" + UUID.randomUUID().toString().substring(0, 8);
+    String riderTok = TestJwt.rider(rider);
+    assertThat(
+            send("POST", riderTok, "/inquiries", Map.of("category", "OTHER", "body", "막기금칙어"), null)
+                .status())
+        .isEqualTo(422);
+    Res created =
+        send(
+            "POST", riderTok, "/inquiries", Map.of("category", "OTHER", "body", "테스트금칙어 진짜"), null);
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String id = created.body().path("inquiryId").asString();
+    Res m1 =
+        send("POST", riderTok, "/inquiries/" + id + "/messages", Map.of("body", "막기금칙어"), null);
+    assertThat(m1.status()).isEqualTo(422);
+    Res m2 =
+        send("POST", riderTok, "/inquiries/" + id + "/messages", Map.of("body", "또 테스트 금칙어"), null);
+    assertThat(m2.status()).as(m2.body().toString()).isEqualTo(201);
+    java.util.List<String> sources =
+        jdbc.queryForList(
+            "SELECT payload->'payload'->>'source' FROM outbox_event WHERE type = 'RiderProfanityDetected' AND payload::text LIKE ? ORDER BY 1",
+            String.class,
+            "%" + id + "%");
+    assertThat(sources).containsExactly("INQUIRY", "INQUIRY_MESSAGE");
+    String payload =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'RiderProfanityDetected' AND payload::text LIKE ? LIMIT 1",
+            String.class,
+            "%" + id + "%");
+    assertThat(payload).contains(rider).doesNotContain("금칙어").doesNotContain("진짜");
   }
 
   /** 0.32.0(R-11 — 라이더 백오피스 라이더 상세): 직원 라이더 거르기 — 그 라이더의 라이더 문의만, 최근 접수 순. */
