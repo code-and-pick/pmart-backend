@@ -192,6 +192,7 @@ class CustomerViewsIT {
                     """
                     {"customerId":"CU-1","customerNumber":"482913","nameMasked":"김*수","phoneMasked":"010-****-5678",
                      "emailMasked":"a***@k***","status":"ACTIVE","socialProvider":"KAKAO","phoneVerified":true,
+                     "restriction":"SUSPENDED","restrictedUntil":"2026-11-30T10:00:00Z",
                      "joinedAt":"2026-11-01T01:00:00Z"}""")));
     order.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/orders/lookups"))
@@ -281,6 +282,8 @@ class CustomerViewsIT {
     assertThat(head.path("nameMasked").asString()).isEqualTo("김*수");
     assertThat(head.path("socialProvider").asString()).isEqualTo("KAKAO");
     assertThat(head.path("phoneVerified").asBoolean()).isTrue();
+    assertThat(head.path("restriction").asString()).as("CU-7 정지(0.28.0)").isEqualTo("SUSPENDED");
+    assertThat(head.path("restrictedUntil").asString()).isEqualTo("2026-11-30T10:00:00Z");
 
     JsonNode orders = r.body().path("orders");
     assertThat(orders.path("hasMore").asBoolean()).isTrue();

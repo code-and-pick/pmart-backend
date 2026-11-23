@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.27.0
+  version: 0.28.0
   description: |
+    **0.28.0(2026-11-23 — customer 0.16.0 CU-7)**: 고객 찾기 줄(CustomerSummaryView)과 고객 상세 머리 `customer` 에 `restriction`(NONE·RESTRICTED·SUSPENDED)·`restrictedUntil` — customer 값 그대로. 걸기·풀기·이력은 화면이 customer 를 직접.
     **0.27.0(2026-11-23 — BF-5 "문의 담당 상담원", 사용자 "2번으로 해")**: 고객 상세 문의 칸 줄에 `lastAnsweredBy`(case 0.36.0 — 마지막으로 답한 직원 운영자 ID, case 배포 전·답 없으면 null)와 `lastAnsweredByLabel`(hr "이름 · 사번" — 상담원 접수 칸과 같은 한 번 조회, 실패면 이름만 null).
     **0.26.0(2026-11-23 — BF-5, case 0.34.0 R-13 배포 뒤)**: 고객 상세 `views/customer/{id}` 에 `customerNotes`(case `GET /customer-notes?customerId=&size=10` — 상담 메모 글·쓴 직원 "이름 · 사번"·고친 시각, 줄마다 `mine` = 부른 직원이 쓴 것 → 화면이 고치기·지우기 단추). **CS_AGENT·OPERATOR_ADMIN 만**(case 가 그 둘만) — 그 밖 직원은 부르지 않고 null. 쓰기·고치기·지우기는 화면이 case `/customer-notes` 를 직접.
     **0.25.0(2026-11-23 — BF-5 1차, 사용자 "고객관리" 목록 "1. 시작해"; BF-4 2차)**: 고객 상세 `views/customer/{id}` 에 칸 셋 — `deliveries`(주문 칸 주문마다 execution `GET /deliveries?orderId=` — 배송 상태·담당 MFC·배차·완료·실패), `claimCounts`(claim `GET /claims/counts?customerId=&by=type` — 반복 클레임), `piiAccessLogs`(audit `GET /pii-access-logs?subjectType=CUSTOMER&subjectRef=` — 이 고객 정보를 누가·언제·왜 열람했는지, **OPERATOR_ADMIN 만** — 그 밖은 부르지 않고 null). 클레임 칸 줄에 `reason`(사유 코드 — 글 없음)·환불 `refundRequestedAmount`·`refundedAmount`·`refundCompletedAt`. `views/rider-complaints` 에 선택 `centerId`(case 0.33.0 R-12 — 센터 없는 기록은 빠짐)와 줄 `centerId`.
@@ -1082,6 +1083,8 @@ components:
         nameMasked: { type: [string, 'null'] }
         phoneMasked: { type: [string, 'null'] }
         status: { type: [string, 'null'], description: customer AccountStatus 그대로 }
+        restriction: { type: [string, 'null'], x-added-in: '2026-11-23', description: '(0.28.0, customer 0.16.0 CU-7) NONE·RESTRICTED(이용제한 — 문의·리뷰 막기)·SUSPENDED(정지 — 주문·로그인까지) 그대로. customer 배포 전이면 null' }
+        restrictedUntil: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-23', description: '(0.28.0) 제한 기한(늘 7일 — 영구 없음). 걸고 풀기·이력은 화면이 customer /customers/{id}/restrictions·/restriction-releases 를 직접' }
     CustomerDetailView:
       type: object
       x-added-in: '2026-11-20'
@@ -1101,6 +1104,8 @@ components:
             socialProvider: { type: [string, 'null'] }
             phoneVerified: { type: [boolean, 'null'] }
             joinedAt: { type: [string, 'null'], format: date-time }
+            restriction: { type: [string, 'null'], x-added-in: '2026-11-23', description: '(0.28.0, customer 0.16.0 CU-7) NONE·RESTRICTED(이용제한 — 문의·리뷰 막기)·SUSPENDED(정지 — 주문·로그인까지) 그대로. customer 배포 전이면 null' }
+            restrictedUntil: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-23', description: '(0.28.0) 제한 기한(늘 7일 — 영구 없음). 걸고 풀기·이력은 화면이 customer /customers/{id}/restrictions·/restriction-releases 를 직접' }
         orders:
           type: [object, 'null']
           properties:

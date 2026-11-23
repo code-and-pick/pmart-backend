@@ -136,7 +136,9 @@ public class CustomerViews {
             "emailMasked",
             "status",
             "socialProvider",
-            "joinedAt")) {
+            "joinedAt",
+            "restriction",
+            "restrictedUntil")) {
       head.put(f, text(c, f));
     }
     head.put(
@@ -566,6 +568,9 @@ public class CustomerViews {
     m.put("nameMasked", text(c, "nameMasked"));
     m.put("phoneMasked", text(c, "phoneMasked"));
     m.put("status", text(c, "status"));
+    // 0.28.0 CU-7 — 이용제한·정지(customer 0.16.0 값 그대로)
+    m.put("restriction", text(c, "restriction"));
+    m.put("restrictedUntil", text(c, "restrictedUntil"));
     return m;
   }
 

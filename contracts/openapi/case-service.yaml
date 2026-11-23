@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.37.0
+  version: 0.37.1
   description: |
+    **0.37.1(2026-11-23 — customer 0.16.0 CU-7, PC 1 구현 09e01285 의 계약 설명)**: API 모양 변화 없음. 고객 `POST /inquiries` 는 customer `CustomerRestricted` 사본(V23 `customer_restriction_copy`)이 기한 안의 RESTRICTED·SUSPENDED 면 **403 `ACCOUNT_RESTRICTED`**(details `until` — "M월 d일 HH:mm까지 문의를 쓸 수 없어요"). 사본이 없거나 늦으면 막지 않는다(정본은 customer). 라이더 문의·대화는 해당 없음.
     **0.37.0(2026-11-23 — 사용자 2026-11-23 "A는 문의나 채팅에 입력 자체가 안 되게, C는 걸리면 정지, B도" — 막기만·정지 없음, 문의 + AI 채팅 + 라이더 문의 대화)**: 금칙어를 둘로 — **막기 단어** `pmart.cases.blocked-words`(욕설): `POST /inquiries`(고객·라이더)·`POST /inquiries/{id}/messages`(라이더 대화)에 들어 있으면 **422 BLOCKED_WORDS**("쓸 수 없는 말이 들어 있어요") — 받지 않고 정지 없음. **정지 단어** `pmart.cases.profanity-words`(위협·거친 말): 받고 고객이면 `CustomerProfanityDetected`, 라이더(문의·대화)면 새 사건 `RiderProfanityDetected`. 글·단어는 응답·사건·로그에 없음.
     **0.36.0(2026-11-23 — BF-5 고객 관리 "문의 담당 상담원", 사용자 "진행해")**: 직원 `GET /inquiries` 줄에 `lastAnsweredBy`(마지막으로 답한 직원 운영자 ID — 답변 표 author AGENT 의 가장 최근, 답 없으면 null). 고객·라이더 토큰에는 늘 null(직원 ID 를 내보내지 않음). 추가 칸만.
     **0.35.0(2026-11-23 — R-14, 사용자 "욕설이니까 자동으로 인식해서", 금칙어 목록 = 설정 "추천대로")**: API 모양 변화 없음. 고객 `POST /inquiries` 의 제목·본문을 설정 `pmart.cases.profanity-words`(대소문자·띄어쓰기·문장부호 무시)와 대조해 맞으면 사건 `CustomerProfanityDetected`(platform.case.v1 — customerId·inquiryId·caseId·source INQUIRY·detectedAt, 글·단어 없음)를 낸다. 문의는 그대로 받는다. 라이더 문의·상담원 접수는 대상 아님. 목록이 비면 인식 안 함. 구독 customer(CU-7 — 7일 정지·고객 알림).
