@@ -58,3 +58,10 @@
 - 받는 화면: 백오피스 "사번 입력 → '[이름] · 사번 에게 넘겨요' 확인 → 운영자 ID 로 보냄". bff 변경 없음(화면이 hr 를 직접).
 - **회신(2026-11-24 PC 1, 사용자 "정해진 것만")**: hr-service 0.10.0 — `GET /hr/employee-labels?employeeNos=P2026-00012,P2026-00013`(반복·쉼표 둘 다, 1~50개, 형식 `P<연도 4>-<5자리>` 아니면 400). `operatorIds` 와 **둘 중 하나만**(둘 다·둘 다 없음 400). 응답·권한(직원 토큰 누구나)·퇴사자 포함·모르는 사번 빠짐은 operatorIds 와 같다. **`activeOnly` 는 넣지 않았다**(사용자 "정해진 것만" — 정하면 추가). 시험 `HrProvisioningIT.employeeLabels`. **LAN 배포 2026-11-24**(이미지 ee1ed1bd).
 - **activeOnly(2026-11-24 사용자 "정정된걸로 해서 넣어", PC 2 전달 #396)**: hr-service 0.11.0 `activeOnly=true` → 퇴사자(LEFT) 뺌, 정지(SUSPENDED)는 재직이라 남김. 기본 false(지금처럼 퇴사자 포함). employeeNos·operatorIds 둘 다. 시험 `HrProvisioningIT.employeeLabels`. **LAN 배포 2026-11-24**(761e719c).
+
+## HR-6. 직원 표시에 상태 `status` — 정지 직원 경고 (2026-11-24, 보낸 영역 backoffice — PC 2, 통합백오피스 프론트 요청 pmart-clients `docs/handoff/backoffice/2026-11-24-backend-employee-label-status.md`)
+- **사용자 결정(2026-11-24, 웹 세션 경유)**: 맡기기·교대 인계 후임 고르기에서 정지(SUSPENDED) 직원은 "보이되 경고".
+- **왜**: `EmployeeLabel` 에 상태가 없어 화면이 정지 직원을 알아볼 수 없다(HR-5 `activeOnly` 는 퇴사자만 뺀다).
+- **요청**: `GET /hr/employee-labels` 줄에 선택 필드 `status`(hr 직원 상태 그대로 — ACTIVE·SUSPENDED·LEFT 등). 권한은 지금처럼 직원 누구나가 좋고, 어렵다면 `employeeNos` 로 부를 때만 실어도 된다.
+- **PC 1 이 판단할 것**: 직원 정지 상태를 모든 직원에게 보여도 되는지(인사 정보 공개 범위) — 안 되면 "로그인할 수 없음" 같은 덜 자세한 값으로.
+- 받는 화면: 확인 줄에 "정지 중이라 로그인할 수 없어요(인계를 받지 못하고, 맡겨도 처리하지 못해요)" 경고, 고르는 것은 막지 않음. bff 변경 없음.
