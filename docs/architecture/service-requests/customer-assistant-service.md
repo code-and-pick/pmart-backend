@@ -20,3 +20,8 @@
   - **막기 단어**(욕설 — case `pmart.cases.blocked-words` 와 같은 목록)가 있으면 **받지 않는다**(답하지 않고 "쓸 수 없는 말이 들어 있어요" 안내, 정지 없음). 글은 저장·색인·로그하지 않는다.
   - **정지 단어**(위협·거친 말 — `pmart.cases.profanity-words` 와 같은 목록)가 있으면 사건 `CustomerProfanityDetected`(source **AI_CHAT** — case 0.37.0 에서 값만 더함, 스키마 `contracts/events/CustomerProfanityDetected.v1.json`) — customer(CU-7)가 7일 정지·알림.
 - 대조 방식: 소문자로 바꾸고 띄어쓰기·문장부호를 지운 뒤 포함 비교(case `domain/ProfanityRules` 와 같게 — 코드 복제 대신 같은 규칙으로 구현). 목록 정본은 pmart-config(사용자 승인 뒤 PC 1 반영) — 서비스마다 키를 둘지 공통으로 둘지 PC 1·PC 4 가 정해 주세요.
+
+## CA-3. FAQ 의견 집계 줄에 분류 이름 `categoryTitle` (2026-11-23, 보낸 영역 backoffice — PC 2, 사용자 "지금 안하면 언제 할건데?")
+- **왜**: 통합 백오피스 FAQ 의견 집계 화면(BR-91, 프론트 #419·#421)이 분류 이름을 받아 올 곳이 없다 — 고객용 FAQ 목록 API 는 고객 토큰만이라 직원 화면이 부를 수 없어, 지금은 13개 이름을 화면에 박아 두었다. 분류는 안내 문서(`docs/business/customer-faq/NN-<키>.md`)가 늘면 같이 는다.
+- **요청**: `GET /customer-assistant/faq-feedback` 줄에 `categoryTitle`(FaqItem·FaqCategory 와 같은 값 — 안내 문서 제목). 지금 FAQ 에 없는 줄(question null)은 null 이어도 됨. 추가 칸만.
+- 받는 화면: 통합백오피스 프론트 — 오면 박아 둔 이름 대신 이 값을 쓴다.
