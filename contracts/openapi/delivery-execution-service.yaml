@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.42.0
+  version: 0.43.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.38.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /delivery-metrics` 배송 품질·효율(날짜·센터·라이더별 배정·완료·실패·취소·지연·픽업 대기·배송 소요)과 사고(도움요청 종류별 건수·처리 시간).
@@ -1412,6 +1412,7 @@ paths:
         - { name: to, in: query, x-added-in: "2026-11-24", schema: { type: string, format: date } }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: state, in: query, schema: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED] } }
+        - { name: escalated, in: query, x-added-in: "2026-11-24", description: "(0.43.0) true 면 날짜와 상관없이 자동 넘김 상한(3번)을 다 써 직원이 직접 지급해야 하는 묶음만(지급 예정일 순, 최대 200)", schema: { type: boolean } }
       responses:
         '200':
           description: OK
@@ -1431,7 +1432,8 @@ paths:
       x-added-in: '2026-11-24'
       description: |
         2026-11-24 사용자 "실패한 지급을 다음 지급일로 자동으로 넘겨". 지급 결과 FAILED 가 표시되면 그 묶음의 실패 줄(수행료·보상금)이 같은 트랜잭션에서 다음 지급일
-        (오늘과 원래 지급일 중 늦은 날의 다음 영업일)로 넘어가 CONFIRMED 가 된다(이미 PAYMENT_FAILED 로 남은 묶음도 1분 주기로 같게). 넘김 횟수 상한 없음.
+        (오늘과 원래 지급일 중 늦은 날의 다음 영업일)로 넘어가 CONFIRMED 가 된다(이미 PAYMENT_FAILED 로 남은 묶음도 1분 주기로 같게). (0.43.0) 넘김은 줄마다 상한(`pmart.execution.payout-max-rollovers`, 기본 3 — 2026-11-24 사용자 "3번 안에는 반드시 줘야해")까지 —
+        상한째 넘김은 `finalAttempt` true(마지막 자동 시도), 그 뒤 또 실패한 줄은 넘기지 않고 PAYMENT_FAILED 로 남아 묶음 `escalated` true(직원 직접 지급 — 관리자 PAID 표시).
         그 묶음에서 뺀 오배송 차감은 되돌려 새 묶음에서 다시 뺀다. 최근 순 200건, riderId 로 거르기. failureReason 은 직원만.
       operationId: listRiderPayoutRollovers
       x-pmart-user-types: [OPERATOR]
@@ -1460,6 +1462,8 @@ paths:
                         total: { type: integer }
                         failureReason: { type: [string, 'null'], description: 실패 표시 사유(결과 기록) }
                         rolledAt: { type: string, format: date-time }
+                        rollCount: { type: integer, x-added-in: "2026-11-24", description: "(0.43.0) 이 넘김 뒤 넘어간 줄의 가장 큰 넘김 횟수" }
+                        finalAttempt: { type: boolean, x-added-in: "2026-11-24", description: "(0.43.0) 상한째 넘김 — 이 날 또 실패하면 더 넘기지 않고 직원이 직접 지급" }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /rider-payouts/{riderId}/{payoutDate}/results:
@@ -1645,6 +1649,49 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RiderDeductionList' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [deductions]
+      summary: (0.43.0) 직원이 직접 만드는 차감 (라이더 운영·관리자)
+      x-added-in: '2026-11-24'
+      description: |
+        2026-11-24 사용자 "직접 차감하는 API도 만들자" — 자동 차감이 생기지 않은 경우(차감 배포 전에 접힌 회수 등)를 위해. 배송(`deliveryId` — 그 배송에 배정됐던 라이더에게)과
+        오배송 사건 번호(`caseId`), 사유(2~300자, 라이더도 본다 — 개인정보 금지)를 받는다. 금액을 비우면 자동 차감과 같은 규칙(order 결제 금액 − 배달비),
+        주면 1원 ~ 그 금액(넘으면 422 AMOUNT_EXCEEDS_ORDER). 그 뒤는 자동 차감과 같다 — PENDING_OBJECTION(이의 5일) + `RiderDeductionScheduled`(source MANUAL).
+        배송 하나·사건 하나당 한 번(이미 있으면 409 DEDUCTION_EXISTS — 취소된 것 포함). 배송 없음 404, 라이더 없는 배송 422 NO_RIDER, order 장애 503.
+        같은 직원 + Idempotency-Key 는 같은 결과. RIDER_OPS·OPERATOR_ADMIN(그 밖 403). 조치 이력 DEDUCTION_CREATED.
+      operationId: createRiderDeduction
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deliveryId, caseId, reason]
+              properties:
+                deliveryId: { type: string, maxLength: 64, description: 오배송된(차감 원인) 배송 }
+                caseId: { type: string, minLength: 1, maxLength: 64, description: 지원센터 오배송 사건 }
+                amount: { type: integer, minimum: 1, description: 비우면 결제 금액 − 배달비 }
+                reason: { type: string, minLength: 2, maxLength: 300 }
+      responses:
+        '201':
+          description: 만들어짐
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderDeduction' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '422':
+          description: AMOUNT_EXCEEDS_ORDER / NO_RIDER
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /rider-deductions/{deductionId}/decisions:
     post:
@@ -1976,6 +2023,9 @@ components:
         netTotal: { type: integer, description: "(0.41.0) 지급할 금액 = total − deductionTotal − expectedDeduction" }
         rolledTo: { type: [string, "null"], format: date, description: "(0.42.0) 실패 표시 응답에서만 — 실패 줄이 넘어간 다음 지급일" }
         rolledInCount: { type: integer, description: "(0.42.0) 이 묶음 안 지급 실패로 넘어온 줄 수" }
+        rollCount: { type: integer, x-added-in: "2026-11-24", description: "(0.43.0) 묶음 안 줄의 가장 큰 넘김 횟수(0 = 넘어온 줄 없음)" }
+        finalAttempt: { type: boolean, x-added-in: "2026-11-24", description: "(0.43.0) 상한째 넘어온 줄이 있음 — 이번이 마지막 자동 시도" }
+        escalated: { type: boolean, x-added-in: "2026-11-24", description: "(0.43.0) 상한을 다 쓰고 또 실패해 넘기지 않은 줄이 있음 — 직원이 직접 지급(관리자 PAID 표시)" }
         state: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED, MIXED] }
         lastResult:
           type: [object, 'null']
@@ -2002,7 +2052,10 @@ components:
         recoveryDeliveryId: { type: [string, 'null'], description: 포기된 회수 배송 }
         orderId: { type: string }
         riderId: { type: string }
-        amount: { type: integer, minimum: 1, description: '차감 금액(원) = 결제 금액 − 배달비' }
+        amount: { type: integer, minimum: 1, description: '차감 금액(원) = 결제 금액 − 배달비(직원이 직접 만들면 그 금액 이하로 정한 값)' }
+        source: { type: string, enum: [MISDELIVERY_RECOVERY, MANUAL], x-added-in: '2026-11-24', description: '(0.43.0) 회수 포기 자동 차감 · 직원 직접 차감' }
+        reason: { type: [string, 'null'], x-added-in: '2026-11-24', description: '(0.43.0) 직접 차감 사유(라이더도 본다)' }
+        createdBy: { type: [string, 'null'], x-added-in: '2026-11-24', description: '(0.43.0) 직접 차감한 운영자 ID(직원 화면만)' }
         remaining: { type: integer, minimum: 0, description: 아직 정산에서 빼지 않은 금액(취소면 0) }
         state: { $ref: '#/components/schemas/RiderDeductionState' }
         objectionDeadline: { type: string, format: date-time }

@@ -28,11 +28,20 @@ public class RiderPayoutsController implements RiderPayoutsApi {
       @Nullable LocalDate from,
       @Nullable LocalDate to,
       @Nullable String riderId,
-      @Nullable String state) {
+      @Nullable String state,
+      @Nullable Boolean escalated) {
     return ResponseEntity.ok(
         new ListRiderPayouts200Response()
             .items(
-                payouts.list(payoutDate, from, to, blank(riderId), blank(state)).stream()
+                payouts
+                    .list(
+                        payoutDate,
+                        from,
+                        to,
+                        blank(riderId),
+                        blank(state),
+                        Boolean.TRUE.equals(escalated))
+                    .stream()
                     .map(RiderPayoutsController::view)
                     .toList()));
   }
@@ -92,7 +101,9 @@ public class RiderPayoutsController implements RiderPayoutsApi {
                                 .lineCount(o.lineCount())
                                 .total((int) o.total())
                                 .failureReason(o.failureReason())
-                                .rolledAt(o.rolledAt().atOffset(java.time.ZoneOffset.UTC)))
+                                .rolledAt(o.rolledAt().atOffset(java.time.ZoneOffset.UTC))
+                                .rollCount(o.rollCount())
+                                .finalAttempt(o.finalAttempt()))
                     .toList()));
   }
 
@@ -109,7 +120,10 @@ public class RiderPayoutsController implements RiderPayoutsApi {
             .expectedDeduction((int) b.expectedDeduction())
             .netTotal((int) b.netTotal())
             .rolledTo(b.rolledTo())
-            .rolledInCount(b.rolledInCount());
+            .rolledInCount(b.rolledInCount())
+            .rollCount(b.rollCount())
+            .finalAttempt(b.finalAttempt())
+            .escalated(b.escalated());
     if (b.lastResult() != null) {
       var l = b.lastResult();
       v.lastResult(

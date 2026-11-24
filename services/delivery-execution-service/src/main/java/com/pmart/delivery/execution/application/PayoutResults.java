@@ -54,9 +54,12 @@ public class PayoutResults {
       long expectedDeduction,
       long netTotal,
       @Nullable LocalDate rolledTo,
-      int rolledInCount) {
+      int rolledInCount,
+      int rollCount,
+      boolean finalAttempt,
+      boolean escalated) {
 
-    Batch rolled(LocalDate to) {
+    Batch rolled(@Nullable LocalDate to) {
       return new Batch(
           riderId,
           payoutDate,
@@ -69,22 +72,26 @@ public class PayoutResults {
           expectedDeduction,
           netTotal,
           to,
-          rolledInCount);
+          rolledInCount,
+          rollCount,
+          finalAttempt,
+          escalated);
     }
   }
 
-  private record Comp(String id, String state, int amount) {}
+  private record Comp(String id, String state, int amount, int rollCount) {}
 
   /** 그 묶음의 보상금(2026-11-19 — 이의 인정). 잠근다. */
   private List<Comp> comps(String riderId, LocalDate payoutDate) {
     return jdbc.query(
-        "SELECT compensation_id, settlement_state, amount FROM rider_compensation WHERE rider_id = ?"
+        "SELECT compensation_id, settlement_state, amount, roll_count FROM rider_compensation WHERE rider_id = ?"
             + " AND payout_date = ? ORDER BY compensation_id FOR UPDATE",
         (rs, i) ->
             new Comp(
                 rs.getString("compensation_id"),
                 rs.getString("settlement_state"),
-                rs.getInt("amount")),
+                rs.getInt("amount"),
+                rs.getInt("roll_count")),
         riderId,
         payoutDate);
   }
@@ -133,12 +140,44 @@ public class PayoutResults {
       @Nullable LocalDate to,
       @Nullable String riderId,
       @Nullable String state) {
+    return list(payoutDate, from, to, riderId, state, false);
+  }
+
+  /** escalated(2026-11-24 — 넘김 상한)면 날짜와 상관없이 직원이 직접 지급해야 하는 묶음만. */
+  public List<Batch> list(
+      @Nullable LocalDate payoutDate,
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable String riderId,
+      @Nullable String state,
+      boolean escalated) {
     PmartPrincipal.current()
         .filter(
             p ->
                 p.type() == PmartPrincipal.PrincipalType.OPERATOR
                     && (p.hasRole("OPERATOR_ADMIN") || p.hasRole("RIDER_OPS")))
         .orElseThrow(() -> ExecutionService.forbidden("지급 묶음은 관리자·라이더 운영만 볼 수 있습니다."));
+    if (escalated) {
+      List<Object> args = new ArrayList<>(List.of(maxRolls(), maxRolls()));
+      if (riderId != null) {
+        args.add(riderId);
+      }
+      return jdbc
+          .query(
+              "SELECT rider_id, payout_date FROM (SELECT rider_id, payout_date FROM rider_earning WHERE"
+                  + " settlement_state = 'PAYMENT_FAILED' AND roll_count >= ? UNION SELECT rider_id,"
+                  + " payout_date FROM rider_compensation WHERE settlement_state = 'PAYMENT_FAILED' AND"
+                  + " roll_count >= ?) b"
+                  + (riderId != null ? " WHERE rider_id = ?" : "")
+                  + " ORDER BY payout_date, rider_id LIMIT 200",
+              (rs, i) -> new Object[] {rs.getString(1), rs.getDate(2).toLocalDate()},
+              args.toArray())
+          .stream()
+          .map(r -> batch((String) r[0], (LocalDate) r[1]))
+          .flatMap(Optional::stream)
+          .filter(b -> state == null || state.equals(b.state()))
+          .toList();
+    }
     if (payoutDate == null && (from != null || to != null)) {
       LocalDate f = from != null ? from : to;
       LocalDate t = to != null ? to : from;
@@ -181,7 +220,13 @@ public class PayoutResults {
       int lineCount,
       long total,
       @Nullable String failureReason,
-      Instant rolledAt) {}
+      Instant rolledAt,
+      int rollCount,
+      boolean finalAttempt) {}
+
+  private int maxRolls() {
+    return props.payoutMaxRollovers();
+  }
 
   /** 지급 실패 넘김 기록(직원) — 최근 순 200건. */
   public List<Rollover> rollovers(@Nullable String riderId) {
@@ -193,7 +238,8 @@ public class PayoutResults {
         .orElseThrow(() -> ExecutionService.forbidden("지급 넘김 기록은 관리자·라이더 운영만 볼 수 있습니다."));
     return jdbc.query(
         "SELECT o.rollover_id, o.rider_id, o.from_date, o.to_date, o.line_count, o.total,"
-            + " r.failure_reason, o.rolled_at FROM rider_payout_rollover o LEFT JOIN"
+            + " r.failure_reason, o.rolled_at, o.roll_count, o.final_attempt FROM"
+            + " rider_payout_rollover o LEFT JOIN"
             + " rider_payout_result r ON r.result_id = o.failure_result_id"
             + (riderId != null ? " WHERE o.rider_id = ?" : "")
             + " ORDER BY o.rolled_at DESC LIMIT 200",
@@ -206,7 +252,9 @@ public class PayoutResults {
                 rs.getInt(5),
                 rs.getLong(6),
                 rs.getString(7),
-                rs.getTimestamp(8).toInstant()),
+                rs.getTimestamp(8).toInstant(),
+                rs.getInt(9),
+                rs.getBoolean(10)),
         riderId != null ? new Object[] {riderId} : new Object[0]);
   }
 
@@ -354,20 +402,57 @@ public class PayoutResults {
   /**
    * 지급 실패 줄(PAYMENT_FAILED)을 다음 지급일(오늘과 원래 지급일 중 늦은 날의 다음 영업일) 묶음으로 —
    * CONFIRMED·rolled_from·rolled_at· 넘긴 횟수 +1, 이 묶음에서 뺀 오배송 차감은 되돌림(새 묶음에서 다시), 넘김 기록, 수행료 줄마다
-   * RiderEarningRecorded(rolledFrom). 넘김 횟수 상한 없음(사용자 "무조건 줘야"). 호출자 트랜잭션.
+   * RiderEarningRecorded(rolledFrom). 호출자 트랜잭션.
    *
-   * @return 넘긴 지급일
+   * <p>넘김 상한(2026-11-24 사용자 "넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해"): 줄마다 {@code payout-max-rollovers}(기본
+   * 3)번까지 — 상한째 넘김은 final_attempt(마지막 자동 시도), 상한을 다 쓴 줄은 넘기지 않고 PAYMENT_FAILED 로 남긴다(묶음 escalated —
+   * 직원이 직접 지급).
+   *
+   * @return 넘긴 지급일(넘긴 줄이 없으면 null)
    */
-  LocalDate rollFailed(String riderId, LocalDate from, @Nullable String resultId, Instant now) {
+  @Nullable LocalDate rollFailed(
+      String riderId, LocalDate from, @Nullable String resultId, Instant now) {
     LocalDate today = today();
     LocalDate to =
         com.pmart.delivery.execution.domain.EarningRules.payoutDate(
             from.isAfter(today) ? from : today, 1, props.holidays());
+    int max = maxRolls();
     deductions.revertBatch(riderId, from, now);
-    List<EarningRow> failed =
+    Set<String> underCap =
+        Set.copyOf(
+            jdbc.queryForList(
+                "SELECT earning_id FROM rider_earning WHERE rider_id = ? AND payout_date = ? AND"
+                    + " settlement_state = 'PAYMENT_FAILED' AND roll_count < ?",
+                String.class,
+                riderId,
+                from,
+                max));
+    List<EarningRow> allFailed =
         store.earningsForPayout(riderId, from).stream()
             .filter(e -> "PAYMENT_FAILED".equals(e.settlementState()))
             .toList();
+    List<EarningRow> failed =
+        allFailed.stream().filter(e -> underCap.contains(e.earningId())).toList();
+    List<Comp> allComps =
+        comps(riderId, from).stream().filter(c -> "PAYMENT_FAILED".equals(c.state())).toList();
+    List<Comp> comps = allComps.stream().filter(c -> c.rollCount() < max).toList();
+    int stuck = allFailed.size() - failed.size() + allComps.size() - comps.size();
+    if (stuck > 0) {
+      log.error(
+          "지급 실패 넘김 상한({}번) — 라이더 {} {} {}건은 더 넘기지 않음(직원이 직접 지급해야 함)", max, riderId, from, stuck);
+    }
+    if (failed.isEmpty() && comps.isEmpty()) {
+      return null;
+    }
+    Integer earlierMax =
+        jdbc.queryForObject(
+            "SELECT COALESCE(max(roll_count), 0) FROM rider_earning WHERE rider_id = ? AND payout_date = ?"
+                + " AND settlement_state = 'PAYMENT_FAILED' AND roll_count < ?",
+            Integer.class,
+            riderId,
+            from,
+            max);
+    int earlierRolls = earlierMax == null ? 0 : earlierMax;
     long total = 0;
     for (EarningRow e : failed) {
       jdbc.update(
@@ -382,8 +467,6 @@ public class PayoutResults {
       events.earningRecorded(after, store.bumpVersion(e.deliveryId(), now), now);
       total += e.total() == null ? 0 : e.total();
     }
-    List<Comp> comps =
-        comps(riderId, from).stream().filter(c -> "PAYMENT_FAILED".equals(c.state())).toList();
     for (Comp c : comps) {
       jdbc.update(
           "UPDATE rider_compensation SET settlement_state = 'CONFIRMED', payout_date = ?,"
@@ -396,26 +479,32 @@ public class PayoutResults {
           c.id());
       total += c.amount();
     }
-    if (!failed.isEmpty() || !comps.isEmpty()) {
-      jdbc.update(
-          "INSERT INTO rider_payout_rollover (rollover_id, rider_id, from_date, to_date, line_count,"
-              + " total, failure_result_id, rolled_at) VALUES (?,?,?,?,?,?,?,?)",
-          "PRO-" + UUID.randomUUID(),
-          riderId,
-          from,
-          to,
-          failed.size() + comps.size(),
-          total,
-          resultId,
-          Timestamp.from(now));
-      log.warn(
-          "지급 실패 — 라이더 {} {} {}건 {}원을 {} 로 넘김",
-          riderId,
-          from,
-          failed.size() + comps.size(),
-          total,
-          to);
-    }
+    int rollCount =
+        1 + Math.max(earlierRolls, comps.stream().mapToInt(Comp::rollCount).max().orElse(0));
+    boolean finalAttempt = rollCount >= max;
+    jdbc.update(
+        "INSERT INTO rider_payout_rollover (rollover_id, rider_id, from_date, to_date, line_count,"
+            + " total, failure_result_id, rolled_at, roll_count, final_attempt) VALUES"
+            + " (?,?,?,?,?,?,?,?,?,?)",
+        "PRO-" + UUID.randomUUID(),
+        riderId,
+        from,
+        to,
+        failed.size() + comps.size(),
+        total,
+        resultId,
+        Timestamp.from(now),
+        rollCount,
+        finalAttempt);
+    log.warn(
+        "지급 실패 — 라이더 {} {} {}건 {}원을 {} 로 넘김({}번째{})",
+        riderId,
+        from,
+        failed.size() + comps.size(),
+        total,
+        to,
+        rollCount,
+        finalAttempt ? " — 마지막 자동 시도" : "");
     return to;
   }
 
@@ -447,7 +536,10 @@ public class PayoutResults {
         0,
         total,
         toDate == null ? null : toDate.toLocalDate(),
-        0);
+        0,
+        0,
+        false,
+        false);
   }
 
   /** 이미 지급 실패로 남은 묶음(넘김 배포 전 등)을 같은 규칙으로 — 확정 주기마다. */
@@ -467,9 +559,11 @@ public class PayoutResults {
     List<Map<String, Object>> batches =
         jdbc.queryForList(
             "SELECT rider_id, payout_date FROM (SELECT rider_id, payout_date FROM rider_earning WHERE"
-                + " settlement_state = 'PAYMENT_FAILED' UNION SELECT rider_id, payout_date FROM"
-                + " rider_compensation WHERE settlement_state = 'PAYMENT_FAILED') b ORDER BY"
-                + " payout_date LIMIT 100");
+                + " settlement_state = 'PAYMENT_FAILED' AND roll_count < ? UNION SELECT rider_id, payout_date"
+                + " FROM rider_compensation WHERE settlement_state = 'PAYMENT_FAILED' AND roll_count < ?) b"
+                + " ORDER BY payout_date LIMIT 100",
+            maxRolls(),
+            maxRolls());
     int n = 0;
     for (Map<String, Object> b : batches) {
       String rider = (String) b.get("rider_id");
@@ -574,6 +668,7 @@ public class PayoutResults {
             .stream()
             .findFirst()
             .orElse(null);
+    int[] rolls = rolls(riderId, payoutDate);
     long applied = deductions.appliedTo(riderId, payoutDate);
     boolean open = Set.of("CONFIRMED", "PAYMENT_FAILED").contains(state);
     long expected = applied == 0 && open ? expectedDeduction(riderId, payoutDate, total) : 0;
@@ -591,6 +686,25 @@ public class PayoutResults {
             total - applied - expected,
             null,
             (int) rows.stream().filter(e -> e.rolledFrom() != null).count()
-                + countRolledComps(riderId, payoutDate)));
+                + countRolledComps(riderId, payoutDate),
+            rolls[0],
+            rolls[0] >= maxRolls(),
+            rolls[1] > 0));
+  }
+
+  /** 묶음 안 줄의 [가장 큰 넘김 횟수, 상한을 다 쓰고 또 실패한 줄 수]. */
+  private int[] rolls(String riderId, LocalDate payoutDate) {
+    return jdbc.queryForObject(
+        "SELECT COALESCE(max(n), 0), count(*) FILTER (WHERE s = 'PAYMENT_FAILED' AND n >= ?) FROM"
+            + " (SELECT roll_count AS n, settlement_state AS s FROM rider_earning WHERE rider_id = ?"
+            + " AND payout_date = ? AND settlement_state IN ('CONFIRMED', 'PAYING', 'PAID',"
+            + " 'PAYMENT_FAILED') UNION ALL SELECT roll_count, settlement_state FROM"
+            + " rider_compensation WHERE rider_id = ? AND payout_date = ?) x",
+        (rs, i) -> new int[] {rs.getInt(1), rs.getInt(2)},
+        maxRolls(),
+        riderId,
+        payoutDate,
+        riderId,
+        payoutDate);
   }
 }

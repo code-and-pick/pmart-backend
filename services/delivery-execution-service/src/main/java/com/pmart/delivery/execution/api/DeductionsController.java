@@ -1,6 +1,7 @@
 package com.pmart.delivery.execution.api;
 
 import com.pmart.delivery.execution.api.generated.DeductionsApi;
+import com.pmart.delivery.execution.api.generated.model.CreateRiderDeductionRequest;
 import com.pmart.delivery.execution.api.generated.model.DecideRiderDeductionRequest;
 import com.pmart.delivery.execution.api.generated.model.ObjectMyDeductionRequest;
 import com.pmart.delivery.execution.api.generated.model.RiderDeduction;
@@ -34,6 +35,20 @@ public class DeductionsController implements DeductionsApi {
         view(
             deductions.forStaff(
                 blank(riderId), state == null ? null : state.getValue(), blank(caseId))));
+  }
+
+  @Override
+  public ResponseEntity<RiderDeduction> createRiderDeduction(
+      String idempotencyKey, String xSourceSystem, CreateRiderDeductionRequest req) {
+    return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+        .body(
+            view(
+                deductions.create(
+                    req.getDeliveryId(),
+                    req.getCaseId(),
+                    req.getAmount(),
+                    req.getReason(),
+                    idempotencyKey)));
   }
 
   @Override
@@ -105,7 +120,10 @@ public class DeductionsController implements DeductionsApi {
                             .payoutDate(a.payoutDate())
                             .amount(a.amount()))
                 .toList())
-        .createdAt(at(d.createdAt()));
+        .createdAt(at(d.createdAt()))
+        .source(RiderDeduction.SourceEnum.fromValue(d.source()))
+        .reason(d.reason())
+        .createdBy(d.createdBy());
   }
 
   private static @Nullable OffsetDateTime at(@Nullable Instant i) {

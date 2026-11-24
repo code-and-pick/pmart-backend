@@ -71,7 +71,10 @@ public class RiderDeductions {
       @Nullable Instant decidedAt,
       @Nullable Instant confirmedAt,
       Instant createdAt,
-      List<Application> applications) {
+      List<Application> applications,
+      String source,
+      @Nullable String reason,
+      @Nullable String createdBy) {
 
     Row withApplications(List<Application> a) {
       return new Row(
@@ -94,7 +97,10 @@ public class RiderDeductions {
           decidedAt,
           confirmedAt,
           createdAt,
-          a);
+          a,
+          source,
+          reason,
+          createdBy);
     }
 
     Row hideDecider() {
@@ -118,7 +124,10 @@ public class RiderDeductions {
           decidedAt,
           confirmedAt,
           createdAt,
-          applications);
+          applications,
+          source,
+          reason,
+          null);
     }
   }
 
@@ -242,6 +251,121 @@ public class RiderDeductions {
         "RiderDeductionScheduled", r, store.bumpVersion(originId, now), system(), null, now);
     log.warn(
         "사건 {} 라이더 귀책 오배송 — 회수 포기, 차감 예정 {}원(이의 기한 {})", caseId, amount, r.objectionDeadline());
+  }
+
+  // ---------- 직원 직접 차감 ----------
+
+  /**
+   * 직원이 직접 만드는 차감(2026-11-24 사용자 "직접 차감하는 API도 만들자" — 차감 배포 전에 접힌 회수 등 자동 차감이 생기지 않은 경우). 그 배송의
+   * 라이더에게, 금액은 비우면 자동과 같은 규칙(결제 금액 − 배달비)·주면 그 금액 이하. 그 뒤는 자동 차감과 같다(이의 5일). 배송 하나·사건 하나당 한 번.
+   * order 는 트랜잭션 밖에서 부른다.
+   */
+  public Row create(
+      String deliveryId,
+      String caseId,
+      @Nullable Integer requestedAmount,
+      String reason,
+      String idempotencyKey) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(
+                x ->
+                    x.type() == PmartPrincipal.PrincipalType.OPERATOR
+                        && (x.hasRole("OPERATOR_ADMIN") || x.hasRole("RIDER_OPS")))
+            .orElseThrow(() -> ExecutionService.forbidden("차감은 라이더 운영·관리자만 만듭니다."));
+    String r = reason == null ? "" : reason.strip();
+    String c = caseId == null ? "" : caseId.strip();
+    if (r.length() < 2 || r.length() > 300 || c.isEmpty() || c.length() > 64) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "사건 번호와 사유(2~300자)가 필요합니다.");
+    }
+    if (requestedAmount != null && requestedAmount < 1) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "금액은 1원 이상입니다.");
+    }
+    String key = p.subject() + ":" + idempotencyKey;
+    Optional<Row> replay = one("WHERE create_key = ?", key);
+    if (replay.isPresent()) {
+      return replay.get();
+    }
+    DeliveryRow d =
+        store
+            .delivery(deliveryId)
+            .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
+    if (d.riderId() == null) {
+      throw new PmartException(
+          "NO_RIDER", HttpStatus.UNPROCESSABLE_CONTENT, "라이더가 배정된 적 없는 배송입니다.", false, List.of());
+    }
+    if (d.orderId() == null) {
+      throw PmartException.notFound("ORDER_NOT_FOUND", "배송의 주문을 모릅니다.");
+    }
+    long[] paid =
+        orders
+            .paidAndTip(d.orderId())
+            .orElseThrow(() -> PmartException.notFound("ORDER_NOT_FOUND", "주문 결제 금액이 없습니다."));
+    long policy = DeductionRules.amount(paid[0], paid[1]);
+    long amount =
+        DeductionRules.manualAmount(
+            requestedAmount == null ? null : requestedAmount.longValue(), policy);
+    if (amount <= 0) {
+      throw new PmartException(
+          "AMOUNT_EXCEEDS_ORDER",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "차감은 결제 금액 − 배달비(" + policy + "원) 이하만 됩니다.",
+          false,
+          List.of());
+    }
+    String id = "DED-" + UUID.randomUUID();
+    return tx.execute(
+        s -> {
+          Optional<Row> again = one("WHERE create_key = ?", key);
+          if (again.isPresent()) {
+            return again.get();
+          }
+          Instant now = clock.instant();
+          int n =
+              jdbc.update(
+                  "INSERT INTO rider_deduction (deduction_id, case_id, origin_delivery_id,"
+                      + " delivery_number, order_id, rider_id, amount, remaining, state,"
+                      + " objection_deadline, created_at, updated_at, source, reason, created_by,"
+                      + " create_key) VALUES (?,?,?,?,?,?,?,?,'PENDING_OBJECTION',?,?,?,'MANUAL',?,?,?)"
+                      + " ON CONFLICT DO NOTHING",
+                  id,
+                  c,
+                  deliveryId,
+                  d.deliveryNumber(),
+                  d.orderId(),
+                  d.riderId(),
+                  (int) amount,
+                  (int) amount,
+                  Timestamp.from(now.plus(DeductionRules.OBJECTION_WINDOW)),
+                  Timestamp.from(now),
+                  Timestamp.from(now),
+                  r,
+                  p.subject(),
+                  key);
+          if (n == 0) {
+            throw new PmartException(
+                "DEDUCTION_EXISTS",
+                HttpStatus.CONFLICT,
+                "이 배송이나 사건에 이미 차감이 있습니다(취소된 것 포함).",
+                false,
+                List.of());
+          }
+          Row row = one("WHERE deduction_id = ?", id).orElseThrow();
+          events.deduction(
+              "RiderDeductionScheduled",
+              row,
+              store.bumpVersion(deliveryId, now),
+              new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+              null,
+              now);
+          log.warn(
+              "직원 직접 차감 — 배송 {} 사건 {} {}원(이의 기한 {})",
+              deliveryId,
+              c,
+              amount,
+              row.objectionDeadline());
+          return row;
+        });
   }
 
   // ---------- 라이더 ----------
@@ -614,6 +738,9 @@ public class RiderDeductions {
         ts(rs, "decided_at"),
         ts(rs, "confirmed_at"),
         rs.getTimestamp("created_at").toInstant(),
-        List.of());
+        List.of(),
+        rs.getString("source"),
+        rs.getString("reason"),
+        rs.getString("created_by"));
   }
 }

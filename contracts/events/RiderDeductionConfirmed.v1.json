@@ -41,6 +41,7 @@
             "remaining": { "type": "integer", "minimum": 0 },
             "state": { "type": "string", "enum": ["PENDING_OBJECTION", "OBJECTED", "CONFIRMED", "CANCELLED"] },
             "objectionDeadline": { "$ref": "_defs.v1.json#/$defs/DateTime" },
+            "source": { "type": "string", "enum": ["MISDELIVERY_RECOVERY", "MANUAL"], "description": "(2026-11-24) 회수 포기 자동 차감 · 직원 직접 차감(POST /rider-deductions)" },
             "decision": { "type": "string", "enum": ["ACCEPT", "REJECT"], "description": "이의 결정으로 바뀐 때만" },
             "recordedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
           },

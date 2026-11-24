@@ -16,6 +16,15 @@ class DeductionRulesTest {
   }
 
   @Test
+  void manualAmountDefaultsToPolicyAndNeverExceedsIt() {
+    assertThat(DeductionRules.manualAmount(null, 9_000)).isEqualTo(9_000);
+    assertThat(DeductionRules.manualAmount(5_000L, 9_000)).isEqualTo(5_000);
+    assertThat(DeductionRules.manualAmount(9_001L, 9_000)).isZero();
+    assertThat(DeductionRules.manualAmount(0L, 9_000)).isZero();
+    assertThat(DeductionRules.manualAmount(null, 0)).isZero();
+  }
+
+  @Test
   void allocateTakesOldestFirstWithinGross() {
     List<DeductionRules.Open> open =
         List.of(new DeductionRules.Open("A", 6_000), new DeductionRules.Open("B", 9_000));

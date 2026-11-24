@@ -3478,6 +3478,137 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 지급 넘김 상한(2026-11-24 사용자 "넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해"): 3번째 넘김은 마지막 자동 시도, 그 뒤 또 실패하면 넘기지 않고
+   * 직원 직접 지급(escalated) — 주기 작업도 건드리지 않고, 관리자 PAID 로 끝난다.
+   */
+  @Test
+  void payoutRolloverStopsAtCapAndEscalates() {
+    String rider = "RDR-cap-" + UUID.randomUUID();
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    String id = "DLV-cap-" + UUID.randomUUID();
+    created(id, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID());
+    awaitSql("SELECT count(*) FROM execution_delivery WHERE delivery_id = '" + id + "'");
+    jdbc.update(
+        "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable, rate_table_version,"
+            + " base_fee, total, settlement_state, performed_on, payout_date, recorded_at, updated_at,"
+            + " roll_count) VALUES (?, ?, ?, true, 1, 3000, 3000, 'CONFIRMED', CAST(? AS date) - 3,"
+            + " CAST(? AS date), now(), now(), 2)",
+        "ERN-cap-" + id,
+        id,
+        rider,
+        today,
+        today);
+    String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    String uri = "/rider-payouts/" + rider + "/" + today + "/results";
+    // 세 번째 넘김 — 마지막 자동 시도
+    ResponseEntity<String> third =
+        staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 오류"));
+    assertThat(third.getStatusCode().value()).as(third.getBody()).isEqualTo(200);
+    String next = body(third).path("rolledTo").asString();
+    assertThat(next).isNotBlank();
+    JsonNode roll = body(staffGet("/rider-payout-rollovers?riderId=" + rider, adm)).path("items");
+    assertThat(roll.get(0).path("rollCount").asInt()).isEqualTo(3);
+    assertThat(roll.get(0).path("finalAttempt").asBoolean()).isTrue();
+    JsonNode nextBatch =
+        body(staffGet("/rider-payouts?riderId=" + rider + "&payoutDate=" + next, adm))
+            .path("items")
+            .get(0);
+    assertThat(nextBatch.path("rollCount").asInt()).isEqualTo(3);
+    assertThat(nextBatch.path("finalAttempt").asBoolean()).isTrue();
+    assertThat(nextBatch.path("escalated").asBoolean()).isFalse();
+    // 다시 지급하는 날이 됐다고 치고 또 실패 — 더 넘기지 않음
+    jdbc.update(
+        "UPDATE rider_earning SET payout_date = CAST(? AS date) WHERE rider_id = ?", today, rider);
+    ResponseEntity<String> fourth =
+        staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 오류"));
+    assertThat(fourth.getStatusCode().value()).as(fourth.getBody()).isEqualTo(200);
+    assertThat(body(fourth).hasNonNull("rolledTo")).isFalse();
+    assertThat(body(fourth).path("escalated").asBoolean()).isTrue();
+    assertThat(payouts.rollStaleFailures()).isZero();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT settlement_state || ':' || roll_count FROM rider_earning WHERE earning_id = ?",
+                String.class,
+                "ERN-cap-" + id))
+        .isEqualTo("PAYMENT_FAILED:3");
+    JsonNode esc =
+        body(staffGet("/rider-payouts?escalated=true&riderId=" + rider, adm)).path("items");
+    assertThat(esc).hasSize(1);
+    assertThat(esc.get(0).path("payoutDate").asString()).isEqualTo(today);
+    // 직원이 직접 지급
+    ResponseEntity<String> paid =
+        staffPost(uri, adm, Map.of("result", "PAID", "reference", "MANUAL-1"));
+    assertThat(body(paid).path("state").asString()).isEqualTo("PAID");
+    assertThat(body(paid).path("escalated").asBoolean()).isFalse();
+    assertThat(body(staffGet("/rider-payouts?escalated=true&riderId=" + rider, adm)).path("items"))
+        .isEmpty();
+  }
+
+  /**
+   * 직원 직접 차감(2026-11-24 사용자 "직접 차감하는 API도 만들자"): 배송의 라이더에게, 금액 비우면 결제 금액 − 배달비·넘으면 422, 배송당 한 번, 그
+   * 뒤는 이의 5일 그대로. 상담원은 못 만든다.
+   */
+  @Test
+  void staffCreatesManualDeductionWithinOrderAmount() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-mded-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, rider);
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"orderId\":\""
+                        + order
+                        + "\",\"accountId\":\"ACC-1\",\"approvedAmount\":12000,\"deliveryTip\":3000}")));
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String cs = TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of());
+    String caseId = "CASE-" + UUID.randomUUID();
+    Map<String, Object> req =
+        Map.of("deliveryId", origin, "caseId", caseId, "reason", "회수 포기 전 배포라 자동 차감이 안 됨");
+    assertThat(staffPost("/rider-deductions", cs, req).getStatusCode().value()).isEqualTo(403);
+    java.util.Map<String, Object> over = new java.util.HashMap<>(req);
+    over.put("amount", 9001);
+    ResponseEntity<String> tooMuch = staffPost("/rider-deductions", ops, over);
+    assertThat(tooMuch.getStatusCode().value()).as(tooMuch.getBody()).isEqualTo(422);
+    assertThat(tooMuch.getBody()).contains("AMOUNT_EXCEEDS_ORDER");
+    ResponseEntity<String> made = staffPost("/rider-deductions", ops, req);
+    assertThat(made.getStatusCode().value()).as(made.getBody()).isEqualTo(201);
+    JsonNode m = body(made);
+    assertThat(m.path("amount").asInt()).isEqualTo(9000); // 12,000 − 배달비 3,000
+    assertThat(m.path("riderId").asString()).isEqualTo(rider);
+    assertThat(m.path("state").asString()).isEqualTo("PENDING_OBJECTION");
+    assertThat(m.path("source").asString()).isEqualTo("MANUAL");
+    assertThat(m.path("createdBy").asString()).isEqualTo("OP-RO");
+    JsonNode ev = outbox(origin, "RiderDeductionScheduled");
+    assertThat(ev.path("payload").path("source").asString()).isEqualTo("MANUAL");
+    // 같은 배송에 다시 — 409
+    java.util.Map<String, Object> again = new java.util.HashMap<>(req);
+    again.put("caseId", "CASE-" + UUID.randomUUID());
+    assertThat(staffPost("/rider-deductions", ops, again).getStatusCode().value()).isEqualTo(409);
+    // 라이더는 사유를 보고 만든 직원은 안 본다
+    JsonNode mine = body(riderGet("/riders/me/deductions", "", rider)).path("items").get(0);
+    assertThat(mine.path("reason").asString()).isEqualTo("회수 포기 전 배포라 자동 차감이 안 됨");
+    assertThat(mine.hasNonNull("createdBy")).isFalse();
+    assertThat(
+            staffPost(
+                    "/riders/me/deductions/" + m.path("deductionId").asString() + "/objections",
+                    TestJwt.rider(rider),
+                    Map.of("note", "제 잘못이 아니에요"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(200);
+    JsonNode actions =
+        body(
+            staffGet(
+                "/delivery-staff-actions?riderId=" + rider,
+                TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of())));
+    assertThat(actions.toString()).contains("DEDUCTION_CREATED");
+  }
+
+  /**
    * ADR-0086(2026-11-24 — DE-9): 라이더 귀책 오배송의 회수 배송이 포기(RECOVERY_ABANDONED)되면 그 라이더에게 차감 예정(결제 금액 −
    * 배달비) → 라이더 이의 → 지원센터 거절 = 확정 → 지급 묶음에서 빼고 남은 것은 이월. 시스템 귀책 사건의 포기는 차감 없음. 이의 없이 기한이 지나면 확정.
    */

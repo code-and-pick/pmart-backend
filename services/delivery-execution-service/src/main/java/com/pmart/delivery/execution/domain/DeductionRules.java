@@ -20,6 +20,20 @@ public final class DeductionRules {
     return Math.max(0, approvedAmount - deliveryTip);
   }
 
+  /**
+   * 직원 직접 차감 금액(2026-11-24) — 비우면 규칙 금액(policy), 주면 1 ~ policy. @return 금액, 넘거나 policy 가 0 이면 0(만들지
+   * 않음)
+   */
+  public static long manualAmount(@org.jspecify.annotations.Nullable Long requested, long policy) {
+    if (policy <= 0) {
+      return 0;
+    }
+    if (requested == null) {
+      return policy;
+    }
+    return requested >= 1 && requested <= policy ? requested : 0;
+  }
+
   /** 남은 차감 한 줄(확정 순). */
   public record Open(String deductionId, long remaining) {}
 

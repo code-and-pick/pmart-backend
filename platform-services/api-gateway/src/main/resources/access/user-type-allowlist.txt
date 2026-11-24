@@ -632,6 +632,7 @@ POST /api/v1/rider-auth/social-logins PUBLIC
 POST /api/v1/rider-auth/tokens PUBLIC
 POST /api/v1/rider-compensations OPERATOR
 POST /api/v1/rider-complaints OPERATOR
+POST /api/v1/rider-deductions OPERATOR
 POST /api/v1/rider-deductions/{deductionId}/decisions OPERATOR
 POST /api/v1/rider-earnings/{earningId}/adjustments OPERATOR
 POST /api/v1/rider-notices OPERATOR

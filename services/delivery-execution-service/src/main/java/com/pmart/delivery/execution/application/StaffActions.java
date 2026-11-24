@@ -64,6 +64,9 @@ public class StaffActions {
   UNION ALL
   SELECT decided_at, decided_by, 'DEDUCTION_DECIDED', rider_id, origin_delivery_id, decision || ' ' || amount || '원 ' || case_id, decision_note
     FROM rider_deduction WHERE decided_at IS NOT NULL
+  UNION ALL
+  SELECT created_at, created_by, 'DEDUCTION_CREATED', rider_id, origin_delivery_id, amount || '원 ' || case_id, reason
+    FROM rider_deduction WHERE source = 'MANUAL'
 ) a
       """;
 
