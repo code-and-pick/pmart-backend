@@ -2420,6 +2420,82 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
+   * 회수 포기(2026-11-24 사용자 "하루 지나면 회수 배송 포기"): 오배송 회수 배송이 만들어진 지 24시간 지나도 라이더 없이 배차 대기면 픽업 전
+   * 취소(RECOVERY_ABANDONED) + DeliveryCancelledBeforePickup(purpose·caseId) — 끝없이 다시 배차하지 않는다(LAN
+   * 28767701-4). 하루 안이면 그대로 배차 대기.
+   */
+  @Test
+  void recoveryWithoutRiderIsAbandonedAfterADay() {
+    String mfc = "MFC-D21";
+    String r1 = "RD-ab1-" + UUID.randomUUID();
+    riders(mfc, rider(r1, "AI_RECOMMENDED", true));
+    riderLookup(rider(r1, "AI_RECOMMENDED", true));
+    locations(Map.of(r1, new double[] {37.4985, 127.0280}));
+    String origin = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-ab-" + UUID.randomUUID());
+    engine.tick();
+    String offer1 =
+        jdbc.queryForObject(
+            "SELECT offer_id FROM dispatch_offer WHERE delivery_id = ? AND state = 'SENT'",
+            String.class,
+            origin);
+    assertThat(body(respond(r1, offer1, "a-" + origin, "ACCEPT")).path("outcome").asString())
+        .isEqualTo("ASSIGNED");
+    executionEvent(
+        "DeliveryCompleted",
+        origin,
+        Map.of(
+            "deliveryId",
+            origin,
+            "riderId",
+            r1,
+            "deliveredAt",
+            Instant.now().minusSeconds(60).toString(),
+            "lines",
+            List.of(Map.of("orderLineId", "L-1", "qty", 1)),
+            "method",
+            "CONTACTLESS"));
+    awaitSql(
+        "SELECT count(*) FROM delivery WHERE delivery_id = '"
+            + origin
+            + "' AND state = 'CLOSED' AND completed_at IS NOT NULL");
+    String caseId = "CASE-" + UUID.randomUUID();
+    misdeliveryConfirmed(caseId, origin, r1);
+    awaitSql("SELECT count(*) FROM delivery WHERE case_id = '" + caseId + "'");
+    String recovery =
+        jdbc.queryForObject(
+            "SELECT delivery_id FROM delivery WHERE case_id = ?", String.class, caseId);
+
+    engine.abandonRecoveries(Instant.now());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM delivery WHERE delivery_id = ?", String.class, recovery))
+        .isEqualTo("DISPATCHING"); // 하루 안 — 그대로
+
+    jdbc.update(
+        "UPDATE delivery SET created_at = created_at - interval '25 hours' WHERE delivery_id = ?",
+        recovery);
+    engine.abandonRecoveries(Instant.now());
+    Map<String, Object> row =
+        jdbc.queryForMap(
+            "SELECT state, cancel_reason, cancelled_at FROM delivery WHERE delivery_id = ?",
+            recovery);
+    assertThat(row.get("state")).isEqualTo("CANCELLED_BEFORE_PICKUP");
+    assertThat(row.get("cancel_reason")).isEqualTo("RECOVERY_ABANDONED");
+    assertThat(row.get("cancelled_at")).isNotNull();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM dispatch_attempt WHERE delivery_id = ? AND finished_at IS"
+                    + " NULL",
+                Integer.class,
+                recovery))
+        .isZero(); // 다시 배차하지 않는다
+    JsonNode cancelled = outbox(recovery, "DeliveryCancelledBeforePickup").path("payload");
+    assertThat(cancelled.path("reason").asString()).isEqualTo("RECOVERY_ABANDONED");
+    assertThat(cancelled.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
+    assertThat(cancelled.path("caseId").asString()).isEqualTo(caseId);
+  }
+
+  /**
    * 고객 반품 회수(CL-1 배송 쪽, 2026-11-17 — 사용자 "바로 배차·일반 표(고객 집 → MFC)·실패마다 알림, 다시 시도는 반품 쪽"): claim
    * ReturnPickupRequested → 회수 배송(RETURN·CLAIM_RETURN) 바로 배차 — 회수지 = 고객 집(원래 배송지 좌표), 예상 배달료 = 일반
    * 표(고객 집 → MFC), 원래 기사도 받을 수 있다. 같은 사건은 하나, 진행 중이면 같은 클레임의 새 요청도 만들지 않는다. 회수

@@ -576,6 +576,19 @@ public class DispatchStore {
         limit);
   }
 
+  /**
+   * 회수 포기 대상(2026-11-24 사용자 "하루 지나면 회수 배송 포기"): 오배송 회수 배송(MISDELIVERY_RECOVERY)이 배차 대기(라이더 없음)로
+   * 만들어진 지 after 넘게 지남. 배정된 회수(라이더가 가는 중)는 건드리지 않는다.
+   */
+  public List<String> recoveryAbandonTargets(Instant now, java.time.Duration after, int limit) {
+    return jdbc.queryForList(
+        "SELECT delivery_id FROM delivery WHERE purpose = 'MISDELIVERY_RECOVERY' AND state ="
+            + " 'DISPATCHING' AND rider_id IS NULL AND created_at <= ? ORDER BY created_at LIMIT ?",
+        String.class,
+        ts(now.minus(after)),
+        limit);
+  }
+
   /** 자동 취소 결과 기록(ACCEPTED 또는 거절 코드) — 다시 부르지 않는다. */
   public void autoCancelDone(String deliveryId, String result, Instant now) {
     jdbc.update(

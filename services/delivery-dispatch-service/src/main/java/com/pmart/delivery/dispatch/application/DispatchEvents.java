@@ -185,6 +185,12 @@ public class DispatchEvents {
     }
     p.put("assignmentVersion", before.assignmentVersion());
     p.put("reason", reason);
+    if (before.purpose() != null) {
+      p.put("purpose", before.purpose()); // 2026-11-24 — 회수 포기(RECOVERY_ABANDONED)를 받는 쪽이 가른다
+    }
+    if (before.caseId() != null) {
+      p.put("caseId", before.caseId());
+    }
     p.put("cancelledAt", at.toString());
     publish("DeliveryCancelledBeforePickup", before, before.version() + 1L, system(), p);
   }

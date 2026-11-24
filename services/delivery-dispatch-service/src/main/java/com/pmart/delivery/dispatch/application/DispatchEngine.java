@@ -121,6 +121,7 @@ public class DispatchEngine {
     expireOffers(now);
     alertDelays(now);
     autoCancelNoRider(now);
+    abandonRecoveries(now);
     Map<String, List<DispatchStore.Due>> byMfc = new LinkedHashMap<>();
     for (DispatchStore.Due d : store.dueAttempts(now, 50)) {
       byMfc.computeIfAbsent(d.mfcId(), k -> new ArrayList<>()).add(d);
@@ -224,6 +225,37 @@ public class DispatchEngine {
       }
     }
   }
+
+  /**
+   * 오배송 회수 포기(2026-11-24 사용자 "하루 지나면 회수 배송 포기하고 라이더 귀책으로 …"): 회수 배송이 만들어진 지
+   * recoveryAbandonAfter(24시간)가 지나도 라이더 없이 배차 대기면 픽업 전 취소(reason {@value #RECOVERY_ABANDONED}) — 남은
+   * 제안·시도를 닫고 DeliveryCancelledBeforePickup(execution·tracking 이 배송을 끝낸다). 전에는 끝없이 10분마다 다시
+   * 배차했다(LAN 28767701-4, 4일). 라이더 정산 차감은 이 사건을 받는 쪽 일(규칙 대기).
+   */
+  public void abandonRecoveries(Instant now) {
+    for (String id : store.recoveryAbandonTargets(now, props.recoveryAbandonAfter(), 20)) {
+      tx.executeWithoutResult(
+          s ->
+              store
+                  .lockDelivery(id)
+                  .filter(
+                      d ->
+                          "DISPATCHING".equals(d.state())
+                              && d.riderId() == null
+                              && "MISDELIVERY_RECOVERY".equals(d.purpose()))
+                  .ifPresent(
+                      d -> {
+                        transitions.cancelBeforePickup(d, RECOVERY_ABANDONED, now);
+                        log.warn(
+                            "회수 배송 {} 포기 — 만든 지 {} 지나도 라이더 없음(사건 {})",
+                            id,
+                            props.recoveryAbandonAfter(),
+                            d.caseId());
+                      }));
+    }
+  }
+
+  public static final String RECOVERY_ABANDONED = "RECOVERY_ABANDONED";
 
   // ---------- 2~6. 한 MFC ----------
 

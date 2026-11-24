@@ -37,7 +37,17 @@
             },
             "reason": {
               "type": "string",
-              "description": "취소 사유 코드"
+              "description": "취소 사유 코드. RECOVERY_ABANDONED(2026-11-24) = 오배송 회수 배송이 만들어진 지 24시간 지나도 라이더가 없어 포기"
+            },
+            "purpose": {
+              "type": "string",
+              "maxLength": 32,
+              "description": "배송 목적(있을 때만 — DeliveryCreated.purpose 와 같음, 2026-11-24)"
+            },
+            "caseId": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "사건 ID(오배송 회수·재발송 등, 있을 때만 — 2026-11-24)"
             },
             "cancelledAt": {
               "$ref": "_defs.v1.json#/$defs/DateTime"

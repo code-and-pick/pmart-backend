@@ -17,7 +17,7 @@
 2. 회수지 = 원래 라이더가 전달 완료를 누른 시각의 위치 점(tracking `location-at`, 앞뒤 3분), 없으면 원래 배송지 좌표. 도착지 = MFC. 예상 배달료 = 일반 표(회수지 → MFC 거리).
 3. 회수지 근처(같은 반경 단계) AI 추천 라이더 중 회수지까지 가장 빠른 1명에게 제안(묶지 않음, 배달리스트 없음).
 4. 회수 라이더: 원래 완료 증빙(놓은 곳·사진 — 사진 보기 API), **원래 고객 전화번호**(주소는 아님)를 본다 → 회수지에서 사진 → `returns/pickups`(ReturnPickedUp, lines = 원래 배송이 전달한 줄) → MFC 도착 = 반납 `returns/store-deliveries`(ReturnDelivered, 수행료).
-5. 실패(부재·거부): 도움요청 → 지원센터, 운영자 배차 취소(reassign=false)로 끝. 자동 재시도 없음.
+5. 실패(부재·거부): 도움요청 → 지원센터, 운영자 배차 취소(reassign=false)로 끝. 자동 재시도 없음. **라이더를 못 구하면**(2026-11-24 사용자 "하루 지나면 회수 배송 포기"): 만든 지 24시간(`pmart.dispatch.recovery-abandon-after`) 지나도 배차 대기면 dispatch 가 픽업 전 취소(reason RECOVERY_ABANDONED, `DeliveryCancelledBeforePickup` 에 purpose·caseId) — 끝없이 다시 배차하지 않는다. 라이더 귀책 정산 차감(고객 주문 금액)은 규칙 대기(PC 1 정리).
 6. MFC 점원 수령·검수(신선 폐기·상온 미개봉 재고 복구): mfc-inbound 가 `ReturnDelivered` 를 받아 **반납 도착 대기**(`GET /return-arrivals`, 2026-11-19 MI-1·MI-2) → 점원이 고르면 `POST /return-receipts`(`arrivalId` — 오배송 사건·원래 배송·주문 줄을 채움, claim 없음) → 격리 반입 → `ReturnItemReceived` → mfc-quality 검수(같은 규칙) → `ReturnInspected`(purpose MISDELIVERY_RECOVERY, claimId 없음 — 자동 환불 없음). 전달 실패 반납(FAILED_DELIVERY_RETURN)도 같은 길(환불·재배송은 고객센터).
 
 ## 2. 재발송 (order-orchestration 사가)
