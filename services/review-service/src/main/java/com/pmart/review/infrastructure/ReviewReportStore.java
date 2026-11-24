@@ -43,6 +43,18 @@ public class ReviewReportStore {
       @Nullable Instant resolvedAt,
       @Nullable String resolvedBy) {}
 
+  /** 신고 한 건(0.8.0 운영자 상세) — 신고자는 읽지 않는다(사용자 2026-11-24 "안 보여 줌"). */
+  public record Item(
+      String reportId,
+      String reason,
+      @Nullable String detail,
+      Instant reportedAt,
+      String state,
+      @Nullable String resolution,
+      @Nullable Instant resolvedAt,
+      @Nullable String resolvedBy,
+      @Nullable String resolutionNote) {}
+
   private final JdbcTemplate jdbc;
 
   public ReviewReportStore(JdbcTemplate jdbc) {
@@ -116,6 +128,28 @@ public class ReviewReportStore {
         by,
         note,
         Timestamp.from(now),
+        reviewId);
+  }
+
+  /** 한 리뷰의 신고 전부(처리 전·끝) — 최근 신고 순. 신고자 열은 읽지 않는다. */
+  public List<Item> items(String reviewId) {
+    return jdbc.query(
+        "SELECT report_id, reason, detail, created_at, state, resolution, resolved_at,"
+            + " resolved_by, resolution_note FROM review_report WHERE review_id = ?"
+            + " ORDER BY created_at DESC, report_id",
+        (rs, i) -> {
+          Timestamp resolvedAt = rs.getTimestamp("resolved_at");
+          return new Item(
+              rs.getString("report_id"),
+              rs.getString("reason"),
+              rs.getString("detail"),
+              rs.getTimestamp("created_at").toInstant(),
+              rs.getString("state"),
+              rs.getString("resolution"),
+              resolvedAt == null ? null : resolvedAt.toInstant(),
+              rs.getString("resolved_by"),
+              rs.getString("resolution_note"));
+        },
         reviewId);
   }
 

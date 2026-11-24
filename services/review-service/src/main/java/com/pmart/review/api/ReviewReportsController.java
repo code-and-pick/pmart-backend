@@ -2,9 +2,13 @@ package com.pmart.review.api;
 
 import com.pmart.review.api.generated.ReviewReportsApi;
 import com.pmart.review.api.generated.model.ListReviewReports200Response;
+import com.pmart.review.api.generated.model.ReportReason;
 import com.pmart.review.api.generated.model.ReportReview201Response;
 import com.pmart.review.api.generated.model.ResolveReviewReportsRequest;
+import com.pmart.review.api.generated.model.ReviewReportDetail;
+import com.pmart.review.api.generated.model.ReviewReportDetailPhotosInner;
 import com.pmart.review.api.generated.model.ReviewReportGroup;
+import com.pmart.review.api.generated.model.ReviewReportItem;
 import com.pmart.review.application.ReviewReports;
 import com.pmart.review.domain.ReviewRules;
 import com.pmart.review.infrastructure.ReviewReportStore;
@@ -33,6 +37,50 @@ public class ReviewReportsController implements ReviewReportsApi {
         new ListReviewReports200Response()
             .items(p.items().stream().map(ReviewReportsController::group).toList())
             .nextCursor(p.nextCursor()));
+  }
+
+  @Override
+  public ResponseEntity<ReviewReportDetail> getReviewReportDetail(String reviewId) {
+    ReviewReports.Detail d = reports.detail(reviewId);
+    var r = d.review();
+    return ResponseEntity.ok(
+        new ReviewReportDetail()
+            .reviewId(r.reviewId())
+            .productId(r.productId())
+            .sku(r.sku())
+            .rating(r.rating())
+            .text(r.body())
+            .authorMasked(r.authorName())
+            .reviewCreatedAt(time(r.createdAt()))
+            .reviewUpdatedAt(r.updatedAt() == null ? null : time(r.updatedAt()))
+            .reviewHidden(ReviewRules.HIDDEN.equals(r.state()))
+            .reviewDeleted(ReviewRules.DELETED.equals(r.state()))
+            .photos(
+                d.photos().stream()
+                    .map(
+                        p ->
+                            new ReviewReportDetailPhotosInner()
+                                .photoId(p.photoId())
+                                .url(ReviewViews.photoUrl(p.photoId())))
+                    .toList())
+            .openReportCount(d.openCount())
+            .reports(d.items().stream().map(ReviewReportsController::item).toList()));
+  }
+
+  private static ReviewReportItem item(ReviewReportStore.Item i) {
+    return new ReviewReportItem()
+        .reportId(i.reportId())
+        .reason(ReportReason.fromValue(i.reason()))
+        .detail(i.detail())
+        .reportedAt(time(i.reportedAt()))
+        .state(ReviewReportItem.StateEnum.fromValue(i.state()))
+        .resolution(
+            i.resolution() == null
+                ? null
+                : ReviewReportItem.ResolutionEnum.fromValue(i.resolution()))
+        .resolvedAt(i.resolvedAt() == null ? null : time(i.resolvedAt()))
+        .resolvedBy(i.resolvedBy())
+        .resolutionNote(i.resolutionNote());
   }
 
   @Override

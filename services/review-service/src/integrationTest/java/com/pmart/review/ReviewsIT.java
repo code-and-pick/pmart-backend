@@ -484,8 +484,13 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
     await(
         () -> send("GET", token, "/me/review-eligibilities?orderId=" + orderId, null),
         r -> r.body().path("items").size() == 1);
+    String photoId = upload(token, JPEG).body().path("photoId").asString();
     String reviewId =
-        send("POST", token, "/reviews", Map.of("orderLineId", orderId + "-L1", "rating", 1))
+        send(
+                "POST",
+                token,
+                "/reviews",
+                Map.of("orderLineId", orderId + "-L1", "rating", 1, "photoIds", List.of(photoId)))
             .body()
             .path("reviewId")
             .asString();
@@ -548,6 +553,18 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
     assertThat(group.path("reasonCounts").path("ABUSE").asInt()).isEqualTo(1);
     assertThat(group.path("otherDetails").path(0).asString()).isEqualTo("주문과 상관없는 글");
     assertThat(group.path("state").asString()).isEqualTo("OPEN");
+    // 0.8.0 상세: 다른 역할 403, 없는 리뷰 404, 신고 한 건 한 건(최근 순)·신고자 없음
+    assertThat(send("GET", picker, "/review-reports/" + reviewId, null).status()).isEqualTo(403);
+    assertThat(send("GET", cs, "/review-reports/RV-none-" + newId(), null).status()).isEqualTo(404);
+    JsonNode open = send("GET", cs, "/review-reports/" + reviewId, null).body();
+    assertThat(open.path("openReportCount").asInt()).isEqualTo(2);
+    assertThat(open.path("reports").size()).isEqualTo(2);
+    assertThat(open.path("reports").path(0).path("reason").asString()).isEqualTo("ABUSE");
+    assertThat(open.path("reports").path(1).path("detail").asString()).isEqualTo("주문과 상관없는 글");
+    assertThat(open.path("photos").path(0).path("url").asString())
+        .isEqualTo("/api/v1/review-photos/" + photoId);
+    assertThat(open.toString()).doesNotContain("ACC-rp-other-").doesNotContain("ACC-rp-third-");
+    assertThat(open.path("reports").path(0).has("reporterAccountId")).isFalse();
     Res hide =
         send("POST", cs, "/review-reports/" + reviewId + "/resolutions", Map.of("action", "HIDE"));
     assertThat(hide.status()).as(hide.body().toString()).isEqualTo(200);
@@ -580,6 +597,16 @@ class ReviewsIT extends PostgresKafkaContainerSupport {
                 .body()
                 .findValuesAsString("reviewId"))
         .contains(reviewId);
+
+    // 0.8.0: 숨긴 뒤 상세 — 처리 결과, 사진은 상담원 토큰만(비회원·다른 역할 404)
+    JsonNode done = send("GET", cs, "/review-reports/" + reviewId, null).body();
+    assertThat(done.path("reviewHidden").asBoolean()).isTrue();
+    assertThat(done.path("openReportCount").asInt()).isZero();
+    assertThat(done.path("reports").findValuesAsString("resolution")).containsOnly("HIDE");
+    assertThat(done.path("reports").findValuesAsString("state")).containsOnly("RESOLVED");
+    assertThat(send("GET", null, "/review-photos/" + photoId, null).status()).isEqualTo(404);
+    assertThat(send("GET", picker, "/review-photos/" + photoId, null).status()).isEqualTo(404);
+    assertThat(send("GET", cs, "/review-photos/" + photoId, null).status()).isEqualTo(200);
   }
 
   /** CU-7(2026-11-23): customer review-author 가 이용제한(RESTRICTED)이면 리뷰 작성 403 ACCOUNT_RESTRICTED. */

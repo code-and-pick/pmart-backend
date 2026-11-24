@@ -297,6 +297,7 @@ GET /api/v1/return-receipts OPERATOR
 GET /api/v1/return-receipts/{returnReceiptId} OPERATOR
 GET /api/v1/review-photos/{photoId} PUBLIC
 GET /api/v1/review-reports OPERATOR
+GET /api/v1/review-reports/{reviewId} OPERATOR
 GET /api/v1/reviews/{reviewId} PUBLIC
 GET /api/v1/rider-appeals OPERATOR
 GET /api/v1/rider-assignments OPERATOR

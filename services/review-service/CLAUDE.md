@@ -3,7 +3,7 @@
 서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `review-service` 절이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다. 결정은 ADR-0063.
 
 ## 계약
-- REST: `contracts/openapi/review-service.yaml`(0.6.0) → `openApiGenerate` 가 `com.pmart.review.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
+- REST: `contracts/openapi/review-service.yaml`(0.8.0) → `openApiGenerate` 가 `com.pmart.review.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
 - 이벤트: 구독 `DeliveryCompleted`(delivery.delivery.v1, 바인딩 `deliveryEvents-in-0`), 발행 `ReviewPublished`·`ReviewDeleted`(commerce.review.v1). 발행은 `EventPublisher`(Outbox, Debezium), 소비는 `EventConsumers`(inbox).
 
 ## 패키지
@@ -39,3 +39,4 @@
 - **주문별 쓸 수 있는 품목 수(2026-11-23, 계약 0.6.1 — 고객앱 BR-86)**: `GET /me/review-eligibilities` 품목 `orderWritableCount` — 쪽에 나온 주문들을 `ReviewStore.writableByOrder`(자격 부분 질의 computed_state REV_ELIGIBLE 을 order_id 별로) 한 번에. state·쪽과 상관없음. 시험 `ReviewsIT`(쪽 크기 1 → 1).
 - **리뷰 신고(2026-11-23, 계약 0.7.0·V6 — 고객앱 BR-90, 사용자 정책 + "추천대로")**: `application/ReviewReports` — 고객 `POST /reviews/{id}/reports`(회원·한 리뷰 한 번 `uq_review_report_reporter`·내 리뷰 422·OTHER 만 글, APPLIED), 운영자(CS_AGENT·OPERATOR_ADMIN) `GET /review-reports`(리뷰별 묶음 `ReviewReportStore.groups`)·`POST /review-reports/{id}/resolutions`(HIDE = review.state `HIDDEN` + `ReviewDeleted` reason OPERATOR_HIDDEN, KEEP = 신고만 닫음). 숨긴 리뷰: 공개 목록·집계는 PUBLISHED 만이라 빠짐, 단건은 작성자만(LOCKED — 계약 상태 값을 늘리지 않음), 자격 상태식도 LOCKED, 수정 409. 목록 카드 `reportedByMe`·`mine`. 시험 `ReviewsIT.reportAndOperatorHide`.
 - **이용제한 고객 작성 막기(2026-11-23 CU-7)**: 작성 때 부르는 customer `review-author`(0.16.0 `restriction`·`restrictedUntil`)가 RESTRICTED·SUSPENDED 면 403 `ACCOUNT_RESTRICTED`(`Upstreams.author`). customer 를 못 읽으면 막지 않는다(기본 작성자 표시). 시험 `ReviewsIT.restrictedCustomerCannotWriteReview`.
+- **신고 상세(2026-11-24, 계약 0.8.0 — 통합 백오피스 사용자 "보이는데 눌러서 상세확인 같은걸 할 수 없다고", 신고자 "안 보여 줌")**: `GET /review-reports/{reviewId}`(CS_AGENT·OPERATOR_ADMIN, `ReviewReports.detail`·`ReviewReportStore.items`) — 리뷰 글 전체·사진·숨김/삭제·`reviewUpdatedAt`, 신고 한 건 한 건(사유·기타 글·신고 시각·처리 결과·처리 직원·처리 메모, 최근 순, 처리 전·끝 모두)·`openReportCount`. **신고자 열은 읽지도 않는다.** 신고 없는 리뷰·없는 리뷰 404 REVIEW_NOT_FOUND. 사진 본문은 상담원·운영 관리자 토큰이면 숨긴(HIDDEN) 리뷰 것도(`ReviewService.photo` — 작성자가 지운 리뷰는 그대로 404). 새 경로 — 게이트웨이 라우트(pmart-config, PC 1)·허용 목록. 시험 `ReviewsIT.reportAndOperatorHide`.

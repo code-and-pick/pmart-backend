@@ -39,6 +39,15 @@ public class ReviewReports {
 
   public record GroupPage(List<ReviewReportStore.Group> items, @Nullable String nextCursor) {}
 
+  /** 0.8.0 운영자 상세 — 리뷰·붙은 사진·신고 한 건 한 건(신고자 없음). */
+  public record Detail(
+      ReviewRow review, List<ReviewStore.PhotoRow> photos, List<ReviewReportStore.Item> items) {
+
+    public int openCount() {
+      return (int) items.stream().filter(i -> "OPEN".equals(i.state())).count();
+    }
+  }
+
   private final ReviewStore reviews;
   private final ReviewReportStore reports;
   private final RequestIdempotency idempotency;
@@ -115,6 +124,27 @@ public class ReviewReports {
     return new GroupPage(
         List.copyOf(rows.subList(0, Math.min(size, rows.size()))),
         more ? String.valueOf(offset + size) : null);
+  }
+
+  /** 운영자 상세(0.8.0) — 신고가 없는 리뷰·없는 리뷰는 404 REVIEW_NOT_FOUND. */
+  public Detail detail(String reviewId) {
+    staff();
+    ReviewRow r =
+        reviews
+            .review(reviewId)
+            .orElseThrow(() -> PmartException.notFound("REVIEW_NOT_FOUND", "리뷰가 없습니다."));
+    List<ReviewReportStore.Item> items = reports.items(reviewId);
+    if (items.isEmpty()) {
+      throw PmartException.notFound("REVIEW_NOT_FOUND", "신고된 리뷰가 아닙니다.");
+    }
+    return new Detail(r, reviews.photosOf(reviewId), items);
+  }
+
+  /** 상담원·운영 관리자인지(0.8.0 숨긴 리뷰 사진 보기). */
+  public static boolean isStaff() {
+    return PmartPrincipal.current()
+        .map(p -> p.hasRole("CS_AGENT") || p.hasRole("OPERATOR_ADMIN"))
+        .orElse(false);
   }
 
   /** 운영자 처리 — HIDE 면 숨김 + ReviewDeleted, KEEP 은 신고만 닫음. */

@@ -1,9 +1,13 @@
 openapi: 3.1.0
 info:
   title: review-service
-  version: 0.7.0
+  version: 0.8.0
   x-stage: 2
   description: |
+    0.8.0(2026-11-24, 통합 백오피스 "리뷰 신고 눌러서 상세 확인" — 사용자 "보이는데 눌러서 상세확인 같은걸 할 수 없다고", 신고자는 "안 보여 줌"): 운영자
+    `GET /review-reports/{reviewId}`(CS_AGENT·OPERATOR_ADMIN) — 리뷰 글 전체·사진·상태와 그 리뷰의 신고 한 건 한 건(사유·기타 글·신고 시각·처리 결과·처리 직원·처리 메모,
+    최근 순, 처리 전·끝 모두). **신고자는 싣지 않는다.** 사진 본문 `GET /review-photos/{photoId}` 는 상담원·운영 관리자 토큰이면 운영자가 숨긴 리뷰의 사진도 준다
+    (공개 리뷰는 그대로 토큰 없이).
     0.7.0(2026-11-23, 고객앱 BR-90 리뷰 신고 — 사용자 결정 "회원만·사유 5가지(기타만 글)·한 사람 한 리뷰 한 번·신고만으로 숨기지 않고 운영자 확인 뒤 숨김·자기 리뷰 불가·결과 안 알림",
     처리 역할 CS_AGENT·OPERATOR_ADMIN, 숨긴 리뷰는 별점·리뷰 수에서 뺌 — 사용자 "추천대로"): 고객 `POST /reviews/{reviewId}/reports`(바로 기록 — APPLIED),
     상품 리뷰 목록 카드 `reportedByMe`·`mine`(회원 토큰일 때). 운영자 `GET /review-reports`(리뷰별 신고 묶음)·`POST /review-reports/{reviewId}/resolutions`(HIDE·KEEP).
@@ -275,6 +279,25 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/ReviewReportGroup' } }
                   nextCursor: { type: [string, 'null'] }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+  /review-reports/{reviewId}:
+    get:
+      tags: [review-reports]
+      summary: (0.8.0) 신고된 리뷰 상세 — 리뷰와 신고 한 건 한 건 (CS_AGENT·OPERATOR_ADMIN)
+      description: |
+        목록 줄을 눌러 여는 상세. 리뷰(글 전체·사진·별점·작성자 가린 이름·지금 숨김/삭제)와 그 리뷰의 **모든 신고**(처리 전·끝, 최근 신고 순).
+        신고자(고객)는 싣지 않는다(사용자 2026-11-24 "안 보여 줌"). 신고가 하나도 없는 리뷰·없는 리뷰는 404 REVIEW_NOT_FOUND. 그 밖 역할 403.
+      operationId: getReviewReportDetail
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewReportDetail' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
   /review-reports/{reviewId}/resolutions:
     post:
       tags: [review-reports]
@@ -482,6 +505,49 @@ components:
         resolution: { type: [string, 'null'], enum: [HIDE, KEEP, null], description: 'RESOLVED 일 때 마지막 처리' }
         resolvedAt: { type: [string, 'null'], format: date-time }
         resolvedBy: { type: [string, 'null'], description: 처리한 직원 ID }
+    ReviewReportDetail:
+      type: object
+      description: '(0.8.0) 신고된 리뷰 상세(운영자) — 신고자 없음'
+      required: [reviewId, productId, rating, authorMasked, reviewCreatedAt, reviewHidden, reviewDeleted, photos, openReportCount, reports]
+      properties:
+        reviewId: { type: string }
+        productId: { type: string }
+        sku: { type: [string, 'null'] }
+        rating: { type: integer }
+        text: { type: [string, 'null'], description: 리뷰 글 전체 }
+        authorMasked: { type: string }
+        reviewCreatedAt: { type: string, format: date-time }
+        reviewUpdatedAt: { type: [string, 'null'], format: date-time, description: 마지막으로 바뀐 시각 — 작성자 수정·운영자 숨김(없으면 null) }
+        reviewHidden: { type: boolean, description: 운영자가 숨겼는지 }
+        reviewDeleted: { type: boolean, description: 작성자가 지웠는지 }
+        photos:
+          type: array
+          description: 붙은 사진(순서대로). 숨긴 리뷰 사진은 직원 토큰(Authorization)으로만 열린다
+          items:
+            type: object
+            required: [photoId, url]
+            properties:
+              photoId: { type: string }
+              url: { type: string, description: '사진 본문 경로 (/api/v1/review-photos/{photoId})' }
+        openReportCount: { type: integer, description: 처리 전 신고 수(0 이면 처리 버튼 없음) }
+        reports:
+          type: array
+          description: 신고 한 건 한 건 — 최근 신고 순
+          items: { $ref: '#/components/schemas/ReviewReportItem' }
+    ReviewReportItem:
+      type: object
+      description: '(0.8.0) 신고 한 건 — 신고자 없음'
+      required: [reportId, reason, reportedAt, state]
+      properties:
+        reportId: { type: string }
+        reason: { $ref: '#/components/schemas/ReportReason' }
+        detail: { type: [string, 'null'], description: 기타(OTHER) 사유 글 }
+        reportedAt: { type: string, format: date-time }
+        state: { type: string, enum: [OPEN, RESOLVED] }
+        resolution: { type: [string, 'null'], enum: [HIDE, KEEP, null] }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        resolvedBy: { type: [string, 'null'], description: 처리한 직원 ID }
+        resolutionNote: { type: [string, 'null'], description: 처리 메모(직원만 봄) }
     ReviewState:
       type: string
       enum: [REV_ELIGIBLE, SUBMIT_PENDING, PUBLISHED, LOCKED, DELETED, EXPIRED]

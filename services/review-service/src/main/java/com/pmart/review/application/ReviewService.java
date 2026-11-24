@@ -590,7 +590,10 @@ public class ReviewService {
     return store.photo(photoId).orElseThrow();
   }
 
-  /** 공개 리뷰에 붙은 사진만 본문을 준다. width 가 있으면 축소본(0.4.0, 줄일 수 없는 형식이면 원본). */
+  /**
+   * 공개 리뷰에 붙은 사진만 본문을 준다. 0.8.0: 상담원·운영 관리자 토큰이면 운영자가 숨긴(HIDDEN) 리뷰 사진도 — 신고 상세에서 숨긴 뒤에도 확인하게.
+   * width 가 있으면 축소본(0.4.0, 줄일 수 없는 형식이면 원본).
+   */
   public Photo photo(String photoId, @Nullable Integer width) {
     if (width != null) {
       ReviewPhotoVariants.checkWidth(width);
@@ -603,7 +606,11 @@ public class ReviewService {
                     x.reviewId() != null
                         && store
                             .review(x.reviewId())
-                            .map(r -> ReviewRules.PUBLISHED.equals(r.state()))
+                            .map(
+                                r ->
+                                    ReviewRules.PUBLISHED.equals(r.state())
+                                        || (ReviewRules.HIDDEN.equals(r.state())
+                                            && ReviewReports.isStaff()))
                             .orElse(false))
             .orElseThrow(() -> PmartException.notFound("PHOTO_NOT_FOUND", "사진이 없습니다."));
     if (width != null) {
