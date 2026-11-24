@@ -6,4 +6,4 @@
 - 연결 설계·결정(CDC-1~): `docs/simulator/cdc/chilgok-dc.md`.
 - 파일 이름 `YYYY-MM-DD-simulator-<reply|notice|request>-<주제>.md`.
 
-- 2026-11-24 회신(cdc): [R-01~R-06 센터 코드·위치 코드·비랙 위치·공급 MFC·도면·CORS](2026-11-24-simulator-reply-r01-r06.md)
+- 2026-11-24 회신(cdc): [R-01~R-08 센터 코드·위치 코드·구역 글자·비랙 위치(지하 도크·승강기)·공급 MFC·도면·CORS](2026-11-24-simulator-reply-r01-r06.md)
