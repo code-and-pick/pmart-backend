@@ -50,6 +50,11 @@ public class AllocationStore {
     this.jdbc = jdbc;
   }
 
+  /** 같은 TRF 의 할당·출발을 줄 세운다(트랜잭션 끝까지). 아직 행이 없는 첫 할당끼리도 막으려고 행 잠금 대신 권고 잠금을 쓴다. */
+  public void lockTrf(String trfId) {
+    jdbc.query("SELECT pg_advisory_xact_lock(hashtext(?))", rs -> {}, "cdc-inventory:trf:" + trfId);
+  }
+
   public void insert(AllocationRow a) {
     jdbc.update(
         "INSERT INTO allocation (allocation_id, cdc_id, trf_id, trf_version, state, row_version,"

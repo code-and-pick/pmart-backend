@@ -17,6 +17,7 @@ import com.pmart.common.messaging.RequestIdempotency.Outcome;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -103,6 +104,7 @@ public class DepartureService {
         CommandResult.class,
         () -> {
           Instant at = ledger.now();
+          allocations.lockTrf(cmd.trfId());
           AllocationRow a =
               allocations
                   .find(cmd.allocationId(), true)
@@ -148,6 +150,7 @@ public class DepartureService {
                     .toList();
             int need = dl.qty();
             String firstLocation = null;
+            LocalDate expiry = null;
             for (LotRow l : match) {
               int take = Math.min(need, left.get(l));
               if (take <= 0) {
@@ -168,6 +171,7 @@ public class DepartureService {
               deltas.add(new Delta(l.sku(), l.lot(), l.locationCode(), "ON_HAND", -take));
               deltas.add(new Delta(l.sku(), l.lot(), l.locationCode(), "RESERVED", -take));
               firstLocation = firstLocation == null ? l.locationCode() : firstLocation;
+              expiry = expiry == null ? l.expiresAt() : expiry;
               need -= take;
               if (need == 0) {
                 break;
@@ -206,6 +210,9 @@ public class DepartureService {
               el.put("lpns", dl.lpns());
             }
             el.put("qty", dl.qty());
+            if (expiry != null) {
+              el.put("expiryDate", expiry.toString());
+            }
             el.put("departureLineId", dl.departureLineId());
             eventLines.add(el);
             total += dl.qty();

@@ -131,6 +131,7 @@ public class AllocationService {
         () -> {
           Instant at = ledger.now();
           LocalDate today = ledger.today();
+          allocations.lockTrf(cmd.trfId());
           for (AllocationRow a : allocations.lockByTrf(cmd.trfId())) {
             if (a.trfVersion() == cmd.trfVersion()) {
               throw exists(

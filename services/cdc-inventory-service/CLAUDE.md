@@ -28,6 +28,7 @@
   - 적격 E = RELEASED·VERIFIED·잔여일수 D ≥ max(1, minRemainingDays)(소비기한 당일 차단, Asia/Seoul). 가용·할당 앞 검사 순서: SKU 투영 → 취급 ON → 안전량 설정.
   - 할당: SKU 별 한도 max(0, E'−R'−S) 안에서 FEFO(기한 → 최초 인수 → LOT → 위치). 부분 PARTIAL, 0 이면 FAILED. 해제는 늦은 LOT 부터. 같은 TRF 다른 버전이 살아 있으면 ALLOCATION_EXISTS.
   - TOUT: TRF 당 1회, 현물 −q·예약 −q·Transit +q. 같은 departureId·같은 줄 묶음 재전송은 기존 commitId. 남은 할당은 호출자가 RESIDUAL_CLOSED 로 해제.
-  - 발행(토픽 `cdc.inventory.v1`, outbox): `AllocationResult`, `TransferDeparted`(departureSource SIMULATED 면 봉투 source 도 SIMULATED).
+  - 발행(토픽 `cdc.inventory.v1`, outbox): `AllocationResult`, `TransferDeparted`(departureSource SIMULATED 면 봉투 source 도 SIMULATED). TransferDeparted 줄 = 출발 줄 하나: `lpn` 은 LPN 이 하나일 때만(여럿이면 LPN 별 수량을 모르므로 `lpns` 목록만 — mfc-inbound 에는 lpn 없음으로 보인다), `expiryDate` 는 LOT 소비기한.
+  - 같은 TRF 의 할당·출발은 권고 잠금(`pg_advisory_xact_lock`)으로 줄 세운다 — 다른 trfVersion 첫 할당 동시 요청도 하나만 들어간다.
   - 아직 계산하지 않음: 품목군 최소 잔여일수(제조일 입력 없음), 승인량 초과 검사(replenishment 없음).
 - 아직 501: 수령 확인·이동·품질·손실·조정·스냅샷·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.

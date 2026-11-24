@@ -338,6 +338,9 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(env.path("payload").path("toMfc").asString()).isEqualTo("MFC-BJG-01");
     assertThat(env.path("payload").path("departedQty").asInt()).isEqualTo(80);
     assertThat(env.path("source").asString()).isEqualTo("SIMULATED");
+    JsonNode first = env.path("payload").path("lines").get(0);
+    assertThat(first.path("lpn").asString()).isEqualTo("LPN-1");
+    assertThat(first.path("expiryDate").asString()).isEqualTo(today.plusDays(10).toString());
 
     // 새 키로 재전송 → 같은 commitId, 재차감 없음
     Res resend = post(SERVICE, "/internal/departure-postings", key(), dep);
