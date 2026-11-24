@@ -72,3 +72,18 @@
 - **요청한 쪽에서 바꿀 것(mfc-inbound·PDA)**: inventory 쪽이 생기면 inbound 가 이동 작업을 만들고 PDA 는 다음 작업 받기로 받는다. **그 전까지 inbound 는 아무것도 만들지 않는다**(반쪽 구현 금지 — 2026-11-20).
 - **사용자 결정(2026-11-20)**: 옮기는 사람 — 회수품은 반입한 사람, 입고 결함은 찾은 검수자(작업을 그 사람에게 미리 배정). 격리 칸 = 위치 구역 `QUARANTINE`(코드 `QRT-{온도대}-{번호}`, LAN 시드 `QRT-A-01`·`QRT-C-01`·`QRT-F-01`).
 - **상태**: **구현**(2026-11-20 PC 3) — inventory 0.35.0 추가분(V25, 브랜치 `mfc/br52-inventory`): 작업 실행 `QUARANTINE_MOVE`(②안 — 출발 칸 QUARANTINED → 격리 구역·온도대, 위치만), `placement-suggestions?purpose=QUARANTINE`, 품질 해제·폐기가 격리 구역으로 옮겨진 격리품을 따라감(mfc-quality 변경 없음), 격리 구역에서 해제하면 NORMAL·UNSTOWED. inbound 0.17.0(V13, 브랜치 `mfc/inbound-quarantine`): 작업 유형 `QUARANTINE_MOVE`(품질검사 격리 → 검수자, 회수품 검수 폐기 → 반입자, 현장 예외 파손·변질 → 보고자), `POST /inbound-tasks/{id}/quarantine-moves`, 해제분 적치 작업. 남은 것: mfc-capacity 다음 작업 받기에 `QUARANTINE_MOVE` 없음(요청 MC-2), 회수품 검수 전(PENDING) 격리분은 옮기지 않는다(검수는 반품 위치에서).
+
+## IV-7. 재고 변동 실시간 스트림 — 전체 센터 한 연결 (2026-11-24, 보낸 영역 backoffice — PC 2)
+
+- **근거**: PC 1 사용자 결정(2026-11-24) "실시간 재고 차감 취소 시 증감이 바로바로 백오피스에 반영 되어야 해" → 방식 B(서버가 밀어 주기, SSE), MFC·통합 백오피스 전부. 통합 백오피스 화면 설계는 pmart-clients `docs/handoff/backoffice/2026-11-24-backend-live-stock-stream.md`(대상은 대시보드 "센터별 품절" 칸 하나 — 지금 `GET /stock-summaries` 를 60초마다 다시 읽음).
+- **사용자 결정(2026-11-24, PC 2)**: "재고 서버가 전체 스트림을 직접 주는 1번으로" — **mfc-inventory 가 전체 센터 변동을 한 연결로 내보낸다. backoffice-bff 는 중계하지 않는다**(bff 는 재고를 다루지 않고, 긴 연결·다시 잇기·토큰 만료를 bff 가 따로 맡지 않게). 웹이 센터마다 따로 여는 안(브라우저 연결 수 한도)도 쓰지 않는다.
+- **필요한 것**:
+  1. 스트림 경로 하나(`text/event-stream`) — 예 `GET /stock-summaries/stream?mfcId=`(이름·경로는 PC 3 이 정함). **mfcId 를 주면 그 센터, 비우면 볼 수 있는 모든 센터.**
+  2. 권한은 `GET /stock-summaries` 와 같게 — OPERATOR_ADMIN·서비스 = 모든 센터, 그 밖 운영자 = 토큰 센터만(mfcId 권한 없으면 403, 비우면 자기 센터들).
+  3. 이벤트 — 화면은 이벤트 값으로 품절 수를 세지 않고, 받으면 그 센터 `GET /stock-summaries?mfcId=` 만 다시 읽는다(2초 모아 한 번). 그래서 **최소로는 "이 센터 재고가 바뀌었음"이면 된다**: `{eventId, mfcId, occurredAt}`(예 `event: STOCK_CHANGED` 또는 품절 요약이 바뀔 때만 `SUMMARY_CHANGED` — 어느 쪽이든 PC 3 편한 대로). SKU·가용 수량·원인·버전(웹 글의 바람)은 있으면 좋지만 필수 아님.
+  4. 연결 유지 신호(heartbeat 주석 줄) 5초 안팎 — 게이트웨이 시간 제한(PC 1 이 이 경로만 풀기로 함) 때문.
+  5. `id:` 줄 + 다시 연결 때 `Last-Event-ID` 이어 받기는 있으면 좋다(없으면 화면이 다시 붙을 때 한 번 다시 읽어 덮는다).
+- **화면 쪽(웹)**: 토큰을 메모리에 두어 EventSource 대신 fetch 스트림(Authorization 헤더). 화면이 보일 때만 연결, 끊기면 1초 → 30초까지 늘려 다시 연결, 끊긴 동안 "실시간 끊김 — 마지막 HH:MM 기준", 60초 다시 읽기는 끊겼을 때만.
+- **PC 1 이 할 것**: 경로가 정해지면 게이트웨이 라우트(pmart-config)·그 경로의 응답 시간 제한(전역 10초) 풀기, 사용자 유형 허용 목록.
+- **MFC 백오피스(PC 3 화면)**: 같은 스트림을 센터 하나(mfcId)로 쓰면 된다 — 화면 설계는 PC 3.
+- **상태**: 요청(PC 3).
