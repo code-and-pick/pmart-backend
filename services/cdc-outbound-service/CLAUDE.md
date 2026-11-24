@@ -18,7 +18,7 @@
 ```bash
 ./gradlew :services:cdc-outbound-service:check   # 단위 + 통합(Testcontainers, cdc-inventory 는 WireMock)
 ```
-로컬 포트 8603. 설정 정본(pmart-config `cdc-outbound-service.yml`)은 아직 없다 — PC1 요청(`docs/operations/pc1-todo.md`).
+로컬 포트 8603. 설정 정본 pmart-config `cdc-outbound-service.yml`·`cdc-outbound-service-local.yml`(2026-11-25 13d64d4), lan 파일은 LAN 배치 때(PC1).
 
 ## 상태
 - 2026-11-25 새로 만듦(계약 0.3.0):
