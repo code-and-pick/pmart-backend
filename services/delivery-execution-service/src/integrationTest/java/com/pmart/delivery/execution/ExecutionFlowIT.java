@@ -3478,8 +3478,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * 지급 넘김 상한(2026-11-24 사용자 "넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해"): 3번째 넘김은 마지막 자동 시도, 그 뒤 또 실패하면 넘기지 않고
-   * 직원 직접 지급(escalated) — 주기 작업도 건드리지 않고, 관리자 PAID 로 끝난다.
+   * 지급 넘김 상한(2026-11-24 사용자 "넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해" → 2026-11-25 "2로 바꾸고"): 2번째 넘김은 마지막 자동
+   * 시도(지급 시도 3번째), 그 뒤 또 실패하면 넘기지 않고 직원 직접 지급(escalated) — 주기 작업도 건드리지 않고, 관리자 PAID 로 끝난다. 같은 묶음에서
+   * 나중에 상한을 다 쓴 줄이 생기면 사건을 한 번 더(줄마다 한 번 — 2026-11-25 검토).
    */
   @Test
   void payoutRolloverStopsAtCapAndEscalates() {
@@ -3492,7 +3493,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable, rate_table_version,"
             + " base_fee, total, settlement_state, performed_on, payout_date, recorded_at, updated_at,"
             + " roll_count) VALUES (?, ?, ?, true, 1, 3000, 3000, 'CONFIRMED', CAST(? AS date) - 3,"
-            + " CAST(? AS date), now(), now(), 2)",
+            + " CAST(? AS date), now(), now(), 1)",
         "ERN-cap-" + id,
         id,
         rider,
@@ -3500,53 +3501,87 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         today);
     String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
     String uri = "/rider-payouts/" + rider + "/" + today + "/results";
-    // 세 번째 넘김 — 마지막 자동 시도
-    ResponseEntity<String> third =
+    // 두 번째 넘김 — 마지막 자동 시도(지급 시도 3번째)
+    ResponseEntity<String> second =
         staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 오류"));
-    assertThat(third.getStatusCode().value()).as(third.getBody()).isEqualTo(200);
-    String next = body(third).path("rolledTo").asString();
+    assertThat(second.getStatusCode().value()).as(second.getBody()).isEqualTo(200);
+    String next = body(second).path("rolledTo").asString();
     assertThat(next).isNotBlank();
     JsonNode roll = body(staffGet("/rider-payout-rollovers?riderId=" + rider, adm)).path("items");
-    assertThat(roll.get(0).path("rollCount").asInt()).isEqualTo(3);
+    assertThat(roll.get(0).path("rollCount").asInt()).isEqualTo(2);
     assertThat(roll.get(0).path("finalAttempt").asBoolean()).isTrue();
     JsonNode nextBatch =
         body(staffGet("/rider-payouts?riderId=" + rider + "&payoutDate=" + next, adm))
             .path("items")
             .get(0);
-    assertThat(nextBatch.path("rollCount").asInt()).isEqualTo(3);
+    assertThat(nextBatch.path("rollCount").asInt()).isEqualTo(2);
     assertThat(nextBatch.path("finalAttempt").asBoolean()).isTrue();
     assertThat(nextBatch.path("escalated").asBoolean()).isFalse();
     // 다시 지급하는 날이 됐다고 치고 또 실패 — 더 넘기지 않음
     jdbc.update(
         "UPDATE rider_earning SET payout_date = CAST(? AS date) WHERE rider_id = ?", today, rider);
-    ResponseEntity<String> fourth =
+    ResponseEntity<String> third =
         staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 오류"));
-    assertThat(fourth.getStatusCode().value()).as(fourth.getBody()).isEqualTo(200);
-    assertThat(body(fourth).hasNonNull("rolledTo")).isFalse();
-    assertThat(body(fourth).path("escalated").asBoolean()).isTrue();
+    assertThat(third.getStatusCode().value()).as(third.getBody()).isEqualTo(200);
+    assertThat(body(third).hasNonNull("rolledTo")).isFalse();
+    assertThat(body(third).path("escalated").asBoolean()).isTrue();
     assertThat(payouts.rollStaleFailures()).isZero();
-    // DE-10 — 묶음마다 한 번 직원 알림용 사건(사유 포함)
+    // DE-10 — 직원 알림용 사건(사유 포함)
     JsonNode esc0 = outbox(id, "RiderPayoutEscalated").path("payload");
     assertThat(esc0.path("batchId").asString()).isEqualTo(rider + ":" + today);
     assertThat(esc0.path("amount").asInt()).isEqualTo(3000);
-    assertThat(esc0.path("rollCount").asInt()).isEqualTo(3);
+    assertThat(esc0.path("rollCount").asInt()).isEqualTo(2);
     assertThat(esc0.path("failureReason").asString()).isEqualTo("계좌 오류");
-    assertThat(
-            jdbc.queryForObject(
-                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'RiderPayoutEscalated'",
-                Integer.class,
-                id))
-        .isEqualTo(1);
     assertThat(
             jdbc.queryForObject(
                 "SELECT settlement_state || ':' || roll_count FROM rider_earning WHERE earning_id = ?",
                 String.class,
                 "ERN-cap-" + id))
-        .isEqualTo("PAYMENT_FAILED:3");
+        .isEqualTo("PAYMENT_FAILED:2");
     JsonNode esc =
         body(staffGet("/rider-payouts?escalated=true&riderId=" + rider, adm)).path("items");
     assertThat(esc).hasSize(1);
     assertThat(esc.get(0).path("payoutDate").asString()).isEqualTo(today);
+    // 같은 묶음에 나중에 상한을 다 쓴 줄이 또 생기면 사건을 한 번 더(줄마다 한 번 — 2026-11-25 검토), 이미 알린 줄로는 다시 안 냄
+    String id2 = "DLV-cap2-" + UUID.randomUUID();
+    created(id2, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID());
+    awaitSql("SELECT count(*) FROM execution_delivery WHERE delivery_id = '" + id2 + "'");
+    jdbc.update(
+        "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable, rate_table_version,"
+            + " base_fee, total, settlement_state, performed_on, payout_date, recorded_at, updated_at,"
+            + " roll_count) VALUES (?, ?, ?, true, 1, 3000, 3000, 'CONFIRMED', CAST(? AS date) - 3,"
+            + " CAST(? AS date), now(), now(), 2)",
+        "ERN-cap2-" + id2,
+        id2,
+        rider,
+        today,
+        today);
+    ResponseEntity<String> fourth =
+        staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 해지"));
+    assertThat(fourth.getStatusCode().value()).as(fourth.getBody()).isEqualTo(200);
+    String escalatedEvents =
+        "SELECT count(*) FROM outbox_event WHERE aggregateid IN (?, ?) AND type = 'RiderPayoutEscalated'";
+    assertThat(jdbc.queryForObject(escalatedEvents, Integer.class, id, id2)).isEqualTo(2);
+    JsonNode latest =
+        mapper
+            .readTree(
+                jdbc.queryForObject(
+                    "SELECT payload::text FROM outbox_event WHERE aggregateid IN (?, ?) AND type ="
+                        + " 'RiderPayoutEscalated' ORDER BY created_at DESC LIMIT 1",
+                    String.class,
+                    id,
+                    id2))
+            .path("payload");
+    assertThat(latest.path("lineCount").asInt()).isEqualTo(2);
+    assertThat(latest.path("amount").asInt()).isEqualTo(6000);
+    assertThat(latest.path("failureReason").asString()).isEqualTo("계좌 해지");
+    // 바꿀 줄이 없으면 409 — 사건도 그대로
+    assertThat(
+            staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 해지"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    assertThat(jdbc.queryForObject(escalatedEvents, Integer.class, id, id2)).isEqualTo(2);
     // 직원이 직접 지급
     ResponseEntity<String> paid =
         staffPost(uri, adm, Map.of("result", "PAID", "reference", "MANUAL-1"));
@@ -3581,6 +3616,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     Map<String, Object> req =
         Map.of("deliveryId", origin, "caseId", caseId, "reason", "회수 포기 전 배포라 자동 차감이 안 됨");
     assertThat(staffPost("/rider-deductions", cs, req).getStatusCode().value()).isEqualTo(403);
+    // 아직 전달 전(배달 중) 배송은 422 — 오배송은 전달 완료된 배송에만(2026-11-25 검토)
+    ResponseEntity<String> notDone = staffPost("/rider-deductions", ops, req);
+    assertThat(notDone.getStatusCode().value()).as(notDone.getBody()).isEqualTo(422);
+    assertThat(notDone.getBody()).contains("DELIVERY_NOT_COMPLETED");
+    jdbc.update("UPDATE execution_delivery SET state = 'COMPLETED' WHERE delivery_id = ?", origin);
     java.util.Map<String, Object> over = new java.util.HashMap<>(req);
     over.put("amount", 9001);
     ResponseEntity<String> tooMuch = staffPost("/rider-deductions", ops, over);

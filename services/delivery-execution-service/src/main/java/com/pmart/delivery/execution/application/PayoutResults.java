@@ -316,6 +316,7 @@ public class PayoutResults {
     String key = actor + ":" + idempotencyKey;
     return tx.execute(
         s -> {
+          lockBatch(riderId, payoutDate);
           if (jdbc.queryForObject(
                   "SELECT count(*) FROM rider_payout_result WHERE request_key = ?",
                   Integer.class,
@@ -404,9 +405,9 @@ public class PayoutResults {
    * CONFIRMED·rolled_from·rolled_at· 넘긴 횟수 +1, 이 묶음에서 뺀 오배송 차감은 되돌림(새 묶음에서 다시), 넘김 기록, 수행료 줄마다
    * RiderEarningRecorded(rolledFrom). 호출자 트랜잭션.
    *
-   * <p>넘김 상한(2026-11-24 사용자 "넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해"): 줄마다 {@code payout-max-rollovers}(기본
-   * 3)번까지 — 상한째 넘김은 final_attempt(마지막 자동 시도), 상한을 다 쓴 줄은 넘기지 않고 PAYMENT_FAILED 로 남긴다(묶음 escalated —
-   * 직원이 직접 지급).
+   * <p>넘김 상한(2026-11-24 사용자 "넘기는 횟수에 상한을 둬. 3번 안에는 반드시 줘야해"): 줄마다 {@code payout-max-rollovers}(기본 2
+   * — 2026-11-25 사용자 "2로 바꾸고", 처음 3)번까지 — 상한째 넘김은 final_attempt(마지막 자동 시도), 상한을 다 쓴 줄은 넘기지 않고
+   * PAYMENT_FAILED 로 남긴다(묶음 escalated — 직원이 직접 지급).
    *
    * @return 넘긴 지급일(넘긴 줄이 없으면 null)
    */
@@ -417,6 +418,8 @@ public class PayoutResults {
         com.pmart.delivery.execution.domain.EarningRules.payoutDate(
             from.isAfter(today) ? from : today, 1, props.holidays());
     int max = maxRolls();
+    lockBatch(riderId, from); // 이미 잡았으면 그대로(같은 트랜잭션)
+    lockBatch(riderId, to); // 줄이 들어갈 묶음 — 날짜가 늘 뒤라 잠금 순서가 거꾸로 되지 않는다
     deductions.revertBatch(riderId, from, now);
     Set<String> underCap =
         Set.copyOf(
@@ -464,7 +467,8 @@ public class PayoutResults {
     for (EarningRow e : failed) {
       jdbc.update(
           "UPDATE rider_earning SET settlement_state = 'CONFIRMED', payout_date = ?, rolled_from = ?,"
-              + " rolled_at = ?, roll_count = roll_count + 1, updated_at = ? WHERE earning_id = ?",
+              + " rolled_at = ?, roll_count = roll_count + 1, updated_at = ? WHERE earning_id = ?"
+              + " AND settlement_state = 'PAYMENT_FAILED'",
           to,
           from,
           Timestamp.from(now),
@@ -478,7 +482,7 @@ public class PayoutResults {
       jdbc.update(
           "UPDATE rider_compensation SET settlement_state = 'CONFIRMED', payout_date = ?,"
               + " rolled_from = ?, rolled_at = ?, roll_count = roll_count + 1, updated_at = ? WHERE"
-              + " compensation_id = ?",
+              + " compensation_id = ? AND settlement_state = 'PAYMENT_FAILED'",
           to,
           from,
           Timestamp.from(now),
@@ -516,8 +520,8 @@ public class PayoutResults {
   }
 
   /**
-   * 상한을 다 쓴 줄이 남은 묶음 — 묶음마다 한 번 기록 + RiderPayoutEscalated(DE-10, 2026-11-24). aggregate = 첫 줄 배송(버전
-   * 올림). 호출자 트랜잭션.
+   * 상한을 다 쓴 줄이 남은 묶음 — 새로 상한을 다 쓴 줄이 있을 때마다 묶음 기록 갱신 + RiderPayoutEscalated(DE-10, 2026-11-24 · 줄마다
+   * 한 번 2026-11-25). aggregate = 첫 줄 배송(버전 올림). 호출자 트랜잭션.
    */
   private void escalate(
       String riderId,
@@ -545,19 +549,28 @@ public class PayoutResults {
               rows.stream().map(EarningRow::earningId).toArray());
       rolls = Math.max(rolls, r == null ? 0 : r);
     }
-    int n =
-        jdbc.update(
-            "INSERT INTO rider_payout_escalation (rider_id, payout_date, line_count, amount,"
-                + " roll_count, escalated_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
-            riderId,
-            payoutDate,
-            rows.size() + comps.size(),
-            amount,
-            rolls,
-            Timestamp.from(now));
-    if (n == 0) {
-      return; // 이미 알린 묶음
+    // 줄마다 한 번(2026-11-25 검토 — 묶음마다 한 번이면 같은 묶음에서 나중에 상한을 다 쓴 줄은 알리지 않았다)
+    int fresh = 0;
+    for (EarningRow e : rows) {
+      fresh += markEscalatedLine("EARNING", e.earningId(), riderId, payoutDate, now);
     }
+    for (Comp c : comps) {
+      fresh += markEscalatedLine("COMPENSATION", c.id(), riderId, payoutDate, now);
+    }
+    if (fresh == 0) {
+      return; // 이미 알린 줄뿐
+    }
+    jdbc.update(
+        "INSERT INTO rider_payout_escalation (rider_id, payout_date, line_count, amount,"
+            + " roll_count, escalated_at) VALUES (?,?,?,?,?,?) ON CONFLICT (rider_id, payout_date)"
+            + " DO UPDATE SET line_count = EXCLUDED.line_count, amount = EXCLUDED.amount,"
+            + " roll_count = EXCLUDED.roll_count, escalated_at = EXCLUDED.escalated_at",
+        riderId,
+        payoutDate,
+        rows.size() + comps.size(),
+        amount,
+        rolls,
+        Timestamp.from(now));
     String deliveryId =
         !rows.isEmpty()
             ? rows.get(0).deliveryId()
@@ -587,6 +600,30 @@ public class PayoutResults {
         rolls,
         reason,
         now);
+  }
+
+  /**
+   * @return 처음 알리는 줄이면 1, 이미 알린 줄이면 0
+   */
+  private int markEscalatedLine(
+      String kind, String lineId, String riderId, LocalDate payoutDate, Instant now) {
+    return jdbc.update(
+        "INSERT INTO rider_payout_escalation_line (line_kind, line_id, rider_id, payout_date,"
+            + " escalated_at) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+        kind,
+        lineId,
+        riderId,
+        payoutDate,
+        Timestamp.from(now));
+  }
+
+  /**
+   * 지급 묶음(라이더 × 지급일) 잠금(2026-11-25 검토) — 결과 표시·넘김이 같은 묶음에서 겹치면 이미 넘어간 줄이 다시 실패로 표시돼 한 번 더 넘어갈 수
+   * 있었다. 트랜잭션 끝까지.
+   */
+  private void lockBatch(String riderId, LocalDate payoutDate) {
+    jdbc.queryForList(
+        "SELECT pg_advisory_xact_lock(hashtext(?))", "rider-payout:" + riderId + ":" + payoutDate);
   }
 
   /** 넘김 뒤 같은 키로 다시 부른 실패 표시 — 그때의 결과 기록과 넘김으로. */
@@ -651,6 +688,7 @@ public class PayoutResults {
       LocalDate date = ((java.sql.Date) b.get("payout_date")).toLocalDate();
       tx.executeWithoutResult(
           s -> {
+            lockBatch(rider, date);
             List<String> last =
                 jdbc.queryForList(
                     "SELECT result_id FROM rider_payout_result WHERE rider_id = ? AND payout_date = ?"

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.43.1
+  version: 0.43.2
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.38.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /delivery-metrics` 배송 품질·효율(날짜·센터·라이더별 배정·완료·실패·취소·지연·픽업 대기·배송 소요)과 사고(도움요청 종류별 건수·처리 시간).
@@ -1412,7 +1412,7 @@ paths:
         - { name: to, in: query, x-added-in: "2026-11-24", schema: { type: string, format: date } }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: state, in: query, schema: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED] } }
-        - { name: escalated, in: query, x-added-in: "2026-11-24", description: "(0.43.0) true 면 날짜와 상관없이 자동 넘김 상한(3번)을 다 써 직원이 직접 지급해야 하는 묶음만(지급 예정일 순, 최대 200)", schema: { type: boolean } }
+        - { name: escalated, in: query, x-added-in: "2026-11-24", description: "(0.43.0) true 면 날짜와 상관없이 자동 넘김 상한(기본 2번 — 0.43.2)을 다 써 직원이 직접 지급해야 하는 묶음만(지급 예정일 순, 최대 200)", schema: { type: boolean } }
       responses:
         '200':
           description: OK
@@ -1432,9 +1432,9 @@ paths:
       x-added-in: '2026-11-24'
       description: |
         2026-11-24 사용자 "실패한 지급을 다음 지급일로 자동으로 넘겨". 지급 결과 FAILED 가 표시되면 그 묶음의 실패 줄(수행료·보상금)이 같은 트랜잭션에서 다음 지급일
-        (오늘과 원래 지급일 중 늦은 날의 다음 영업일)로 넘어가 CONFIRMED 가 된다(이미 PAYMENT_FAILED 로 남은 묶음도 1분 주기로 같게). (0.43.0) 넘김은 줄마다 상한(`pmart.execution.payout-max-rollovers`, 기본 3 — 2026-11-24 사용자 "3번 안에는 반드시 줘야해")까지 —
+        (오늘과 원래 지급일 중 늦은 날의 다음 영업일)로 넘어가 CONFIRMED 가 된다(이미 PAYMENT_FAILED 로 남은 묶음도 1분 주기로 같게). (0.43.0) 넘김은 줄마다 상한(`pmart.execution.payout-max-rollovers`, 기본 2 — 0.43.2 2026-11-25 사용자 "2로 바꾸고": 원래 지급 + 넘김 2번 = 지급 시도 3번, 처음 2026-11-24 "3번 안에는 반드시 줘야해")까지 —
         상한째 넘김은 `finalAttempt` true(마지막 자동 시도), 그 뒤 또 실패한 줄은 넘기지 않고 PAYMENT_FAILED 로 남아 묶음 `escalated` true(직원 직접 지급 — 관리자 PAID 표시).
-        (0.43.1, DE-10) 상한을 다 쓴 줄이 남으면 묶음마다 한 번 `RiderPayoutEscalated`(직원 알림용 — 금액·넘김 횟수·실패 사유).
+        (0.43.1, DE-10) 상한을 다 쓴 줄이 남으면 `RiderPayoutEscalated` — (0.43.2) 그 묶음에서 상한을 새로 다 쓴 줄이 생길 때마다 한 번(같은 줄로 다시 내지 않음)(직원 알림용 — 금액·넘김 횟수·실패 사유).
         그 묶음에서 뺀 오배송 차감은 되돌려 새 묶음에서 다시 뺀다. 최근 순 200건, riderId 로 거르기. failureReason 은 직원만.
       operationId: listRiderPayoutRollovers
       x-pmart-user-types: [OPERATOR]
@@ -1659,7 +1659,7 @@ paths:
         오배송 사건 번호(`caseId`), 사유(2~300자, 라이더도 본다 — 개인정보 금지)를 받는다. 금액을 비우면 자동 차감과 같은 규칙(order 결제 금액 − 배달비),
         주면 1원 ~ 그 금액(넘으면 422 AMOUNT_EXCEEDS_ORDER). 그 뒤는 자동 차감과 같다 — PENDING_OBJECTION(이의 5일) + `RiderDeductionScheduled`(source MANUAL).
         배송 하나·사건 하나당 한 번(이미 있으면 409 DEDUCTION_EXISTS — 취소된 것 포함). 배송 없음 404, 라이더 없는 배송 422 NO_RIDER, order 장애 503.
-        같은 직원 + Idempotency-Key 는 같은 결과. RIDER_OPS·OPERATOR_ADMIN(그 밖 403). 조치 이력 DEDUCTION_CREATED.
+        (0.43.2) 배송은 전달 완료(COMPLETED)여야 한다 — 그 밖 422 DELIVERY_NOT_COMPLETED. 같은 직원 + Idempotency-Key 는 같은 결과. RIDER_OPS·OPERATOR_ADMIN(그 밖 403). 조치 이력 DEDUCTION_CREATED.
       operationId: createRiderDeduction
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -1688,7 +1688,7 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
-          description: AMOUNT_EXCEEDS_ORDER / NO_RIDER
+          description: AMOUNT_EXCEEDS_ORDER / NO_RIDER / (0.43.2) DELIVERY_NOT_COMPLETED — 전달 완료된 배송만(오배송 = 전달했는데 잘못 준 것)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

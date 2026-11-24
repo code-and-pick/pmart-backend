@@ -290,6 +290,15 @@ public class RiderDeductions {
         store
             .delivery(deliveryId)
             .orElseThrow(() -> PmartException.notFound("DELIVERY_NOT_FOUND", "배송이 없습니다."));
+    // 오배송 = 전달했는데 잘못 준 것 — 전달 완료된 배송만(2026-11-25 검토: 배달 중·실패·취소 배송을 잘못 고르면 지금 맡은 라이더에게 차감이 생겼다)
+    if (!"COMPLETED".equals(d.state())) {
+      throw new PmartException(
+          "DELIVERY_NOT_COMPLETED",
+          HttpStatus.UNPROCESSABLE_CONTENT,
+          "전달 완료된 배송만 차감할 수 있습니다(지금 " + d.state() + ").",
+          false,
+          List.of());
+    }
     if (d.riderId() == null) {
       throw new PmartException(
           "NO_RIDER", HttpStatus.UNPROCESSABLE_CONTENT, "라이더가 배정된 적 없는 배송입니다.", false, List.of());
