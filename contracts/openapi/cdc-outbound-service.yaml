@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -11,6 +11,9 @@ info:
     MFC 의 mfc-capacity `POST /mfcs/{mfcId}/workers/{workerId}/next-tasks` 를 CDC 판으로 옮긴 것(사용자 "MFC 기능의 DC 버전"). CDC 는 작업자·근무 정본이 아직 없어 근무·업무 자격·온도대 출입 검사는 뒤로 미룬다.
     0.3.0(2026-11-25, 첫 구현): TRF 인수·cdc-inventory 할당 요청·Wave 생성/릴리스(피킹 Task 생성)·Task 조회/다음 작업 받기/착수/피킹 실적. **Task 경로를 `/cdcs/{cdcId}/tasks…` 로 옮김**
     — 게이트웨이 `/api/v1/tasks/**` 가 mfc-fulfillment 라우트라 겹치지 않게(PR #443 검토). 분류·검품·상차·출발 검증·매니페스트·출발 준비·미출발 취소는 아직 501.
+    0.4.0(2026-11-25): 분류·검품·상차 결과, 출발 검증 → cdc-inventory TOUT(+ 잔여 해제), 출발 매니페스트 구현. LPN 단위에 RT(롤테이너) 추가 —
+    TMS 정본 D-07 "적재 용량 = 롤테이너, 수량 검증 = 박스"(칠곡 CDC-8). 수량은 BOX 만 가진다(RT·PLT 는 담는 그릇 — contents 비움, 하위 BOX 는 parentLpn).
+    출발 준비·미출발 취소는 아직 501.
 servers:
   - url: /api/v1
 security:
@@ -319,8 +322,12 @@ paths:
   /sorting-results:
     post:
       tags: [results]
-      summary: 분류 결과 등록 (BOX SEALED / PLT READY, LPN 구성·계보)
-      description: 분류 ≤ 실피킹. LPN은 물류 취급 단위이며 상품 수량과 별도다. 한 LPN은 하나의 TRF에만 속한다.
+      summary: 분류 결과 등록 (BOX SEALED / PLT·RT READY, LPN 구성·계보)
+      description: |
+        분류 ≤ 실피킹. LPN은 물류 취급 단위이며 상품 수량과 별도다. 한 LPN은 하나의 TRF에만 속한다.
+        (0.4.0) 수량은 BOX 의 contents 만 센다 — TRF·SKU·LOT 마다 BOX 합 ≤ 실피킹(Task 실적)이어야 한다(409 SORT_EXCEEDS_PICKED). RT·PLT 는 contents 를 비우고(아니면 400),
+        BOX 의 parentLpn 은 같은 결과 또는 이미 등록된 같은 TRF 의 RT·PLT 여야 한다(400). 이미 등록된 LPN 은 다시 분류하지 않는다(409 LPN_ALREADY_SEALED).
+        TRF 는 그 Wave 의 것이어야 한다(409 INVALID_STATE). 자기 센터 운영자만.
       operationId: reportSortingResult
       x-pmart-user-types: [OPERATOR]
       x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
@@ -359,7 +366,9 @@ paths:
     post:
       tags: [results]
       summary: 검품 결과 등록 (LPN 단위 합격/불합격, 온도·봉인 확인)
-      description: 검품합격 ≤ 분류. 불합격 LPN은 재분류 또는 cdc-quality 보류 대상.
+      description: |
+        검품합격 ≤ 분류. 불합격 LPN은 재분류 또는 cdc-quality 보류 대상.
+        (0.4.0) RT·PLT 를 검품하면 그 안의 BOX 모두에 같은 결과. 다시 검품하면 덮어쓴다 — 단 상차된 LPN 은 409 INVALID_STATE. 그 TRF 의 LPN 이 아니면 404.
       operationId: reportInspectionResult
       x-pmart-user-types: [OPERATOR]
       x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
@@ -404,6 +413,8 @@ paths:
       description: |
         상차 ≤ 검품합격. LOADED는 출발 사실이 아니며 수량 전기를 일으키지 않는다.
         출발 전 하차(UNLOADED)도 같은 경로로 등록한다. 출발 준비 적격은 TMS 창·MFC 수령창 조건을 소비한다.
+        (0.4.0) RT·PLT 를 실으면 그 안의 BOX 를 싣는다(구획·봉인은 BOX 에 붙음). BOX 가 PASSED 가 아니면 409 LPN_NOT_PASSED, 다른 운행에 실려 있으면 409 TRIP_MISMATCH,
+        UNLOADED 는 이 운행에 실린 것만. 이미 출발한 TRF 는 409 INVALID_STATE. 방문 역순 상차 순서는 검사하지 않는다(TMS 몫).
       operationId: reportLoadingResult
       x-pmart-user-types: [OPERATOR]
       x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
@@ -480,6 +491,14 @@ paths:
         TMS 출발 구성(trfCompositions)과 상차 LOADED를 LPN 단위로 대조한다. 타 MFC 혼입·누락·봉인 불일치는 mismatches로 반환하고
         OutboundDiscrepancyRaised를 발행한다. 일치 TRF만 cdc-inventory POST /internal/departure-postings를 호출한다.
         departureId당 1회. 승인 60·실출발 48이면 출발 구성 48을 동결하고 미출발 12는 replenishment 잔량 정리 대상이다.
+        (0.4.0)
+        - TruckActuallyDeparted 에서 옮기는 값: departureId·tripId·vehicleId·departedAt·source·evidenceRef, trfCompositions[].trfId, toMfc → mfcId, lines[].lpn → lpns(중복 없이), sealIds → sealNos.
+        - 대조는 BOX 단위(RT·PLT 는 안의 BOX 로 펼침): 출발에만 있음 → LPN_NOT_LOADED(다른 TRF 의 BOX 면 WRONG_TRF), 이 운행에 실렸는데 출발에 없음 → LPN_NOT_IN_DEPARTURE,
+          mfcId 가 TRF 목적지와 다름 → WRONG_MFC, sealNos 를 주면 실린 BOX 의 봉인이 그 안에 있어야(SEAL_MISMATCH). 불일치 TRF 는 TOUT 하지 않는다.
+        - 일치 TRF: 출발 BOX 의 contents 를 SKU·LOT 로 합쳐 TOUT(줄 = departureLineId 고정값·lpns, departureSource = source — **SIMULATED 도 TOUT 하며 재고·Transit 기록에 SIMULATED 표시가 남는다**,
+          칠곡 CDC-9 시뮬레이터 실서버 모드) → 남은 할당 해제(RESIDUAL_CLOSED) → TRF DEPARTED, 매니페스트 발행(TransferShipmentManifestIssued).
+        - 재고 응답이 불명이면 그 TRF 는 postingStatus UNKNOWN_RESULT — **같은 본문을 다시 보내면 같은 키로 다시 전기**한다(재고는 한 번만 반영). 같은 departureId·다른 본문은 409 DEPARTURE_ALREADY_VALIDATED.
+        - 없는 TRF 나 이미 다른 출발로 나간 TRF 가 있으면 409 INVALID_STATE(아무것도 기록하지 않음).
       operationId: validateDeparture
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -542,6 +561,7 @@ paths:
     get:
       tags: [internal]
       summary: '[mfc-inbound/transport→cdc-outbound] 출발 매니페스트 조회 (TransferShipmentManifestIssued와 동일 내용)'
+      description: (0.4.0) lpns = 출발한 BOX 와 그 RT·PLT, lines = BOX 마다 SKU·LOT·수량(lpn = BOX, expiresAt = 할당 LOT 소비기한). TOUT 이 반영된 TRF 만 — 아니면 404 NOT_DEPARTED.
       operationId: getShipmentManifest
       parameters:
         - { name: trfId, in: path, required: true, schema: { type: string } }
@@ -753,7 +773,7 @@ components:
       required: [lpn, unitType, state, contents]
       properties:
         lpn: { type: string }
-        unitType: { type: string, enum: [BOX, PLT] }
+        unitType: { type: string, enum: [BOX, PLT, RT], description: 'RT = 롤테이너(0.4.0). 수량은 BOX 만 — RT·PLT 는 contents 비움' }
         state: { type: string, enum: [SEALED, READY] }
         parentLpn: { type: [string, 'null'] }
         sealNo: { type: string }

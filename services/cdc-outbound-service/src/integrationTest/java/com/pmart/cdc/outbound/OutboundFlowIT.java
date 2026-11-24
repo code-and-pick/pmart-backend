@@ -2,6 +2,7 @@ package com.pmart.cdc.outbound;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -168,7 +169,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                     .withBody(
                         """
                         {"allocationId":"ALC-1","state":"PARTIAL","lines":[
-                          {"sku":"E-00000001","lots":[{"lot":"L1","locationCode":"CDC01-C-5-61-01-1-1","qty":5}]},
+                          {"sku":"E-00000001","lots":[{"lot":"L1","locationCode":"CDC01-C-5-61-01-1-1","qty":5,"expiresAt":"2027-01-31"}]},
                           {"sku":"E-00000002","lots":[{"lot":"L2","locationCode":"CDC01-B-6-61-01-1-1","qty":3}]}]}
                         """)));
     stubAllocate(trf2, 422, "{\"code\":\"SKU_NOT_HANDLED\",\"detail\":\"취급 OFF\"}");
@@ -347,5 +348,162 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(picked).isEqualTo(7); // 5 + (3 − 1)
     JsonNode list = get(OPS, "/cdcs/CDC01/tasks?waveId=" + waveId).body();
     assertThat(list.path("items").size()).isEqualTo(2);
+
+    // 9) 분류 — 롤테이너(RT) 하나에 BOX 둘. 실피킹보다 많으면 409, 같은 LPN 다시 409
+    String rt = "RT-" + UUID.randomUUID().toString().substring(0, 8);
+    String b1 = "BOX-" + UUID.randomUUID().toString().substring(0, 8);
+    String b2 = "BOX-" + UUID.randomUUID().toString().substring(0, 8);
+    Map<String, Object> over2 = new LinkedHashMap<>();
+    over2.put("waveId", waveId);
+    over2.put("trfId", trf1);
+    over2.put("workerId", "w1");
+    over2.put(
+        "lpns",
+        List.of(
+            box(
+                "BOX-X" + UUID.randomUUID().toString().substring(0, 6),
+                null,
+                "E-00000002",
+                "L2",
+                3)));
+    assertThat(post(OPS, "/sorting-results", over2).body().path("code").asString())
+        .isEqualTo("SORT_EXCEEDS_PICKED");
+    Map<String, Object> rtLpn = new LinkedHashMap<>();
+    rtLpn.put("lpn", rt);
+    rtLpn.put("unitType", "RT");
+    rtLpn.put("state", "READY");
+    rtLpn.put("contents", List.of());
+    Map<String, Object> sortBody = new LinkedHashMap<>();
+    sortBody.put("waveId", waveId);
+    sortBody.put("trfId", trf1);
+    sortBody.put("workerId", "w1");
+    sortBody.put(
+        "lpns",
+        List.of(rtLpn, box(b1, rt, "E-00000001", "L1", 5), box(b2, rt, "E-00000002", "L2", 2)));
+    Res sorted = post(OPS, "/sorting-results", sortBody);
+    assertThat(sorted.status()).as(sorted.body().toString()).isEqualTo(202);
+    assertThat(post(OPS, "/sorting-results", sortBody).body().path("code").asString())
+        .isEqualTo("LPN_ALREADY_SEALED");
+    String wr = sorted.body().path("resultId").asString();
+    assertThat(get(OPS, "/work-results/" + wr).body().path("kind").asString()).isEqualTo("SORTING");
+
+    // 10) 검품 전 상차 409, 검품(RT → BOX 둘 합격) 뒤 상차, 다른 운행 409
+    Map<String, Object> load = new LinkedHashMap<>();
+    load.put("trfId", trf1);
+    load.put("tripId", "TRIP-1");
+    load.put("vehicleId", "VH-1");
+    load.put("workerId", "w1");
+    load.put("action", "LOADED");
+    load.put("lpns", List.of(Map.of("lpn", rt, "compartment", "AMBIENT", "sealNo", "SEAL-1")));
+    assertThat(post(OPS, "/loading-results", load).body().path("code").asString())
+        .isEqualTo("LPN_NOT_PASSED");
+    Map<String, Object> insp = new LinkedHashMap<>();
+    insp.put("trfId", trf1);
+    insp.put("inspectorId", "q1");
+    insp.put("items", List.of(Map.of("lpn", rt, "result", "PASSED")));
+    assertThat(post(OPS, "/inspection-results", insp).status()).isEqualTo(202);
+    assertThat(post(OPS, "/loading-results", load).status()).isEqualTo(202);
+    Map<String, Object> other = new LinkedHashMap<>(load);
+    other.put("tripId", "TRIP-2");
+    assertThat(post(OPS, "/loading-results", other).body().path("code").asString())
+        .isEqualTo("TRIP_MISMATCH");
+
+    // 11) 출발 검증(SIMULATED) — trf1 일치(TOUT·잔여 해제·매니페스트), trf3 불일치(실은 것 없음)
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/departure-postings"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-9\",\"appliedQty\":7}")));
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo(ALLOC + "/ALC-1/releases"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-10\"}")));
+    String dep = "DEP-" + UUID.randomUUID();
+    Map<String, Object> depBody = new LinkedHashMap<>();
+    depBody.put("departureId", dep);
+    depBody.put("tripId", "TRIP-1");
+    depBody.put("vehicleId", "VH-1");
+    depBody.put("departedAt", Instant.now().truncatedTo(ChronoUnit.SECONDS).toString());
+    depBody.put("source", "SIMULATED");
+    depBody.put(
+        "trfCompositions",
+        List.of(
+            Map.of(
+                "trfId",
+                trf1,
+                "mfcId",
+                "MFC-BJG-01",
+                "lpns",
+                List.of(b1, b2),
+                "sealNos",
+                List.of("SEAL-1")),
+            Map.of("trfId", trf3, "lpns", List.of())));
+    Res v = post(SERVICE, "/internal/departure-validations", depBody);
+    assertThat(v.status()).as(v.body().toString()).isEqualTo(200);
+    assertThat(v.body().path("overallResult").asString()).isEqualTo("PARTIALLY_MATCHED");
+    JsonNode t1v = v.body().path("transfers").get(0);
+    assertThat(t1v.path("result").asString()).isEqualTo("MATCHED");
+    assertThat(t1v.path("postingStatus").asString()).isEqualTo("APPLIED");
+    assertThat(t1v.path("commitId").asString()).isEqualTo("CMT-9");
+    assertThat(t1v.path("departedQty").asInt()).isEqualTo(7);
+    assertThat(v.body().path("transfers").get(1).path("result").asString()).isEqualTo("MISMATCHED");
+    inventory.verify(
+        1,
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings"))
+            .withRequestBody(matchingJsonPath("$.departureSource", equalTo("SIMULATED")))
+            .withRequestBody(matchingJsonPath("$.toMfcId", equalTo("MFC-BJG-01")))
+            .withRequestBody(matchingJsonPath("$.lines.length()", equalTo("2"))));
+    inventory.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(ALLOC + "/ALC-1/releases"))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("RESIDUAL_CLOSED"))));
+    assertThat(outbox("TruckDepartureValidated")).isEqualTo(2);
+    assertThat(outbox("OutboundDiscrepancyRaised")).isEqualTo(1);
+    assertThat(outbox("TransferShipmentManifestIssued")).isEqualTo(1);
+
+    // 같은 본문 다시 → 재고 다시 안 부름, 다른 본문 → 409
+    assertThat(post(SERVICE, "/internal/departure-validations", depBody).status()).isEqualTo(200);
+    inventory.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings")));
+    Map<String, Object> changed = new LinkedHashMap<>(depBody);
+    changed.put("vehicleId", "VH-9");
+    assertThat(
+            post(SERVICE, "/internal/departure-validations", changed)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("DEPARTURE_ALREADY_VALIDATED");
+
+    // 12) 매니페스트·진행
+    JsonNode man = get(SERVICE, "/internal/shipment-manifests/" + trf1).body();
+    assertThat(man.path("lines").size()).isEqualTo(2);
+    assertThat(man.path("lpns").size()).isEqualTo(3);
+    assertThat(man.toString()).contains("2027-01-31");
+    JsonNode fin = get(SERVICE, "/internal/transfer-intakes/" + trf1).body();
+    assertThat(fin.path("state").asString()).isEqualTo("DEPARTED");
+    int departed = 0;
+    for (JsonNode p : fin.path("progress")) {
+      departed += p.path("departedQty").asInt();
+    }
+    assertThat(departed).isEqualTo(7);
+    assertThat(get(SERVICE, "/internal/shipment-manifests/" + trf3).status()).isEqualTo(404);
+  }
+
+  static Map<String, Object> box(String lpn, String parent, String sku, String lot, int qty) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("lpn", lpn);
+    m.put("unitType", "BOX");
+    m.put("state", "SEALED");
+    if (parent != null) {
+      m.put("parentLpn", parent);
+    }
+    m.put("contents", List.of(Map.of("sku", sku, "lot", lot, "qty", qty)));
+    return m;
   }
 }

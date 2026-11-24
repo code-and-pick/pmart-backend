@@ -59,6 +59,29 @@ public class InventoryClient {
                 .body(String.class));
   }
 
+  /** POST /internal/departure-postings(TOUT) — 같은 키·같은 본문은 기존 commitId. */
+  public JsonNode depart(String key, Map<String, Object> body) {
+    return post("/api/v1/internal/departure-postings", key, body);
+  }
+
+  /** POST /internal/allocations/{id}/releases. */
+  public JsonNode release(String allocationId, String key, Map<String, Object> body) {
+    return post("/api/v1/internal/allocations/" + allocationId + "/releases", key, body);
+  }
+
+  private JsonNode post(String uri, String key, Map<String, Object> body) {
+    return call(
+        () ->
+            http.post()
+                .uri(uri)
+                .header("Idempotency-Key", key)
+                .header("X-Source-System", SOURCE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(String.class));
+  }
+
   private JsonNode call(Supplier<String> s) {
     try {
       String raw = Downstream.call(INVENTORY, s::get);

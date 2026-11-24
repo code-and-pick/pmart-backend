@@ -44,16 +44,24 @@ public class TransferService {
       Instant dueAt,
       List<IntakeLine> lines) {}
 
-  public record TransferView(TransferRow transfer, List<TransferLineRow> lines) {}
+  /** 단계별 수량(SKU → 분류·검품합격·상차·출발 BOX 합). */
+  public record TransferView(
+      TransferRow transfer, List<TransferLineRow> lines, Map<String, int[]> stages) {}
 
   private final OutboundStore store;
+  private final com.pmart.cdc.outbound.infrastructure.LpnStore lpns;
   private final InventoryClient inventory;
   private final TransactionTemplate tx;
   private final Support support;
 
   public TransferService(
-      OutboundStore store, InventoryClient inventory, TransactionTemplate tx, Support support) {
+      OutboundStore store,
+      com.pmart.cdc.outbound.infrastructure.LpnStore lpns,
+      InventoryClient inventory,
+      TransactionTemplate tx,
+      Support support) {
     this.store = store;
+    this.lpns = lpns;
     this.inventory = inventory;
     this.tx = tx;
     this.support = support;
@@ -168,7 +176,15 @@ public class TransferService {
         store
             .transfer(trfId, false)
             .orElseThrow(() -> PmartException.notFound("NOT_FOUND", "TRF " + trfId + " 가 없습니다."));
-    return new TransferView(t, store.transferLines(trfId));
+    Map<String, int[]> stages = new java.util.HashMap<>();
+    String[] conds = {"ALL", "PASSED", "LOADED", "DEPARTED"};
+    for (int i = 0; i < conds.length; i++) {
+      int idx = i;
+      lpns.boxQty(trfId, conds[i])
+          .forEach(
+              (k, q) -> stages.computeIfAbsent(k.split("[|]", 2)[0], x -> new int[4])[idx] += q);
+    }
+    return new TransferView(t, store.transferLines(trfId), stages);
   }
 
   static boolean unknown(PmartException e) {

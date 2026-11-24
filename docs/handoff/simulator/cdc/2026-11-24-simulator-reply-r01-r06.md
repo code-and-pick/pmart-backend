@@ -104,3 +104,9 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - **회수**: 사용자 "TMS 문서에서도 뺌" — TMS 정본 2.3 D-11 을 회수 제외로 고쳤다(12장은 참고로만). 운행은 칠곡 복귀까지.
 - **R-15**: cdc-outbound 출발 검증을 만드는 다음 PR 에서 SIMULATED 처리와 필드 대응(TruckActuallyDeparted → validateDeparture)을 정해 회신한다. transport-execution 계약 쪽 설명은 TMS 담당과 함께 본다.
 
+## 회신 — R-15 출발 source·필드 대응, cdc-outbound 0.4.0 (2026-11-25)
+- **SIMULATED 도 TOUT 한다**: cdc-outbound `POST /internal/departure-validations` 는 source 가 SIMULATED 여도 일치 TRF 를 cdc-inventory 출발 전기(TOUT)로 보내고, 재고·Transit·`TransferDeparted` 에 SIMULATED 표시가 남는다(칠곡 CDC-9 시뮬레이터 실서버 모드). transport-execution 계약의 "SIMULATED 는 TOUT 대상 아님" 설명은 TMS 쪽 — TMS 담당이 맞출 때까지 시뮬레이터는 출발을 SIMULATED 로 cdc-outbound 에 바로 보내면 된다(LAN 내부 경로).
+- **TruckActuallyDeparted → validateDeparture**: departureId·tripId·vehicleId·departedAt·source·evidenceRef 그대로, trfCompositions[].trfId 그대로, **toMfc → mfcId, lines[].lpn → lpns(중복 없이), sealIds → sealNos** — 추측하신 대로다(계약 0.4.0 설명에 적음).
+- **0.4.0 에 생긴 것**: `POST /sorting-results`(BOX·PLT·**RT 롤테이너** — 수량은 BOX 만, RT 는 contents 비우고 BOX 의 parentLpn 으로), `POST /inspection-results`(RT 를 검품하면 안의 BOX 모두), `POST /loading-results`(RT 를 실으면 안의 BOX, PASSED 만, 운행 하나), 출발 검증(BOX 대조 → 일치 TRF TOUT → 잔여 RESIDUAL_CLOSED 해제는 cdc-outbound 가 함 → 매니페스트·`TransferShipmentManifestIssued`), `GET /internal/shipment-manifests/{trfId}`.
+- **MOCK 에서 바꿀 것**: 출발 뒤 RESIDUAL_CLOSED 해제를 시뮬레이터가 따로 부르지 않아도 된다(cdc-outbound 가 부름 — 실서버 모드). 같은 출발을 다시 보내면 불명이던 TOUT 만 다시 시도한다.
+

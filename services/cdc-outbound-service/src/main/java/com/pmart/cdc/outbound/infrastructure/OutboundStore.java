@@ -373,6 +373,14 @@ public class OutboundStore {
     return jdbc.query(sql.toString(), (rs, i) -> task(rs), args.toArray());
   }
 
+  /** 같은 작업자의 다음 작업 받기를 줄 세운다(트랜잭션 끝까지) — 다른 멱등 키로 동시에 두 번 받아도 한 작업만. */
+  public void lockWorker(String cdcId, String workerId) {
+    jdbc.query(
+        "SELECT pg_advisory_xact_lock(hashtext(?))",
+        rs -> {},
+        "cdc-outbound:worker:" + cdcId + ":" + workerId);
+  }
+
   /** 작업자가 들고 있는 작업(ACCEPTED·IN_PROGRESS). */
   public Optional<TaskRow> heldBy(String cdcId, String workerId) {
     return jdbc
@@ -448,6 +456,19 @@ public class OutboundStore {
         shortReason,
         taskId,
         lineNo);
+  }
+
+  /** TRF 의 실피킹 합(SKU·LOT → 수량) — 분류 ≤ 실피킹 검사용. */
+  public java.util.Map<String, Integer> pickedByLot(String trfId) {
+    java.util.Map<String, Integer> out = new java.util.HashMap<>();
+    jdbc.query(
+        "SELECT l.sku, l.lot, SUM(l.picked_qty) AS q FROM task_line l JOIN task t ON t.task_id = l.task_id"
+            + " WHERE t.trf_id = ? GROUP BY l.sku, l.lot",
+        rs -> {
+          out.put(rs.getString("sku") + "|" + rs.getString("lot"), rs.getInt("q"));
+        },
+        trfId);
+    return out;
   }
 
   /** 아직 끝나지 않은 Task 수(Wave 단위 / TRF 단위). */

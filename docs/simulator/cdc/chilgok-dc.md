@@ -110,7 +110,7 @@ WMS 원문 0.6 대로 자동화 설비 자체는 구현하지 않고 **가상 �
 | 시뮬레이터가 대신하는 역할 | 서비스 | 경로 |
 |---|---|---|
 | 보충 승인(TRF 승인) | cdc-outbound | `POST /internal/transfer-intakes`, `GET /internal/transfer-intakes/{trfId}` |
-| TMS 실제 출발 | cdc-outbound | `POST /internal/departure-validations`(다음 PR), `GET …/{departureId}`, `GET /internal/shipment-manifests/{trfId}`, `GET /internal/outbound-readiness` |
+| TMS 실제 출발 | cdc-outbound | `POST /internal/departure-validations`(0.4.0 — SIMULATED 도 TOUT), `GET …/{departureId}`, `GET /internal/shipment-manifests/{trfId}`, `GET /internal/outbound-readiness` |
 | 센터 개시·현황 조회 | cdc-inventory | `GET /internal/availability`·`/internal/allocations/{id}`·`/internal/transits`·`/internal/commits/{id}`, `POST /internal/move-postings`(보충 MOV) |
 | 개시 시드(PC1 이 한 번) | cdc-inventory·cdc-location | `/internal/initial-balances`·`/internal/safety-stocks`·`/internal/location-batches` — 시드 스크립트로, 시뮬레이터가 부르지 않음 |
 

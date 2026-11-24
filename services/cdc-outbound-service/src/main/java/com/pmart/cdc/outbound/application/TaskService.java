@@ -106,6 +106,7 @@ public class TaskService {
         req,
         NextResult.class,
         () -> {
+          store.lockWorker(cdcId, workerId);
           Optional<TaskRow> held = store.heldBy(cdcId, workerId);
           if (held.isPresent()) {
             return new NextResult(false, view(held.get().taskId()));
