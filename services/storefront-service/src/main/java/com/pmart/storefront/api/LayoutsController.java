@@ -32,6 +32,40 @@ public class LayoutsController implements LayoutsApi {
 
   private final LayoutService layouts;
 
+  /** 배너 자리별 그림 규격(0.15.0) — 편성 제출 검사와 같은 값. 직원 토큰이면 누구나. */
+  @Override
+  public org.springframework.http.ResponseEntity<
+          com.pmart.storefront.api.generated.model.ListBannerImageSpecs200Response>
+      listBannerImageSpecs() {
+    var items =
+        new java.util.ArrayList<
+            com.pmart.storefront.api.generated.model.ListBannerImageSpecs200ResponseItemsInner>();
+    for (String p : com.pmart.storefront.domain.BannerImageSpec.ORDER) {
+      var x = com.pmart.storefront.domain.BannerImageSpec.BY_PLACEMENT.get(p);
+      items.add(
+          new com.pmart.storefront.api.generated.model.ListBannerImageSpecs200ResponseItemsInner()
+              .placement(
+                  com.pmart.storefront.api.generated.model.ListBannerImageSpecs200ResponseItemsInner
+                      .PlacementEnum.fromValue(p))
+              .ratio(java.math.BigDecimal.valueOf(x.ratio()))
+              .ratioLabel(x.ratioLabel())
+              .recommendedWidth(x.recommendedWidth())
+              .recommendedHeight(x.recommendedHeight())
+              .minWidth(x.minWidth())
+              .minHeight(x.minHeight()));
+    }
+    return org.springframework.http.ResponseEntity.ok(
+        new com.pmart.storefront.api.generated.model.ListBannerImageSpecs200Response()
+            .ratioTolerance(
+                java.math.BigDecimal.valueOf(
+                    com.pmart.storefront.domain.BannerImageSpec.RATIO_TOLERANCE))
+            .maxBytes(com.pmart.storefront.domain.LayoutRules.MAX_IMAGE_BYTES)
+            .contentTypes(
+                new java.util.ArrayList<>(
+                    java.util.List.of("image/jpeg", "image/png", "image/webp")))
+            .items(items));
+  }
+
   public LayoutsController(LayoutService layouts) {
     this.layouts = layouts;
   }
@@ -183,6 +217,18 @@ public class LayoutsController implements LayoutsApi {
         .createdAt(odt(r.createdAt()))
         .updatedAt(r.updatedAt() == null ? null : odt(r.updatedAt()))
         .note(d.body().note())
+        .warnings(
+            new java.util.ArrayList<>(
+                d.warnings().stream()
+                    .map(
+                        w ->
+                            new com.pmart.storefront.api.generated.model.LayoutDraftWarning()
+                                .field(w.field())
+                                .code(
+                                    com.pmart.storefront.api.generated.model.LayoutDraftWarning
+                                        .CodeEnum.fromValue(w.code()))
+                                .detail(w.detail()))
+                    .toList()))
         .banners(
             d.body().banners().stream()
                 .map(

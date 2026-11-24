@@ -87,6 +87,7 @@ GET /api/v1/consent-terms PUBLIC
 GET /api/v1/consent-terms/{consentType}/{version} PUBLIC
 GET /api/v1/content-drafts OPERATOR
 GET /api/v1/content-drafts/counts OPERATOR
+GET /api/v1/content-drafts/image-specs OPERATOR
 GET /api/v1/content-drafts/{draftId} OPERATOR
 GET /api/v1/content-images/{imageId} PUBLIC
 GET /api/v1/content-import-batches/{batchId} OPERATOR
@@ -352,6 +353,7 @@ GET /api/v1/skus/{sku} OPERATOR
 GET /api/v1/slots CUSTOMER,GUEST
 GET /api/v1/stock-summaries OPERATOR
 GET /api/v1/stop-requests OPERATOR
+GET /api/v1/storefront/banner-image-specs OPERATOR
 GET /api/v1/storefront/banner-images/{imageId} PUBLIC
 GET /api/v1/storefront/banners PUBLIC
 GET /api/v1/storefront/custom-tabs/{tabKey} PUBLIC

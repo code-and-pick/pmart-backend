@@ -1,8 +1,13 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.14.0
+  version: 0.15.0
   description: |
+    0.15.0(2026-11-24, 사용자 "사진이 들어가는 곳 옆에 사진 규격 필요"·"가로 세로 크기나 비율이 필요한건데"·"저 대안대로 작업"): 배너 자리별 그림 규격 —
+      홈·카테고리 배너(HOME_TOP·HOME_MIDDLE·HOME_INLINE·CATEGORY) 2.8:1 권장 1960×700·최소 1080×386, 팝업(POPUP) 4:5 권장 1080×1350·최소 720×900,
+      로딩 화면(SPLASH) 9:16 권장 1080×1920·최소 720×1280(고객 앱이 그리는 비율 그대로 — 칸을 채우고 넘치면 자름). **막지 않고 경고만**(사용자 2026-11-24
+      "서버에서 막지 않고 경고만 표시") — 초안 응답 `warnings[]`(field banners[i].imageId · code BANNER_IMAGE_RATIO 비율 ±10% 밖 · BANNER_IMAGE_TOO_SMALL
+      최소보다 작음 · BANNER_IMAGE_SIZE_UNKNOWN 가로·세로를 못 읽음 · detail 지금 크기·권장). 제출은 그대로. 화면이 띄울 규격은 `GET /storefront/banner-image-specs`.
     0.14.0(2026-11-24, 백오피스 행사 대상 테마 — 사용자 "행사 대상에 테마도 추가"): 내부 `GET /internal/storefront/themes` — 지금 게시된 진열의 테마(sectionId·kind·title·productIds).
       promotion-service 가 1분마다 받아 기간 할인 대상 THEME(그 테마 상품의 모든 옵션)을 정한다. 고객 API 는 그대로.
     0.13.0(2026-11-23, 백엔드 요청 availability-display §2 — 사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기", 고객앱 SPLASH 회신 — 사용자 "넣어줘"):
@@ -287,6 +292,41 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /storefront/banner-image-specs:
+    get:
+      tags: [layouts]
+      summary: '[운영] 배너 자리별 그림 규격 (0.15.0)'
+      x-added-in: '2026-11-24'
+      description: |
+        화면이 배너 올리는 곳 옆에 띄울 규격. 초안 warnings 가 쓰는 값과 같다(비율 ±ratioTolerance, 최소 크기 — 막지 않음). 직원 토큰이면 누구나.
+      operationId: listBannerImageSpecs
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ratioTolerance, maxBytes, contentTypes, items]
+                properties:
+                  ratioTolerance: { type: number, description: '비율 허용 범위(0.1 = ±10%)' }
+                  maxBytes: { type: integer, format: int64, description: '한 장 최대 바이트(5MB)' }
+                  contentTypes: { type: array, items: { type: string } }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [placement, ratio, ratioLabel, recommendedWidth, recommendedHeight, minWidth, minHeight]
+                      properties:
+                        placement: { type: string, enum: [HOME_TOP, HOME_MIDDLE, HOME_INLINE, CATEGORY, POPUP, SPLASH] }
+                        ratio: { type: number, description: '가로 ÷ 세로' }
+                        ratioLabel: { type: string, description: '예 "2.8:1"·"4:5"·"9:16"' }
+                        recommendedWidth: { type: integer }
+                        recommendedHeight: { type: integer }
+                        minWidth: { type: integer }
+                        minHeight: { type: integer }
 
   /storefront/banner-images:
     post:
@@ -596,6 +636,19 @@ components:
             createdBy: { type: string }
             createdAt: { type: string, format: date-time }
             updatedAt: { type: [string, 'null'], format: date-time }
+            warnings:
+              type: array
+              x-added-in: '2026-11-24'
+              description: '(0.15.0) 막지 않는 배너 그림 규격 경고 — 제출에 영향 없음'
+              items: { $ref: '#/components/schemas/LayoutDraftWarning' }
+    LayoutDraftWarning:
+      type: object
+      x-added-in: '2026-11-24'
+      required: [field, code]
+      properties:
+        field: { type: string, description: '예 banners[0].imageId' }
+        code: { type: string, enum: [BANNER_IMAGE_RATIO, BANNER_IMAGE_TOO_SMALL, BANNER_IMAGE_SIZE_UNKNOWN] }
+        detail: { type: [string, 'null'], description: '지금 크기·권장 크기' }
     LayoutDraftSubmission:
       type: object
       x-added-in: '2026-11-20'

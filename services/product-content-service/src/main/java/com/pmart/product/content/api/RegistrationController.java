@@ -40,6 +40,47 @@ public class RegistrationController implements RegistrationApi {
   private final ObjectMapper mapper;
   private final ContentDraftListing listing;
 
+  /** 상품 사진 규격(0.8.0) — 초안 warnings 와 같은 값. 직원 토큰이면 누구나. */
+  @Override
+  public org.springframework.http.ResponseEntity<
+          com.pmart.product.content.api.generated.model.GetContentImageSpecs200Response>
+      getContentImageSpecs() {
+    var items =
+        new java.util.ArrayList<
+            com.pmart.product.content.api.generated.model
+                .GetContentImageSpecs200ResponseItemsInner>();
+    items.add(
+        new com.pmart.product.content.api.generated.model
+                .GetContentImageSpecs200ResponseItemsInner()
+            .role(com.pmart.product.content.api.generated.model.ImageRole.MAIN)
+            .ratioLabel("1:1")
+            .ratioTolerance(
+                java.math.BigDecimal.valueOf(
+                    com.pmart.product.content.domain.ContentImageSpec.RATIO_TOLERANCE))
+            .recommendedWidth(com.pmart.product.content.domain.ContentImageSpec.MAIN_MIN)
+            .recommendedHeight(com.pmart.product.content.domain.ContentImageSpec.MAIN_MIN)
+            .maxCount(1));
+    for (var role :
+        java.util.List.of(
+            com.pmart.product.content.api.generated.model.ImageRole.DESCRIPTION,
+            com.pmart.product.content.api.generated.model.ImageRole.DETAIL)) {
+      items.add(
+          new com.pmart.product.content.api.generated.model
+                  .GetContentImageSpecs200ResponseItemsInner()
+              .role(role)
+              .recommendedWidth(
+                  com.pmart.product.content.domain.ContentImageSpec.DETAIL_MIN_WIDTH));
+    }
+    return org.springframework.http.ResponseEntity.ok(
+        new com.pmart.product.content.api.generated.model.GetContentImageSpecs200Response()
+            .maxBytes((long) com.pmart.product.content.domain.ContentRules.MAX_IMAGE_BYTES)
+            .contentTypes(
+                new java.util.ArrayList<>(
+                    java.util.List.of("image/jpeg", "image/png", "image/webp")))
+            .maxImagesPerDraft(com.pmart.product.content.domain.ContentRules.MAX_IMAGES_PER_DRAFT)
+            .items(items));
+  }
+
   public RegistrationController(
       ContentDraftService drafts,
       RegistrationMapping mapping,

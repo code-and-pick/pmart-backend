@@ -139,6 +139,17 @@ public class ContentDraftService {
     return drafts.images(draftId);
   }
 
+  /** 사진 규격 경고(0.8.0 — 막지 않음, {@link com.pmart.product.content.domain.ContentImageSpec}). */
+  public List<ContentProblem> warnings(DraftRow d) {
+    return com.pmart.product.content.domain.ContentImageSpec.warnings(
+        images(d.draftId()).stream()
+            .map(
+                i ->
+                    new com.pmart.product.content.domain.ContentImageSpec.Slot(
+                        i.role(), i.sortOrder(), i.width(), i.height()))
+            .toList());
+  }
+
   /** 지금 제출하면 막히는 사유(DRAFT) 또는 저장된 반려 사유. */
   /** 지금 게시돼 있는 콘텐츠(BR-44). */
   public record Published(int contentVersion, String draftId, Instant publishedAt) {}

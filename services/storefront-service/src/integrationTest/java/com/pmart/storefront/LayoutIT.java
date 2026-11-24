@@ -171,9 +171,14 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                 new Res(r.getStatusCode().value(), mapper.readTree(r.getBody().readAllBytes())));
   }
 
+  /** 홈·카테고리 배너 규격(0.15.0 — 2.8:1 권장 1960×700). */
   static byte[] png() throws Exception {
+    return png(1960, 700);
+  }
+
+  static byte[] png(int w, int h) throws Exception {
     java.awt.image.BufferedImage img =
-        new java.awt.image.BufferedImage(40, 20, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     javax.imageio.ImageIO.write(img, "png", out);
     return out.toByteArray();
@@ -283,7 +288,7 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     Res img = upload(MD, png());
     assertThat(img.status()).as(img.body().toString()).isEqualTo(201);
     String imageId = img.body().path("imageId").asString();
-    assertThat(img.body().path("width").asInt()).isEqualTo(40);
+    assertThat(img.body().path("width").asInt()).isEqualTo(1960);
     assertThat(upload(MD, "GIF89a".getBytes()).status()).isEqualTo(422);
     // 1MB 넘는 배너(실제 배너 PNG 2.3MB 가 기본 multipart 1MB 에 413 이었음 — 설정 6MB)
     byte[] big = noisyPng(900, 700);
@@ -438,6 +443,9 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     product("PRD-M1", "ON_SALE");
     product("PRD-M2", "ON_SALE");
     String imageId = upload(MD, png()).body().path("imageId").asString();
+    // 0.15.0 자리별 규격 — 팝업 4:5, 로딩 화면 9:16
+    String popupId = upload(MD, png(1080, 1350)).body().path("imageId").asString();
+    String splashId = upload(MD, png(1080, 1920)).body().path("imageId").asString();
     String ends =
         java.time.Instant.now()
             .plus(java.time.Duration.ofDays(2))
@@ -453,7 +461,7 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                     "placement",
                     "POPUP",
                     "imageId",
-                    imageId,
+                    popupId,
                     "altText",
                     "주말 특가 안내",
                     "linkType",
@@ -468,7 +476,7 @@ class LayoutIT extends PostgresKafkaContainerSupport {
                     "placement",
                     "SPLASH",
                     "imageId",
-                    imageId,
+                    splashId,
                     "altText",
                     "PMart",
                     "linkType",
@@ -728,5 +736,95 @@ class LayoutIT extends PostgresKafkaContainerSupport {
     assertThat(home.path("bannerIntervalSeconds").asInt()).isEqualTo(5);
     // 맨 위 배너 칸에는 섞이지 않는다
     assertThat(home.path("banners").findValuesAsString("bannerId")).doesNotContain("B-G1A", "B-G2");
+  }
+
+  /**
+   * 0.15.0 — 사용자 "가로 세로 크기나 비율이 필요한건데"·"저 대안대로 작업": 자리별 비율 ±10%·최소 크기를 초안 경고로(막지 않음 — 2026-11-24
+   * "서버에서 막지 않고 경고만 표시").
+   */
+  @Test
+  void bannerImageSpecsWarnButDoNotBlockSubmit() throws Exception {
+    Res specs = send("GET", MD, "/storefront/banner-image-specs", null);
+    assertThat(specs.status()).as(specs.body().toString()).isEqualTo(200);
+    Map<String, JsonNode> byPlacement = new java.util.LinkedHashMap<>();
+    specs.body().path("items").forEach(i -> byPlacement.put(i.path("placement").asString(), i));
+    assertThat(byPlacement.get("HOME_TOP").path("ratioLabel").asString()).isEqualTo("2.8:1");
+    assertThat(byPlacement.get("HOME_TOP").path("recommendedWidth").asInt()).isEqualTo(1960);
+    assertThat(byPlacement.get("POPUP").path("ratioLabel").asString()).isEqualTo("4:5");
+    assertThat(byPlacement.get("SPLASH").path("minHeight").asInt()).isEqualTo(1280);
+    assertThat(specs.body().path("maxBytes").asLong()).isEqualTo(5L * 1024 * 1024);
+
+    String small = upload(MD, png(40, 20)).body().path("imageId").asString();
+    String old = upload(MD, png(1984, 793)).body().path("imageId").asString(); // 지금 LAN 배너(2.5:1)
+    String wide = upload(MD, png()).body().path("imageId").asString();
+    List<Map<String, Object>> banners =
+        List.of(
+            Map.of(
+                "bannerId",
+                "S1",
+                "placement",
+                "HOME_TOP",
+                "imageId",
+                small,
+                "altText",
+                "a",
+                "linkType",
+                "NONE",
+                "sortOrder",
+                0),
+            Map.of(
+                "bannerId",
+                "S2",
+                "placement",
+                "HOME_MIDDLE",
+                "imageId",
+                old,
+                "altText",
+                "b",
+                "linkType",
+                "NONE",
+                "sortOrder",
+                1),
+            Map.of(
+                "bannerId",
+                "S3",
+                "placement",
+                "POPUP",
+                "imageId",
+                wide,
+                "altText",
+                "c",
+                "linkType",
+                "NONE",
+                "sortOrder",
+                0),
+            Map.of(
+                "bannerId",
+                "S4",
+                "placement",
+                "CATEGORY",
+                "imageId",
+                wide,
+                "altText",
+                "d",
+                "linkType",
+                "NONE",
+                "sortOrder",
+                0));
+    Res draft = send("POST", MD, "/storefront/layout-drafts", Map.of("banners", banners));
+    assertThat(draft.status()).as(draft.body().toString()).isEqualTo(201);
+    // 경고만 — 초안 응답 warnings, 제출은 막지 않는다(사용자 "서버에서 막지 않고 경고만 표시")
+    String details = draft.body().path("warnings").toString();
+    assertThat(details).contains("BANNER_IMAGE_TOO_SMALL", "BANNER_IMAGE_RATIO");
+    assertThat(details).contains("banners[0].imageId", "banners[1].imageId", "banners[2].imageId");
+    assertThat(details).doesNotContain("banners[3].imageId");
+    assertThat(details).contains("1984×793");
+    Res ok =
+        send(
+            "POST",
+            MD,
+            "/storefront/layout-drafts/" + draft.body().path("draftId").asString() + "/submissions",
+            null);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
   }
 }

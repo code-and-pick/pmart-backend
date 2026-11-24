@@ -71,6 +71,7 @@ class RegistrationMapping {
     m.put("state", d.state());
     m.put("input", input);
     m.put("problems", problems);
+    m.put("warnings", drafts.warnings(d)); // 0.8.0 사진 규격 — 막지 않음
     m.put("submittable", "DRAFT".equals(d.state()) && problems.isEmpty());
     m.put("draftHash", d.draftHash());
     m.put("approvalId", d.approvalId());

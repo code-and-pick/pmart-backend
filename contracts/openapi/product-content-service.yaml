@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: product-content-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-24, 사용자 "사진이 들어가는 곳 옆에 사진 규격 필요"·"가로 세로 크기나 비율이 필요한건데"·"저 대안대로 작업"): 상품 사진 규격 —
+      대표(MAIN) 1:1 권장 1000×1000 이상, 상세 설명(DESCRIPTION)·상세정보 표(DETAIL) 가로 1000px 권장·세로 자유(고객 앱이 대표는 정사각형 칸,
+      상세는 화면 폭에 맞춰 그림). **막지 않고 경고만** — 초안 `warnings`(MAIN_IMAGE_NOT_SQUARE ±10% 밖 · MAIN_IMAGE_SMALL · IMAGE_NARROW ·
+      IMAGE_SIZE_UNKNOWN), 제출·일괄 등록은 그대로. 화면이 띄울 규격 `GET /content-drafts/image-specs`.
     0.7.0(2026-11-23, 검색·홈 목록 판매 가능 여부가 느림 — 사용자 "다 하면 될 것"): 카드 일괄 조회 `view=availability` 면 카드마다 `productId`·`options[{sku, availability}]` 만
     (이름·이미지·가격·평점·표시사항·search 없음 — 가격 조회·평점 집계를 하지 않는다). mfcId 와 같이 쓴다(없으면 availability 도 비어 있다). 쓰는 곳 search·storefront 목록 품절 판정.
     0.6.0(2026-11-23, 검색 영양·알레르기 — 사용자 "영양 넣어줘"·"알레르기도 넣어주는데 필터는 빼고 표시·검색만"): 콘텐츠에 표시사항 값 `nutrition`
@@ -254,6 +258,39 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/StatusCounts' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /content-drafts/image-specs:
+    get:
+      tags: [registration]
+      summary: 상품 사진 규격 (0.8.0)
+      x-added-in: '2026-11-24'
+      description: 화면이 사진 올리는 곳 옆에 띄울 규격. 초안 warnings 가 쓰는 값과 같다. 직원 토큰이면 누구나.
+      operationId: getContentImageSpecs
+      x-pmart-user-types: [OPERATOR]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [maxBytes, contentTypes, maxImagesPerDraft, items]
+                properties:
+                  maxBytes: { type: integer, format: int64, description: '한 장 최대 바이트(20MB — 넘으면 막음)' }
+                  contentTypes: { type: array, items: { type: string } }
+                  maxImagesPerDraft: { type: integer, description: '초안 1건 최대 장수(넘으면 막음)' }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [role, recommendedWidth]
+                      properties:
+                        role: { $ref: '#/components/schemas/ImageRole' }
+                        ratioLabel: { type: [string, 'null'], description: '대표 "1:1" — 상세는 null(세로 자유)' }
+                        ratioTolerance: { type: [number, 'null'] }
+                        recommendedWidth: { type: integer }
+                        recommendedHeight: { type: [integer, 'null'], description: '상세는 null(세로 자유)' }
+                        maxCount: { type: [integer, 'null'], description: '대표 1장' }
 
   /content-drafts/{draftId}:
     get:
@@ -591,6 +628,7 @@ components:
         input: { $ref: '#/components/schemas/ContentDraftInput' }
         images: { type: array, items: { $ref: '#/components/schemas/ContentImage' } }
         problems: { type: array, items: { $ref: '#/components/schemas/ContentDraftProblem' }, description: 지금 제출하면 막히는 사유(DRAFT) 또는 반려 사유 }
+        warnings: { type: array, x-added-in: '2026-11-24', items: { $ref: '#/components/schemas/ContentDraftProblem' }, description: '(0.8.0) 막지 않는 사진 규격 경고 — MAIN_IMAGE_NOT_SQUARE·MAIN_IMAGE_SMALL·IMAGE_NARROW·IMAGE_SIZE_UNKNOWN(field = images[역할:순서], detail = 지금 크기·권장)' }
         submittable: { type: boolean }
         draftHash: { type: [string, 'null'] }
         approvalId: { type: [string, 'null'] }

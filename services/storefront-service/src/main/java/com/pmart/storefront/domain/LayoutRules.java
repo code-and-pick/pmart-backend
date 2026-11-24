@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -191,6 +192,57 @@ public final class LayoutRules {
       tabs.forEach(x -> out.addAll(x.sectionIds()));
       return out;
     }
+  }
+
+  /** 0.15.0 막지 않는 경고(필드, 코드, 지금 크기·권장). */
+  public record Warning(String field, String code, @Nullable String detail) {}
+
+  /**
+   * 배너 그림 규격 경고(0.15.0 — 사용자 2026-11-24 "서버에서 막지 않고 경고만 표시", 자리별 비율 ±10%·최소 크기 — {@link
+   * BannerImageSpec}). 제출을 막지 않는다. imageSize = 올린 그림의 {가로, 세로}(없는 그림·읽지 못한 그림은 null — 없는 그림은 제출 검사가
+   * IMAGE_NOT_FOUND 로 막으므로 여기서는 크기를 못 읽은 것만 BANNER_IMAGE_SIZE_UNKNOWN).
+   */
+  public static List<Warning> bannerImageWarnings(
+      Body body, Predicate<String> imageExists, Function<String, int @Nullable []> imageSize) {
+    List<Warning> out = new ArrayList<>();
+    for (int i = 0; i < body.banners().size(); i++) {
+      Banner b = body.banners().get(i);
+      BannerImageSpec spec = BannerImageSpec.of(b.placement());
+      if (spec == null || !imageExists.test(b.imageId())) {
+        continue;
+      }
+      String at = "banners[" + i + "].imageId";
+      int[] size = imageSize.apply(b.imageId());
+      if (size == null) {
+        out.add(new Warning(at, "BANNER_IMAGE_SIZE_UNKNOWN", "가로·세로를 읽지 못했습니다."));
+        continue;
+      }
+      String code = spec.problem(size[0], size[1]);
+      if (code != null) {
+        out.add(
+            new Warning(
+                at,
+                code,
+                "지금 "
+                    + size[0]
+                    + "×"
+                    + size[1]
+                    + " — "
+                    + b.placement()
+                    + " 권장 "
+                    + spec.ratioLabel()
+                    + " "
+                    + spec.recommendedWidth()
+                    + "×"
+                    + spec.recommendedHeight()
+                    + "(최소 "
+                    + spec.minWidth()
+                    + "×"
+                    + spec.minHeight()
+                    + "). 앱에서 가장자리가 잘리거나 흐려 보입니다."));
+      }
+    }
+    return out;
   }
 
   /** 검사에서 걸린 것(필드, 사유). */

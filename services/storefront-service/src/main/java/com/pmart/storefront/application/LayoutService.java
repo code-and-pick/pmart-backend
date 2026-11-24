@@ -44,7 +44,8 @@ public class LayoutService {
   public static final List<String> READERS = List.of("MD", "OPERATOR_ADMIN", "DISPLAY_APPROVER");
 
   /** 초안 보기(본문은 도메인 모양). */
-  public record Draft(DraftRow row, Body body) {}
+  /** 초안 + 0.15.0 배너 그림 규격 경고(막지 않음). */
+  public record Draft(DraftRow row, Body body, List<LayoutRules.Warning> warnings) {}
 
   public record Submission(String draftId, String draftHash, Map<String, Object> approvalRequest) {}
 
@@ -137,12 +138,28 @@ public class LayoutService {
   public Draft get(String draftId) {
     reader();
     DraftRow d = find(draftId);
-    return new Draft(d, body(d.body()));
+    return draft(d);
   }
 
   public List<Draft> list(@Nullable String state) {
     reader();
-    return store.drafts(state, 50).stream().map(d -> new Draft(d, body(d.body()))).toList();
+    return store.drafts(state, 50).stream().map(this::draft).toList();
+  }
+
+  private Draft draft(DraftRow d) {
+    Body body = body(d.body());
+    return new Draft(
+        d,
+        body,
+        LayoutRules.bannerImageWarnings(
+            body,
+            id -> store.image(id).isPresent(),
+            id ->
+                store
+                    .image(id)
+                    .filter(x -> x.width() != null && x.height() != null)
+                    .map(x -> new int[] {x.width(), x.height()})
+                    .orElse(null)));
   }
 
   public int currentVersion() {

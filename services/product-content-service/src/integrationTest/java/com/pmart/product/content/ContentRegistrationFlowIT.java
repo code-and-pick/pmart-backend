@@ -973,6 +973,15 @@ class ContentRegistrationFlowIT extends ContentContainerSupport {
                 String.class,
                 uploaded.body().path("imageId").asString()))
         .startsWith("products/" + productId + "/main/");
+    // 0.8.0 사진 규격 — 경고만(가로·세로를 못 읽은 합성 JPEG), 제출은 막지 않는다
+    JsonNode warned = get("/content-drafts/" + draftId).body();
+    assertThat(warned.path("warnings").toString()).contains("IMAGE_SIZE_UNKNOWN", "images[MAIN:0]");
+    assertThat(warned.path("submittable").asBoolean()).isTrue();
+    JsonNode specs = get("/content-drafts/image-specs").body();
+    assertThat(specs.path("items").path(0).path("role").asString()).isEqualTo("MAIN");
+    assertThat(specs.path("items").path(0).path("ratioLabel").asString()).isEqualTo("1:1");
+    assertThat(specs.path("items").path(0).path("recommendedWidth").asInt()).isEqualTo(1000);
+    assertThat(specs.path("maxBytes").asLong()).isEqualTo(20L * 1024 * 1024);
 
     // 잠근 해시와 다른 승인은 반영하지 않는다
     Res sub = post("/content-drafts/" + draftId + "/submissions", null);
