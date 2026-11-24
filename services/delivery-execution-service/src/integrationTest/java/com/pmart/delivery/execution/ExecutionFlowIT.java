@@ -3525,6 +3525,18 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(body(fourth).hasNonNull("rolledTo")).isFalse();
     assertThat(body(fourth).path("escalated").asBoolean()).isTrue();
     assertThat(payouts.rollStaleFailures()).isZero();
+    // DE-10 — 묶음마다 한 번 직원 알림용 사건(사유 포함)
+    JsonNode esc0 = outbox(id, "RiderPayoutEscalated").path("payload");
+    assertThat(esc0.path("batchId").asString()).isEqualTo(rider + ":" + today);
+    assertThat(esc0.path("amount").asInt()).isEqualTo(3000);
+    assertThat(esc0.path("rollCount").asInt()).isEqualTo(3);
+    assertThat(esc0.path("failureReason").asString()).isEqualTo("계좌 오류");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type = 'RiderPayoutEscalated'",
+                Integer.class,
+                id))
+        .isEqualTo(1);
     assertThat(
             jdbc.queryForObject(
                 "SELECT settlement_state || ':' || roll_count FROM rider_earning WHERE earning_id = ?",

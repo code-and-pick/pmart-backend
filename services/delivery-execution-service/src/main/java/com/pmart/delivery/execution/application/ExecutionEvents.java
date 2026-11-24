@@ -463,6 +463,41 @@ public class ExecutionEvents {
     events.publish(type, 1, "Delivery", d.deliveryId(), version, actor, p);
   }
 
+  /**
+   * 지급 넘김 상한을 다 쓴 지급 실패(2026-11-24 DE-10, ADR-0086 결정 9) — 묶음마다 한 번, 직원이 직접 지급. aggregate = 묶음의 첫
+   * 실패 줄 배송(호출자가 버전을 올린다).
+   */
+  public void payoutEscalated(
+      String deliveryId,
+      int version,
+      String riderId,
+      java.time.LocalDate payoutDate,
+      long amount,
+      int lineCount,
+      int rollCount,
+      @org.jspecify.annotations.Nullable String failureReason,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("batchId", riderId + ":" + payoutDate);
+    p.put("riderId", riderId);
+    p.put("payoutDate", payoutDate.toString());
+    p.put("amount", amount);
+    p.put("lineCount", lineCount);
+    p.put("rollCount", rollCount);
+    if (failureReason != null) {
+      p.put("failureReason", failureReason);
+    }
+    p.put("escalatedAt", at.toString());
+    events.publish(
+        "RiderPayoutEscalated",
+        1,
+        "Delivery",
+        deliveryId,
+        version,
+        new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, events.sourceSystem()),
+        p);
+  }
+
   /** 운영자 상태 정정(2026-11-17). basis = 사유(직원이 적은 글 — 개인정보를 적지 않게 화면 안내). */
   public void statusCorrected(
       DeliveryRow before,

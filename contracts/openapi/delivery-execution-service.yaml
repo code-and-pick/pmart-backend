@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.43.0
+  version: 0.43.1
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.38.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /delivery-metrics` 배송 품질·효율(날짜·센터·라이더별 배정·완료·실패·취소·지연·픽업 대기·배송 소요)과 사고(도움요청 종류별 건수·처리 시간).
@@ -1434,6 +1434,7 @@ paths:
         2026-11-24 사용자 "실패한 지급을 다음 지급일로 자동으로 넘겨". 지급 결과 FAILED 가 표시되면 그 묶음의 실패 줄(수행료·보상금)이 같은 트랜잭션에서 다음 지급일
         (오늘과 원래 지급일 중 늦은 날의 다음 영업일)로 넘어가 CONFIRMED 가 된다(이미 PAYMENT_FAILED 로 남은 묶음도 1분 주기로 같게). (0.43.0) 넘김은 줄마다 상한(`pmart.execution.payout-max-rollovers`, 기본 3 — 2026-11-24 사용자 "3번 안에는 반드시 줘야해")까지 —
         상한째 넘김은 `finalAttempt` true(마지막 자동 시도), 그 뒤 또 실패한 줄은 넘기지 않고 PAYMENT_FAILED 로 남아 묶음 `escalated` true(직원 직접 지급 — 관리자 PAID 표시).
+        (0.43.1, DE-10) 상한을 다 쓴 줄이 남으면 묶음마다 한 번 `RiderPayoutEscalated`(직원 알림용 — 금액·넘김 횟수·실패 사유).
         그 묶음에서 뺀 오배송 차감은 되돌려 새 묶음에서 다시 뺀다. 최근 순 200건, riderId 로 거르기. failureReason 은 직원만.
       operationId: listRiderPayoutRollovers
       x-pmart-user-types: [OPERATOR]

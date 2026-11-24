@@ -440,6 +440,13 @@ public class PayoutResults {
     if (stuck > 0) {
       log.error(
           "지급 실패 넘김 상한({}번) — 라이더 {} {} {}건은 더 넘기지 않음(직원이 직접 지급해야 함)", max, riderId, from, stuck);
+      escalate(
+          riderId,
+          from,
+          resultId,
+          allFailed.stream().filter(e -> !underCap.contains(e.earningId())).toList(),
+          allComps.stream().filter(c -> c.rollCount() >= max).toList(),
+          now);
     }
     if (failed.isEmpty() && comps.isEmpty()) {
       return null;
@@ -506,6 +513,80 @@ public class PayoutResults {
         rollCount,
         finalAttempt ? " — 마지막 자동 시도" : "");
     return to;
+  }
+
+  /**
+   * 상한을 다 쓴 줄이 남은 묶음 — 묶음마다 한 번 기록 + RiderPayoutEscalated(DE-10, 2026-11-24). aggregate = 첫 줄 배송(버전
+   * 올림). 호출자 트랜잭션.
+   */
+  private void escalate(
+      String riderId,
+      LocalDate payoutDate,
+      @Nullable String resultId,
+      List<EarningRow> rows,
+      List<Comp> comps,
+      Instant now) {
+    long amount = 0;
+    int rolls = 0;
+    for (EarningRow e : rows) {
+      amount += e.total() == null ? 0 : e.total();
+    }
+    for (Comp c : comps) {
+      amount += c.amount();
+      rolls = Math.max(rolls, c.rollCount());
+    }
+    if (!rows.isEmpty()) {
+      Integer r =
+          jdbc.queryForObject(
+              "SELECT COALESCE(max(roll_count), 0) FROM rider_earning WHERE earning_id IN ("
+                  + String.join(",", java.util.Collections.nCopies(rows.size(), "?"))
+                  + ")",
+              Integer.class,
+              rows.stream().map(EarningRow::earningId).toArray());
+      rolls = Math.max(rolls, r == null ? 0 : r);
+    }
+    int n =
+        jdbc.update(
+            "INSERT INTO rider_payout_escalation (rider_id, payout_date, line_count, amount,"
+                + " roll_count, escalated_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            riderId,
+            payoutDate,
+            rows.size() + comps.size(),
+            amount,
+            rolls,
+            Timestamp.from(now));
+    if (n == 0) {
+      return; // 이미 알린 묶음
+    }
+    String deliveryId =
+        !rows.isEmpty()
+            ? rows.get(0).deliveryId()
+            : jdbc.queryForObject(
+                "SELECT delivery_id FROM rider_compensation WHERE compensation_id = ?",
+                String.class,
+                comps.get(0).id());
+    String reason =
+        resultId == null
+            ? null
+            : jdbc
+                .queryForList(
+                    "SELECT failure_reason FROM rider_payout_result WHERE result_id = ?",
+                    String.class,
+                    resultId)
+                .stream()
+                .filter(java.util.Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+    events.payoutEscalated(
+        deliveryId,
+        store.bumpVersion(deliveryId, now),
+        riderId,
+        payoutDate,
+        amount,
+        rows.size() + comps.size(),
+        rolls,
+        reason,
+        now);
   }
 
   /** 넘김 뒤 같은 키로 다시 부른 실패 표시 — 그때의 결과 기록과 넘김으로. */
