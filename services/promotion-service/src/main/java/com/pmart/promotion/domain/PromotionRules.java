@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
@@ -28,9 +29,22 @@ public final class PromotionRules {
   public static final int MAX_RATE = 90;
   public static final int MAX_TARGETS = 500;
 
+  /** 0.3.0 — 만들 때 지정하는 받을 고객 한도(지정 발급 coupon-grants 와 같다). */
+  public static final int MAX_RECIPIENTS = 100;
+
+  /** 진열 편성 테마 kind — 자동 랭킹은 상품이 저절로 바뀌어 할인 대상으로 고르지 못한다(0.3.0 사용자 "추천안대로"). */
+  public static final String RANKING_AUTO = "RANKING_AUTO";
+
   public record Discount(String type, int value, @Nullable Integer maxAmount) {}
 
   public record Target(String type, String id) {}
+
+  /** 0.3.0 — 지정 발급(ADMIN) 쿠폰을 만들 때 정한 받을 고객. 승인 뒤 시작 시각에 서버가 발급한다. */
+  public record Recipients(List<String> accountIds, String reason) {
+    public Recipients {
+      accountIds = accountIds == null ? List.of() : List.copyOf(accountIds);
+    }
+  }
 
   public record CouponPolicy(
       String issueMode,
@@ -38,7 +52,19 @@ public final class PromotionRules {
       @Nullable Integer totalQuantity,
       int perCustomerLimit,
       @Nullable Integer useDays,
-      @Nullable Instant useUntil) {}
+      @Nullable Instant useUntil,
+      @Nullable Recipients recipients) {
+
+    public CouponPolicy(
+        String issueMode,
+        long minOrderAmount,
+        @Nullable Integer totalQuantity,
+        int perCustomerLimit,
+        @Nullable Integer useDays,
+        @Nullable Instant useUntil) {
+      this(issueMode, minOrderAmount, totalQuantity, perCustomerLimit, useDays, useUntil, null);
+    }
+  }
 
   /** 행사 입력(도메인 모양). */
   public record Input(
@@ -50,10 +76,22 @@ public final class PromotionRules {
       List<Target> targets,
       @Nullable CouponPolicy coupon) {}
 
-  public record Problem(String field, String reason) {}
+  /** code = 화면이 가려 쓸 코드(0.3.0 — 없을 수 있음). */
+  public record Problem(String field, String reason, @Nullable String code) {
+    public Problem(String field, String reason) {
+      this(field, reason, null);
+    }
+  }
 
-  /** 제출을 막는 곳(초안 저장은 막지 않는다). */
+  /** 제출을 막는 곳 — 받아 둔 진열 테마가 없다고 보고 검사(테마 대상이 있으면 THEME_NOT_PUBLISHED). */
   public static List<Problem> check(Input in, Instant now) {
+    return check(in, now, Map.of());
+  }
+
+  /**
+   * 제출을 막는 곳(초안 저장은 막지 않는다). themeKinds = 받아 둔 지금 게시 진열의 테마 sectionId → kind(0.3.0 THEME 대상 검사).
+   */
+  public static List<Problem> check(Input in, Instant now, Map<String, String> themeKinds) {
     List<Problem> out = new ArrayList<>();
     if (in.name() == null || in.name().isBlank()) {
       out.add(new Problem("name", "이름이 필요합니다."));
@@ -78,7 +116,7 @@ public final class PromotionRules {
     }
     if ("PRICE_DISCOUNT".equals(in.kind())) {
       if (in.targets().isEmpty()) {
-        out.add(new Problem("targets", "할인할 상품(SKU) 또는 카테고리를 하나 이상 고르세요."));
+        out.add(new Problem("targets", "할인할 상품(SKU)·카테고리·진열 테마를 하나 이상 고르세요."));
       }
       if (in.targets().size() > MAX_TARGETS) {
         out.add(new Problem("targets", "대상은 " + MAX_TARGETS + "개까지입니다."));
@@ -86,10 +124,24 @@ public final class PromotionRules {
       Set<String> seen = new HashSet<>();
       for (int i = 0; i < in.targets().size(); i++) {
         Target t = in.targets().get(i);
-        if (!"SKU".equals(t.type()) && !"CATEGORY".equals(t.type())) {
-          out.add(new Problem("targets[" + i + "].type", "SKU 또는 CATEGORY 입니다."));
+        if (!"SKU".equals(t.type()) && !"CATEGORY".equals(t.type()) && !"THEME".equals(t.type())) {
+          out.add(new Problem("targets[" + i + "].type", "SKU·CATEGORY·THEME 중 하나입니다."));
         } else if ("SKU".equals(t.type()) && !t.id().matches("^[EB]-[0-9]{8}$")) {
           out.add(new Problem("targets[" + i + "].id", "SKU 코드 모양이 아닙니다(E-/B- 8자리)."));
+        } else if ("THEME".equals(t.type()) && !t.id().matches("^T-[A-Za-z0-9_-]{1,38}$")) {
+          out.add(new Problem("targets[" + i + "].id", "진열 테마 ID 모양이 아닙니다(T-…)."));
+        } else if ("THEME".equals(t.type()) && !themeKinds.containsKey(t.id())) {
+          out.add(
+              new Problem(
+                  "targets[" + i + "].id",
+                  "지금 게시된 진열에 없는 테마입니다(초안에만 있거나 빠짐).",
+                  "THEME_NOT_PUBLISHED"));
+        } else if ("THEME".equals(t.type()) && RANKING_AUTO.equals(themeKinds.get(t.id()))) {
+          out.add(
+              new Problem(
+                  "targets[" + i + "].id",
+                  "자동 랭킹 테마는 상품이 저절로 바뀌어 할인 대상으로 고를 수 없습니다.",
+                  "THEME_AUTO_RANKING"));
         } else if (!seen.add(t.type() + ":" + t.id())) {
           out.add(new Problem("targets[" + i + "]", "같은 대상이 두 번 있습니다."));
         }
@@ -131,6 +183,7 @@ public final class PromotionRules {
         if ("AMOUNT".equals(d.type()) && d.maxAmount() != null) {
           out.add(new Problem("discount.maxAmount", "정액 쿠폰에는 최대 할인액을 두지 않습니다."));
         }
+        checkRecipients(c, out);
         if ("AMOUNT".equals(d.type()) && c.minOrderAmount() > 0 && d.value() > c.minOrderAmount()) {
           out.add(new Problem("discount.value", "정액 할인이 최소 주문금액보다 큽니다."));
         }
@@ -139,6 +192,34 @@ public final class PromotionRules {
       out.add(new Problem("kind", "PRICE_DISCOUNT 또는 COUPON 입니다."));
     }
     return out;
+  }
+
+  private static void checkRecipients(CouponPolicy c, List<Problem> out) {
+    Recipients r = c.recipients();
+    if (r == null) {
+      return;
+    }
+    if (!"ADMIN".equals(c.issueMode())) {
+      out.add(
+          new Problem(
+              "coupon.recipients", "받을 고객은 지정 발급(ADMIN) 쿠폰에만 둡니다.", "RECIPIENTS_NOT_ADMIN"));
+    }
+    List<String> ids = r.accountIds();
+    if (ids.isEmpty() || ids.size() > MAX_RECIPIENTS) {
+      out.add(new Problem("coupon.recipients.accountIds", "받을 고객은 1~" + MAX_RECIPIENTS + "명입니다."));
+    }
+    Set<String> seen = new HashSet<>();
+    for (int i = 0; i < ids.size(); i++) {
+      String id = ids.get(i);
+      if (id == null || id.isBlank() || id.length() > 64) {
+        out.add(new Problem("coupon.recipients.accountIds[" + i + "]", "고객 ID 가 비었거나 너무 깁니다."));
+      } else if (!seen.add(id)) {
+        out.add(new Problem("coupon.recipients.accountIds[" + i + "]", "같은 고객이 두 번 있습니다."));
+      }
+    }
+    if (r.reason() == null || r.reason().isBlank() || r.reason().length() > 200) {
+      out.add(new Problem("coupon.recipients.reason", "발급 사유는 1~200자입니다."));
+    }
   }
 
   /** 개당 기간 할인액 — 정률은 원 미만 버림, 단가를 넘지 않는다. */

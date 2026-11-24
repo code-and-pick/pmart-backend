@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: storefront-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-24, 백오피스 행사 대상 테마 — 사용자 "행사 대상에 테마도 추가"): 내부 `GET /internal/storefront/themes` — 지금 게시된 진열의 테마(sectionId·kind·title·productIds).
+      promotion-service 가 1분마다 받아 기간 할인 대상 THEME(그 테마 상품의 모든 옵션)을 정한다. 고객 API 는 그대로.
     0.13.0(2026-11-23, 백엔드 요청 availability-display §2 — 사용자 "모든 옵션 품절일 때만"·"조회 때 바로 묻기", 고객앱 SPLASH 회신 — 사용자 "넣어줘"):
       ① 진열 항목 `availability`(AVAILABLE·SOLD_OUT·UNKNOWN) — mfcId 를 줬을 때만. 응답에 담긴 상품으로 product-content 카드 일괄 조회(옵션별 mfc-inventory 가용 사본)를
       한 번(100건씩) 불러, 그 센터가 취급하는 옵션 중 하나라도 팔 수 있으면 AVAILABLE, 취급 옵션이 모두 품절이면 SOLD_OUT, 그 밖·조회 실패·시간 초과는 UNKNOWN. 없으면 null.
@@ -422,6 +424,35 @@ paths:
                 required: [published]
                 properties:
                   published: { type: integer }
+
+  /internal/storefront/themes:
+    get:
+      tags: [internal]
+      summary: '[promotion→storefront] 지금 게시된 진열의 테마 목록 (0.14.0)'
+      description: |
+        2026-11-24 행사 대상 테마(promotion THEME). 지금 게시 버전(가장 큰 layoutVersion)의 테마 전부 — MD 탭에 넣은 테마도 포함, 테마 노출 기간은 보지 않는다(행사 기간은 promotion 이 본다).
+        게시 버전이 없으면 layoutVersion 0·빈 목록(기본 진열의 자동 영역은 테마가 아니다). RANKING_AUTO 는 productIds 가 비어 있다.
+      operationId: listPublishedThemesInternal
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [layoutVersion, themes]
+                properties:
+                  layoutVersion: { type: integer }
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      required: [sectionId, kind, title, productIds]
+                      properties:
+                        sectionId: { type: string }
+                        kind: { type: string, enum: [THEME, SEASON, WEEKLY_PICK, RANKING_AUTO] }
+                        title: { type: string }
+                        productIds: { type: array, items: { type: string } }
 
   /internal/storefront/layout-versions/current:
     get:

@@ -9,7 +9,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record PromotionProperties(
     @Nullable ZoneId zone,
     @Nullable Compensation compensation,
-    java.time.@Nullable Duration signupGrantRetention) {
+    java.time.@Nullable Duration signupGrantRetention,
+    /** 0.3.0 진열 테마 사본을 받을 storefront 주소(없으면 http://storefront-service:8106). */
+    @Nullable String storefrontBaseUrl) {
 
   /**
    * 회사 사유 보상 쿠폰(ADR-0082 5단계, CL-5) — dispatch-unavailable-promotion-id = 배차 불가 취소 때 줄 쿠폰
@@ -19,6 +21,12 @@ public record PromotionProperties(
 
   public @Nullable String dispatchUnavailablePromotionId() {
     return compensation == null ? null : compensation.dispatchUnavailablePromotionId();
+  }
+
+  public String storefrontBaseUrlOrDefault() {
+    return storefrontBaseUrl == null || storefrontBaseUrl.isBlank()
+        ? "http://storefront-service:8106"
+        : storefrontBaseUrl;
   }
 
   public ZoneId zoneOrDefault() {

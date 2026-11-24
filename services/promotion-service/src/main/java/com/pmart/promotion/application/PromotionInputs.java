@@ -15,6 +15,11 @@ final class PromotionInputs {
   }
 
   static PromotionRules.@Nullable CouponPolicy coupon(PromotionRow r) {
+    return coupon(r, null);
+  }
+
+  static PromotionRules.@Nullable CouponPolicy coupon(
+      PromotionRow r, PromotionRules.@Nullable Recipients recipients) {
     return r.issueMode() == null
         ? null
         : new PromotionRules.CouponPolicy(
@@ -23,10 +28,16 @@ final class PromotionInputs {
             r.totalQuantity(),
             r.perCustomerLimit() == null ? 1 : r.perCustomerLimit(),
             r.useDays(),
-            r.useUntil());
+            r.useUntil(),
+            recipients);
   }
 
   static PromotionRules.Input fromRow(PromotionRow r, List<String[]> targets) {
+    return fromRow(r, targets, null);
+  }
+
+  static PromotionRules.Input fromRow(
+      PromotionRow r, List<String[]> targets, PromotionRules.@Nullable Recipients recipients) {
     return new PromotionRules.Input(
         r.kind(),
         r.name(),
@@ -34,6 +45,6 @@ final class PromotionInputs {
         r.endsAt(),
         discount(r),
         targets.stream().map(t -> new PromotionRules.Target(t[0], t[1])).toList(),
-        coupon(r));
+        coupon(r, recipients));
   }
 }

@@ -67,6 +67,36 @@ public class PromotionsController implements PromotionsApi {
                 mapper.writeValueAsString(body))));
   }
 
+  /** 고를 수 있는 진열 테마(0.3.0) — promotion 이 받아 둔 사본. */
+  @Override
+  public ResponseEntity<
+          com.pmart.promotion.api.generated.model.ListPromotionThemeTargets200Response>
+      listPromotionThemeTargets() {
+    var t = promotions.themeTargets();
+    return ResponseEntity.ok(
+        new com.pmart.promotion.api.generated.model.ListPromotionThemeTargets200Response()
+            .layoutVersion(t.layoutVersion())
+            .syncedAt(PromotionMapping.odt(t.syncedAt()))
+            .themes(
+                new java.util.ArrayList<>(
+                    t.themes().stream()
+                        .map(
+                            x ->
+                                new com.pmart.promotion.api.generated.model
+                                        .ListPromotionThemeTargets200ResponseThemesInner()
+                                    .sectionId(x.sectionId())
+                                    .kind(
+                                        com.pmart.promotion.api.generated.model
+                                            .ListPromotionThemeTargets200ResponseThemesInner
+                                            .KindEnum.fromValue(x.kind()))
+                                    .title(x.title())
+                                    .productCount(x.productCount())
+                                    .selectable(
+                                        !com.pmart.promotion.domain.PromotionRules.RANKING_AUTO
+                                            .equals(x.kind())))
+                        .toList())));
+  }
+
   @Override
   public ResponseEntity<Promotion> getPromotion(String promotionId) {
     return ResponseEntity.ok(PromotionMapping.promotion(promotions.get(promotionId)));

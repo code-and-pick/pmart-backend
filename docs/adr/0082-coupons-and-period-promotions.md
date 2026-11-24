@@ -36,6 +36,8 @@
 
 - 2026-11-21 5단계: **가입 축하 쿠폰** — customer-service 가 로그인 단계 휴대폰 확정(ADR-0074 VERIFIED)마다 `CustomerIdentityVerified`(stage SIGNUP·PROFILE, `signupKey` = 번호 HMAC — 비밀값 `pmart.customer.identity.signup-key-secret`, 번호 원문·해시는 싣지 않음). promotion 이 stage SIGNUP 을 받아 진행 중 SIGNUP 쿠폰 행사마다 한 장, 같은 키에는 다시 주지 않음(`signup_grant` — 사용자 2026-11-21 "계속 막기" → 같은 날 "추천대로" **지급 후 5년**: 탈퇴 뒤에도 5년 보관 후 파기, 처리방침 2026-11-21.2 판·전 고객 재동의). 로그인 단계 확인을 처음 거치는 기존 계정도 받는다. **CL-5 보상 쿠폰** — promotion 이 OrderCancelled(cancelReason DISPATCH_UNAVAILABLE)를 받아 주문마다 한 번(`compensation_grant`), 설정 `pmart.promotion.compensation.dispatch-unavailable-promotion-id` 의 COUPON·ADMIN 진행 중 행사에서 1인 한도 없이 한 장. 행사가 없으면 PENDING → 1분마다 다시. 처음 켤 때 지난 취소는 소급하지 않음(binding latest). LAN 보상 행사 = 2,000원·받은 날 포함 30일·쿠폰 최소 주문 없음(사용자 2026-11-21).
 
+- 2026-11-24 덧붙임(promotion 0.3.0 — 사용자 "행사 대상에 테마도 추가"·"직원 지정 발급 … 고객 id 를 넣는 칸", 세부 "추천안대로 진행"): ① 기간 할인 대상에 **진열 테마 THEME**(storefront 편성 테마 sectionId) — 그때 게시된 진열에서 그 테마 상품의 모든 옵션, 테마 상품이 바뀌면 다시 승인 없이 따라감(카테고리와 같음), 진열에서 빠지면 할인도 멈춤, 자동 랭킹 테마 제외, 테마 노출 기간은 보지 않음. promotion 이 1분마다 storefront 내부 조회로 사본을 받는다(진열 변경 → 할인 반영 최대 약 1분 30초). 원문 Commerce §6.3·6.4 "일반 테마는 할인 권리를 만들지 않는다"를 같은 날 고침 — 권리는 행사가 만든다. ② 지정 발급(ADMIN) 쿠폰을 만들 때 **받을 고객**(≤100명·사유) — 승인 뒤 시작 시각이 되면 1분 안에 발급(지정 발급과 같은 규칙, 발급한 사람 = 행사를 만든 직원), 시작 전에 끝나면 발급 안 함, 승인 요약에 받을 고객 수.
+
 ## 결과
 - service-map promotion-service 를 "1차 비활성"에서 활성으로. 원문 1차 제외 문구와 다른 부분은 이 ADR 을 따른다.
 - 남은 정책(이번에 정하지 않음): 상품 쿠폰·오퍼, 부분 반품 때 쿠폰 할인 환수, 쿠폰 남용 제한.

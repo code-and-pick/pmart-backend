@@ -10,6 +10,9 @@ import com.pmart.promotion.domain.PromotionRules.Input;
 import com.pmart.promotion.domain.PromotionRules.Problem;
 import com.pmart.promotion.infrastructure.PromotionStore;
 import com.pmart.promotion.infrastructure.PromotionStore.PromotionRow;
+import com.pmart.promotion.infrastructure.RecipientStore;
+import com.pmart.promotion.infrastructure.RecipientStore.RecipientRow;
+import com.pmart.promotion.infrastructure.ThemeCopyStore;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
@@ -34,9 +37,19 @@ public class PromotionService {
   public static final List<String> EDITORS = List.of("MARKETING", "OPERATOR_ADMIN");
   public static final List<String> READERS = List.of("MARKETING", "OPERATOR_ADMIN", "CS_AGENT");
 
-  /** 행사 보기(행 + 대상 + 지금 제출하면 막히는 곳 + 단계). */
+  /** 행사 보기(행 + 대상 + 지금 제출하면 막히는 곳 + 단계 + 0.3.0 테마 이름·받을 고객). */
   public record View(
-      PromotionRow row, List<String[]> targets, List<Problem> problems, String phase) {}
+      PromotionRow row,
+      List<String[]> targets,
+      List<Problem> problems,
+      String phase,
+      Map<String, String> themeTitles,
+      PromotionRules.@Nullable Recipients recipients,
+      List<RecipientRow> recipientResults) {}
+
+  /** 고를 수 있는 진열 테마(0.3.0). */
+  public record ThemeTargets(
+      int layoutVersion, @Nullable Instant syncedAt, List<ThemeCopyStore.ThemeSummary> themes) {}
 
   public record Submission(
       String promotionId, String draftHash, Map<String, Object> approvalRequest) {}
@@ -44,11 +57,20 @@ public class PromotionService {
   public record Page(List<View> items, @Nullable String nextCursor) {}
 
   private final PromotionStore store;
+  private final ThemeCopyStore themes;
+  private final RecipientStore recipients;
   private final RequestIdempotency idempotency;
   private final Clock clock;
 
-  public PromotionService(PromotionStore store, RequestIdempotency idempotency, Clock clock) {
+  public PromotionService(
+      PromotionStore store,
+      ThemeCopyStore themes,
+      RecipientStore recipients,
+      RequestIdempotency idempotency,
+      Clock clock) {
     this.store = store;
+    this.themes = themes;
+    this.recipients = recipients;
     this.idempotency = idempotency;
     this.clock = clock;
   }
@@ -142,6 +164,34 @@ public class PromotionService {
     List<String[]> targets = new ArrayList<>();
     in.targets().forEach(t -> targets.add(new String[] {t.type(), t.id()}));
     store.replaceTargets(id, targets);
+    PromotionRules.Recipients rc = c == null ? null : c.recipients();
+    recipients.replace(id, rc == null ? null : rc.accountIds(), rc == null ? null : rc.reason());
+  }
+
+  /** 고를 수 있는 진열 테마 — 받아 둔 사본(0.3.0). */
+  public ThemeTargets themeTargets() {
+    require(READERS, "행사 대상 테마 보기");
+    var st = themes.state().orElse(null);
+    return new ThemeTargets(
+        st == null ? 0 : st.layoutVersion(), st == null ? null : st.syncedAt(), themes.all());
+  }
+
+  private Map<String, String> themeKinds(List<String[]> targets) {
+    return themes.kinds(themeIds(targets));
+  }
+
+  private static List<String> themeIds(List<String[]> targets) {
+    return targets.stream().filter(t -> "THEME".equals(t[0])).map(t -> t[1]).toList();
+  }
+
+  private PromotionRules.@Nullable Recipients recipientsOf(String promotionId) {
+    List<RecipientRow> rows = recipients.of(promotionId);
+    if (rows.isEmpty()) {
+      return null;
+    }
+    return new PromotionRules.Recipients(
+        rows.stream().map(RecipientRow::accountId).toList(),
+        recipients.reason(promotionId).orElse(""));
   }
 
   public View get(String promotionId) {
@@ -193,9 +243,11 @@ public class PromotionService {
               if (!"DRAFT".equals(r.state()) && !"REJECTED".equals(r.state())) {
                 throw PmartException.invalidState("이미 제출·발효된 행사입니다(지금 " + r.state() + ").");
               }
+              List<String[]> targets = store.targets(promotionId);
+              PromotionRules.Recipients rc = recipientsOf(promotionId);
               List<Problem> problems =
                   PromotionRules.check(
-                      PromotionInputs.fromRow(r, store.targets(promotionId)), now());
+                      PromotionInputs.fromRow(r, targets, rc), now(), themeKinds(targets));
               if (!problems.isEmpty()) {
                 throw new PmartException(
                     "PROMOTION_INVALID",
@@ -211,7 +263,14 @@ public class PromotionService {
               return new Submission(
                   promotionId,
                   hash,
-                  approvalRequest(r, hash, "ACTIVATE_PROMOTION", "ACTIVATE", summary(r), null));
+                  approvalRequest(
+                      r,
+                      hash,
+                      "ACTIVATE_PROMOTION",
+                      "ACTIVATE",
+                      summary(r, rc),
+                      null,
+                      rc == null ? null : rc.accountIds().size()));
             })
         .value();
   }
@@ -237,14 +296,16 @@ public class PromotionService {
                   promotionId,
                   hash,
                   approvalRequest(
-                      r, hash, "END_PROMOTION", "END", "행사 조기 종료 — " + r.name(), reason));
+                      r, hash, "END_PROMOTION", "END", "행사 조기 종료 — " + r.name(), reason, null));
             })
         .value();
   }
 
-  private static String summary(PromotionRow r) {
+  private static String summary(PromotionRow r, PromotionRules.@Nullable Recipients rc) {
     String d = "RATE".equals(r.discountType()) ? r.discountValue() + "%" : r.discountValue() + "원";
-    return ("PRICE_DISCOUNT".equals(r.kind()) ? "기간 할인 " : "장바구니 쿠폰 ") + r.name() + " — " + d;
+    String s = ("PRICE_DISCOUNT".equals(r.kind()) ? "기간 할인 " : "장바구니 쿠폰 ") + r.name() + " — " + d;
+    // 0.3.0 — 심사자가 몇 명에게 나가는지 알게(사용자 "추천안대로")
+    return rc == null ? s : s + " · 받을 고객 " + rc.accountIds().size() + "명(시작 때 발급)";
   }
 
   /** approval-service POST /change-requests 본문(PROMOTION, 정본 promotion-service). */
@@ -254,7 +315,8 @@ public class PromotionService {
       String allowedAction,
       String action,
       String summary,
-      @Nullable String reason) {
+      @Nullable String reason,
+      @Nullable Integer recipientCount) {
     Map<String, Object> attrs = new LinkedHashMap<>();
     attrs.put("promotionId", r.promotionId());
     attrs.put("action", action);
@@ -267,6 +329,9 @@ public class PromotionService {
     attrs.put("discountValue", r.discountValue());
     if (reason != null) {
       attrs.put("reason", reason);
+    }
+    if (recipientCount != null) {
+      attrs.put("recipientCount", recipientCount);
     }
     Map<String, Object> line = new LinkedHashMap<>();
     line.put("lineKey", r.promotionId());
@@ -291,15 +356,20 @@ public class PromotionService {
   View view(PromotionRow r) {
     Instant now = now();
     List<String[]> targets = store.targets(r.promotionId());
+    PromotionRules.Recipients rc = recipientsOf(r.promotionId());
     List<Problem> problems =
         ("DRAFT".equals(r.state()) || "REJECTED".equals(r.state()))
-            ? PromotionRules.check(PromotionInputs.fromRow(r, targets), now)
+            ? PromotionRules.check(
+                PromotionInputs.fromRow(r, targets, rc), now, themeKinds(targets))
             : List.of();
     return new View(
         r,
         targets,
         problems,
-        PromotionRules.phase(r.state(), r.startsAt(), r.endsAt(), r.endedAt(), now));
+        PromotionRules.phase(r.state(), r.startsAt(), r.endsAt(), r.endedAt(), now),
+        themes.titles(themeIds(targets)),
+        rc,
+        rc == null ? List.of() : recipients.of(r.promotionId()));
   }
 
   private PromotionRow locked(String promotionId) {

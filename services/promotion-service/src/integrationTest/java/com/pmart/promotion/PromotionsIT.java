@@ -44,7 +44,10 @@ import tools.jackson.databind.ObjectMapper;
       "pmart.promotion.display-sync-initial-delay=PT1S",
       "pmart.promotion.compensation.dispatch-unavailable-promotion-id=PRM-COMP-IT",
       "pmart.promotion.compensation.retry-interval=PT1S",
-      "pmart.promotion.compensation.retry-initial-delay=PT1S"
+      "pmart.promotion.compensation.retry-initial-delay=PT1S",
+      // 0.3.0 — 테마 받기·받을 고객 발급은 시험이 직접 부른다(주기 작업과 겹치지 않게)
+      "pmart.promotion.theme-sync-initial-delay=PT1H",
+      "pmart.promotion.recipient-grant-initial-delay=PT1H"
     })
 @Import(TestJwtConfiguration.class)
 class PromotionsIT extends PostgresKafkaContainerSupport {
@@ -58,7 +61,43 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired KafkaTemplate<String, String> kafka;
   @Autowired com.pmart.promotion.application.SignupCoupons signupCoupons;
+  @Autowired com.pmart.promotion.application.ThemeSync themeSync;
+  @Autowired com.pmart.promotion.application.RecipientGrants recipientGrants;
   RestClient http;
+
+  /** storefront {@code /internal/storefront/themes} 대역(0.3.0) — 시험이 응답 본문을 바꾼다. */
+  static final java.util.concurrent.atomic.AtomicReference<String> STOREFRONT_THEMES =
+      new java.util.concurrent.atomic.AtomicReference<>("{\"layoutVersion\":0,\"themes\":[]}");
+
+  static final com.sun.net.httpserver.HttpServer STOREFRONT = startStorefront();
+
+  static com.sun.net.httpserver.HttpServer startStorefront() {
+    try {
+      var server =
+          com.sun.net.httpserver.HttpServer.create(
+              new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+      server.createContext(
+          "/api/v1/internal/storefront/themes",
+          ex -> {
+            byte[] b = STOREFRONT_THEMES.get().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            ex.getResponseHeaders().add("Content-Type", "application/json");
+            ex.sendResponseHeaders(200, b.length);
+            ex.getResponseBody().write(b);
+            ex.close();
+          });
+      server.start();
+      return server;
+    } catch (java.io.IOException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  @org.springframework.test.context.DynamicPropertySource
+  static void storefront(org.springframework.test.context.DynamicPropertyRegistry r) {
+    r.add(
+        "pmart.promotion.storefront-base-url",
+        () -> "http://127.0.0.1:" + STOREFRONT.getAddress().getPort());
+  }
 
   @BeforeEach
   void setUp() {
@@ -805,5 +844,181 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
                     Map.of("accountIds", List.of(a), "reason", "x"))
                 .status())
         .isEqualTo(403);
+  }
+
+  void storefrontThemes(int version, String themesJson) {
+    STOREFRONT_THEMES.set("{\"layoutVersion\":" + version + ",\"themes\":" + themesJson + "}");
+  }
+
+  /** 0.3.0 — 사용자 "행사 대상에 테마도 추가", 세부 "추천안대로 진행". */
+  @Test
+  void themeTargetFollowsPublishedThemeProductsAndStopsWhenRemoved() throws Exception {
+    String p1 = "PRD-" + UUID.randomUUID();
+    String p2 = "PRD-" + UUID.randomUUID();
+    String s1 = randomSku();
+    String s2 = randomSku();
+    productPublished(p1, s1, List.of());
+    productPublished(p2, s2, List.of());
+    await(
+        () ->
+            jdbc.queryForObject(
+                "SELECT count(*) FROM sku_product WHERE sku IN (?, ?)", Integer.class, s1, s2),
+        n -> n != null && n == 2);
+    String sale = "T-SALE" + (int) (Math.random() * 100000);
+    int v = (int) (Math.random() * 100000) + 10;
+    storefrontThemes(
+        v,
+        "[{\"sectionId\":\""
+            + sale
+            + "\",\"kind\":\"THEME\",\"title\":\"겨울 특가\",\"productIds\":[\""
+            + p1
+            + "\"]},{\"sectionId\":\"T-RANK\",\"kind\":\"RANKING_AUTO\",\"title\":\"인기\",\"productIds\":[]}]");
+    assertThat(themeSync.sync()).isTrue();
+    assertThat(themeSync.sync()).as("같은 진열 버전이면 그대로").isFalse();
+
+    Res picks = send("GET", MKT, "/promotions/theme-targets", null);
+    assertThat(picks.status()).as(picks.body().toString()).isEqualTo(200);
+    assertThat(picks.body().path("layoutVersion").asInt()).isEqualTo(v);
+    Map<String, JsonNode> byId = new LinkedHashMap<>();
+    picks.body().path("themes").forEach(t -> byId.put(t.path("sectionId").asString(), t));
+    assertThat(byId.get(sale).path("productCount").asInt()).isEqualTo(1);
+    assertThat(byId.get(sale).path("selectable").asBoolean()).isTrue();
+    assertThat(byId.get("T-RANK").path("selectable").asBoolean()).isFalse();
+    assertThat(send("GET", MD, "/promotions/theme-targets", null).status()).isEqualTo(403);
+
+    // 게시본에 없는 테마·자동 랭킹 테마는 제출을 막는다
+    Res bad =
+        send(
+            "POST",
+            MKT,
+            "/promotions",
+            priceDiscount(
+                "없는 테마",
+                Map.of("type", "RATE", "value", 10),
+                List.of(
+                    Map.of("type", "THEME", "id", "T-NOPE"),
+                    Map.of("type", "THEME", "id", "T-RANK"))));
+    assertThat(bad.body().path("problems").toString())
+        .contains("THEME_NOT_PUBLISHED", "THEME_AUTO_RANKING");
+
+    String promo =
+        approved(
+            priceDiscount(
+                "테마 10%",
+                Map.of("type", "RATE", "value", 10), List.of(Map.of("type", "THEME", "id", sale))));
+    JsonNode got = send("GET", MKT, "/promotions/" + promo, null).body();
+    assertThat(got.path("targets").path(0).path("title").asString()).isEqualTo("겨울 특가");
+
+    Map<String, Integer> prices = new LinkedHashMap<>();
+    prices.put(s1, 1000);
+    prices.put(s2, 2000);
+    JsonNode d = discounts(prices);
+    assertThat(d).hasSize(1);
+    assertThat(d.path(0).path("sku").asString()).isEqualTo(s1);
+    assertThat(d.path(0).path("unitDiscount").asInt()).isEqualTo(100);
+
+    // 테마 상품이 바뀌면 다시 승인 없이 따라간다
+    storefrontThemes(
+        v + 1,
+        "[{\"sectionId\":\""
+            + sale
+            + "\",\"kind\":\"THEME\",\"title\":\"겨울 특가\",\"productIds\":[\""
+            + p2
+            + "\"]}]");
+    assertThat(themeSync.sync()).isTrue();
+    d = discounts(prices);
+    assertThat(d).hasSize(1);
+    assertThat(d.path(0).path("sku").asString()).isEqualTo(s2);
+    assertThat(d.path(0).path("unitDiscount").asInt()).isEqualTo(200);
+
+    // 테마가 진열에서 빠지면 할인도 멈춘다
+    storefrontThemes(v + 2, "[]");
+    assertThat(themeSync.sync()).isTrue();
+    assertThat(discounts(prices)).isEmpty();
+    assertThat(
+            send("GET", MKT, "/promotions/" + promo, null)
+                .body()
+                .path("targets")
+                .path(0)
+                .path("title")
+                .isString())
+        .isFalse();
+  }
+
+  /** 0.3.0 — 사용자 "직원 지정 발급 … 고객 id 를 넣는 칸", 세부 "추천안대로 진행". */
+  @Test
+  void adminCouponRecipientsAreIssuedWhenRunning() throws Exception {
+    String a = "CU-" + UUID.randomUUID();
+    String b = "CU-" + UUID.randomUUID();
+    Map<String, Object> policy = new LinkedHashMap<>();
+    policy.put("issueMode", "ADMIN");
+    policy.put("minOrderAmount", 0);
+    policy.put("perCustomerLimit", 1);
+    policy.put("totalQuantity", 1);
+    policy.put("useDays", 7);
+    policy.put("recipients", Map.of("accountIds", List.of(a, b), "reason", "배송 지연 보상"));
+
+    // 내려받기 쿠폰에는 받을 고객을 둘 수 없다
+    Map<String, Object> download = new LinkedHashMap<>(policy);
+    download.put("issueMode", "DOWNLOAD");
+    Res wrong =
+        send(
+            "POST",
+            MKT,
+            "/promotions",
+            coupon("내려받기", Map.of("type", "AMOUNT", "value", 1000), download));
+    assertThat(wrong.body().path("problems").toString()).contains("RECIPIENTS_NOT_ADMIN");
+
+    Res created =
+        send(
+            "POST",
+            MKT,
+            "/promotions",
+            coupon("보상 쿠폰", Map.of("type", "AMOUNT", "value", 1000), policy));
+    assertThat(created.status()).as(created.body().toString()).isEqualTo(201);
+    String id = created.body().path("promotionId").asString();
+    assertThat(created.body().path("coupon").path("recipients").path("accountIds")).hasSize(2);
+    assertThat(created.body().path("recipientResults").path(0).path("result").asString())
+        .isEqualTo("PENDING");
+    // 승인 전에는 주지 않는다
+    recipientGrants.run();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM coupon WHERE promotion_id = ?", Integer.class, id))
+        .isZero();
+
+    Res sub = send("POST", MKT, "/promotions/" + id + "/submissions", null);
+    assertThat(sub.status()).as(sub.body().toString()).isEqualTo(200);
+    assertThat(sub.body().at("/approvalRequest/summary").asString()).contains("받을 고객 2명");
+    assertThat(sub.body().at("/approvalRequest/lines/0/attributes/recipientCount").asInt())
+        .isEqualTo(2);
+    decide(
+        "AP-" + UUID.randomUUID(),
+        id,
+        "APPROVED",
+        "ACTIVATE",
+        sub.body().path("draftHash").asString());
+    await(
+        () -> send("GET", MKT, "/promotions/" + id, null),
+        r -> "APPROVED".equals(r.body().path("state").asString()));
+
+    assertThat(recipientGrants.run()).isGreaterThanOrEqualTo(2);
+    JsonNode results = send("GET", MKT, "/promotions/" + id, null).body().path("recipientResults");
+    assertThat(results.path(0).path("accountId").asString()).isEqualTo(a);
+    assertThat(results.path(0).path("result").asString()).isEqualTo("ISSUED");
+    assertThat(results.path(0).path("couponId").asString()).startsWith("CPN-");
+    assertThat(results.path(1).path("result").asString()).as("총 수량 1").isEqualTo("SOLD_OUT");
+    Map<String, Object> issued =
+        jdbc.queryForMap(
+            "SELECT issued_by, issue_channel, issue_reason FROM coupon WHERE promotion_id = ?", id);
+    assertThat(issued.get("issued_by")).as("만든 직원").isEqualTo("mkt-1");
+    assertThat(issued.get("issue_channel")).isEqualTo("ADMIN");
+    assertThat(issued.get("issue_reason")).isEqualTo("배송 지연 보상");
+    // 다시 돌아도 같은 고객에게 또 주지 않는다
+    recipientGrants.run();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM coupon WHERE promotion_id = ?", Integer.class, id))
+        .isEqualTo(1);
   }
 }

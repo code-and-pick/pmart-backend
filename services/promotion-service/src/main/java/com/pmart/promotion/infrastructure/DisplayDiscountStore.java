@@ -58,6 +58,9 @@ public class DisplayDiscountStore {
             + " JOIN sku_price sp ON (pt.target_type = 'SKU' AND sp.sku = pt.target_id)"
             + " OR (pt.target_type = 'CATEGORY' AND sp.sku IN"
             + " (SELECT sc.sku FROM sku_category sc WHERE sc.category_id = pt.target_id))"
+            + " OR (pt.target_type = 'THEME' AND sp.sku IN (SELECT s.sku FROM sku_product s"
+            + " JOIN theme_copy_product tp ON tp.product_id = s.product_id"
+            + " WHERE tp.section_id = pt.target_id))"
             + " WHERE p.kind = 'PRICE_DISCOUNT' AND p.state = 'APPROVED' AND p.starts_at <= ?"
             + " AND p.ends_at > ? AND (p.ended_at IS NULL OR p.ended_at > ?)",
         String.class,

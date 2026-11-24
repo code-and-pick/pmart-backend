@@ -403,6 +403,15 @@ class LayoutIT extends PostgresKafkaContainerSupport {
             approvalId);
     assertThat(mapper.readTree(receipt).at("/payload/result").asString()).isEqualTo("APPLIED");
 
+    // 0.14.0 — promotion 이 받아 가는 게시 테마(판매중지 상품도 편성 그대로 — 할인 대상은 promotion 이 SKU 로 정한다)
+    JsonNode themes = send("GET", null, "/internal/storefront/themes", null).body();
+    assertThat(themes.path("layoutVersion").asInt()).isEqualTo(version);
+    JsonNode winter = themes.path("themes").path(0);
+    assertThat(winter.path("sectionId").asString()).isEqualTo("T-WINTER");
+    assertThat(winter.path("kind").asString()).isEqualTo("SEASON");
+    assertThat(winter.path("title").asString()).isNotBlank();
+    assertThat(winter.path("productIds").toString()).contains("PRD-L1", "PRD-L2");
+
     // 해시가 다른 승인 → 게시 안 함, 초안 REJECTED·SCOPE_MISMATCH
     jdbc.update("UPDATE display_product SET sale_state = 'ON_SALE' WHERE product_id = 'PRD-L3'");
     Res second = send("POST", MD, "/storefront/layout-drafts?fromCurrent=true", Map.of());

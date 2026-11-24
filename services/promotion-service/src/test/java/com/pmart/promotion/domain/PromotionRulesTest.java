@@ -94,4 +94,72 @@ class PromotionRulesTest {
     assertThat(PromotionRules.check(badCoupon, NOW).stream().map(PromotionRules.Problem::field))
         .contains("coupon.useDays", "discount.maxAmount", "discount.value");
   }
+
+  /** 0.3.0 — 테마 대상(게시본에 있고 자동 랭킹이 아닌 것만)·받을 고객(지정 발급만, 1~100명·겹침 없음·사유). */
+  @Test
+  void themeTargetsAndRecipients() {
+    Input theme =
+        new Input(
+            "PRICE_DISCOUNT",
+            "테마 할인",
+            NOW,
+            NOW.plusSeconds(3600),
+            new Discount("RATE", 10, null),
+            List.of(new Target("THEME", "T-WINTER"), new Target("THEME", "T-RANK")),
+            null);
+    var codes =
+        PromotionRules.check(theme, NOW, java.util.Map.of("T-WINTER", "SEASON")).stream()
+            .map(PromotionRules.Problem::code)
+            .toList();
+    assertThat(codes).containsExactly("THEME_NOT_PUBLISHED");
+    assertThat(
+            PromotionRules.check(
+                    theme, NOW, java.util.Map.of("T-WINTER", "SEASON", "T-RANK", "RANKING_AUTO"))
+                .stream()
+                .map(PromotionRules.Problem::code))
+        .containsExactly("THEME_AUTO_RANKING");
+    Input okTheme =
+        new Input(
+            "PRICE_DISCOUNT",
+            "테마 할인",
+            NOW,
+            NOW.plusSeconds(3600),
+            new Discount("RATE", 10, null),
+            List.of(new Target("THEME", "T-WINTER")),
+            null);
+    assertThat(PromotionRules.check(okTheme, NOW, java.util.Map.of("T-WINTER", "THEME"))).isEmpty();
+    assertThat(PromotionRules.check(okTheme, NOW).get(0).code()).isEqualTo("THEME_NOT_PUBLISHED");
+
+    var recipients = new PromotionRules.Recipients(List.of("CU-1", "CU-2"), "보상");
+    Input admin =
+        new Input(
+            "COUPON",
+            "보상 쿠폰",
+            NOW,
+            NOW.plusSeconds(3600),
+            new Discount("AMOUNT", 1000, null),
+            List.of(),
+            new CouponPolicy("ADMIN", 0, null, 1, 7, null, recipients));
+    assertThat(PromotionRules.check(admin, NOW)).isEmpty();
+    Input download =
+        new Input(
+            "COUPON",
+            "내려받기",
+            NOW,
+            NOW.plusSeconds(3600),
+            new Discount("AMOUNT", 1000, null),
+            List.of(),
+            new CouponPolicy(
+                "DOWNLOAD",
+                0,
+                null,
+                1,
+                7,
+                null,
+                new PromotionRules.Recipients(List.of("CU-1", "CU-1"), " ")));
+    var bad = PromotionRules.check(download, NOW);
+    assertThat(bad.stream().map(PromotionRules.Problem::code)).contains("RECIPIENTS_NOT_ADMIN");
+    assertThat(bad.stream().map(PromotionRules.Problem::field))
+        .contains("coupon.recipients.accountIds[1]", "coupon.recipients.reason");
+  }
 }

@@ -4,12 +4,14 @@ import com.pmart.promotion.api.generated.model.Coupon;
 import com.pmart.promotion.api.generated.model.CouponCampaign;
 import com.pmart.promotion.api.generated.model.CouponHold;
 import com.pmart.promotion.api.generated.model.CouponPolicy;
+import com.pmart.promotion.api.generated.model.CouponPolicyRecipients;
 import com.pmart.promotion.api.generated.model.Discount;
 import com.pmart.promotion.api.generated.model.Problem;
 import com.pmart.promotion.api.generated.model.Promotion;
 import com.pmart.promotion.api.generated.model.PromotionInput;
 import com.pmart.promotion.api.generated.model.PromotionKind;
 import com.pmart.promotion.api.generated.model.PromotionPhase;
+import com.pmart.promotion.api.generated.model.PromotionRecipientResultsInner;
 import com.pmart.promotion.api.generated.model.PromotionState;
 import com.pmart.promotion.api.generated.model.PromotionTarget;
 import com.pmart.promotion.application.CouponService;
@@ -49,7 +51,17 @@ final class PromotionMapping {
                 c.getTotalQuantity(),
                 c.getPerCustomerLimit(),
                 c.getUseDays(),
-                c.getUseUntil() == null ? null : c.getUseUntil().toInstant()));
+                c.getUseUntil() == null ? null : c.getUseUntil().toInstant(),
+                recipients(c.getRecipients())));
+  }
+
+  /** 0.3.0 받을 고객 — 순서 그대로(겹침·한도는 검사가 problems 로). */
+  private static PromotionRules.@Nullable Recipients recipients(
+      @Nullable CouponPolicyRecipients r) {
+    return r == null
+        ? null
+        : new PromotionRules.Recipients(
+            r.getAccountIds() == null ? List.of() : r.getAccountIds(), r.getReason());
   }
 
   static Discount discount(String type, int value, @Nullable Integer max) {
@@ -76,14 +88,28 @@ final class PromotionMapping {
                             t ->
                                 new PromotionTarget()
                                     .type(PromotionTarget.TypeEnum.fromValue(t[0]))
-                                    .id(t[1]))
+                                    .id(t[1])
+                                    .title("THEME".equals(t[0]) ? v.themeTitles().get(t[1]) : null))
                         .toList()))
             .issuedCount(r.issuedCount())
             .usedCount(r.usedCount())
+            .recipientResults(
+                new java.util.ArrayList<>(
+                    v.recipientResults().stream()
+                        .map(
+                            x ->
+                                new PromotionRecipientResultsInner()
+                                    .accountId(x.accountId())
+                                    .result(
+                                        PromotionRecipientResultsInner.ResultEnum.fromValue(
+                                            x.result() == null ? "PENDING" : x.result()))
+                                    .couponId(x.couponId())
+                                    .processedAt(odt(x.processedAt())))
+                        .toList()))
             .problems(
                 new java.util.ArrayList<>(
                     v.problems().stream()
-                        .map(p -> new Problem().field(p.field()).reason(p.reason()))
+                        .map(p -> new Problem().field(p.field()).reason(p.reason()).code(p.code()))
                         .toList()))
             .approvalId(r.approvalId())
             .version(r.version())
@@ -97,7 +123,13 @@ final class PromotionMapping {
               .totalQuantity(r.totalQuantity())
               .perCustomerLimit(r.perCustomerLimit() == null ? 1 : r.perCustomerLimit())
               .useDays(r.useDays())
-              .useUntil(odt(r.useUntil())));
+              .useUntil(odt(r.useUntil()))
+              .recipients(
+                  v.recipients() == null
+                      ? null
+                      : new CouponPolicyRecipients()
+                          .accountIds(new java.util.ArrayList<>(v.recipients().accountIds()))
+                          .reason(v.recipients().reason())));
     }
     return out;
   }

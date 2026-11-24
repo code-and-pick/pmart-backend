@@ -263,7 +263,10 @@ public class PromotionStore {
         ts(at));
   }
 
-  /** 이 SKU 들에 at 시각 걸린 기간 할인 후보(SKU 지정 + 카테고리 — 카테고리는 sku_category 사본으로). */
+  /**
+   * 이 SKU 들에 at 시각 걸린 기간 할인 후보(SKU 지정 + 카테고리 — 카테고리는 sku_category 사본으로, 0.3.0 테마 — 받아 둔 진열 테마 사본의
+   * 상품(sku_product)으로).
+   */
   public List<Candidate> priceCandidates(Collection<String> skus, Instant at) {
     if (skus.isEmpty()) {
       return List.of();
@@ -276,13 +279,35 @@ public class PromotionStore {
             + " AND p.ends_at > ? AND (p.ended_at IS NULL OR p.ended_at > ?)"
             + " AND ((t.target_type = 'SKU' AND t.target_id = ANY (?::varchar[]))"
             + " OR (t.target_type = 'CATEGORY' AND t.target_id IN"
-            + " (SELECT category_id FROM sku_category WHERE sku = ANY (?::varchar[]))))",
+            + " (SELECT category_id FROM sku_category WHERE sku = ANY (?::varchar[])))"
+            + " OR (t.target_type = 'THEME' AND t.target_id IN"
+            + " (SELECT tp.section_id FROM theme_copy_product tp"
+            + " JOIN sku_product sp ON sp.product_id = tp.product_id"
+            + " WHERE sp.sku = ANY (?::varchar[]))))",
         (rs, i) -> new Candidate(promotion(rs), rs.getString("t_type"), rs.getString("t_id")),
         ts(at),
         ts(at),
         ts(at),
         arr,
+        arr,
         arr);
+  }
+
+  /** SKU → 그 상품이 든 진열 테마 sectionId(받아 둔 사본, 0.3.0). */
+  public Map<String, List<String>> themesOf(Collection<String> skus) {
+    Map<String, List<String>> out = new HashMap<>();
+    if (skus.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT sp.sku, tp.section_id FROM sku_product sp"
+            + " JOIN theme_copy_product tp ON tp.product_id = sp.product_id"
+            + " WHERE sp.sku = ANY (?::varchar[])",
+        rs -> {
+          out.computeIfAbsent(rs.getString(1), k -> new ArrayList<>()).add(rs.getString(2));
+        },
+        "{" + String.join(",", skus) + "}");
+    return out;
   }
 
   // ------------------------------------------------------------------ 상품 사본
