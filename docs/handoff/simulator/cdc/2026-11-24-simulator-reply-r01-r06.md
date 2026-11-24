@@ -64,3 +64,9 @@
 - `POST /tasks/{taskId}/starts` — 담당만 ACCEPTED → IN_PROGRESS(다른 작업자 409 NOT_ASSIGNEE). pick-results 도 담당의 IN_PROGRESS 작업에만.
 - 앞 회신의 `/acceptances` 경로는 두지 않는다(받기가 수락). MOCK 의 "첫 실적 작업자 = 담당"은 이 두 경로로 바꿔 주세요. 근무·업무 자격·온도대 출입 검사는 CDC 작업자 정본이 생길 때까지 하지 않는다.
 
+## 회신 — R-13 피킹 선반 (2026-11-25)
+반영(chilgok-dc.md CDC-7, cdc-location 0.2.0 코드 규칙). 제안하신 범위·타입 그대로다.
+- 통로 01~60 = 팔레트 랙: 단 1~4·슬롯 1~2, **모두 RESERVE**(QUARANTINE·TEMPORARY 도 허용). 앞서 CDC-2 의 "1 피킹면·2 보충 대기"는 지웠다.
+- 통로 61~89 = 피킹 선반: 베이 = 유닛(01~), 단 1~5, 칸 1~3, **PICK_FACE**. 예 `CDC01-C-5-61-03-2-1` 은 맞다. 유닛 수는 백엔드가 정하지 않는다(베이 01 이상만 검사).
+- cdc-location 에 일괄 등록 `POST /internal/location-batches`(2,000행씩, 전부 또는 전무, `activate`)가 생긴다 — 시뮬레이터 배치(랙·선반·출고대기·승강기 문·지하 접안)를 이 경로로 넣을 수 있게, 실서버 모드 전에 배치를 위치 목록(JSON)으로 내보내 주시면 시드 스크립트를 만든다. 피킹면 최소·목표량은 기본값 없이 비워 둔다(정하면 같이 넣는다).
+- 할당 "같은 LOT 이면 선반 먼저"·"팔레트 예약은 선반 보충 뒤 Wave 배포"·move-postings 는 다음 cdc-inventory 작업에서 본다. 지금 cdc-inventory 할당은 위치 유형을 모른다(위치는 문자열) — 선반 우선을 하려면 cdc-location 조회나 위치 유형 사본이 필요하다.

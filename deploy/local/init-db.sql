@@ -34,3 +34,4 @@ CREATE DATABASE review_service;
 CREATE DATABASE promotion_service;
 CREATE DATABASE center_master_service;
 CREATE DATABASE cdc_inventory_service;
+CREATE DATABASE cdc_location_service;

@@ -1,0 +1,8 @@
+# 시험 전용(ADR-0029). 시험은 config-server 없이 돈다 — pmart-config 정본의 사본(pmart-config/)을 읽는다.
+# 정본을 바꾸면 사본도 같이 바꾼다(cp ../pmart-config/{application,<서비스>}.yml). DB·Kafka 는 Testcontainers.
+spring:
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: "classpath:pmart-config/application.yml,classpath:pmart-config/cdc-location-service.yml,classpath:pmart-config/cdc-location-service-it-env.yml"

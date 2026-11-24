@@ -1,0 +1,256 @@
+package com.pmart.cdc.location;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.pmart.common.test.PostgresKafkaContainerSupport;
+import com.pmart.common.test.TestJwt;
+import com.pmart.common.test.TestJwtConfiguration;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.client.RestClient;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+/**
+ * 위치 마스터 흐름(0.2.0): 칠곡 문법 위반 일괄 등록 거절(전부 또는 전무) → 일괄 등록·ACTIVE → 재생 → 이미 있는 코드 409 → 운영자 단건
+ * 등록(DRAFT)·다른 센터 403 → 조회(구간·점유 모름) → 거르기·쪽 나누기 → 상태 전환(BLOCK·LocStateChanged, 버전 충돌, RETIRE 규칙).
+ */
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+    properties = {
+      "spring.main.banner-mode=off",
+      "pmart.messaging.outbox.delete-after-insert=false",
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+    })
+@Import(TestJwtConfiguration.class)
+class LocationFlowIT extends PostgresKafkaContainerSupport {
+
+  static final String CENTER = "CDC01";
+  static final String OPERATOR = TestJwt.operator("op-1", List.of("CDC_MANAGER"), List.of(CENTER));
+  static final String OTHER = TestJwt.operator("op-2", List.of("CDC_MANAGER"), List.of("CDC02"));
+  static final String SERVICE = TestJwt.service("backoffice-bff");
+
+  @LocalServerPort int port;
+  @Autowired JdbcTemplate jdbc;
+  @Autowired ObjectMapper mapper;
+
+  RestClient http;
+
+  @BeforeEach
+  void setUp() {
+    http =
+        RestClient.builder()
+            .baseUrl("http://localhost:" + port + "/api/v1")
+            .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
+            .build();
+    jdbc.update("DELETE FROM location_state_history");
+    jdbc.update("DELETE FROM location");
+  }
+
+  record Res(int status, JsonNode body) {}
+
+  Res post(String token, String path, String key, Object body, Integer expectedVersion) {
+    var e =
+        http.post()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "backoffice-web");
+                  if (expectedVersion != null) {
+                    h.set("X-Expected-Version", String.valueOf(expectedVersion));
+                  }
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(e.getStatusCode().value(), read(e.getBody()));
+  }
+
+  Res get(String token, String path) {
+    var e =
+        http.get().uri(path).headers(h -> h.setBearerAuth(token)).retrieve().toEntity(String.class);
+    return new Res(e.getStatusCode().value(), read(e.getBody()));
+  }
+
+  JsonNode read(String body) {
+    return mapper.readTree(body == null || body.isBlank() ? "{}" : body);
+  }
+
+  static String key() {
+    return UUID.randomUUID().toString();
+  }
+
+  static Map<String, Object> loc(String code, String temp, String type) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("locationCode", code);
+    m.put("centerId", CENTER);
+    m.put("temperatureZone", temp);
+    m.put("locationType", type);
+    m.put("capacity", Map.of("unit", "PLT", "maxQty", 1, "maxWeightG", 1_000_000));
+    return m;
+  }
+
+  /** 피킹 선반 칸(R-13) — 최소·목표량은 설정값이라 비운다. */
+  static Map<String, Object> shelf(String code) {
+    Map<String, Object> m = loc(code, "AMBIENT", "PICK_FACE");
+    m.put("capacity", Map.of("unit", "EACH"));
+    return m;
+  }
+
+  /** 상온 C 5층 1번 통로 베이 01~02 × 단 1~4 × 슬롯 1~2 = 16칸(RESERVE) + 출고대기 1 + 지하 도크 1. */
+  static List<Map<String, Object>> layout() {
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (int bay = 1; bay <= 2; bay++) {
+      for (int level = 1; level <= 4; level++) {
+        for (int slot = 1; slot <= 2; slot++) {
+          items.add(
+              loc(
+                  String.format("CDC01-C-5-01-%02d-%d-%d", bay, level, slot),
+                  "AMBIENT",
+                  "RESERVE"));
+        }
+      }
+    }
+    items.add(loc("CDC01-C-5-91-01-0-1", "AMBIENT", "STAGING"));
+    items.add(loc("CDC01-B-B1-90-03-0-1", "CHILLED", "DOCK"));
+    return items;
+  }
+
+  int outbox(String code) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE type = 'LocStateChanged' AND aggregateid = ?"
+                + " AND topic = 'cdc.location.v1'",
+            Integer.class,
+            code);
+    return n == null ? 0 : n;
+  }
+
+  @Test
+  void batchCreateQueryAndStateChanges() {
+    // 1) 한 줄이라도 어기면 전부 거절(냉동 A 글자에 AMBIENT, 5단)
+    List<Map<String, Object>> bad = new ArrayList<>(layout());
+    bad.add(loc("CDC01-A-5-01-01-3-1", "AMBIENT", "RESERVE"));
+    bad.add(loc("CDC01-C-5-02-01-5-1", "AMBIENT", "RESERVE"));
+    Res rejected =
+        post(
+            SERVICE,
+            "/internal/location-batches",
+            key(),
+            Map.of("centerId", CENTER, "approvalRef", "BO-06-1", "activate", true, "items", bad),
+            null);
+    assertThat(rejected.status()).isEqualTo(400);
+    assertThat(rejected.body().toString())
+        .contains("TEMPERATURE_ZONE_MISMATCH")
+        .contains("RACK_LEVEL");
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM location", Integer.class)).isZero();
+
+    // 2) 일괄 등록 ACTIVE 18칸, 같은 키 재생
+    Map<String, Object> batch =
+        Map.of("centerId", CENTER, "approvalRef", "BO-06-1", "activate", true, "items", layout());
+    String batchKey = key();
+    Res ok = post(SERVICE, "/internal/location-batches", batchKey, batch, null);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("appliedQty").asInt()).isEqualTo(18);
+    assertThat(post(SERVICE, "/internal/location-batches", batchKey, batch, null).status())
+        .isEqualTo(200);
+    Res dup = post(SERVICE, "/internal/location-batches", key(), batch, null);
+    assertThat(dup.status()).isEqualTo(409);
+    assertThat(dup.body().path("code").asString()).isEqualTo("LOCATION_CODE_EXISTS");
+
+    // 3) 운영자 단건 등록(DRAFT), 다른 센터 운영자 403
+    Res one = post(OPERATOR, "/locations", key(), shelf("CDC01-G-7-61-01-3-1"), null);
+    assertThat(one.status()).as(one.body().toString()).isEqualTo(201);
+    assertThat(one.body().path("state").asString()).isEqualTo("DRAFT");
+    assertThat(
+            post(OTHER, "/locations", key(), loc("CDC01-G-7-01-01-4-1", "AMBIENT", "RESERVE"), null)
+                .status())
+        .isEqualTo(403);
+
+    // 4) 조회 — 구간 나눔, 점유는 모름(null), 신선도 UNAVAILABLE
+    JsonNode g = get(OPERATOR, "/locations/CDC01-C-5-01-02-1-2").body();
+    assertThat(g.path("state").asString()).isEqualTo("ACTIVE");
+    assertThat(g.path("version").asInt()).isEqualTo(2);
+    assertThat(g.path("locationType").asString()).isEqualTo("RESERVE");
+    assertThat(g.path("parts").path("floor").asString()).isEqualTo("5");
+    assertThat(g.path("parts").path("level").asInt()).isEqualTo(1);
+    assertThat(g.path("occupiedQty").isNull()).isTrue();
+    assertThat(g.path("asOf").path("freshness").asString()).isEqualTo("UNAVAILABLE");
+    assertThat(get(OTHER, "/locations/CDC01-C-5-01-02-1-2").status()).isEqualTo(403);
+
+    // 5) 거르기·쪽 나누기
+    JsonNode staging =
+        get(OPERATOR, "/locations?centerId=CDC01&locationType=STAGING").body().path("items");
+    assertThat(staging.size()).isEqualTo(1);
+    JsonNode page1 = get(OPERATOR, "/locations?centerId=CDC01&area=C&floor=5&size=10").body();
+    assertThat(page1.path("items").size()).isEqualTo(10);
+    String cursor = page1.path("page").path("nextCursor").asString();
+    JsonNode page2 =
+        get(OPERATOR, "/locations?centerId=CDC01&area=C&floor=5&size=10&cursor=" + cursor).body();
+    assertThat(page2.path("items").size()).isEqualTo(7); // 랙 16 + 출고대기 1 = 17
+    assertThat(page2.path("page").path("nextCursor").isNull()).isTrue();
+
+    // 6) 상태 전환 BLOCK → 사건, 옛 버전은 409, ACTIVE 폐기 불가, DRAFT 폐기는 승인 필요
+    String code = "CDC01-C-5-01-01-3-1";
+    Res block =
+        post(
+            OPERATOR,
+            "/locations/" + code + "/state-changes",
+            key(),
+            Map.of("action", "BLOCK", "reason", "랙 점검"),
+            2);
+    assertThat(block.status()).as(block.body().toString()).isEqualTo(202);
+    assertThat(block.body().path("version").asInt()).isEqualTo(3);
+    assertThat(outbox(code)).isEqualTo(1);
+    Res stale =
+        post(
+            OPERATOR,
+            "/locations/" + code + "/state-changes",
+            key(),
+            Map.of("action", "UNBLOCK", "reason", "끝"),
+            2);
+    assertThat(stale.status()).isEqualTo(409);
+    assertThat(stale.body().path("code").asString()).isEqualTo("VERSION_CONFLICT");
+    Res retireActive =
+        post(
+            OPERATOR,
+            "/locations/CDC01-C-5-01-02-3-1/state-changes",
+            key(),
+            Map.of("action", "RETIRE", "reason", "철거", "approvalRef", "AP-1"),
+            null);
+    assertThat(retireActive.body().path("code").asString()).isEqualTo("INVALID_STATE");
+    Res noApproval =
+        post(
+            OPERATOR,
+            "/locations/CDC01-G-7-61-01-3-1/state-changes",
+            key(),
+            Map.of("action", "RETIRE", "reason", "잘못 등록"),
+            null);
+    assertThat(noApproval.status()).isEqualTo(422);
+    Res retire =
+        post(
+            OPERATOR,
+            "/locations/CDC01-G-7-61-01-3-1/state-changes",
+            key(),
+            Map.of("action", "RETIRE", "reason", "잘못 등록", "approvalRef", "AP-2"),
+            null);
+    assertThat(retire.status()).isEqualTo(202);
+    assertThat(get(OPERATOR, "/locations/CDC01-G-7-61-01-3-1").body().path("state").asString())
+        .isEqualTo("RETIRED");
+  }
+}

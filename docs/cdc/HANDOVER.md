@@ -11,13 +11,16 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 | 무엇 | 상태 |
 |---|---|
 | `services/cdc-inventory-service` | 스캐폴딩(2026-10-30, 86xx 첫 서비스, 로컬 포트 8601). 상품 등록 슬라이스만: `commerce.product.v1` SkuIssued·ProductVersionPublished → `sku_projection`(물류 규격 units_per_box·boxes_per_pallet·ti·hi), 센터 취급 `center_sku_handling`(레코드 없음 = OFF, `/cdcs/{cdcId}/sku-handlings`). Flyway V1·V2. **장부(0.2.0, 2026-11-25)**: 초기 보유 `/internal/initial-balances`(센터·SKU·LOT 1회)·안전량 `/internal/safety-stocks`(새 경로)·가용 `max(0,E−R−S)`·FEFO 다LOT 할당/해제·TOUT 출발 전기(`TransferDeparted` 발행 — mfc-inbound 가 받음)·원결과·Transit 조회, Flyway V3. **아직 501: 수령 확인(receipt-acks)·이동·품질·손실·조정·스냅샷·일일 대사.** 게이트웨이·LAN 배치·Helm 미등록 |
+| `services/cdc-location-service` | 2026-11-25 새로 만듦(로컬 포트 8602). 위치 마스터: 등록·일괄 등록 `/internal/location-batches`·조회·상태 전환(`LocStateChanged`), 칠곡 코드 문법 검사(CDC-3~5·7). 점유는 모름(null). 적치 후보·공간 예약·도크 예약은 501. pmart-config 정본 파일·게이트웨이·LAN 배치 없음(PC1 요청) |
 | 계약 | `contracts/openapi/cdc-{inventory,inbound,location,outbound,quality}-service.yaml` 다섯 개 모두 있음(구현은 inventory 일부만) |
 | 설계 | `docs/architecture/service-map.md` §4 CDC WMS — 다섯 서비스 소유·발행·구독·사가 S7(적치) |
 | 업무 원문 | `docs/business/WMS-business-logic.md`(정본) + `docs/business/WMS-dc-wave-business-logic.md`(Wave·지역 바코드 피킹·분배·라인·보충 MOV — 2026-11-24 사용자 채택) — `MFC-business-logic.md` 와 섞지 않는다 |
 | 시뮬레이터 | `pmart-cdc-simulation`(세션 "cdc 시뮬레이션", 2026-11-24 설계 시작). 센터 **칠곡 DC `CDC01`** — 고정값(8,600평·5~7층·520만 유닛·주소)·현장 근거·결정 CDC-1~6(층 배치·위치 코드·온도 글자·비랙 위치·공급 MFC 5곳·지역)은 `docs/simulator/cdc/chilgok-dc.md`, 회신 `docs/handoff/simulator/cdc/`. 범위 **출고·피킹·상차만**(S-3·S-6), CDC 재고는 시작 재고(시드) |
 
 ## 2. 없는 것
-- 서비스: `cdc-outbound`·`cdc-location`(시뮬레이터 범위에 먼저 필요), `cdc-inbound`·`cdc-quality`.
+- 서비스: `cdc-outbound`(시뮬레이터 범위에 먼저 필요), `cdc-inbound`·`cdc-quality`.
+- cdc-outbound 게이트웨이: `/api/v1/tasks/**` 는 mfc-fulfillment 라우트가 잡고 있다(PR 백엔드 #443 댓글) — cdc-outbound 를 만들 때 Task 경로를 `/cdcs/{cdcId}/tasks…` 처럼 겹치지 않게 바꾸고 게이트웨이 허용 목록·라우트를 같이 요청한다.
+- 칠곡 위치 전체 시드(랙·선반·출고대기·승강기 문·접안) — 시뮬레이터 배치 내보내기(R-13 회신) 또는 도면(R-05)을 받으면 만든다.
 - cdc-inventory 의 MFC 수령 확인(Transit −r)·손실·이동·품질·조정·스냅샷·일일 대사.
 - 품목군 최소 잔여일수(총기간 T 의 30%·20%) — 제조일 입력이 없어 아직 계산하지 않음(할당 요청의 `minRemainingDays` 와 당일 차단만).
 - 승인량 초과 할당 검사 — 승인 정본(replenishment)이 없음.
@@ -40,3 +43,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-24: CDC 시뮬레이터 R-01~R-06 회신, 칠곡 DC 결정 CDC-1~6, DC Wave 근거 문서 채택, center-master CM-3 요청, cdc-location 계약 0.1.1(코드 설명만) — PR `cdc/simulator-decisions`(#436). 같은 날 R-07(지하 접안 DOCK `B1`·층 승강기 문 92)·R-08(구역 글자 A 냉동·B 냉장·C~E 상온·F 인기·G/H 생활용품, 사용자 "MFC 시뮬레이션이 기준") 반영.
 - 2026-11-24: R-09·R-10 층 배치(#437). R-10 의 무거운 상온 C·D 6통로는 사용자 의도("냉동 그대로, 5층 무거운 것, 7층 상온 생활용품", 2026-11-25)와 맞아 그대로 둔다 — 용량은 도면(R-05) 때 다시 본다.
 - 2026-11-25: cdc-inventory 장부 0.2.0(초기 보유·안전량·가용·할당/해제·TOUT·원결과·Transit) — PR `cdc/inventory-core`.
+- 2026-11-25: cdc-location 서비스·위치 마스터(계약 0.2.0) — PR `cdc/location-service`. 사용자 제공 CDC 구축 명세서는 참고 문서로만("칠곡 결정 유지"). R-13 피킹 선반(통로 61~ PICK_FACE, 랙 전부 RESERVE).
