@@ -1162,6 +1162,31 @@ class HrProvisioningIT extends PostgresKafkaContainerSupport {
         .containsExactly(a);
     assertThat(call("GET", "/hr/employee-labels?employeeNos=12345", anyStaff, null).status())
         .isEqualTo(400);
+
+    // 0.12.0 HR-6 — 사번으로 부를 때만 status(정지 직원 경고), 운영자 ID 로는 싣지 않음
+    String c = register(mailId());
+    jdbc.update("UPDATE employee SET status = 'SUSPENDED' WHERE operator_id = ?", c);
+    String noC =
+        jdbc.queryForObject(
+            "SELECT employee_no FROM employee WHERE operator_id = ?", String.class, c);
+    Map<String, String> statusByOp = new java.util.HashMap<>();
+    call(
+            "GET",
+            "/hr/employee-labels?activeOnly=true&employeeNos=" + noA + "," + noB + "," + noC,
+            anyStaff,
+            null)
+        .body()
+        .path("items")
+        .forEach(i -> statusByOp.put(i.path("operatorId").asText(), i.path("status").asText()));
+    assertThat(statusByOp)
+        .as("정지는 남고 상태가 실림, 퇴사자는 빠짐")
+        .containsOnly(Map.entry(a, "ACTIVE"), Map.entry(c, "SUSPENDED"));
+    for (JsonNode i :
+        call("GET", "/hr/employee-labels?operatorIds=" + a + "&operatorIds=" + c, anyStaff, null)
+            .body()
+            .path("items")) {
+      assertThat(i.path("status").isTextual()).as("운영자 ID 로는 상태 없음").isFalse();
+    }
   }
 
   @Test

@@ -66,3 +66,5 @@
 - **요청**: `GET /hr/employee-labels` 줄에 선택 필드 `status`(hr 직원 상태 그대로 — ACTIVE·SUSPENDED·LEFT 등). 권한은 지금처럼 직원 누구나가 좋고, 어렵다면 `employeeNos` 로 부를 때만 실어도 된다.
 - **PC 1 이 판단할 것**: 직원 정지 상태를 모든 직원에게 보여도 되는지(인사 정보 공개 범위) — 안 되면 "로그인할 수 없음" 같은 덜 자세한 값으로.
 - 받는 화면: 확인 줄에 "정지 중이라 로그인할 수 없어요(인계를 받지 못하고, 맡겨도 처리하지 못해요)" 경고, 고르는 것은 막지 않음. bff 변경 없음.
+- **구현(2026-11-24 PC 2 — 사용자 "확인해봐 없으면 바로 시작해", hr-service 0.12.0)**: `employeeNos` 로 부를 때만 줄마다 `status`(ACTIVE·SUSPENDED·LEFT), `operatorIds` 로 부르는 화면 표시용 이름표에는 싣지 않음(null) — 정지 여부가 모든 목록 이름표로 퍼지지 않게 요청서의 "employeeNos 로 부를 때만" 안을 골랐다(PC 1 검토 — 넓히려면 operatorIds 에도 싣기만 하면 됨). 게이트웨이 변경 없음. 웹 알림 `docs/handoff/clients/backoffice/2026-11-24-notice-employee-label-status.md`.
+- **상태**: 구현(PC 2) — PC 1 검토·병합·배포 대기.

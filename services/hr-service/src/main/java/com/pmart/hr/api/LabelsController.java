@@ -32,7 +32,11 @@ public class LabelsController implements LabelsApi {
                             new EmployeeLabel()
                                 .operatorId(l.operatorId())
                                 .name(l.name())
-                                .employeeNo(l.employeeNo()))
+                                .employeeNo(l.employeeNo())
+                                .status(
+                                    l.status() == null
+                                        ? null
+                                        : EmployeeLabel.StatusEnum.fromValue(l.status())))
                     .toList()));
   }
 }

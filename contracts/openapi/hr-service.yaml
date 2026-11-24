@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: hr-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-24 HR-6 — 통합백오피스 프론트 요청, 사용자 "확인해봐 없으면 바로 시작해", PC 2 구현): `GET /hr/employee-labels` 를 **사번(employeeNos)으로 부를 때만**
+    줄마다 `status`(ACTIVE·SUSPENDED·LEFT — 직원 상태 그대로). 교대 인계 후임·접수 건 맡기기에서 사번으로 사람을 고를 때 정지 직원을 "보이되 경고"하려고(사용자 결정).
+    운영자 ID(operatorIds)로 부르는 화면 표시용 이름표에는 지금처럼 싣지 않는다(null) — 정지 여부가 모든 목록 이름표로 퍼지지 않게(공개 범위를 사람 고르기로 좁힘).
     0.11.0(2026-11-24 HR-5 activeOnly — 사용자 "정정된걸로 해서 넣어", PC 2 전달): `GET /hr/employee-labels` 에 `activeOnly`(기본 false). true 면 퇴사자(LEFT)를 뺀다 —
     정지(SUSPENDED)는 재직이라 남는다. 교대 인계 후임·접수 건 넘기기에서 퇴사자를 고르지 않게(case·인계가 재직 여부를 보지 않음). operatorIds·employeeNos 둘 다에 쓴다. 응답 모양 그대로.
     0.10.0(2026-11-24 HR-5 — PC 2·통합백오피스 프론트 요청, 사용자 "정해진 것만"): `GET /hr/employee-labels` 에 `employeeNos`(사번 → 운영자 ID·이름) —
@@ -426,7 +429,7 @@ paths:
         2026-11-19 사용자 결정(클라이언트 요청 operator-display-names R1): 백오피스·인사팀 백오피스 목록의 처리자·요청자·결정자 칸에 OP-… 대신
         "이름 · 사번"을 보이려고 한 번에 읽는다. 직원 토큰이면 누구나(역할 제한 없음), 이름은 가리지 않는다.
         퇴사자도 돌려준다(지난 기록 표시용). 모르는 ID 는 items 에서 빠진다(오류 아님 — 화면은 "확인 불가"로). 같은 ID 는 한 번만.
-        이름·사번 외의 인사 정보(메일·소속·연락처·재직 상태)는 싣지 않는다. 이름은 로그에 남기지 않는다.
+        이름·사번 외의 인사 정보(메일·소속·연락처)는 싣지 않는다. 재직 상태(status)는 **사번으로 부를 때만** 싣는다(0.12.0 HR-6 — 사람 고르기의 정지 직원 경고). 이름은 로그에 남기지 않는다.
       x-added-in: '2026-11-19'
       operationId: getEmployeeLabels
       x-pmart-user-types: [OPERATOR]
@@ -701,6 +704,11 @@ components:
         operatorId: { type: string }
         name: { type: string }
         employeeNo: { type: string, description: '사번(P2026-00012) — 직원 조회의 employeeNo 와 같은 값' }
+        status:
+          type: [string, 'null']
+          enum: [ACTIVE, SUSPENDED, LEFT, null]
+          x-added-in: '2026-11-24'
+          description: '(0.12.0 HR-6) 직원 상태 — employeeNos 로 부를 때만 싣고, operatorIds 로 부르면 null. SUSPENDED 는 로그인할 수 없음(인계를 받지 못하고 맡겨도 처리 못 함)'
     EmployeeNameList:
       type: object
       required: [items]

@@ -163,8 +163,11 @@ public class HrStore {
     return out;
   }
 
-  /** 표시 조회(0.8.0): 운영자 ID → (이름, 사번). 퇴사자 포함, 모르는 ID 는 빠진다. */
-  public record Label(String operatorId, String name, String employeeNo) {}
+  /**
+   * 표시 조회(0.8.0): 운영자 ID → (이름, 사번). 퇴사자 포함, 모르는 ID 는 빠진다. status(0.12.0 HR-6)는 사번으로 부를 때만 — 운영자 ID
+   * 로 부르면 null.
+   */
+  public record Label(String operatorId, String name, String employeeNo, @Nullable String status) {}
 
   public List<Label> labels(Collection<String> operatorIds) {
     return labels(operatorIds, false);
@@ -180,21 +183,30 @@ public class HrStore {
             + (activeOnly ? " AND status <> 'LEFT'" : ""),
         (rs, i) ->
             new Label(
-                rs.getString("operator_id"), rs.getString("name"), rs.getString("employee_no")),
+                rs.getString("operator_id"),
+                rs.getString("name"),
+                rs.getString("employee_no"),
+                null),
         "{" + String.join(",", operatorIds) + "}");
   }
 
-  /** 0.10.0 HR-5: 사번 → (운영자 ID, 이름, 사번). 퇴사자 포함, 모르는 사번은 빠진다. */
+  /**
+   * 0.10.0 HR-5: 사번 → (운영자 ID, 이름, 사번). 퇴사자 포함, 모르는 사번은 빠진다. 0.12.0 HR-6: 상태도 — 사람 고르기에서 정지 직원 경고.
+   */
   public List<Label> labelsByEmployeeNo(Collection<String> employeeNos, boolean activeOnly) {
     if (employeeNos.isEmpty()) {
       return List.of();
     }
     return jdbc.query(
-        "SELECT operator_id, name, employee_no FROM employee WHERE employee_no = ANY (?::varchar[])"
+        "SELECT operator_id, name, employee_no, status FROM employee"
+            + " WHERE employee_no = ANY (?::varchar[])"
             + (activeOnly ? " AND status <> 'LEFT'" : ""),
         (rs, i) ->
             new Label(
-                rs.getString("operator_id"), rs.getString("name"), rs.getString("employee_no")),
+                rs.getString("operator_id"),
+                rs.getString("name"),
+                rs.getString("employee_no"),
+                rs.getString("status")),
         "{" + String.join(",", employeeNos) + "}");
   }
 
