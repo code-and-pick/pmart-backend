@@ -160,7 +160,9 @@ GET /api/v1/inbound-tasks OPERATOR
 GET /api/v1/inbound-tasks/{taskId} OPERATOR
 GET /api/v1/initial-stock-loads OPERATOR
 GET /api/v1/inquiries CUSTOMER,OPERATOR,RIDER
+GET /api/v1/inquiries/satisfaction-ratings OPERATOR
 GET /api/v1/inquiries/satisfaction-summary OPERATOR
+GET /api/v1/inquiries/satisfaction-summary/by-agent OPERATOR
 GET /api/v1/inquiries/{inquiryId} CUSTOMER,OPERATOR,RIDER
 GET /api/v1/inquiries/{inquiryId}/messages OPERATOR,RIDER
 GET /api/v1/inquiry-photos/{photoId} CUSTOMER,OPERATOR,RIDER

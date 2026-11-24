@@ -10,11 +10,15 @@ import com.pmart.cases.api.generated.model.InquiryCategory;
 import com.pmart.cases.api.generated.model.InquiryDeliveryIssue;
 import com.pmart.cases.api.generated.model.InquiryRequesterType;
 import com.pmart.cases.api.generated.model.InquirySatisfaction;
+import com.pmart.cases.api.generated.model.InquirySatisfactionByAgent;
+import com.pmart.cases.api.generated.model.InquirySatisfactionByAgentItemsInner;
+import com.pmart.cases.api.generated.model.InquirySatisfactionRating;
 import com.pmart.cases.api.generated.model.InquirySatisfactionSummary;
 import com.pmart.cases.api.generated.model.InquiryStatus;
 import com.pmart.cases.api.generated.model.InquirySummary;
 import com.pmart.cases.api.generated.model.ListCases200ResponsePage;
 import com.pmart.cases.api.generated.model.ListInquiries200Response;
+import com.pmart.cases.api.generated.model.ListInquirySatisfactionRatings200Response;
 import com.pmart.cases.api.generated.model.RateInquiryRequest;
 import com.pmart.cases.api.generated.model.ReplyInquiryRequest;
 import com.pmart.cases.application.InquiryCloseService;
@@ -22,6 +26,7 @@ import com.pmart.cases.application.InquiryPhotoService;
 import com.pmart.cases.application.InquirySatisfactionService;
 import com.pmart.cases.application.InquiryService;
 import com.pmart.cases.domain.InquiryRules;
+import com.pmart.cases.infrastructure.InquirySatisfactionStore;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -205,15 +210,83 @@ public class InquiriesController implements InquiriesApi {
     out.setAnsweredCount(s.answered());
     out.setRatedCount(s.rated());
     out.setScoreSum(s.scoreSum());
-    out.setAverageScore(
-        s.rated() == 0
-            ? null
-            : BigDecimal.valueOf(s.scoreSum())
-                .divide(BigDecimal.valueOf(s.rated()), 2, RoundingMode.HALF_UP));
+    out.setAverageScore(average(s));
+    out.setByScore(byScore(s));
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<InquirySatisfactionByAgent> getInquirySatisfactionByAgent(
+      OffsetDateTime answeredFrom, OffsetDateTime answeredTo) {
+    var rows = satisfaction.byAgent(answeredFrom.toInstant(), answeredTo.toInstant());
+    var out = new InquirySatisfactionByAgent();
+    out.setAnsweredFrom(answeredFrom.toInstant().atOffset(ZoneOffset.UTC));
+    out.setAnsweredTo(answeredTo.toInstant().atOffset(ZoneOffset.UTC));
+    out.setItems(
+        rows.stream()
+            .map(
+                a -> {
+                  var s = a.summary();
+                  var i = new InquirySatisfactionByAgentItemsInner();
+                  i.setAgentId(a.agentId());
+                  i.setAnsweredCount(s.answered());
+                  i.setRatedCount(s.rated());
+                  i.setScoreSum(s.scoreSum());
+                  i.setAverageScore(average(s));
+                  i.setByScore(byScore(s));
+                  return i;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<ListInquirySatisfactionRatings200Response> listInquirySatisfactionRatings(
+      String agentId,
+      OffsetDateTime answeredFrom,
+      OffsetDateTime answeredTo,
+      Integer size,
+      @Nullable String cursor) {
+    var page =
+        satisfaction.ratings(
+            agentId,
+            answeredFrom.toInstant(),
+            answeredTo.toInstant(),
+            cursor,
+            size == null ? 20 : size);
+    var p = new ListCases200ResponsePage();
+    p.setNextCursor(page.nextCursor());
+    p.setSize(page.items().size());
+    return ResponseEntity.ok(
+        new ListInquirySatisfactionRatings200Response()
+            .items(
+                page.items().stream()
+                    .map(
+                        r -> {
+                          var o = new InquirySatisfactionRating();
+                          o.setInquiryId(r.inquiryId());
+                          o.setInquiryNumber(r.inquiryNumber());
+                          o.setScore(r.score());
+                          o.setComment(r.comment());
+                          o.setRatedAt(r.ratedAt().atOffset(ZoneOffset.UTC));
+                          o.setAnsweredAt(r.answeredAt().atOffset(ZoneOffset.UTC));
+                          return o;
+                        })
+                    .toList())
+            .page(p));
+  }
+
+  private static @Nullable BigDecimal average(InquirySatisfactionStore.Summary s) {
+    return s.rated() == 0
+        ? null
+        : BigDecimal.valueOf(s.scoreSum())
+            .divide(BigDecimal.valueOf(s.rated()), 2, RoundingMode.HALF_UP);
+  }
+
+  private static Map<String, Long> byScore(InquirySatisfactionStore.Summary s) {
     Map<String, Long> by = new LinkedHashMap<>();
     s.byScore().forEach((k, n) -> by.put(String.valueOf(k), n));
-    out.setByScore(by);
-    return ResponseEntity.ok(out);
+    return by;
   }
 
   /** 상세 + 만족도(본인·관리자에게만 — 0.15.0). */
@@ -288,6 +361,11 @@ public class InquiriesController implements InquiriesApi {
     d.setCreatedAt(r.createdAt().atOffset(ZoneOffset.UTC));
     d.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     d.setVersion(r.version());
+    // 쓴 사람(0.38.0): 직원에게는 모두, 라이더에게는 자기 메시지만, 고객에게는 없음 — 직원 ID 를 밖에 내보내지 않는다.
+    boolean staff =
+        com.pmart.common.security.PmartPrincipal.current()
+            .map(p -> p.type() == com.pmart.common.security.PmartPrincipal.PrincipalType.OPERATOR)
+            .orElse(false);
     d.setReplies(
         v.replies().stream()
             .map(
@@ -295,6 +373,7 @@ public class InquiriesController implements InquiriesApi {
                   var y = new InquiryAllOfReplies();
                   y.setReplyId(x.replyId());
                   y.setAuthorType(InquiryAllOfReplies.AuthorTypeEnum.fromValue(x.authorType()));
+                  y.setAuthorId(staff || "RIDER".equals(x.authorType()) ? x.authorId() : null);
                   y.setBody(x.body());
                   y.setCreatedAt(x.createdAt().atOffset(ZoneOffset.UTC));
                   return y;

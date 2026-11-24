@@ -158,3 +158,8 @@ case-service 는 아직 스캐폴딩(모든 엔드포인트 501)이다. 구현�
 - **결정(2026-11-23 사용자 "추천대로, 응")**: 금칙어 목록은 설정 저장소(pmart-config `case-service.yml`)에 단어 목록으로 두고, 바꿀 때는 사용자 승인 뒤 PC 1 이 반영한다. 오인식(욕설이 아닌데 걸림)은 상담원·관리자가 사유를 적고 직접 해제(CU-7 직원 해제).
 - 리뷰 욕설 인식은 review-service(PC 1) 몫.
 - **0.37.0 바뀜(2026-11-23 사용자 "A는 문의나 채팅에 입력 자체가 안 되게, C는 걸리면 정지, B도" — B 는 막기, 막기는 정지 없음, 범위 "문의 + AI 채팅 + 라이더 문의 대화")**: 목록 둘 — **막기** `pmart.cases.blocked-words`(욕설 A+B — 고객·라이더 `POST /inquiries`·라이더 `POST /inquiries/{id}/messages` 422 BLOCKED_WORDS, 정지 없음), **정지** `pmart.cases.profanity-words`(위협·거친 말 C — 받고 고객 `CustomerProfanityDetected`·라이더 `RiderProfanityDetected`). AI 채팅은 customer-assistant CA-2(PC 4), 라이더 정지는 rider RS-8(PC 5). 목록 값은 저장소에 적지 않고 PC 1 에 메시지로.
+
+## R-15. 문의 만족도 직원별로 보기 (2026-11-24, 보낸 영역 backoffice — PC 2 웹 "통합백오피스 프론트2", pmart-clients `docs/handoff/backoffice/2026-11-24-backend-satisfaction-by-agent.md`)
+- **사용자 결정(2026-11-24)**: "직원마다 평점을 볼 수 있게 하고 고객 개인정보는 가리는 식으로, 관리자가 개인의 성과 측정 및 관리 목적"(전체 평점은 그대로). 2026-11-17 "상담원 평가에 쓰지 않음·상담원별로 나누지 않음"을 바꿈 — 보는 사람은 OPERATOR_ADMIN 만 그대로. 업무 원문 Commerce §14.2 "만족도 = 상담 평가(기사 평가·제재 아님)"와 맞음.
+- **정한 것(2026-11-24 사용자 "추천안대로 진행")**: ① 몫 = 고객이 평가하기 직전 마지막 AGENT 답변자 한 명(평가 없는 문의는 지금 마지막 AGENT 답변자) ② 대상 = 전체 요약과 같음(상담원 접수·라이더 문의 제외) ③ 답변자는 `cs_inquiry_reply.author_id` 에 처음부터 있어 지난 답변도 그대로 셈 ④ 평가 목록에 고객 정보 없음, 의견 속 전화·메일 모양은 서버가 가림.
+- **구현**(2026-11-24 PC 2, case-service 0.38.0): 상세 `replies[].authorId`(직원 토큰에만 — 라이더는 자기 메시지만, 고객 null), `GET /inquiries/satisfaction-summary/by-agent`(직원별 answeredCount·ratedCount·scoreSum·averageScore·byScore — 합 = 전체 요약), `GET /inquiries/satisfaction-ratings?agentId=&answeredFrom&answeredTo&size&cursor`(그 직원 몫 평가 목록 — inquiryId·inquiryNumber·score·가린 comment·ratedAt·answeredAt). 마이그레이션 없음. 게이트웨이 허용 목록 2줄.

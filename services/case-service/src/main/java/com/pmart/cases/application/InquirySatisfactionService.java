@@ -1,8 +1,11 @@
 package com.pmart.cases.application;
 
+import com.pmart.cases.domain.CommentMaskingRules;
 import com.pmart.cases.domain.CsIntakeRules;
 import com.pmart.cases.domain.InquiryRules;
 import com.pmart.cases.infrastructure.InquirySatisfactionStore;
+import com.pmart.cases.infrastructure.InquirySatisfactionStore.AgentSummary;
+import com.pmart.cases.infrastructure.InquirySatisfactionStore.RatingRow;
 import com.pmart.cases.infrastructure.InquirySatisfactionStore.SatisfactionRow;
 import com.pmart.cases.infrastructure.InquirySatisfactionStore.Summary;
 import com.pmart.cases.infrastructure.InquiryStore;
@@ -25,8 +28,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * 문의 만족도(0.15.0 — 2026-11-17 사용자 "답변 뒤 1~5점 + 한 줄", 업무 원문 Commerce §14.2). 답변 받은 고객 문의에 남긴 고객이 한 번만
- * 남긴다. 상담 평가일 뿐 반품·환불 종결이나 라이더 평가가 아니고, **상담원 평가·제재에 쓰지 않는다** — 상담원에게는 보이지 않고 본사 관리자만 모아 본다.
- * 상태·version 은 바꾸지 않는다. 이벤트·알림 없음. 의견 글은 로그에 남기지 않는다.
+ * 남긴다. 상담 평가일 뿐 반품·환불 종결이나 라이더 평가가 아니다. 상담원에게는 보이지 않고 본사 관리자만 모아 본다 — 0.38.0(2026-11-24 사용자 "관리자가
+ * 개인 성과 측정·관리 목적")부터 직원별로도(몫 = 평가 직전 마지막 AGENT 답변자). 상태·version 은 바꾸지 않는다. 이벤트·알림 없음. 의견 글은 로그에 남기지
+ * 않는다.
  */
 @Service
 public class InquirySatisfactionService {
@@ -120,6 +124,44 @@ public class InquirySatisfactionService {
 
   /** 모아 보기 — 본사 관리자만. 답변 시각 기준 [from, to), 92일까지. 평균은 남긴 건이 0 이면 비운다(N/A — BO-28). */
   public SummaryView summary(Instant from, Instant to) {
+    requireAdminAndRange(from, to);
+    return new SummaryView(from, to, store.summary(from, to));
+  }
+
+  /** 직원별 모아 보기(0.38.0) — 관리자만, 기간 규칙은 {@link #summary} 와 같다. */
+  public List<AgentSummary> byAgent(Instant from, Instant to) {
+    requireAdminAndRange(from, to);
+    return store.byAgent(from, to);
+  }
+
+  public record RatingPage(List<RatingRow> items, @Nullable String nextCursor) {}
+
+  /** 직원 한 명 몫의 평가 목록(0.38.0) — 관리자만, 고객 정보 없이, 의견 속 전화·메일 모양은 가린다. */
+  public RatingPage ratings(
+      String agentId, Instant from, Instant to, @Nullable String cursor, int size) {
+    requireAdminAndRange(from, to);
+    if (size < 1 || size > 50) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "size 는 1~50 입니다.");
+    }
+    List<RatingRow> rows = store.ratings(agentId, from, to, cursor, size);
+    boolean more = rows.size() > size;
+    List<RatingRow> page =
+        rows.stream()
+            .limit(size)
+            .map(
+                r ->
+                    new RatingRow(
+                        r.inquiryId(),
+                        r.inquiryNumber(),
+                        r.score(),
+                        CommentMaskingRules.mask(r.comment()),
+                        r.ratedAt(),
+                        r.answeredAt()))
+            .toList();
+    return new RatingPage(page, more ? page.get(page.size() - 1).inquiryId() : null);
+  }
+
+  private static void requireAdminAndRange(Instant from, Instant to) {
     PmartPrincipal p =
         PmartPrincipal.current()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "토큰이 필요합니다."));
@@ -131,7 +173,6 @@ public class InquirySatisfactionService {
       throw new PmartException(
           ErrorCode.VALIDATION_FAILED, "기간은 answeredFrom < answeredTo, 92일까지입니다.");
     }
-    return new SummaryView(from, to, store.summary(from, to));
   }
 
   private static boolean mine(PmartPrincipal p, InquiryRow r) {

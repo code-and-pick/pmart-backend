@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.37.1
+  version: 0.38.0
   description: |
+    **0.38.0(2026-11-24 — 사용자 "직원마다 평점을 볼 수 있게, 고객 개인정보는 가리고, 관리자가 개인 성과 측정·관리 목적(전체 평점은 그대로)" — 2026-11-17 "상담원별로 나누지 않는다"를 바꿈, 관리자만 보는 것은 그대로)**: 문의 상세 `replies[].authorId`(답한 직원·라이더 ID — 직원 토큰에만, 고객에게는 null. 라이더는 자기 메시지만). 새 경로 `GET /inquiries/satisfaction-summary/by-agent`(직원별 분모·분자·점수 합·분포·평균)·`GET /inquiries/satisfaction-ratings?agentId=`(그 직원 몫 평가 목록 — 고객 정보 없음, 의견 속 전화·메일 모양 가림). 몫 = **고객이 평가하기 직전 마지막 AGENT 답변자 한 명**(평가 없는 문의는 지금 마지막 AGENT 답변자). 대상은 전체 요약과 같음(고객 문의, 상담원 접수·라이더 문의 제외). 답변자는 처음부터 저장돼 지난 답변도 그대로 센다. OPERATOR_ADMIN 만.
     **0.37.1(2026-11-23 — customer 0.16.0 CU-7, PC 1 구현 09e01285 의 계약 설명)**: API 모양 변화 없음. 고객 `POST /inquiries` 는 customer `CustomerRestricted` 사본(V23 `customer_restriction_copy`)이 기한 안의 RESTRICTED·SUSPENDED 면 **403 `ACCOUNT_RESTRICTED`**(details `until` — "M월 d일 HH:mm까지 문의를 쓸 수 없어요"). 사본이 없거나 늦으면 막지 않는다(정본은 customer). 라이더 문의·대화는 해당 없음.
     **0.37.0(2026-11-23 — 사용자 2026-11-23 "A는 문의나 채팅에 입력 자체가 안 되게, C는 걸리면 정지, B도" — 막기만·정지 없음, 문의 + AI 채팅 + 라이더 문의 대화)**: 금칙어를 둘로 — **막기 단어** `pmart.cases.blocked-words`(욕설): `POST /inquiries`(고객·라이더)·`POST /inquiries/{id}/messages`(라이더 대화)에 들어 있으면 **422 BLOCKED_WORDS**("쓸 수 없는 말이 들어 있어요") — 받지 않고 정지 없음. **정지 단어** `pmart.cases.profanity-words`(위협·거친 말): 받고 고객이면 `CustomerProfanityDetected`, 라이더(문의·대화)면 새 사건 `RiderProfanityDetected`. 글·단어는 응답·사건·로그에 없음.
     **0.36.0(2026-11-23 — BF-5 고객 관리 "문의 담당 상담원", 사용자 "진행해")**: 직원 `GET /inquiries` 줄에 `lastAnsweredBy`(마지막으로 답한 직원 운영자 ID — 답변 표 author AGENT 의 가장 최근, 답 없으면 null). 고객·라이더 토큰에는 늘 null(직원 ID 를 내보내지 않음). 추가 칸만.
@@ -1011,7 +1012,7 @@ paths:
       description: |
         2026-11-17 사용자 결정 — 만족도는 상담원 평가·제재에 쓰지 않고 관리자만 모아 본다(업무 원문 Commerce §14.2, 지표 BO-28: 비율은 분자·분모를 함께, 분모 0 은 N/A).
         기간 = 답변 시각 [answeredFrom, answeredTo), 92일까지(넘거나 순서가 틀리면 400). 대상 = 고객 문의(상담원 접수 STAFF_INTAKE·라이더 문의 제외).
-        answeredCount(분모) 중 ratedCount(분자)가 남겼고, 평균은 scoreSum/ratedCount(남긴 건 0 이면 null). 상담원별·문의별로 나누지 않는다. OPERATOR_ADMIN 만(그 밖 403).
+        answeredCount(분모) 중 ratedCount(분자)가 남겼고, 평균은 scoreSum/ratedCount(남긴 건 0 이면 null). 전체 숫자 하나 — 직원별은 0.38.0 `…/satisfaction-summary/by-agent`(2026-11-24 사용자 결정으로 바뀜). OPERATOR_ADMIN 만(그 밖 403).
       operationId: getInquirySatisfactionSummary
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -1023,6 +1024,61 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InquirySatisfactionSummary' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /inquiries/satisfaction-summary/by-agent:
+    get:
+      tags: [inquiries]
+      summary: 문의 만족도 직원별 모아 보기 (본사 관리자 — 0.38.0)
+      x-added-in: '2026-11-24'
+      description: |
+        2026-11-24 사용자 "직원마다 평점을 볼 수 있게 … 관리자가 개인 성과 측정·관리 목적(전체 평점은 그대로)". 기간·대상은 `GET /inquiries/satisfaction-summary` 와 같다
+        (답변 시각 [answeredFrom, answeredTo), 92일까지, 고객 문의 — 상담원 접수·라이더 문의 제외) — 줄을 모두 더하면 전체 요약과 같다.
+        문의 하나는 직원 한 명 몫: 평가한 문의는 평가 시각 전 마지막 AGENT 답변자, 평가 없는 문의는 지금 마지막 AGENT 답변자. 답변 수가 많은 순.
+        이름은 화면이 hr `employee-labels` 로 붙인다. OPERATOR_ADMIN 만(그 밖 403 — 상담원 본인에게도 보이지 않는다).
+      operationId: getInquirySatisfactionByAgent
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: answeredFrom, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: answeredTo, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InquirySatisfactionByAgent' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /inquiries/satisfaction-ratings:
+    get:
+      tags: [inquiries]
+      summary: 직원 한 명 몫의 문의 만족도 목록 (본사 관리자 — 0.38.0)
+      x-added-in: '2026-11-24'
+      description: |
+        `…/satisfaction-summary/by-agent` 의 한 줄을 연 목록 — 같은 기간·대상·몫 규칙에서 그 직원 몫이고 **만족도를 남긴** 문의만, 평가 최근 순.
+        고객 ID·이름·연락처는 싣지 않는다. 의견(comment)은 전화번호·메일 모양을 서버가 가려서 준다(원문은 문의 상세 — 관리자).
+        OPERATOR_ADMIN 만(그 밖 403). cursor = 앞 쪽 마지막 inquiryId.
+      operationId: listInquirySatisfactionRatings
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: agentId, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: answeredFrom, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: answeredTo, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - $ref: '_common.yaml#/components/parameters/PageCursor'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/InquirySatisfactionRating' } }
+                  page: { $ref: '_common.yaml#/components/schemas/Page' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
@@ -1951,6 +2007,7 @@ components:
                 properties:
                   replyId: { type: string }
                   authorType: { type: string, enum: [AGENT, RIDER], description: '(0.21.0) RIDER = 라이더가 대화로 이어 쓴 메시지' }
+                  authorId: { type: [string, 'null'], x-added-in: '2026-11-24', description: '(0.38.0) 쓴 사람 — AGENT 는 운영자 ID(직원 토큰에만), RIDER 는 라이더 ID(직원·그 라이더). 고객 토큰에는 늘 null' }
                   body: { type: string }
                   createdAt: { type: string, format: date-time }
             closedAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-17', description: '(0.19.0) 닫힌 시각' }
@@ -1998,6 +2055,39 @@ components:
           type: object
           description: '점수(1~5)별 건수 — 키 "1"~"5"'
           additionalProperties: { type: integer, format: int64 }
+    InquirySatisfactionByAgent:
+      type: object
+      x-added-in: '2026-11-24'
+      required: [answeredFrom, answeredTo, items]
+      properties:
+        answeredFrom: { type: string, format: date-time }
+        answeredTo: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            required: [answeredCount, ratedCount, scoreSum, byScore]
+            properties:
+              agentId: { type: [string, 'null'], description: '답한 직원 운영자 ID. AGENT 답변 기록이 없는 답변된 문의가 있으면 null 줄 하나(보통 없음)' }
+              answeredCount: { type: integer, format: int64, description: '분모 — 이 직원 몫의 답변된 고객 문의' }
+              ratedCount: { type: integer, format: int64, description: '분자 — 그중 만족도를 남긴 문의' }
+              scoreSum: { type: integer, format: int64 }
+              averageScore: { type: [number, 'null'], description: 'scoreSum / ratedCount(소수 둘째 자리) — ratedCount 0 이면 null(N/A)' }
+              byScore:
+                type: object
+                description: '점수(1~5)별 건수 — 키 "1"~"5", 0 까지'
+                additionalProperties: { type: integer, format: int64 }
+    InquirySatisfactionRating:
+      type: object
+      x-added-in: '2026-11-24'
+      required: [inquiryId, score, ratedAt, answeredAt]
+      properties:
+        inquiryId: { type: string }
+        inquiryNumber: { type: [string, 'null'], description: '화면 문의 번호 Q-MMDD-일련' }
+        score: { type: integer, minimum: 1, maximum: 5 }
+        comment: { type: [string, 'null'], description: '한 줄 의견 — 전화번호·메일 모양은 가림(예 010-****-****, a***@***)' }
+        ratedAt: { type: string, format: date-time }
+        answeredAt: { type: string, format: date-time, description: '문의가 처음 답변된 시각(기간 기준)' }
     CaseMetrics:
       type: object
       x-added-in: '2026-11-17'
