@@ -1,5 +1,6 @@
 package com.pmart.cases.application;
 
+import com.pmart.cases.domain.CsIntakeRules;
 import com.pmart.cases.domain.InquiryRules;
 import com.pmart.cases.infrastructure.InquiryStore;
 import com.pmart.cases.infrastructure.InquiryStore.InquiryRow;
@@ -19,8 +20,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
- * 라이더 문의 대화(0.21.0, 2026-11-17 라이더 앱 요청 §19 — 사용자 "문의에 대화 붙이기"). 배송 밖 문의를 채팅처럼 이어 쓴다. 메시지는 답변 표 그대로
- * — 지원센터 답변(AGENT → SUPPORT)과 라이더가 이어 쓴 것(RIDER). 지원센터는 기존 답변(`/replies`)으로 답한다.
+ * 문의 대화 — 라이더 문의(0.21.0, 2026-11-17 라이더 앱 요청 §19 — 사용자 "문의에 대화 붙이기")와 R-16(ADR-0086, 2026-11-24)부터
+ * 고객 문의도. 메시지는 답변 표 그대로 — 답변(AGENT → SUPPORT), 남긴 사람이 이어 쓴 것(RIDER·CUSTOMER), 시스템 안내(SYSTEM — 오배송
+ * 선택 등). 직원은 기존 답변(`/replies`)으로 답한다.
  */
 @Service
 public class InquiryChatService {
@@ -33,13 +35,16 @@ public class InquiryChatService {
   private final RequestIdempotency idempotency;
   private final Clock clock;
   private final ProfanityGuard profanity;
+  private final CustomerRestrictions restrictions;
 
   public InquiryChatService(
       InquiryService inquiries,
       InquiryStore store,
       RequestIdempotency idempotency,
       Clock clock,
-      ProfanityGuard profanity) {
+      ProfanityGuard profanity,
+      CustomerRestrictions restrictions) {
+    this.restrictions = restrictions;
     this.profanity = profanity;
     this.inquiries = inquiries;
     this.store = store;
@@ -49,9 +54,9 @@ public class InquiryChatService {
 
   public record Page(List<MessageRow> items, String status) {}
 
-  /** 볼 권한은 문의 상세와 같다(남의 것 404). 고객 문의는 대화가 없다 — 404. */
+  /** 볼 권한은 문의 상세와 같다(남의 것 404). R-16 부터 고객 문의도. */
   public Page list(String inquiryId, @Nullable Long after) {
-    InquiryRow row = riderInquiry(inquiries.get(inquiryId).inquiry());
+    InquiryRow row = inquiries.get(inquiryId).inquiry();
     return new Page(store.messages(inquiryId, after == null ? 0 : after, MAX_PAGE), row.status());
   }
 
@@ -60,8 +65,14 @@ public class InquiryChatService {
     PmartPrincipal p =
         PmartPrincipal.current()
             .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "토큰이 필요합니다."));
-    if (p.type() != PmartPrincipal.PrincipalType.RIDER) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "문의 대화는 라이더 본인만 이어 씁니다. 지원센터는 답변(/replies)으로.");
+    boolean rider = p.type() == PmartPrincipal.PrincipalType.RIDER;
+    if (!rider && p.type() != PmartPrincipal.PrincipalType.CUSTOMER) {
+      throw new PmartException(
+          ErrorCode.FORBIDDEN, "문의 대화는 남긴 고객·라이더 본인만 이어 씁니다. 직원은 답변(/replies)으로.");
+    }
+    String requesterType = rider ? InquiryRules.RIDER : InquiryRules.CUSTOMER;
+    if (!rider) {
+      restrictions.checkCanWrite(p.subject()); // CU-7 이용제한·정지 고객은 쓰지 못함(새 문의와 같게)
     }
     // 0.37.0: 막기 단어(욕설)는 받지 않는다 — 422, 정지 없음
     profanity.rejectBlocked(body);
@@ -76,7 +87,8 @@ public class InquiryChatService {
                       store
                           .lock(inquiryId)
                           .filter(r -> r.customerId().equals(p.subject()))
-                          .map(InquiryChatService::riderInquiry)
+                          .filter(r -> requesterType.equals(r.requesterType()))
+                          .filter(r -> !CsIntakeRules.ORIGIN_STAFF_INTAKE.equals(r.origin()))
                           .orElseThrow(() -> notFound(inquiryId));
                   if (InquiryRules.replyRejection(row.status()) != null) {
                     throw new PmartException(
@@ -88,10 +100,11 @@ public class InquiryChatService {
                   }
                   String id = "IMS-" + UUID.randomUUID();
                   java.time.Instant now = clock.instant();
-                  store.addRequesterMessage(inquiryId, id, p.subject(), body, now);
-                  // 0.37.0: 정지 단어 → RiderProfanityDetected(rider-service 가 7일 정지 — PC 5)
+                  store.addRequesterMessage(inquiryId, id, requesterType, p.subject(), body, now);
+                  // 0.37.0: 정지 단어 → 라이더 RiderProfanityDetected(PC 5)·고객
+                  // CustomerProfanityDetected(CU-7)
                   profanity.reportSuspendable(
-                      InquiryRules.RIDER,
+                      requesterType,
                       p.subject(),
                       inquiryId,
                       row.caseId(),
@@ -99,18 +112,11 @@ public class InquiryChatService {
                       row.version() + 1L,
                       now,
                       body);
-                  log.info("rider inquiry message id={} inquiry={}", id, inquiryId);
+                  log.info("inquiry message id={} inquiry={} by={}", id, inquiryId, requesterType);
                   return id;
                 })
             .value();
     return store.message(messageId).orElseThrow();
-  }
-
-  private static InquiryRow riderInquiry(InquiryRow row) {
-    if (!InquiryRules.RIDER.equals(row.requesterType())) {
-      throw notFound(row.inquiryId());
-    }
-    return row;
   }
 
   private static PmartException notFound(String inquiryId) {

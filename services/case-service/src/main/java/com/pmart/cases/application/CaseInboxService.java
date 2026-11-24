@@ -1103,6 +1103,114 @@ public class CaseInboxService {
         m);
   }
 
+  // ---------------------------------------------------------------- R-16 고객 오배송 문의(ADR-0086)
+
+  /**
+   * 고객 오배송 문의로 MISDELIVERY 사건을 연다(호출자 트랜잭션 — 문의를 넣는 것과 같이). 귀책은 라이더(RIDER, ADR-0086 결정 2), 고객 선택 대기
+   * — MisdeliveryConfirmed 는 고를 때({@link #confirmCustomerMisdelivery}). 이 배송의 오배송 사건이 이미 열려 있으면(직원이
+   * 먼저 열었음) 새로 열지 않고 null — 그 문의는 지금처럼 상담원 문의로 남는다.
+   */
+  public @Nullable String openCustomerMisdelivery(
+      String inquiryId,
+      String orderId,
+      String deliveryId,
+      @Nullable String riderId,
+      @Nullable String centerId,
+      String customerId,
+      Instant now) {
+    String key = "MISDELIVERY:" + deliveryId;
+    if (store.lockOpenByDedupe(key).isPresent()) {
+      return null;
+    }
+    List<Ref> refs = new ArrayList<>();
+    refs.add(new Ref("deliveryId", deliveryId));
+    refs.add(new Ref("orderId", orderId));
+    refs.add(new Ref("inquiryId", inquiryId));
+    refs.add(new Ref("source", "CUSTOMER_INQUIRY"));
+    refs.add(new Ref("fault", "RIDER"));
+    addRef(refs, "riderId", riderId);
+    refs = withPrevious(CaseRules.MISDELIVERY, deliveryId, refs);
+    CaseRow c =
+        new CaseRow(
+            "CASE-" + UUID.randomUUID(),
+            CaseRules.MISDELIVERY,
+            "OPEN",
+            "P2",
+            "DELIVERY",
+            deliveryId,
+            centerId,
+            null,
+            CaseRules.GROUP_DELIVERY_OPS,
+            now.plus(sla(CaseRules.MISDELIVERY)),
+            "고객 오배송 문의 — 고객 선택 대기(다시 보내기·환불)",
+            refs,
+            null,
+            1,
+            now,
+            now,
+            null,
+            null,
+            null,
+            null,
+            null);
+    if (!store.insert(c, key, null)) {
+      return null;
+    }
+    store.history(
+        c.caseId(), now, customerId, "OPENED", null, "OPEN", "고객 오배송 문의(" + inquiryId + ")");
+    publishOpened(c, new EventEnvelope.Actor(EventEnvelope.ActorType.CUSTOMER, customerId));
+    return c.caseId();
+  }
+
+  /**
+   * 고객 선택(또는 상담원 대신·기한 자동)을 사건에 남기고 {@code MisdeliveryConfirmed} 를 낸다(호출자 트랜잭션). 이후는 기존 길 —
+   * dispatch 회수 배차, orchestration 재발송 사가 RESHIP·REFUND.
+   */
+  public void confirmCustomerMisdelivery(
+      String caseId,
+      String inquiryId,
+      String orderId,
+      String deliveryId,
+      @Nullable String riderId,
+      String resolution,
+      boolean autoResolved,
+      EventEnvelope.Actor actor,
+      Instant now) {
+    CaseRow c = store.lock(caseId).orElseThrow();
+    List<Ref> refs = new ArrayList<>(c.refs());
+    refs.removeIf(r -> "resolution".equals(r.refType()));
+    refs.add(new Ref("resolution", resolution));
+    store.replaceRefs(caseId, refs, now);
+    String by =
+        autoResolved
+            ? "5시간 안에 고르지 않아 자동 환불"
+            : actor.type() == EventEnvelope.ActorType.CUSTOMER ? "고객이 고름" : "상담원이 고객 대신 고름";
+    store.history(
+        caseId,
+        now,
+        actor.id(),
+        "MISDELIVERY_CHOSEN",
+        c.state(),
+        c.state(),
+        ("RESHIP".equals(resolution) ? "다시 보내기" : "취소·환불") + " — " + by);
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("caseId", caseId);
+    m.put("deliveryId", deliveryId);
+    m.put("orderId", orderId);
+    if (riderId != null) {
+      m.put("riderId", riderId);
+    }
+    m.put("confirmedBy", actor.id());
+    m.put("confirmedAt", now.toString());
+    m.put("fault", "RIDER");
+    m.put("resolution", resolution);
+    m.put("source", "CUSTOMER_INQUIRY");
+    m.put("inquiryId", inquiryId);
+    m.put("autoResolved", autoResolved);
+    events.publish("MisdeliveryConfirmed", 1, AGGREGATE, caseId, c.version() + 1L, actor, m);
+    log.info("고객 오배송 선택 사건 {} 배송 {} {} auto={}", caseId, deliveryId, resolution, autoResolved);
+  }
+
   // ---------------------------------------------------------------- 공통
 
   /** 같은 종류·같은 대상의 가장 최근 닫힌 사건을 previousCaseId 로 잇는다(0.6.0 — 근거가 뒤집혔으면 사람이 그 사건을 재개). */

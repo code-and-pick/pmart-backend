@@ -182,8 +182,10 @@ public class InquiryStore {
 
   public List<ReplyRow> replies(String inquiryId) {
     return jdbc.query(
+        // R-16: 상세 replies 는 지금처럼 답변(AGENT)·라이더 대화(RIDER)만 — 고객이 이어 쓴 것(CUSTOMER)·시스템 메시지(SYSTEM)는
+        // 대화 목록(/messages)에서만(이미 나간 앱이 모르는 값을 받지 않게)
         "SELECT reply_id, author_type, author_id, body, created_at FROM cs_inquiry_reply"
-            + " WHERE inquiry_id = ? ORDER BY seq",
+            + " WHERE inquiry_id = ? AND author_type IN ('AGENT', 'RIDER') ORDER BY seq",
         (rs, i) ->
             new ReplyRow(
                 rs.getString(1),
@@ -238,20 +240,54 @@ public class InquiryStore {
         .findFirst();
   }
 
-  /** 라이더가 이어 쓴 메시지(0.21.0) — 상태는 RECEIVED(지원센터 답 기다림)로. 닫힘 확인은 호출 쪽(행을 잠근 뒤). */
+  /**
+   * 남긴 사람이 이어 쓴 메시지 — 라이더(0.21.0 RIDER)·고객(R-16 CUSTOMER). 상태는 RECEIVED(답 기다림)로. 닫힘 확인은 호출 쪽(행을 잠근
+   * 뒤).
+   */
   public void addRequesterMessage(
-      String inquiryId, String messageId, String authorId, String body, Instant at) {
+      String inquiryId,
+      String messageId,
+      String authorType,
+      String authorId,
+      String body,
+      Instant at) {
     jdbc.update(
         "INSERT INTO cs_inquiry_reply (reply_id, inquiry_id, author_type, author_id, body,"
-            + " created_at) VALUES (?,?, 'RIDER', ?,?,?)",
+            + " created_at) VALUES (?,?,?,?,?,?)",
         messageId,
         inquiryId,
+        authorType,
         authorId,
         body,
         Timestamp.from(at));
     jdbc.update(
         "UPDATE cs_inquiry SET status = 'RECEIVED', version = version + 1 WHERE inquiry_id = ?",
         inquiryId);
+  }
+
+  /** R-16: 앱이 주문만 줬을 때 서버가 고른 배송 ID 를 문의에 남긴다. */
+  public void setDeliveryId(String inquiryId, String deliveryId) {
+    jdbc.update(
+        "UPDATE cs_inquiry SET delivery_id = ? WHERE inquiry_id = ? AND delivery_id IS NULL",
+        deliveryId,
+        inquiryId);
+  }
+
+  /**
+   * 시스템 메시지(R-16 — 오배송 선택 안내·결과). author_id 에 메시지
+   * 종류(MISDELIVERY_CHOICE_REQUEST·MISDELIVERY_CHOSEN)를 둔다. 상태·답변 시각은 바꾸지 않는다(답변이 아님 — 마지막 답변 직원·만족도
+   * 몫에도 안 셈).
+   */
+  public void addSystemMessage(
+      String inquiryId, String messageId, String kind, String body, Instant at) {
+    jdbc.update(
+        "INSERT INTO cs_inquiry_reply (reply_id, inquiry_id, author_type, author_id, body,"
+            + " created_at) VALUES (?,?, 'SYSTEM', ?,?,?)",
+        messageId,
+        inquiryId,
+        kind,
+        body,
+        Timestamp.from(at));
   }
 
   public void addReply(

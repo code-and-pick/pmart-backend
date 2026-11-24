@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/MisdeliveryConfirmed.v1.json",
   "title": "MisdeliveryConfirmed",
-  "description": "오배송 확인(2026-11-16, service-requests R-7 — 사용자 결정 2026-11-15: 오배송 확인은 상담원·지원센터(RIDER_OPS)가 기록, 라이더 앱만으로 확정하지 않음). 발행 case-service(MISDELIVERY 사건을 열 때 같은 트랜잭션). 구독 delivery-dispatch(회수 배차 DD-2 — 구현은 delivery 영역, 아직). 토픽 platform.case.v1, 키 = caseId. 잘못 간 곳의 주소·좌표 원문은 싣지 않는다(근거는 증빙 참조만). 2026-11-16 ADR-0065: fault·resolution·redeliveryDestinationId(없으면 예전처럼 회수 + 재발송, 라이더 배달료 지급).",
+  "description": "오배송 확인(2026-11-16, service-requests R-7 — 사용자 결정 2026-11-15: 오배송 확인은 상담원·지원센터(RIDER_OPS)가 기록, 라이더 앱만으로 확정하지 않음). 발행 case-service(MISDELIVERY 사건을 열 때 같은 트랜잭션). 구독 delivery-dispatch(회수 배차 DD-2 — 구현은 delivery 영역, 아직). 토픽 platform.case.v1, 키 = caseId. 잘못 간 곳의 주소·좌표 원문은 싣지 않는다(근거는 증빙 참조만). 2026-11-16 ADR-0065: fault·resolution·redeliveryDestinationId(없으면 예전처럼 회수 + 재발송, 라이더 배달료 지급). 2026-11-24 R-16(ADR-0086): 고객 오배송 문의에서 고르면(고객·상담원 대신·5시간 자동 REFUND) 같은 사건 — fault RIDER·source CUSTOMER_INQUIRY·inquiryId·orderId·autoResolved, confirmedBy 는 고객 ID·상담원 ID·case-service. 사건(MISDELIVERY)은 문의를 받을 때 먼저 열린다.",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -75,6 +75,20 @@
               "type": "string",
               "maxLength": 64,
               "description": "CUSTOMER·REDELIVER — order 에 기록한 실제 주소 ID(주소 원문 없음)"
+            },
+            "source": {
+              "type": "string",
+              "enum": ["CUSTOMER_INQUIRY"],
+              "description": "2026-11-24 R-16(ADR-0086) — 고객 오배송 문의에서 고객·상담원·기한 자동으로 고름. 없으면 직원 확인(예전 길)"
+            },
+            "inquiryId": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "R-16 — 그 고객 문의"
+            },
+            "autoResolved": {
+              "type": "boolean",
+              "description": "R-16 — 5시간 안에 고르지 않아 자동 REFUND. confirmedBy 는 case-service"
             }
           },
           "additionalProperties": true

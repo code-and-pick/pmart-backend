@@ -65,6 +65,7 @@ public class InquiryService {
   private final Clock clock;
 
   private final CustomerRestrictions restrictions; // 2026-11-23 CU-7
+  private final MisdeliveryInquiryService misdelivery; // R-16 ADR-0086
 
   public InquiryService(
       InquiryStore store,
@@ -76,7 +77,9 @@ public class InquiryService {
       EventPublisher events,
       Clock clock,
       ProfanityGuard profanity,
-      CustomerRestrictions restrictions) {
+      CustomerRestrictions restrictions,
+      MisdeliveryInquiryService misdelivery) {
+    this.misdelivery = misdelivery;
     this.restrictions = restrictions;
     this.profanity = profanity;
     this.store = store;
@@ -186,6 +189,15 @@ public class InquiryService {
                           null,
                           null));
                   attach(id, customerId, cmd.photoIds(), 0);
+                  // R-16(ADR-0086): 받지 못함 + 전달 완료된 고객 배송 → 오배송 사건·선택 대기·채팅 안내(같은 트랜잭션)
+                  if (InquiryRules.CUSTOMER.equals(requesterType)
+                      && "NOT_RECEIVED".equals(cmd.deliveryIssue())
+                      && blankToNull(cmd.orderId()) != null
+                      && !CsIntakeRules.ORIGIN_STAFF_INTAKE.equals(
+                          InquiryRules.origin(cmd.origin()))) {
+                    misdelivery.openIfDelivered(
+                        id, customerId, cmd.orderId().strip(), blankToNull(cmd.deliveryId()), now);
+                  }
                   // 0.35.0 R-14·0.37.0: 정지 단어 → 정지 사건(고객 CU-7·라이더 PC 5). 문의는 그대로 받는다
                   profanity.reportSuspendable(
                       requesterType,

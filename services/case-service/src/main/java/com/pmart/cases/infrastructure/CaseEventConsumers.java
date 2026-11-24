@@ -30,10 +30,21 @@ import org.springframework.context.annotation.Configuration;
 class CaseEventConsumers {
 
   @Bean
-  PmartEventConsumer deliveryEvents(EventConsumers consumers, CaseInboxService cases) {
+  PmartEventConsumer deliveryEvents(
+      EventConsumers consumers,
+      CaseInboxService cases,
+      com.pmart.cases.application.MisdeliveryInquiryService misdelivery) {
     return consumers.of(
         e -> DELIVERY_TYPES.contains(e.eventType()),
         e -> {
+          // R-16(ADR-0086): 배송 사본 — 고객 오배송 문의가 전달 완료 배송인지 본다
+          if ("DeliveryCreated".equals(e.eventType())
+              || "DeliveryCompleted".equals(e.eventType())) {
+            misdelivery.onDelivery(e);
+          }
+          if ("DeliveryCompleted".equals(e.eventType())) {
+            return;
+          }
           if (RECOVERY_TYPES.contains(e.eventType())) {
             cases.onRecoveryProgress(e);
           } else if ("HelpRequestReopened".equals(e.eventType())) {
@@ -112,6 +123,7 @@ class CaseEventConsumers {
           "DispatchDelayed",
           "HelpRequestReopened",
           "DeliveryCreated",
+          "DeliveryCompleted",
           "ReturnPickedUp",
           "ReturnDelivered");
 

@@ -21,7 +21,15 @@ public record CaseProperties(
     @Nullable String deliveryDispatchBaseUrl,
     java.util.@Nullable Map<String, java.time.Duration> sla,
     java.util.@Nullable List<String> profanityWords,
-    java.util.@Nullable List<String> blockedWords) {
+    java.util.@Nullable List<String> blockedWords,
+    /** R-16(ADR-0086 결정 3) 오배송 문의 고객 선택 기한 — 없으면 5시간(사용자 2026-11-24 "5시간 뒤 자동 환불"). */
+    java.time.@Nullable Duration misdeliveryChoiceWindow) {
+
+  public java.time.Duration misdeliveryChoiceWindowOrDefault() {
+    return misdeliveryChoiceWindow == null
+        ? java.time.Duration.ofHours(5)
+        : misdeliveryChoiceWindow;
+  }
 
   /** 정지 단어 — 없으면 빈 목록. */
   public java.util.List<String> profanity() {

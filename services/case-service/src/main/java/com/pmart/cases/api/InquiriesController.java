@@ -48,13 +48,16 @@ public class InquiriesController implements InquiriesApi {
   private final InquirySatisfactionService satisfaction;
   private final InquiryCloseService closes;
   private final com.pmart.cases.application.InquiryChatService chat;
+  private final com.pmart.cases.application.MisdeliveryInquiryService misdelivery;
 
   public InquiriesController(
       InquiryService service,
       InquiryPhotoService photos,
       InquirySatisfactionService satisfaction,
       InquiryCloseService closes,
-      com.pmart.cases.application.InquiryChatService chat) {
+      com.pmart.cases.application.InquiryChatService chat,
+      com.pmart.cases.application.MisdeliveryInquiryService misdelivery) {
+    this.misdelivery = misdelivery;
     this.service = service;
     this.photos = photos;
     this.satisfaction = satisfaction;
@@ -86,18 +89,27 @@ public class InquiriesController implements InquiriesApi {
         .body(message(chat.post(idempotencyKey, xSourceSystem, inquiryId, req.getBody()), false));
   }
 
-  /** 답변 표 한 줄 → 대화 메시지. 상담원 ID 는 직원에게만. */
+  /**
+   * 답변 표 한 줄 → 대화 메시지. AGENT → SUPPORT, RIDER·CUSTOMER(0.39.0) 그대로, SYSTEM(0.39.0) 은 author_id 가
+   * 종류. 상담원 ID 는 직원에게만.
+   */
   private static com.pmart.cases.api.generated.model.InquiryMessage message(
       com.pmart.cases.infrastructure.InquiryStore.MessageRow m, boolean staff) {
-    boolean rider = "RIDER".equals(m.authorType());
     var o = new com.pmart.cases.api.generated.model.InquiryMessage();
     o.setMessageId(m.messageId());
     o.setSeq(m.seq());
+    String t = m.authorType();
+    boolean system = "SYSTEM".equals(t);
+    boolean requester = "RIDER".equals(t) || "CUSTOMER".equals(t);
     o.setSenderType(
-        rider
-            ? com.pmart.cases.api.generated.model.InquiryMessage.SenderTypeEnum.RIDER
-            : com.pmart.cases.api.generated.model.InquiryMessage.SenderTypeEnum.SUPPORT);
-    o.setSenderId(rider || staff ? m.authorId() : null);
+        com.pmart.cases.api.generated.model.InquiryMessage.SenderTypeEnum.fromValue(
+            "AGENT".equals(t) ? "SUPPORT" : t));
+    o.setSenderId(system ? null : requester || staff ? m.authorId() : null);
+    o.setSystemKind(
+        system
+            ? com.pmart.cases.api.generated.model.InquiryMessage.SystemKindEnum.fromValue(
+                m.authorId())
+            : null);
     o.setBody(m.body());
     o.setCreatedAt(m.createdAt().atOffset(ZoneOffset.UTC));
     return o;
@@ -164,7 +176,25 @@ public class InquiriesController implements InquiriesApi {
             cursor,
             size);
     var out = new ListInquiries200Response();
-    out.setItems(page.items().stream().map(InquiriesController::summary).toList());
+    var choices =
+        misdelivery.byInquiries(page.items().stream().map(InquiryRow::inquiryId).toList());
+    out.setItems(
+        page.items().stream()
+            .map(
+                r -> {
+                  var s = summary(r);
+                  var c = choices.get(r.inquiryId());
+                  if (c != null) {
+                    boolean waiting = c.resolution() == null;
+                    s.setMisdeliveryState(
+                        InquirySummary.MisdeliveryStateEnum.fromValue(
+                            waiting ? "AWAITING_CHOICE" : "CHOSEN"));
+                    s.setMisdeliveryDeadlineAt(
+                        waiting ? c.deadlineAt().atOffset(ZoneOffset.UTC) : null);
+                  }
+                  return s;
+                })
+            .toList());
     var p = new ListCases200ResponsePage();
     p.setNextCursor(page.nextCursor());
     p.setSize(page.items().size());
@@ -290,8 +320,64 @@ public class InquiriesController implements InquiriesApi {
   }
 
   /** 상세 + 만족도(본인·관리자에게만 — 0.15.0). */
+  /** 0.39.0 R-16 — 오배송 문의 고르기(고객 본인·상담원 대신). 결과는 문의 상세. */
+  @Override
+  public ResponseEntity<Inquiry> chooseInquiryMisdelivery(
+      String inquiryId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cases.api.generated.model.ChooseInquiryMisdeliveryRequest req) {
+    misdelivery.choose(
+        idempotencyKey, xSourceSystem, inquiryId, req.getResolution().getValue(), req.getReason());
+    return ResponseEntity.ok(out(service.get(inquiryId)));
+  }
+
   private Inquiry out(InquiryService.View v) {
     Inquiry d = detail(v);
+    misdelivery
+        .find(v.inquiry().inquiryId())
+        .ifPresent(
+            c -> {
+              boolean staff =
+                  com.pmart.common.security.PmartPrincipal.current()
+                      .map(
+                          p ->
+                              p.type()
+                                  == com.pmart.common.security.PmartPrincipal.PrincipalType
+                                      .OPERATOR)
+                      .orElse(false);
+              var x = new com.pmart.cases.api.generated.model.InquiryMisdelivery();
+              x.setCaseId(c.caseId());
+              x.setDeliveryId(c.deliveryId());
+              x.setState(
+                  com.pmart.cases.api.generated.model.InquiryMisdelivery.StateEnum.fromValue(
+                      c.resolution() == null ? "AWAITING_CHOICE" : "CHOSEN"));
+              x.setOptions(
+                  c.resolution() == null
+                      ? new java.util.ArrayList<>(
+                          java.util.List.of(
+                              com.pmart.cases.api.generated.model.InquiryMisdelivery.OptionsEnum
+                                  .RESHIP,
+                              com.pmart.cases.api.generated.model.InquiryMisdelivery.OptionsEnum
+                                  .REFUND))
+                      : new java.util.ArrayList<>());
+              x.setDeadlineAt(c.deadlineAt().atOffset(ZoneOffset.UTC));
+              x.setResolution(
+                  c.resolution() == null
+                      ? null
+                      : com.pmart.cases.api.generated.model.InquiryMisdelivery.ResolutionEnum
+                          .fromValue(c.resolution()));
+              x.setChosenByType(
+                  c.chosenByType() == null
+                      ? null
+                      : com.pmart.cases.api.generated.model.InquiryMisdelivery.ChosenByTypeEnum
+                          .fromValue(c.chosenByType()));
+              x.setChosenAt(c.chosenAt() == null ? null : c.chosenAt().atOffset(ZoneOffset.UTC));
+              x.setAutoResolved("AUTO".equals(c.chosenByType()));
+              x.setChosenBy(staff && "STAFF".equals(c.chosenByType()) ? c.chosenBy() : null);
+              x.setChosenReason(staff ? c.chosenReason() : null);
+              d.setMisdelivery(x);
+            });
     satisfaction
         .forViewer(v.inquiry().inquiryId())
         .ifPresent(
