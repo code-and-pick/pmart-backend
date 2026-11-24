@@ -14,6 +14,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] **HR-6 직원 표시 상태**(사용자 "이건 나중에") — 요청서 `service-requests/hr-service.md` HR-6, PC 1 추천 `loginAvailable` boolean.
 - [ ] (보류 — 사용자 결정) CA-2 AI 채팅 막기·정지 단어 — 끄고 기록만(`service-requests/customer-assistant-service.md`).
 - [ ] 결제 모니터링 초안(작업 트리 payment-service·monitoring 미커밋) — 아래 §0 줄과 같음.
+- [ ] **칠곡 DC `CDC01` center-master 등록**(cdc 세션 요청 2026-11-24, CDC 시뮬레이터 R-01) — `service-requests/center-master-service.md` CM-3. 값은 `docs/simulator/cdc/chilgok-dc.md` §1.
 
 ## 0. 2026-11-21 정리 — 사용자 "9시 이후에 할게"
 - [x] **LAN 행사 승인 2건(사용자)** — 2026-11-23 사용자 승인, 두 행사 APPROVED(기간 안). 대기 보상·가입 지급 0건이라 발급 없음(다음 배차 불가 취소·새 가입부터). — 백오피스 승인 화면, MARKETING·OPERATOR_ADMIN: 배차 불가 보상 2,000원 `AP-477d415d-…`(행사 `PRM-f1be8d6d-…`), 가입 축하 3,000원 `AP-5b307c83-…`(`PRM-45734b27-…`). 내가 다른 시험 계정으로 승인하는 것은 자동 모드가 막음(감독 우회). 승인 뒤 PC 1: 행사 RUNNING·대기 보상 발급·"보상 쿠폰이 도착했어요" 알림 확인.

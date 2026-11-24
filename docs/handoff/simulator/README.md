@@ -7,5 +7,6 @@
 |---|---|---|---|
 | [mfc/](mfc/README.md) | `../pmart-mfc-simulation`(MFC 현장 3D) | 그 저장소 `docs/backend-requests.md`(R-xx) | `docs/simulator/mfc/` |
 | [rider/](rider/README.md) | `../pmart-rider-simulation`(라스트마일 — 카카오 지도 위 라이더, 2026-11-16~) | 그 저장소 `docs/backend-requests.md`(RR-xx) | `docs/simulator/rider/` |
+| [cdc/](cdc/README.md) | `pmart-cdc-simulation`(칠곡 DC 출고·피킹·상차, 2026-11-24~) | 그 저장소 `docs/backend-requests.md`(R-xx) | `docs/simulator/cdc/` |
 
 - 2026-11-16 이전 MFC 회신·공지는 이 폴더 바로 아래에 있다가 `mfc/` 로 옮겼다 — 시뮬레이터 쪽 안내 문서의 옛 경로는 `mfc/` 를 붙여 읽는다.
