@@ -36,8 +36,12 @@ public class OrderClient {
     return customerOrder(orderId).isPresent();
   }
 
-  /** 본인 주문의 지금 상태(order OrderStatus). 응답에 없거나 읽지 못하면 null. */
-  public record CustomerOrder(@Nullable String status) {}
+  /** 본인 주문의 지금 상태(order OrderStatus)·이행 센터(0.40.0). 응답에 없거나 읽지 못하면 null. */
+  public record CustomerOrder(@Nullable String status, @Nullable String mfcId) {
+    public CustomerOrder(@Nullable String status) {
+      this(status, null);
+    }
+  }
 
   /**
    * 호출한 고객의 주문이면 그 상태(0.23.0 — 배송 지연 신고). 남의·없는 주문(200 이 아님)은 빈 값. 같은 {@code GET /orders/{id}} 한 번
@@ -71,15 +75,48 @@ public class OrderClient {
                         return java.util.Optional.<CustomerOrder>empty();
                       }
                       Object st = null;
+                      Object mfc = null;
                       try {
                         Map<String, Object> body = res.bodyTo(Map.class);
                         st = body == null ? null : body.get("status");
+                        mfc = body == null ? null : body.get("mfcId");
                       } catch (RuntimeException e) {
                         // 본문을 못 읽어도 소유는 확인됨 — 상태만 모름(지연 신고는 받지 않는다)
                         st = null;
                       }
                       return java.util.Optional.of(
-                          new CustomerOrder(st == null ? null : st.toString()));
+                          new CustomerOrder(
+                              st == null ? null : st.toString(),
+                              mfc == null || mfc.toString().isBlank() ? null : mfc.toString()));
+                    }));
+  }
+
+  /**
+   * 0.40.0 문의 센터 채우기 — order 내부 원장 {@code GET /internal/orders/{id}}(토큰 없음, 사진 없이)의 mfcId. 주문이
+   * 없으면(404) 빈 값, 센터가 없으면 빈 문자열이 아닌 빈 값. 장애는 던진다(호출자가 멈추고 다음 기동 때 이어서).
+   */
+  @SuppressWarnings("unchecked")
+  public java.util.Optional<String> internalCenter(String orderId) {
+    return Downstream.call(
+        ORDER,
+        () ->
+            client
+                .get()
+                .uri("/api/v1/internal/orders/{id}?includeImages=false", orderId)
+                .exchange(
+                    (req, res) -> {
+                      int s = res.getStatusCode().value();
+                      if (s == 404) {
+                        return java.util.Optional.<String>empty();
+                      }
+                      if (s != 200) {
+                        throw new IllegalStateException("order-service " + s);
+                      }
+                      Map<String, Object> body = res.bodyTo(Map.class);
+                      Object mfc = body == null ? null : body.get("mfcId");
+                      return mfc == null || mfc.toString().isBlank()
+                          ? java.util.Optional.<String>empty()
+                          : java.util.Optional.of(mfc.toString());
                     }));
   }
 

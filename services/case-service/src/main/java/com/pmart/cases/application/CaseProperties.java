@@ -23,7 +23,9 @@ public record CaseProperties(
     java.util.@Nullable List<String> profanityWords,
     java.util.@Nullable List<String> blockedWords,
     /** R-16(ADR-0086 결정 3) 오배송 문의 고객 선택 기한 — 없으면 5시간(사용자 2026-11-24 "5시간 뒤 자동 환불"). */
-    java.time.@Nullable Duration misdeliveryChoiceWindow) {
+    java.time.@Nullable Duration misdeliveryChoiceWindow,
+    /** 0.40.0 라이더 문의 센터(접수 때 운행 센터) — 없으면 http://rider-service:8403. */
+    @Nullable String riderServiceBaseUrl) {
 
   public java.time.Duration misdeliveryChoiceWindowOrDefault() {
     return misdeliveryChoiceWindow == null

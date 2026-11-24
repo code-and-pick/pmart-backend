@@ -37,11 +37,57 @@ public class InquiryStore {
       /** 화면 문의 번호 Q-MMDD-일련(ADR-0070, V20 — DB 트리거가 매김). 넣을 때는 null. */
       @Nullable String inquiryNumber,
       /** 마지막으로 답한 직원(0.36.0 — 답변 표 AGENT 의 가장 최근). 넣을 때는 null. */
-      @Nullable String lastAnsweredBy) {
+      @Nullable String lastAnsweredBy,
+      /** 0.40.0 문의 센터 — 고객 문의 = 주문 이행 센터, 라이더 문의 = 접수 때 운행 센터. 없으면 null(센터 없음). */
+      @Nullable String centerId) {
 
-    /** 고객·라이더에게는 직원 ID 를 내보내지 않는다. */
+    /** 센터 없이(0.40.0 전 모양). */
+    public InquiryRow(
+        String inquiryId,
+        String caseId,
+        String customerId,
+        String category,
+        @Nullable String orderId,
+        @Nullable String title,
+        String body,
+        String origin,
+        String status,
+        Instant createdAt,
+        @Nullable Instant answeredAt,
+        int version,
+        @Nullable String channel,
+        @Nullable String callerRelation,
+        String requesterType,
+        @Nullable String deliveryId,
+        @Nullable String deliveryIssue,
+        @Nullable String inquiryNumber,
+        @Nullable String lastAnsweredBy) {
+      this(
+          inquiryId,
+          caseId,
+          customerId,
+          category,
+          orderId,
+          title,
+          body,
+          origin,
+          status,
+          createdAt,
+          answeredAt,
+          version,
+          channel,
+          callerRelation,
+          requesterType,
+          deliveryId,
+          deliveryIssue,
+          inquiryNumber,
+          lastAnsweredBy,
+          null);
+    }
+
+    /** 고객·라이더에게는 직원 ID·센터를 내보내지 않는다. */
     public InquiryRow withoutStaff() {
-      return lastAnsweredBy == null
+      return lastAnsweredBy == null && centerId == null
           ? this
           : new InquiryRow(
               inquiryId,
@@ -71,13 +117,14 @@ public class InquiryStore {
 
   private static final String COLS =
       "inquiry_id, case_id, customer_id, category, order_id, title, body, origin, status,"
-          + " created_at, answered_at, version, requester_type, delivery_id, delivery_issue";
+          + " created_at, answered_at, version, requester_type, delivery_id, delivery_issue,"
+          + " center_id, center_checked";
 
   /** 상담원 접수(0.12.0)면 연락 경로·본인/대리를 같이 — cs_intake 는 이 서비스 표. */
   private static final String SELECT =
       "SELECT q.inquiry_id, q.case_id, q.customer_id, q.category, q.order_id, q.title, q.body,"
           + " q.origin, q.status, q.created_at, q.answered_at, q.version, q.requester_type,"
-          + " q.delivery_id, q.delivery_issue, q.inquiry_number, i.channel,"
+          + " q.delivery_id, q.delivery_issue, q.inquiry_number, q.center_id, i.channel,"
           + " i.caller_relation, (SELECT r.author_id FROM cs_inquiry_reply r WHERE r.inquiry_id ="
           + " q.inquiry_id AND r.author_type = 'AGENT' ORDER BY r.created_at DESC, r.seq DESC LIMIT 1)"
           + " AS last_answered_by FROM cs_inquiry q LEFT JOIN cs_intake i ON i.inquiry_id ="
@@ -98,7 +145,7 @@ public class InquiryStore {
         r.orderId(),
         Timestamp.from(r.createdAt()));
     jdbc.update(
-        "INSERT INTO cs_inquiry (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO cs_inquiry (" + COLS + ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         r.inquiryId(),
         r.caseId(),
         r.customerId(),
@@ -113,7 +160,28 @@ public class InquiryStore {
         0,
         r.requesterType(),
         r.deliveryId(),
-        r.deliveryIssue());
+        r.deliveryIssue(),
+        r.centerId(),
+        // 0.40.0: 채울 것이 없거나 이미 채움 — 주문 있는 고객 문의인데 센터를 못 받았으면 InquiryCenterBackfill 이 다시 본다
+        r.centerId() != null || r.orderId() == null || !"CUSTOMER".equals(r.requesterType()));
+  }
+
+  /** 0.40.0 — 센터를 아직 안 채운 주문 있는 고객 문의의 주문(중복 없이). */
+  public List<String> ordersWithoutCenter(int limit) {
+    return jdbc.queryForList(
+        "SELECT DISTINCT order_id FROM cs_inquiry WHERE NOT center_checked AND order_id IS NOT NULL"
+            + " AND requester_type = 'CUSTOMER' LIMIT ?",
+        String.class,
+        limit);
+  }
+
+  /** 0.40.0 — 그 주문의 문의 센터 채우기(centerId null = 주문에 센터 없음·주문 없음 — 확인만 남김). */
+  public int fillCenter(String orderId, @Nullable String centerId) {
+    return jdbc.update(
+        "UPDATE cs_inquiry SET center_id = COALESCE(center_id, ?), center_checked = true"
+            + " WHERE order_id = ? AND NOT center_checked AND requester_type = 'CUSTOMER'",
+        centerId,
+        orderId);
   }
 
   public Optional<InquiryRow> find(String inquiryId) {
@@ -142,10 +210,16 @@ public class InquiryStore {
       @Nullable String status,
       @Nullable String orderId,
       @Nullable String deliveryIssue,
+      /** 0.40.0 센터 거르기 — 그 센터 + 센터 없는 문의(늘 함께, 사용자 결정 b). */
+      @Nullable String centerId,
       @Nullable String cursor,
       int size) {
     StringBuilder sql = new StringBuilder(SELECT + " WHERE 1=1");
     List<Object> args = new ArrayList<>();
+    if (centerId != null) {
+      sql.append(" AND (q.center_id = ? OR q.center_id IS NULL)");
+      args.add(centerId);
+    }
     if (customerId != null) {
       sql.append(
           includeStaffIntake
@@ -334,6 +408,7 @@ public class InquiryStore {
         rs.getString("delivery_id"),
         rs.getString("delivery_issue"),
         rs.getString("inquiry_number"),
-        rs.getString("last_answered_by"));
+        rs.getString("last_answered_by"),
+        rs.getString("center_id"));
   }
 }

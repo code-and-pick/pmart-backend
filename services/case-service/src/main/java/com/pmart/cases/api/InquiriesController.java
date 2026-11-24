@@ -164,7 +164,8 @@ public class InquiriesController implements InquiriesApi {
       @Nullable InquiryRequesterType requesterType,
       @Nullable InquiryDeliveryIssue deliveryIssue,
       @Nullable String customerId,
-      @Nullable String riderId) {
+      @Nullable String riderId,
+      @Nullable String centerId) {
     var page =
         service.list(
             status == null ? null : status.getValue(),
@@ -173,6 +174,7 @@ public class InquiriesController implements InquiriesApi {
             riderId,
             requesterType == null ? null : requesterType.getValue(),
             deliveryIssue == null ? null : deliveryIssue.getValue(),
+            centerId,
             cursor,
             size);
     var out = new ListInquiries200Response();
@@ -418,6 +420,7 @@ public class InquiriesController implements InquiriesApi {
     s.setAnsweredAt(r.answeredAt() == null ? null : r.answeredAt().atOffset(ZoneOffset.UTC));
     s.setVersion(r.version());
     s.setLastAnsweredBy(r.lastAnsweredBy());
+    s.setCenterId(r.centerId()); // 0.40.0 — 고객·라이더 목록은 withoutStaff 로 null
     return s;
   }
 

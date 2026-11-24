@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.39.0
+  version: 0.40.0
   description: |
+    **0.40.0(2026-11-24 — R-17 웹 요청, 사용자 "b 로 하고 라이더는 운행 센터로")**: 직원 `GET /inquiries?centerId=`(보기 거르기, 권한 그대로) + 목록 줄 `centerId`.
+      고객 문의 센터 = 주문 이행 센터(order mfcId — 받을 때 저장, 그 전 문의는 서버가 order 원장으로 한 번 채움), 라이더 문의 센터 = **접수 때 운행 센터**(rider `GET /riders/me` operating.mfcId — 라이더 본인 토큰,
+      나중에 바뀌어도 그대로). **센터가 없는 문의(주문 없는 고객 문의·운행 센터 없는 라이더·읽지 못함)는 centerId 를 줘도 늘 함께**(결정 b — 놓치지 않게, 줄 centerId null).
     **0.39.0(2026-11-24 — R-16, ADR-0086 사용자 "고객이 오배송으로 문의를 남기기 편해야 하고 … 채팅에서 다시 보내거나 취소환불 할지를 선택"·"5시간 뒤 자동 환불")**:
       ① 고객 `POST /inquiries` 가 DELIVERY·`deliveryIssue: NOT_RECEIVED`·주문이고 그 배송(`deliveryId` — 없으면 그 주문의 가장 최근 전달 완료 고객 배송)이
       **전달 완료된 고객 배송(FORWARD·RESHIPMENT)** 이면 같은 트랜잭션에서 오배송 접수 건(MISDELIVERY, 귀책 RIDER, 고객 선택 대기)을 열고 대화에 선택 안내(시스템 메시지)를 넣는다.
@@ -880,6 +883,7 @@ paths:
         - { name: deliveryIssue, in: query, schema: { $ref: '#/components/schemas/InquiryDeliveryIssue' }, description: '배송 신고 종류로 거르기(0.23.0 — 상담원이 지연 신고 DELAYED 만 보기 등). 배송 신고는 고객 문의에만 있다 — 고객 문의를 못 보는 직원이 거르면 403(orderId 와 같음). 고객은 본인 것 안에서', x-added-in: '2026-11-18' }
         - { name: customerId, in: query, x-added-in: '2026-11-19', schema: { type: string, maxLength: 64 }, description: '(0.29.0 — 백오피스 "고객" 상세 BF-2) 직원 고객 거르기 — 그 고객의 **고객 문의**(상담원 접수 STAFF_INTAKE 포함, 라이더 문의 제외). 고객 문의를 못 보는 직원 403(orderId 와 같음). 고객·라이더 토큰은 무시(늘 본인 것)' }
         - { name: riderId, in: query, x-added-in: '2026-11-21', schema: { type: string, maxLength: 64 }, description: '(0.32.0 — R-11 라이더 백오피스 라이더 상세) 직원 라이더 거르기 — 그 라이더의 **라이더 문의**만(탈퇴한 라이더도), 최근 접수 순. 라이더 문의를 못 보는 직원(CS_AGENT 등) 403. customerId·orderId·deliveryIssue·requesterType=CUSTOMER 와 같이 주면 400. 고객·라이더 토큰은 무시(늘 본인 것)' }
+        - { name: centerId, in: query, x-added-in: '2026-11-24', schema: { type: string, maxLength: 64 }, description: '(0.40.0) 직원 센터 거르기 — 그 센터 문의 + **센터가 없는 문의(늘 함께, 사용자 결정 b)**. 고객 문의 = 주문 이행 센터, 라이더 문의 = 접수 때 운행 센터. 고객·라이더 토큰은 무시' }
       responses:
         '200':
           description: OK
@@ -2016,6 +2020,7 @@ components:
         misdeliveryState: { type: [string, 'null'], enum: [AWAITING_CHOICE, CHOSEN, null], x-added-in: '2026-11-24', description: '(0.39.0 R-16) 오배송 선택 — 없으면 null' }
         misdeliveryDeadlineAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-24', description: '(0.39.0) 고르기 기한(AWAITING_CHOICE 일 때)' }
         inquiryNumber: { type: [string, 'null'], x-added-in: '2026-11-19', description: '(0.25.0, ADR-0070) 화면 문의 번호 Q-MMDD-일련(한국 날짜)' }
+        centerId: { type: [string, 'null'], x-added-in: '2026-11-24', description: '(0.40.0) 문의 센터 — 고객 문의 = 주문 이행 센터, 라이더 문의 = 접수 때 운행 센터. 없으면 null(화면 "센터 없음"). 직원에게만(고객·라이더에게는 null)' }
         category: { $ref: '#/components/schemas/InquiryCategory' }
         orderId: { type: string, nullable: true }
         title: { type: string, nullable: true }

@@ -66,6 +66,7 @@ public class InquiryService {
 
   private final CustomerRestrictions restrictions; // 2026-11-23 CU-7
   private final MisdeliveryInquiryService misdelivery; // R-16 ADR-0086
+  private final com.pmart.cases.infrastructure.RiderClient riders; // 0.40.0 라이더 문의 센터
 
   public InquiryService(
       InquiryStore store,
@@ -78,8 +79,10 @@ public class InquiryService {
       Clock clock,
       ProfanityGuard profanity,
       CustomerRestrictions restrictions,
-      MisdeliveryInquiryService misdelivery) {
+      MisdeliveryInquiryService misdelivery,
+      com.pmart.cases.infrastructure.RiderClient riders) {
     this.misdelivery = misdelivery;
+    this.riders = riders;
     this.restrictions = restrictions;
     this.profanity = profanity;
     this.store = store;
@@ -132,6 +135,9 @@ public class InquiryService {
       throw new PmartException(
           ErrorCode.VALIDATION_FAILED, "배송 건 문의는 배송 화면의 도움요청으로 남기세요(라이더 문의는 주문 없이).");
     }
+    // 0.40.0 문의 센터: 고객 = 주문 이행 센터(아래 주문 조회), 라이더 = 접수 때 운행 센터(rider /riders/me — 못 읽으면 없음)
+    String centerId =
+        InquiryRules.RIDER.equals(requesterType) ? riders.operatingCenter().orElse(null) : null;
     if (cmd.orderId() != null && !cmd.orderId().isBlank()) {
       if (props.orderServiceBaseUrl() == null) {
         throw PmartException.configRequired("pmart.cases.order-service-base-url");
@@ -154,7 +160,9 @@ public class InquiryService {
             false,
             List.of());
       }
+      centerId = owned.get().mfcId();
     }
+    String center = centerId;
     // 0.37.0: 막기 단어(욕설)는 받지 않는다 — 422, 정지 없음
     profanity.rejectBlocked(cmd.title(), cmd.body());
     String inquiryId =
@@ -187,7 +195,8 @@ public class InquiryService {
                           blankToNull(cmd.deliveryId()),
                           cmd.deliveryIssue(),
                           null,
-                          null));
+                          null,
+                          center));
                   attach(id, customerId, cmd.photoIds(), 0);
                   // R-16(ADR-0086): 받지 못함 + 전달 완료된 고객 배송 → 오배송 사건·선택 대기·채팅 안내(같은 트랜잭션)
                   if (InquiryRules.CUSTOMER.equals(requesterType)
@@ -233,9 +242,13 @@ public class InquiryService {
       @Nullable String riderFilter,
       @Nullable String requesterType,
       @Nullable String deliveryIssue,
+      /** 0.40.0 직원 센터 거르기(그 센터 + 센터 없는 문의). 고객·라이더 토큰은 무시. */
+      @Nullable String centerFilter,
       @Nullable String cursor,
       int size) {
     PmartPrincipal p = principal();
+    String center =
+        p.type() == PmartPrincipal.PrincipalType.OPERATOR ? blankToNull(centerFilter) : null;
     String customerId = null;
     boolean staffIntake = false;
     String type;
@@ -300,6 +313,7 @@ public class InquiryService {
             status,
             blankToNull(orderId),
             deliveryIssue,
+            center,
             cursor,
             size);
     boolean more = rows.size() > size;
