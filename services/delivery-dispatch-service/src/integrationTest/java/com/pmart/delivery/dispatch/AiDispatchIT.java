@@ -29,6 +29,9 @@ import org.springframework.context.annotation.Import;
       "pmart.messaging.outbox.delete-after-insert=false",
       "pmart.dispatch.tick-interval=PT1H",
       "pmart.dispatch.tick-initial-delay=PT1H",
+      // 부모 properties 를 물려받지 않는다(이 목록이 대신한다) — 빠지면 새 배달 알림이 15초마다 배경에서 돌아 시험의 run() 과 겹쳐 알림
+      // 2건(2026-11-25)
+      "pmart.dispatch.list-notice-interval=PT1H",
       "pmart.dispatch.operating-start=00:00",
       "pmart.dispatch.operating-end=24:00",
       "pmart.dispatch.ai.base-url=${pmart.dispatch.urls.rider}" // 부모의 WireMock(up)을 AI 서버로도 쓴다

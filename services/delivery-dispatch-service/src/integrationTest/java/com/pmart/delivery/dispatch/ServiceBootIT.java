@@ -13,7 +13,11 @@ import org.springframework.web.client.RestClient;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      // 같은 PostgreSQL 을 다른 시험과 함께 쓴다 — 배경 판단 주기·새 배달 알림이 그 시험 데이터를 건드리지 않게(2026-11-25)
+      "pmart.dispatch.tick-interval=PT1H",
+      "pmart.dispatch.tick-initial-delay=PT1H",
+      "pmart.dispatch.list-notice-interval=PT1H"
     })
 class ServiceBootIT extends PostgresKafkaContainerSupport {
 
