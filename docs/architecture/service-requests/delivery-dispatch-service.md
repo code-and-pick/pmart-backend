@@ -101,7 +101,7 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
 - (선택, LAN 시험 편의) 라이더가 한 명뿐인 LAN 에서 한 번 놓치면 재요청 `retry-interval` 10분을 기다린다 — LAN 프로필만 줄일지 결정.
 - **받는 쪽(mfc, PC 3)**: 할 것 없음(배차 요청은 제때 나간다 — DispatchRequested → DeliveryCreated 1초, 첫 제안 2초).
 
-## DD-6. 정시 배송 지표 시간 칸 — `bucket=HOUR`(·WEEK·MONTH) (2026-11-21, 보낸 영역 mfc — PC 3)
+## DD-6. 정시 배송 지표 시간 칸 — `bucket=HOUR`(·WEEK·MONTH) (2026-11-21, 보낸 영역 mfc — PC 3) — **구현 2026-11-25 PC 5(dispatch 0.18.0, 브랜치 `delivery/dd6-on-time-buckets`)**
 - **요청한 곳**: MFC 백오피스 대시보드 추이(pmart-clients `docs/handoff/mfc-backoffice/2026-11-21-backend-hourly-metrics.md`). 사용자 2026-11-21 "시간대별 기록 1일·7일·한 달·년 단위".
 - **필요한 것**: `GET /metrics/on-time-deliveries`(DD-4)에 칸 단위 `bucket=HOUR|DAY`(기본 DAY = 지금 그대로).
   - HOUR 면 줄에 `hour`(칸 시작 시각, Asia/Seoul +09:00, 예 `2026-11-21T14:00:00+09:00`). 기간은 7일까지면 된다(168칸). 0건 칸은 줄 없음(날짜와 같은 규칙).
@@ -109,3 +109,4 @@ delivery-dispatch-service 는 아직 스캐폴딩(모든 엔드포인트 501)이
   - (있으면 좋음) 1년 보기를 한 번에: `bucket=WEEK|MONTH`(월요일 시작 주·1일 시작 달, 366일까지) 또는 DAY 상한 366일.
 - **같은 모양 참고**: mfc-fulfillment 0.34.0 `GET /metrics/picking-lines?bucket=HOUR|DAY|WEEK|MONTH` — 줄 `date`(칸 시작 날짜) + `hour`(HOUR 만), HOUR 7일·DAY 92일·WEEK·MONTH 366일, SQL `date_trunc(<단위>, ts AT TIME ZONE 'Asia/Seoul')`.
 - **지금(임시)**: 화면은 실서버에서 "시간" 단추를 끄고 "시간대별 지표 API 없음". 일·주·월은 날짜 합계를 31일씩 나눠 읽는다.
+- **구현(2026-11-25 PC 5, dispatch 0.18.0)**: `bucket=HOUR|DAY|WEEK|MONTH`(기본 DAY). 칸 = 약속 끝(`promised_at`)을 Asia/Seoul 로 `date_trunc` — 제안대로. 줄 `date`(칸 시작 날짜, 주는 월요일·달은 1일)·`hour`(HOUR 만, +09:00, 그 밖 null). 기간 HOUR 7일·DAY 31일(예전 그대로)·WEEK·MONTH 366일, 넘거나 모르는 단위는 400. 첫·끝 주·달은 from·to 로 잘림. 0건 칸 줄 없음. 권한 그대로. 경로가 같아 게이트웨이 변경 없음.

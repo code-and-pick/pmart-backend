@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
+    0.18.0(2026-11-25, 요청 DD-6 — MFC 백오피스 시간대별 추이, 사용자 2026-11-21 "시간대별 기록 1일·7일·한 달·년 단위"): `GET /metrics/on-time-deliveries` 에 `bucket`(HOUR·DAY·WEEK·MONTH, 기본 DAY = 예전 그대로). 칸 = 약속 끝(promisedAt, Asia/Seoul)을 그 단위로 내린 값 — 줄 `date`(칸 시작 날짜, 주는 월요일·달은 1일), HOUR 면 `hour`(칸 시작 시각 +09:00). 기간 HOUR 7일·DAY 31일·WEEK·MONTH 366일. 추가 칸·값만(mfc-fulfillment 0.34.0 `/metrics/picking-lines` 와 같은 모양).
     0.16.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /metrics/dispatch` 배차 효율(날짜·센터별 배차 요청·배정·평균 배차 소요·재배차·실패 회차·자동 취소·제안 수락률·배정 출처, 실패 사유).
     0.15.0(2026-11-23, 라이더 백오피스 라이더 목록 "진행 중 n" — 사용자 요청): 내부 `GET /internal/riders/active-delivery-counts?riderIds=` — 라이더 여럿의 맡은 배송 수(ASSIGNED·PICKED_UP) 한 번에. rider-service 직원 목록이 부른다.
     0.14.0(2026-11-22, ADR-0085): 배정 이력 deliveryNumber 가 D + 주문번호(두 번째 배송부터 -순번).
@@ -471,13 +472,21 @@ paths:
         - onTime: 전달 완료 시각(DeliveryCompleted.deliveredAt) ≤ 약속 끝. late: 그 밖에 약속 끝이 지난 것(아직 전달 전·실패 포함 — 뒤에 전달돼도 늦음).
         - unjudged: 완료 방법이 고객 수령 확인(CUSTOMER_CONFIRMED)·자동 완료(AUTO_COMPLETED) — 전달 시각이 실제가 아니라 분모에서 뺀다.
         - pending: 아직 약속 끝 전이고 전달 전 — 분모에서 뺀다. due = onTime + late.
-        from·to 날짜(포함, 기본 오늘, 최대 31일). OPERATOR_ADMIN 은 모든 센터, 그 밖 운영자는 mfcId(그 센터 권한) 필수.
+        from·to 날짜(포함, 기본 오늘, 기간 상한은 bucket 따라 — DAY 31일). OPERATOR_ADMIN 은 모든 센터, 그 밖 운영자는 mfcId(그 센터 권한) 필수.
+        (0.18.0, DD-6) `bucket` 칸 단위 — 칸 = 약속 끝(Asia/Seoul)을 내린 값. 0건 칸은 줄 없음.
       operationId: listOnTimeDeliveryMetrics
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: from, in: query, schema: { type: string, format: date } }
         - { name: to, in: query, schema: { type: string, format: date } }
         - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - name: bucket
+          in: query
+          required: false
+          description: |
+            (0.18.0, DD-6) 칸 단위 — HOUR 시 단위(기간 최대 7일), DAY 날짜(기본, 최대 31일), WEEK 월요일 시작 주(최대 366일),
+            MONTH 1일 시작 달(최대 366일). 첫·끝 주·달은 from·to 로 잘린다(그 안의 약속 끝만 센다).
+          schema: { type: string, enum: [HOUR, DAY, WEEK, MONTH], default: DAY }
       responses:
         '200':
           description: OK
@@ -493,7 +502,8 @@ paths:
                       type: object
                       required: [date, mfcId, due, onTime, late, unjudged, pending]
                       properties:
-                        date: { type: string, format: date }
+                        date: { type: string, format: date, description: '칸 시작 날짜(Asia/Seoul) — DAY 는 그날, WEEK 는 월요일, MONTH 는 1일, HOUR 는 그 시각의 날짜' }
+                        hour: { type: [string, 'null'], format: date-time, description: '(0.18.0) bucket=HOUR 일 때만 — 칸 시작 시각(+09:00, 예 2026-11-21T14:00:00+09:00), 그 밖은 null' }
                         mfcId: { type: string }
                         due: { type: integer }
                         onTime: { type: integer }

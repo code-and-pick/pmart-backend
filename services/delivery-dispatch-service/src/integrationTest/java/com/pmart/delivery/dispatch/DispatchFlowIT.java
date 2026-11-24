@@ -677,6 +677,63 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(row.path("late").asInt()).isEqualTo(2);
     assertThat(row.path("due").asInt()).isEqualTo(3);
     assertThat(row.path("unjudged").asInt()).isEqualTo(1);
+    assertThat(row.hasNonNull("hour")).isFalse();
+
+    // DD-6 칸 단위(0.18.0): HOUR 는 약속 끝을 시 단위로 내린 칸 시작(+09:00), WEEK 는 월요일 날짜
+    String adminToken = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    java.time.ZonedDateTime baseKst = base.atZone(java.time.ZoneId.of("Asia/Seoul"));
+    JsonNode hourly =
+        body(
+            http.get()
+                .uri(
+                    "/metrics/on-time-deliveries?from={d}&to={d}&mfcId={m}&bucket=HOUR",
+                    day,
+                    day,
+                    mfc)
+                .header("Authorization", "Bearer " + adminToken)
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(hourly.path("items").size()).isEqualTo(1);
+    JsonNode hr = hourly.path("items").get(0);
+    assertThat(java.time.OffsetDateTime.parse(hr.path("hour").asString()))
+        .isEqualTo(baseKst.truncatedTo(java.time.temporal.ChronoUnit.HOURS).toOffsetDateTime());
+    assertThat(hr.path("date").asString()).isEqualTo(day);
+    assertThat(hr.path("due").asInt()).isEqualTo(3);
+    JsonNode weekly =
+        body(
+            http.get()
+                .uri(
+                    "/metrics/on-time-deliveries?from={d}&to={d}&mfcId={m}&bucket=WEEK",
+                    day,
+                    day,
+                    mfc)
+                .header("Authorization", "Bearer " + adminToken)
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(weekly.path("items").get(0).path("date").asString())
+        .isEqualTo(
+            baseKst
+                .toLocalDate()
+                .with(
+                    java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                .toString());
+    assertThat(weekly.path("items").get(0).path("onTime").asInt()).isEqualTo(1);
+    // HOUR 는 7일까지, 모르는 단위는 400
+    String eightDaysAgo = baseKst.toLocalDate().minusDays(7).toString();
+    for (String q :
+        List.of(
+            "/metrics/on-time-deliveries?from=" + eightDaysAgo + "&to=" + day + "&bucket=HOUR",
+            "/metrics/on-time-deliveries?from=" + day + "&to=" + day + "&bucket=YEAR")) {
+      assertThat(
+              http.get()
+                  .uri(q)
+                  .header("Authorization", "Bearer " + adminToken)
+                  .retrieve()
+                  .toEntity(String.class)
+                  .getStatusCode()
+                  .value())
+          .isEqualTo(400);
+    }
 
     // 배차 효율(0.16.0): 생성일 기준, 주문 취소로 없어진 배송은 빠짐 — 5건 중 4건. 배정 시각을 정한 1건은 평균 배차 소요가 있다
     jdbc.update(

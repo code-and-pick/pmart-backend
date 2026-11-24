@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class DispatchMetricsController implements DispatchMetricsApi {
 
+  private static final java.time.ZoneId SEOUL = java.time.ZoneId.of("Asia/Seoul");
+
   private final OnTimeMetrics metrics;
   private final com.pmart.delivery.dispatch.application.DispatchEfficiency efficiency;
   private final com.pmart.delivery.dispatch.application.AutoCancellations autoCancellations;
@@ -33,15 +35,29 @@ public class DispatchMetricsController implements DispatchMetricsApi {
 
   @Override
   public ResponseEntity<ListOnTimeDeliveryMetrics200Response> listOnTimeDeliveryMetrics(
-      @Nullable LocalDate from, @Nullable LocalDate to, @Nullable String mfcId) {
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable String mfcId,
+      @Nullable String bucket) {
+    OnTimeMetrics.Bucket b;
+    try {
+      b = OnTimeMetrics.Bucket.valueOf(bucket == null ? "DAY" : bucket);
+    } catch (IllegalArgumentException e) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "bucket 은 HOUR·DAY·WEEK·MONTH 입니다.");
+    }
     return ResponseEntity.ok(
         new ListOnTimeDeliveryMetrics200Response()
             .items(
-                metrics.list(from, to, mfcId).stream()
+                metrics.list(from, to, mfcId, b).stream()
                     .map(
                         r ->
                             new ListOnTimeDeliveryMetrics200ResponseItemsInner()
                                 .date(r.date())
+                                .hour(
+                                    b == OnTimeMetrics.Bucket.HOUR
+                                        ? r.start().atZone(SEOUL).toOffsetDateTime()
+                                        : null)
                                 .mfcId(r.mfcId())
                                 .due(r.due())
                                 .onTime(r.onTime())
