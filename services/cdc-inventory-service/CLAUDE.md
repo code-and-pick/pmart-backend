@@ -23,4 +23,11 @@
 ## 상태
 - 스캐폴딩(2026-10-30, tools/scaffold — 86xx 대역 첫 서비스).
 - 상품 등록 슬라이스(2026-10-30): `commerce.product.v1` 의 SkuIssued·ProductVersionPublished → `sku_projection`(물류 규격 units_per_box·boxes_per_pallet·ti·hi 포함, CDC-F-002; 오래된 product_version 무시). 센터 취급 `center_sku_handling` — **레코드 없음 = OFF**, 자기 센터 운영자가 `/cdcs/{cdcId}/sku-handlings`(단건·일괄)로 켠다. 규칙·이력은 mfc-inventory 와 같다. 취급 변경 이벤트는 발행하지 않는다.
-- 그 밖의 엔드포인트(가용·할당·전기·대사)는 501. 게이트웨이·LAN 배치·Helm 미등록.
+- 장부(0.2.0, 2026-11-25, Flyway V3): `stock_lot`(소비기한·식별·최초 인수시각)·`stock_balance`(위치·품질별 현물/예약, 예약은 RELEASED 에만)·`safety_stock`(행 없음 = 미설정 → CONFIG_REQUIRED, 0 으로 대신하지 않음)·`allocation*`·`transit*`·`inventory_commit*`.
+  - 초기 보유: 센터·SKU·LOT 당 1회(INITIAL_BALANCE_EXISTS), SKU 투영 필요, 취급 ON 불필요, `lotIdentification` 없으면 UNVERIFIED(적격 아님).
+  - 적격 E = RELEASED·VERIFIED·잔여일수 D ≥ max(1, minRemainingDays)(소비기한 당일 차단, Asia/Seoul). 가용·할당 앞 검사 순서: SKU 투영 → 취급 ON → 안전량 설정.
+  - 할당: SKU 별 한도 max(0, E'−R'−S) 안에서 FEFO(기한 → 최초 인수 → LOT → 위치). 부분 PARTIAL, 0 이면 FAILED. 해제는 늦은 LOT 부터. 같은 TRF 다른 버전이 살아 있으면 ALLOCATION_EXISTS.
+  - TOUT: TRF 당 1회, 현물 −q·예약 −q·Transit +q. 같은 departureId·같은 줄 묶음 재전송은 기존 commitId. 남은 할당은 호출자가 RESIDUAL_CLOSED 로 해제.
+  - 발행(토픽 `cdc.inventory.v1`, outbox): `AllocationResult`, `TransferDeparted`(departureSource SIMULATED 면 봉투 source 도 SIMULATED).
+  - 아직 계산하지 않음: 품목군 최소 잔여일수(제조일 입력 없음), 승인량 초과 검사(replenishment 없음).
+- 아직 501: 수령 확인·이동·품질·손실·조정·스냅샷·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.

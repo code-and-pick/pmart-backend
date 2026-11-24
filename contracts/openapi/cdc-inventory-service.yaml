@@ -1,13 +1,15 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     CDC 재고 단일 쓰기 주체. 위치·LOT·품질상태별 On-hand, 이관 예약 R(0 ≤ R ≤ E ≤ 장부), Held, 안전량 S, 가용 max(0, E−R−S),
     LOT 식별/소비기한/FEFO, 초기 보유 INITIAL_BALANCE, 승인 TRF 다LOT FEFO 할당, TOUT 1회 전기, Transit 소유·대사(q = r + l + t),
     승인 손실/폐기/ADJ 집행, 일일 수불 대사의 정본. (docs/architecture/service-map.md §4, docs/adr/0002)
     LOC 마스터·공간(cdc-location), 작업(cdc-inbound/outbound), 품질 판단(cdc-quality), MFC 재고(mfc-inventory), 승인(replenishment/approval)은 비정본.
     모든 변경 요청은 commitId를 발급하며 호출자는 자체 사본으로 성공을 판단하지 않는다. 모든 경로는 서비스 간(internal)이다.
+    0.2.0(2026-11-25): 초기 보유·안전량·가용·할당/해제·TOUT·원결과·Transit 조회 구현. 안전량 설정 경로·출발 목적지 toMfcId 추가.
+    잔여일수 판정은 소비기한 당일부터 차단(D ≥ 1)과 호출자가 준 minRemainingDays 만 — 총기간 T(제조일) 입력이 아직 없어 품목군 정책값은 계산하지 않는다.
 servers:
   - url: /api/v1
 security:
@@ -37,9 +39,13 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Availability' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '404':
+          description: SKU_NOT_FOUND (SKU 투영 없음)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: CONFIG_REQUIRED (안전량 S 미설정 → 가용량 계산 보류) / SKU_NOT_HANDLED
+          description: CONFIG_REQUIRED (안전량 S 미설정 → 가용량 계산 보류) / SKU_NOT_HANDLED (센터 취급 OFF)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -49,8 +55,10 @@ paths:
       tags: [allocations]
       summary: '[cdc-outbound→cdc-inventory] 승인 TRF 할당 (FEFO 다LOT, 예약 R +allocated) → AllocationResult'
       description: |
-        trfId·trfVersion당 1회. 부분 할당 허용(allocated 48 / short 12). 승인량을 넘는 할당 요청은 거절.
-        resultId = allocationId. 같은 키·다른 본문은 409 IDEMPOTENCY_CONFLICT.
+        trfId·trfVersion당 1회. 부분 할당 허용(allocated 48 / short 12). 승인량을 넘는 할당 요청은 거절(승인 정본 replenishment 가 아직 없어 지금은 검사하지 않음).
+        SKU별 한도 = max(0, E'−R'−S) — E'·R' 은 잔여일수 조건을 통과한 적격 현물과 거기 걸린 예약. 한도 안에서 FEFO(소비기한 → 최초 인수시각 → LOT → 위치) 순으로 여러 LOT 를 잡는다.
+        하나도 못 잡으면 state FAILED(200). 같은 TRF 의 다른 버전 할당이 살아 있으면 409 ALLOCATION_EXISTS(먼저 해제).
+        resultId = allocationId. 같은 키·다른 본문은 409 IDEMPOTENCY_CONFLICT. 결과는 AllocationResult(토픽 cdc.inventory.v1)로도 발행한다.
       operationId: createAllocation
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -87,12 +95,17 @@ paths:
                   - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
                   - { $ref: '#/components/schemas/Allocation' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '409':
           description: IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발 전기된 TRF) / ALLOCATION_EXISTS
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '422':
+          description: CONFIG_REQUIRED (안전량 미설정) / SKU_NOT_HANDLED (센터 취급 OFF — details 에 lines[i])
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /internal/allocations/{allocationId}:
     get:
@@ -113,6 +126,9 @@ paths:
     post:
       tags: [allocations]
       summary: '[cdc-outbound→cdc-inventory] 할당 해제 (전부/일부, 예약 R −q). 출발 전기된 수량은 해제 불가'
+      description: |
+        lines 를 비우면 남은 할당(할당 − 해제 − 출발) 전량. lot 을 비우면 소비기한이 늦은 LOT 부터 푼다(빠른 LOT 를 남김).
+        남은 할당이 0 이 되면 state RELEASED(출발분이 있으면 DEPARTED). X-Expected-Version 은 할당 version.
       operationId: releaseAllocation
       parameters:
         - { name: allocationId, in: path, required: true, schema: { type: string } }
@@ -156,6 +172,8 @@ paths:
         현물 −q · 예약 −q · Transit +q 를 한 거래로 반영한다. departureLineId당 정확히 1회(재전송은 기존 commitId 반환).
         한 차량에 TRF A/B 합차 시 TRF별로 각각 호출한다. A 성공·B 불명이면 B만 GET /internal/commits/{commitId}로 해소하고 A를 재차감하지 않는다.
         할당 R보다 큰 q는 거절(DEPARTURE_EXCEEDS_ALLOCATED). resultId = commitId.
+        같은 TRF 가 같은 departureId·같은 departureLineId 묶음으로 다시 오면(키가 달라도) 기존 commitId 를 돌려준다. 다른 departureId 면 409 INVALID_STATE.
+        출발 뒤 남은 할당은 예약으로 남는다 — 호출자가 RESIDUAL_CLOSED 로 해제한다. 결과는 TransferDeparted(토픽 cdc.inventory.v1)로 발행한다.
       operationId: postDeparture
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -172,6 +190,9 @@ paths:
                 cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
                 departureId: { type: string, description: transport-execution TruckActuallyDeparted }
                 departureSource: { type: string, enum: [REAL, SIMULATED] }
+                toMfcId:
+                  type: string
+                  description: 목적 MFC(0.2.0). TransferDeparted.toMfc·Transit.mfcId 로 간다 — 승인 TRF(replenishment)가 아직 없어 mfc-inbound 가 입고 예정을 만들 때 쓴다
                 trfId: { type: string }
                 trfVersion: { type: integer }
                 allocationId: { type: string }
@@ -196,8 +217,10 @@ paths:
           content:
             application/json:
               schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: IDEMPOTENCY_CONFLICT / INVALID_STATE (같은 TRF 2회 출발) / DEPARTURE_EXCEEDS_ALLOCATED
+          description: IDEMPOTENCY_CONFLICT / INVALID_STATE (같은 TRF 2회 출발·할당과 TRF 불일치) / DEPARTURE_EXCEEDS_ALLOCATED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -449,7 +472,11 @@ paths:
     post:
       tags: [postings]
       summary: '[backoffice→cdc-inventory] 초기 보유 INITIAL_BALANCE 전기 (센터·SKU·LOT당 승인 1회)'
-      description: 이미 수불 이력이 있는 센터·SKU·LOT에는 거절(INITIAL_BALANCE_EXISTS). 이후 변경은 ADJ로만.
+      description: |
+        이미 수불 이력이 있는 센터·SKU·LOT에는 거절(INITIAL_BALANCE_EXISTS). 이후 변경은 ADJ로만.
+        한 요청 안에서 같은 LOT 이 여러 위치에 있을 수 있다(LOT 의 expiresAt·lotIdentification 은 같아야 함). 같은 SKU·LOT·위치가 두 번이면 400.
+        qualityState 는 RELEASED·HELD·QUARANTINED(DISPOSED 는 400). lotIdentification 을 비우면 UNVERIFIED — 적격 현물 E 에 들지 않는다.
+        센터 취급 ON 은 요구하지 않는다(할당·가용에서 본다). SKU 투영이 없으면 404 SKU_NOT_FOUND. 실입고·적치 이력은 만들지 않는다.
       operationId: postInitialBalance
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -468,6 +495,7 @@ paths:
                 lines:
                   type: array
                   minItems: 1
+                  maxItems: 2000
                   items:
                     type: object
                     required: [sku, lot, locationCode, qty, qualityState]
@@ -481,8 +509,60 @@ paths:
                       qualityState: { $ref: '#/components/schemas/QualityState' }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404':
+          description: SKU_NOT_FOUND
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '409':
           description: IDEMPOTENCY_CONFLICT / INITIAL_BALANCE_EXISTS
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/safety-stocks:
+    post:
+      tags: [postings]
+      summary: '[replenishment/backoffice→cdc-inventory] 승인 안전량 S 설정 (센터·SKU 합계 보호량, 0.2.0)'
+      description: |
+        SCM 이 승인한 안전량을 센터·SKU 마다 넣는다. 값이 바뀔 때마다 policyVersion +1. 0 도 값이다(미설정과 다름 — 미설정이면 가용·할당이 CONFIG_REQUIRED).
+        안전량 상향은 신규 할당에만 적용하고 기존 확보를 풀지 않는다(CDC-F-008). 같은 SKU 가 두 번이면 400.
+      operationId: setSafetyStocks
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/Traceparent'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, approvalRef, lines]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                approvalRef: { type: string }
+                lines:
+                  type: array
+                  minItems: 1
+                  maxItems: 2000
+                  items:
+                    type: object
+                    required: [sku, safetyQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      safetyQty: { type: integer, minimum: 0 }
+      responses:
+        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

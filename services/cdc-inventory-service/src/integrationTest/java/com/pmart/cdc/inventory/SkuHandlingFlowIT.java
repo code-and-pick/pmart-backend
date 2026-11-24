@@ -59,7 +59,8 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
   RestClient http;
 
   @BeforeEach
-  void client() {
+  void client() throws Exception {
+    StockLedgerFlowIT.ensureTopic(TOPIC); // 먼저 도는 시험이면 토픽이 아직 없을 수 있다
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1")

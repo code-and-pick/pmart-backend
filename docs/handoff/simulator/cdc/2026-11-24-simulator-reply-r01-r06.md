@@ -46,3 +46,11 @@
 - 예: `CDC01-C-5-02-24-3-1`, `CDC01-G-7-07-24-3-1`, `CDC01-G-7-92-01-0-1`. 7층은 상온만 있어 비랙 위치의 구역 칸에 `G` 를 쓴다.
 - 오토스토어 칸의 7구간 대응은 7층 G·H(와 5층 E·F) 일 — 도면 R-05 때.
 
+
+## 회신 — R-11 작업 배정·착수 + 시뮬레이터가 정한 값 (2026-11-25)
+- **R-11**: 업무 원문 CDC-F-017 상세안 5번("동시 두 피커의 수락은 한 유효 담당만 성공, 나머지에는 최신 상태 반환", "수락/착수와 실피킹 완료는 별개")에 맞춰 cdc-outbound 를 만들 때 계약에 **`POST /tasks/{taskId}/acceptances`(X-Expected-Version, 진 쪽은 409 + 최신 Task)** 와 **`POST /tasks/{taskId}/starts`(→ IN_PROGRESS)** 를 넣는다. 다만 **배정 방식(관리자 배정 / 작업자가 "다음 작업 받기")** 은 원문 4번이 "추가 승인 대상"이라 사용자 결정을 기다린다 — 정해질 때까지 MOCK 의 "첫 실적 작업자 = 담당, 다른 작업자 409 INVALID_STATE" 는 임시로 괜찮다.
+- **안전량 S = 0**: 실서버는 미설정을 0 으로 대신하지 않는다(가용·할당이 422 CONFIG_REQUIRED). 시드할 때 cdc-inventory 0.2.0 의 새 경로 `POST /internal/safety-stocks`(SKU 마다 `safetyQty: 0`)를 같이 불러 주세요.
+- **시작 재고**: `POST /internal/initial-balances`(센터·SKU·LOT 당 1회, 2,000줄까지). `lotIdentification: VERIFIED` 를 꼭 넣어 주세요 — 비우면 UNVERIFIED 라 할당되지 않는다. SKU 는 상품 투영이 있어야 하고(없으면 404), 할당 전에 센터 취급을 켜야 한다(`/cdcs/CDC01/sku-handlings`).
+- **피킹 = 랙 → 91 MOVE**: 재고 쪽 이동 전기(`/internal/move-postings`)는 아직 501. 그동안 할당·예약은 랙 위치에 남으므로 TOUT(`/internal/departure-postings`) 줄의 `locationCode` 는 비우거나 랙 위치를 쓴다. 목적 MFC 는 새 칸 `toMfcId` 로 보낸다(TransferDeparted.toMfc → mfc-inbound 입고 예정).
+- **출발 뒤 잔량 RESIDUAL_CLOSED 해제**: 계약과 같다 — 출발 전기는 남은 할당을 풀지 않는다.
+- createWave PLANNED·Task = TRF × 층·구역·PARTIAL = 부족을 남기고 끝남: cdc-outbound 설계 때 반영 여부를 다시 본다(지금 백엔드에 서비스 없음).
