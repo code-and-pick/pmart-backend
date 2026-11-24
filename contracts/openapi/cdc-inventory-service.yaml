@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     CDC 재고 단일 쓰기 주체. 위치·LOT·품질상태별 On-hand, 이관 예약 R(0 ≤ R ≤ E ≤ 장부), Held, 안전량 S, 가용 max(0, E−R−S),
     LOT 식별/소비기한/FEFO, 초기 보유 INITIAL_BALANCE, 승인 TRF 다LOT FEFO 할당, TOUT 1회 전기, Transit 소유·대사(q = r + l + t),
@@ -10,6 +10,7 @@ info:
     모든 변경 요청은 commitId를 발급하며 호출자는 자체 사본으로 성공을 판단하지 않는다. 모든 경로는 서비스 간(internal)이다.
     0.2.0(2026-11-25): 초기 보유·안전량·가용·할당/해제·TOUT·원결과·Transit 조회 구현. 안전량 설정 경로·출발 목적지 toMfcId 추가.
     잔여일수 판정은 소비기한 당일부터 차단(D ≥ 1)과 호출자가 준 minRemainingDays 만 — 총기간 T(제조일) 입력이 아직 없어 품목군 정책값은 계산하지 않는다.
+    0.3.0(2026-11-25): 내부 이동 전기(move-postings) 구현 — 줄에 allocationId 를 주면 그 할당의 예약을 함께 옮긴다(팔레트 랙 → 피킹 선반 보충, 칠곡 CDC-7).
 servers:
   - url: /api/v1
 security:
@@ -293,7 +294,15 @@ paths:
     post:
       tags: [postings]
       summary: '[cdc-inbound→cdc-inventory] 내부 이동 반영 (MOV·적치 — 위치 간 On-hand 이동, 수량 합 불변)'
-      description: S7 사가 2단계. location 공간 선점(spaceReservationId) 후 호출. 실패 시 inbound가 이번 선점분만 해제한다.
+      description: |
+        S7 사가 2단계. location 공간 선점(spaceReservationId) 후 호출. 실패 시 inbound가 이번 선점분만 해제한다.
+        (0.3.0) 같은 SKU·LOT·품질 상태로 fromLocationCode → toLocationCode 로 현물을 옮긴다. 센터 총량·LOT 의 최초 인수시각(FEFO 순서)은 바뀌지 않는다.
+        - allocationId 가 없으면 원위치의 **예약 안 된** 현물만 옮긴다(부족하면 409 INSUFFICIENT_STOCK).
+        - allocationId 를 주면 그 할당이 원위치에 잡아 둔 예약을 현물과 함께 옮긴다(예약 R 합은 그대로 — 내부 이동 점유를 새 수요로 두 번 빼지 않는다, CDC-F-008).
+          그 할당의 원위치 남은 예약보다 많으면 409 INSUFFICIENT_STOCK. 할당이 ALLOCATED·PARTIAL 이 아니면 409 INVALID_STATE, 없으면 404.
+        - qualityState 를 비우면 RELEASED. HELD·QUARANTINED 현물도 옮길 수 있으나 allocationId 와 함께 쓸 수 없다(예약은 정상 현물에만).
+        - 같은 위치로의 이동·같은 줄 키 중복은 400. 위치 상태(BLOCKED 등)는 cdc-location 공간 선점이 판단한다 — 여기서는 보지 않는다.
+        resultId = commitId(postingKind MOVE, 원위치 ON_HAND −q·도착 +q, 예약을 옮기면 RESERVED −q·+q).
       operationId: postMove
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -323,10 +332,14 @@ paths:
                       fromLocationCode: { type: string }
                       toLocationCode: { type: string }
                       qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      qualityState: { $ref: '#/components/schemas/QualityState' }
+                      allocationId: { type: string, description: '0.3.0 — 이 할당의 예약을 함께 옮긴다(보충 MOV)' }
       responses:
         '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: IDEMPOTENCY_CONFLICT / INSUFFICIENT_STOCK (원위치 수량 부족) / LOCATION_BLOCKED
+          description: IDEMPOTENCY_CONFLICT / INSUFFICIENT_STOCK (원위치 수량 부족) / INVALID_STATE (할당 상태) / LOCATION_BLOCKED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

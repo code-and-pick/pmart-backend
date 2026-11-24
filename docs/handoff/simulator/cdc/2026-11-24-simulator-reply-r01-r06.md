@@ -87,3 +87,10 @@
 - 바로 앞 공지(#447)의 **26곳·TMS 계획 그룹은 되돌린다** — 공급 대상은 지금 MFC 5곳, 지역은 부산권(BJG·BNG)·호남권(MOKPO)·충청권(SEJ)·강원권(CHC). 69d9f74 의 계획 그룹 반영을 4지역으로 되돌려 주세요. 출고대기 91 은 01~05, 06~30 여분.
 - 시간표(CDC-8)·R/T 운송 단위는 그대로. TMS 정본을 노션에 맞춰 2.2 로 고쳤다: MFC 도착 마지막 07:30·하차·인계 완료 08:00(MFC 08:00 영업, 고객 주문 08:00~24:00).
 
+## 공지 — cdc-inventory 내부 이동 전기 (2026-11-25, 계약 0.3.0)
+R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포"에 필요한 `POST /internal/move-postings` 를 만들었다(병합 전 PR).
+- 줄: sku·lot·fromLocationCode·toLocationCode·qty + 선택 `qualityState`(비우면 RELEASED)·`allocationId`. moveKind PUTAWAY·REPLENISHMENT_MOVE·RELOCATION, sourceRef = MOV 번호.
+- `allocationId` 를 주면 그 할당이 원위치(랙)에 잡은 예약을 현물과 함께 도착 위치(선반)로 옮긴다 — 가용·예약 합은 그대로, `GET /internal/allocations/{id}` 의 lots 위치가 선반으로 바뀌고, 출발 전기(TOUT)는 선반에서 빠진다(줄 locationCode 를 비우면 할당이 잡은 위치).
+- `allocationId` 가 없으면 예약 안 된 현물만 옮긴다(부족하면 409 INSUFFICIENT_STOCK). 같은 위치·격리 + 할당은 400.
+- 위치 상태(BLOCKED 등)는 보지 않는다 — cdc-location 공간 선점(아직 501)이 맡는다. "같은 LOT 이면 선반 먼저" 할당은 아직 없다(재고는 위치 유형을 모름).
+

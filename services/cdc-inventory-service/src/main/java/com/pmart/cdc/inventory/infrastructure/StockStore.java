@@ -157,6 +157,62 @@ public class StockStore {
         == 1;
   }
 
+  /**
+   * 이동 출발: 현물 −qty, 그중 예약 −reservedQty. 예약 안 된 현물(on_hand − reserved)이 qty − reservedQty 이상이고 예약이
+   * reservedQty 이상일 때만(아니면 false).
+   */
+  public boolean moveOut(
+      String cdcId,
+      String sku,
+      String lot,
+      String locationCode,
+      String qualityState,
+      int qty,
+      int reservedQty,
+      Instant at) {
+    return jdbc.update(
+            "UPDATE stock_balance SET on_hand = on_hand - ?, reserved = reserved - ?, updated_at = ?"
+                + " WHERE cdc_id = ? AND sku = ? AND lot = ? AND location_code = ? AND quality_state = ?"
+                + " AND reserved >= ? AND on_hand - reserved >= ?",
+            qty,
+            reservedQty,
+            Timestamp.from(at),
+            cdcId,
+            sku,
+            lot,
+            locationCode,
+            qualityState,
+            reservedQty,
+            qty - reservedQty)
+        == 1;
+  }
+
+  /** 이동 도착: 현물 +qty, 예약 +reservedQty(행이 없으면 만든다). */
+  public void moveIn(
+      String cdcId,
+      String sku,
+      String lot,
+      String locationCode,
+      String qualityState,
+      int qty,
+      int reservedQty,
+      Instant at) {
+    jdbc.update(
+        "INSERT INTO stock_balance (cdc_id, sku, lot, location_code, quality_state, on_hand, reserved,"
+            + " updated_at) VALUES (?,?,?,?,?,?,?,?)"
+            + " ON CONFLICT (cdc_id, sku, lot, location_code, quality_state) DO UPDATE SET"
+            + " on_hand = stock_balance.on_hand + EXCLUDED.on_hand,"
+            + " reserved = stock_balance.reserved + EXCLUDED.reserved, updated_at = EXCLUDED.updated_at",
+        cdcId,
+        sku,
+        lot,
+        locationCode,
+        qualityState,
+        qty,
+        reservedQty,
+        Timestamp.from(at));
+  }
+
   public Optional<SafetyRow> safety(String cdcId, String sku) {
     return jdbc
         .query(

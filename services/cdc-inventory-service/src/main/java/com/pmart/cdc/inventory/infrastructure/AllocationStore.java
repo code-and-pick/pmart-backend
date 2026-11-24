@@ -34,9 +34,17 @@ public class AllocationStore {
       int fefoRank,
       int allocatedQty,
       int releasedQty,
-      int departedQty) {
+      int departedQty,
+      int movedInQty,
+      int movedOutQty) {
+    /** 이 위치에 남은 예약 = 처음 할당 + 옮겨 온 것 − 옮겨 간 것 − 해제 − 출발. */
     public int remaining() {
-      return allocatedQty - releasedQty - departedQty;
+      return allocatedQty + movedInQty - movedOutQty - releasedQty - departedQty;
+    }
+
+    /** 이 위치에 지금 잡혀 있던(잡혀 있는) 양 = 처음 할당 + 옮겨 온 것 − 옮겨 간 것. */
+    public int heldHere() {
+      return allocatedQty + movedInQty - movedOutQty;
     }
   }
 
@@ -119,7 +127,8 @@ public class AllocationStore {
   public List<LotRow> lots(String allocationId) {
     return jdbc.query(
         "SELECT sku, lot, location_code, expires_at, fefo_rank, allocated_qty, released_qty,"
-            + " departed_qty FROM allocation_lot WHERE allocation_id = ? ORDER BY sku, fefo_rank",
+            + " departed_qty, moved_in_qty, moved_out_qty FROM allocation_lot"
+            + " WHERE allocation_id = ? ORDER BY sku, fefo_rank, location_code",
         (rs, i) -> {
           Date exp = rs.getDate("expires_at");
           return new LotRow(
@@ -130,7 +139,9 @@ public class AllocationStore {
               rs.getInt("fefo_rank"),
               rs.getInt("allocated_qty"),
               rs.getInt("released_qty"),
-              rs.getInt("departed_qty"));
+              rs.getInt("departed_qty"),
+              rs.getInt("moved_in_qty"),
+              rs.getInt("moved_out_qty"));
         },
         allocationId);
   }
@@ -155,6 +166,30 @@ public class AllocationStore {
         l.sku(),
         l.lot(),
         l.locationCode());
+  }
+
+  /** 예약을 다른 위치로: 원위치 moved_out +q, 도착 위치 moved_in +q(행이 없으면 처음 할당 0 으로 만든다). */
+  public void move(String allocationId, LotRow from, String toLocation, int qty) {
+    jdbc.update(
+        "UPDATE allocation_lot SET moved_out_qty = moved_out_qty + ?"
+            + " WHERE allocation_id = ? AND sku = ? AND lot = ? AND location_code = ?",
+        qty,
+        allocationId,
+        from.sku(),
+        from.lot(),
+        from.locationCode());
+    jdbc.update(
+        "INSERT INTO allocation_lot (allocation_id, sku, lot, location_code, expires_at, fefo_rank,"
+            + " allocated_qty, moved_in_qty) VALUES (?,?,?,?,?,?,0,?)"
+            + " ON CONFLICT (allocation_id, sku, lot, location_code)"
+            + " DO UPDATE SET moved_in_qty = allocation_lot.moved_in_qty + EXCLUDED.moved_in_qty",
+        allocationId,
+        from.sku(),
+        from.lot(),
+        toLocation,
+        from.expiresAt() == null ? null : Date.valueOf(from.expiresAt()),
+        from.fefoRank(),
+        qty);
   }
 
   public void updateState(String allocationId, String state) {

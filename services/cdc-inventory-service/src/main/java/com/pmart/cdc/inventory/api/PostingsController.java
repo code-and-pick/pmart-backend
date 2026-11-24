@@ -3,11 +3,15 @@ package com.pmart.cdc.inventory.api;
 import com.pmart.cdc.inventory.api.generated.PostingsApi;
 import com.pmart.cdc.inventory.api.generated.model.PostDepartureRequest;
 import com.pmart.cdc.inventory.api.generated.model.PostInitialBalanceRequest;
+import com.pmart.cdc.inventory.api.generated.model.PostMoveRequest;
 import com.pmart.cdc.inventory.api.generated.model.ReleaseAllocation200Response;
 import com.pmart.cdc.inventory.api.generated.model.SetSafetyStocksRequest;
 import com.pmart.cdc.inventory.application.DepartureService;
 import com.pmart.cdc.inventory.application.DepartureService.Depart;
 import com.pmart.cdc.inventory.application.DepartureService.DepartLine;
+import com.pmart.cdc.inventory.application.MoveService;
+import com.pmart.cdc.inventory.application.MoveService.Move;
+import com.pmart.cdc.inventory.application.MoveService.MoveLine;
 import com.pmart.cdc.inventory.application.StockSetupService;
 import com.pmart.cdc.inventory.application.StockSetupService.InitialBalance;
 import com.pmart.cdc.inventory.application.StockSetupService.InitialLine;
@@ -19,18 +23,50 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 PostingsApi — 초기 보유·안전량·TOUT 구현(0.2.0). 수령 확인·이동·품질·손실·조정은 아직 인터페이스 default(501). 업무 규칙은
- * application/domain 에 있다.
+ * 계약 PostingsApi — 초기 보유·안전량·TOUT(0.2.0)·내부 이동(0.3.0) 구현. 수령 확인·품질·손실·조정은 아직 인터페이스 default(501). 업무
+ * 규칙은 application/domain 에 있다.
  */
 @RestController
 public class PostingsController implements PostingsApi {
 
   private final StockSetupService setup;
   private final DepartureService departures;
+  private final MoveService moves;
 
-  public PostingsController(StockSetupService setup, DepartureService departures) {
+  public PostingsController(
+      StockSetupService setup, DepartureService departures, MoveService moves) {
     this.setup = setup;
     this.departures = departures;
+    this.moves = moves;
+  }
+
+  @Override
+  public ResponseEntity<ReleaseAllocation200Response> postMove(
+      String idempotencyKey,
+      String xSourceSystem,
+      PostMoveRequest body,
+      @Nullable String traceparent) {
+    List<MoveLine> lines =
+        body.getLines().stream()
+            .map(
+                l ->
+                    new MoveLine(
+                        l.getSku(),
+                        l.getLot(),
+                        l.getFromLocationCode(),
+                        l.getToLocationCode(),
+                        l.getQty(),
+                        l.getQualityState() == null ? null : l.getQualityState().getValue(),
+                        l.getAllocationId()))
+            .toList();
+    var cmd =
+        new Move(
+            body.getCdcId(),
+            body.getMoveKind().getValue(),
+            body.getSourceRef(),
+            body.getSpaceReservationId(),
+            lines);
+    return ResponseEntity.ok(Dto.command(moves.move(idempotencyKey, xSourceSystem, cmd)));
   }
 
   @Override

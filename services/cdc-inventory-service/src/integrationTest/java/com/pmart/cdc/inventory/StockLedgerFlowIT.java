@@ -409,4 +409,164 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
             get(SERVICE, "/internal/commits/" + initCommit).body().path("postingKind").asString())
         .isEqualTo("INITIAL_BALANCE");
   }
+
+  static Map<String, Object> mv(
+      String sku,
+      String lot,
+      String from,
+      String to,
+      int qty,
+      String quality,
+      String allocationId) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("sku", sku);
+    m.put("lot", lot);
+    m.put("fromLocationCode", from);
+    m.put("toLocationCode", to);
+    m.put("qty", qty);
+    if (quality != null) {
+      m.put("qualityState", quality);
+    }
+    if (allocationId != null) {
+      m.put("allocationId", allocationId);
+    }
+    return m;
+  }
+
+  Res move(String kind, Map<String, Object> line) {
+    return post(
+        SERVICE,
+        "/internal/move-postings",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "moveKind",
+            kind,
+            "sourceRef",
+            "MOV-" + UUID.randomUUID(),
+            "lines",
+            List.of(line)));
+  }
+
+  /**
+   * 내부 이동(0.3.0): 예약 안 된 현물만 옮기기(부족하면 409) → 할당 예약을 랙에서 피킹 선반으로 함께 옮기기(가용 그대로, 할당 위치가 선반으로) → 선반에서
+   * 출발 전기 → 격리 현물 이동, 격리 + 할당은 400, 같은 위치 400 → 원결과 MOVE.
+   */
+  @Test
+  void replenishmentMoveCarriesReservationToShelf() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String rack = "CDC01-C-5-01-01-3-1";
+    String shelf = "CDC01-C-5-61-01-1-1";
+    Res init =
+        post(
+            SERVICE,
+            "/internal/initial-balances",
+            key(),
+            Map.of(
+                "cdcId",
+                CENTER,
+                "approvalRef",
+                "APV-INIT-M",
+                "lines",
+                List.of(
+                    ib(sku, "M1", rack, 100, today.plusDays(30), "VERIFIED", "RELEASED"),
+                    ib(sku, "Q1", LOC2, 10, today.plusDays(30), "VERIFIED", "QUARANTINED"))));
+    assertThat(init.status()).as(init.body().toString()).isEqualTo(200);
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-M",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    String trf = "TRF-" + UUID.randomUUID();
+    Res alloc =
+        post(
+            SERVICE,
+            "/internal/allocations",
+            key(),
+            Map.of(
+                "cdcId",
+                CENTER,
+                "trfId",
+                trf,
+                "trfVersion",
+                1,
+                "lines",
+                List.of(Map.of("sku", sku, "requestedQty", 60))));
+    String allocationId = alloc.body().path("allocationId").asString();
+    assertThat(alloc.body().path("state").asString()).isEqualTo("ALLOCATED");
+
+    // 1) 예약 안 된 현물은 40 — 50 은 거절, 30 은 옮김
+    Res tooMuch = move("RELOCATION", mv(sku, "M1", rack, shelf, 50, null, null));
+    assertThat(tooMuch.status()).isEqualTo(409);
+    assertThat(tooMuch.body().path("code").asString()).isEqualTo("INSUFFICIENT_STOCK");
+    assertThat(move("RELOCATION", mv(sku, "M1", rack, shelf, 30, null, null)).status())
+        .isEqualTo(200);
+
+    // 2) 보충 MOV — 할당 예약 60 을 선반으로. 예약보다 많으면 409
+    assertThat(
+            move("REPLENISHMENT_MOVE", mv(sku, "M1", rack, shelf, 61, null, allocationId)).status())
+        .isEqualTo(409);
+    Res rep = move("REPLENISHMENT_MOVE", mv(sku, "M1", rack, shelf, 60, null, allocationId));
+    assertThat(rep.status()).as(rep.body().toString()).isEqualTo(200);
+    JsonNode a = availability(sku).body();
+    assertThat(a.path("onHand").asInt()).isEqualTo(110);
+    assertThat(a.path("reserved").asInt()).isEqualTo(60);
+    assertThat(a.path("available").asInt()).isEqualTo(40);
+    JsonNode lots =
+        get(SERVICE, "/internal/allocations/" + allocationId)
+            .body()
+            .path("lines")
+            .get(0)
+            .path("lots");
+    assertThat(lots.size()).isEqualTo(1);
+    assertThat(lots.get(0).path("locationCode").asString()).isEqualTo(shelf);
+    assertThat(lots.get(0).path("qty").asInt()).isEqualTo(60);
+    JsonNode commit =
+        get(SERVICE, "/internal/commits/" + rep.body().path("resultId").asString()).body();
+    assertThat(commit.path("postingKind").asString()).isEqualTo("MOVE");
+    assertThat(commit.toString()).contains("\"bucket\":\"RESERVED\"");
+
+    // 3) 선반에서 출발 전기(위치를 비우면 할당이 잡은 위치 = 선반)
+    Map<String, Object> dep = new LinkedHashMap<>();
+    dep.put("cdcId", CENTER);
+    dep.put("departureId", "DEP-" + UUID.randomUUID());
+    dep.put("toMfcId", "MFC-BJG-01");
+    dep.put("trfId", trf);
+    dep.put("trfVersion", 1);
+    dep.put("allocationId", allocationId);
+    dep.put("departedAt", Instant.now().toString());
+    dep.put(
+        "lines",
+        List.of(Map.of("departureLineId", trf + "-1", "sku", sku, "lot", "M1", "qty", 60)));
+    Res d = post(SERVICE, "/internal/departure-postings", key(), dep);
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(200);
+    JsonNode after = availability(sku).body();
+    assertThat(after.path("onHand").asInt()).isEqualTo(50);
+    assertThat(after.path("reserved").asInt()).isZero();
+    assertThat(after.path("transit").asInt()).isEqualTo(60);
+
+    // 4) 격리 현물 이동, 격리 + 할당 400, 같은 위치 400
+    assertThat(
+            move("RELOCATION", mv(sku, "Q1", LOC2, "CDC01-C-5-01-01-4-1", 10, "QUARANTINED", null))
+                .status())
+        .isEqualTo(200);
+    assertThat(move("RELOCATION", mv(sku, "M1", shelf, rack, 1, "HELD", allocationId)).status())
+        .isEqualTo(400);
+    assertThat(move("RELOCATION", mv(sku, "M1", shelf, shelf, 1, null, null)).status())
+        .isEqualTo(400);
+  }
 }

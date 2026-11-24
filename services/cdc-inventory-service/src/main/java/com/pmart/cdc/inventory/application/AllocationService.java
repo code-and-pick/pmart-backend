@@ -199,7 +199,16 @@ public class AllocationService {
               }
               lots.add(
                   new LotRow(
-                      l.sku(), c.lot(), c.locationCode(), c.expiresAt(), p.rank(), p.qty(), 0, 0));
+                      l.sku(),
+                      c.lot(),
+                      c.locationCode(),
+                      c.expiresAt(),
+                      p.rank(),
+                      p.qty(),
+                      0,
+                      0,
+                      0,
+                      0));
               deltas.add(new Delta(l.sku(), c.lot(), c.locationCode(), "RESERVED", p.qty()));
               allocated += p.qty();
             }
@@ -358,9 +367,12 @@ public class AllocationService {
               Math.max(0, line.requestedQty() - alloc),
               mine.stream().mapToInt(LotRow::releasedQty).sum(),
               mine.stream().mapToInt(LotRow::departedQty).sum(),
+              // 위치별로 지금 잡혀 있던 양(옮긴 예약 반영). 다 옮겨 간 원위치 행은 빼고 보여 준다
               mine.stream()
-                  .sorted(Comparator.comparingInt(LotRow::fefoRank))
-                  .map(l -> new LotView(l.lot(), l.locationCode(), l.allocatedQty(), l.expiresAt()))
+                  .filter(l -> l.heldHere() > 0)
+                  .sorted(
+                      Comparator.comparingInt(LotRow::fefoRank).thenComparing(LotRow::locationCode))
+                  .map(l -> new LotView(l.lot(), l.locationCode(), l.heldHere(), l.expiresAt()))
                   .toList()));
     }
     return new AllocationView(
