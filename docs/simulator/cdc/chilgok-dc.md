@@ -114,7 +114,7 @@ WMS 원문 0.6 대로 자동화 설비 자체는 구현하지 않고 **가상 �
 | 센터 개시·현황 조회 | cdc-inventory | `GET /internal/availability`·`/internal/allocations/{id}`·`/internal/transits`·`/internal/commits/{id}`, `POST /internal/move-postings`(보충 MOV) |
 | 개시 시드(PC1 이 한 번) | cdc-inventory·cdc-location | `/internal/initial-balances`·`/internal/safety-stocks`·`/internal/location-batches` — 시드 스크립트로, 시뮬레이터가 부르지 않음 |
 
-- **게이트웨이(공개 — 직원 토큰)로 부르는 것**: cdc-outbound `/api/v1/waves/**`·`/api/v1/cdcs/*/tasks/**`·`/api/v1/cdcs/*/workers/*/next-tasks`(그리고 다음 PR 의 분류·검품·상차 결과), cdc-location `/api/v1/locations/**`, cdc-inventory `/api/v1/cdcs/*/sku-handlings/**`(이미 있음). CORS `http://localhost:5182`(R-06).
+- **게이트웨이(공개 — 직원 토큰)로 부르는 것**: cdc-outbound `/api/v1/waves/**`·`/api/v1/cdcs/*/tasks/**`·`/api/v1/cdcs/*/workers/*/next-tasks`(그리고 다음 PR 의 분류·검품·상차 결과), cdc-location `/api/v1/cdcs/*/locations/**`(0.3.0 — mfc-location 과 겹치지 않게), cdc-inventory `/api/v1/cdcs/*/sku-handlings/**`(이미 있음). CORS `http://localhost:5182`(R-06).
 - 계정·게이트웨이·CORS·LAN 배치는 PC1 백엔드 몫(R-16 — `docs/operations/pc1-todo.md`).
 
 ### CDC-6 공급 대상 MFC 와 지역 (사용자 2026-11-24 "MFC 5곳 전부에" — 2026-11-25 다시 확인, 대응표는 cdc-outbound)

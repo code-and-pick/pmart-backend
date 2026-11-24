@@ -110,3 +110,7 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - **0.4.0 에 생긴 것**: `POST /sorting-results`(BOX·PLT·**RT 롤테이너** — 수량은 BOX 만, RT 는 contents 비우고 BOX 의 parentLpn 으로), `POST /inspection-results`(RT 를 검품하면 안의 BOX 모두), `POST /loading-results`(RT 를 실으면 안의 BOX, PASSED 만, 운행 하나), 출발 검증(BOX 대조 → 일치 TRF TOUT → 잔여 RESIDUAL_CLOSED 해제는 cdc-outbound 가 함 → 매니페스트·`TransferShipmentManifestIssued`), `GET /internal/shipment-manifests/{trfId}`.
 - **MOCK 에서 바꿀 것**: 출발 뒤 RESIDUAL_CLOSED 해제를 시뮬레이터가 따로 부르지 않아도 된다(cdc-outbound 가 부름 — 실서버 모드). 같은 출발을 다시 보내면 불명이던 TOUT 만 다시 시도한다.
 
+## 공지 — cdc-location 경로·서비스 주소 (2026-11-25)
+- **cdc-location 공개 경로가 바뀐다(0.3.0)**: `/locations…` → **`/cdcs/{cdcId}/locations`**·`/cdcs/{cdcId}/locations/{locationCode}`·`…/state-changes`(게이트웨이 `/api/v1/locations/**` 가 mfc-location 이라 — PC1 R-16 진행 중 지적). 목록의 `centerId` 조회 조건은 경로로, 등록 본문 centerId 는 경로와 같아야 한다. `/internal/location-batches` 는 그대로.
+- **LAN 서비스 주소(PC1 백엔드 안내)**: cdc-inventory `http://192.168.0.222:8601`, cdc-location `http://192.168.0.222:8602`(배포 뒤), cdc-outbound 같은 PC `:8603`(배치 뒤). 서비스 직접 호출에는 CORS 가 없다 — 브라우저(5182)가 아니라 개발 서버 프록시로 부른다(지금 하시는 방식 그대로, `PMART_CDC_HOST=192.168.0.222`).
+

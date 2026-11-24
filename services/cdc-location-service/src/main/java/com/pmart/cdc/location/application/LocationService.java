@@ -93,11 +93,11 @@ public class LocationService {
   // ---------- 조회 ----------
 
   @Transactional(readOnly = true)
-  public LocationRow get(String code) {
-    Parts p =
-        LocationCode.parse(code)
-            .orElseThrow(() -> PmartException.notFound("NOT_FOUND", "위치 " + code + " 가 없습니다."));
-    Operators.requireCenter(p.center());
+  public LocationRow get(String cdcId, String code) {
+    Operators.requireCenter(cdcId);
+    LocationCode.parse(code)
+        .filter(p -> p.center().equals(cdcId))
+        .orElseThrow(() -> PmartException.notFound("NOT_FOUND", "위치 " + code + " 가 없습니다."));
     return store
         .find(code)
         .orElseThrow(() -> PmartException.notFound("NOT_FOUND", "위치 " + code + " 가 없습니다."));
@@ -114,8 +114,15 @@ public class LocationService {
 
   // ---------- 등록 ----------
 
-  public Outcome<LocationRow> create(String requestId, String sourceSystem, Input in) {
-    String by = Operators.requireCenter(in.centerId());
+  public Outcome<LocationRow> create(
+      String requestId, String sourceSystem, String cdcId, Input in) {
+    String by = Operators.requireCenter(cdcId);
+    if (!cdcId.equals(in.centerId())) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED,
+          "본문 centerId 가 경로의 센터와 다릅니다.",
+          List.of(new PmartException.Detail("centerId", "CENTER_MISMATCH")));
+    }
     reject(validate(List.of(in), in.centerId(), false));
     return idempotency.execute(
         new RequestKey(sourceSystem, requestId, OP_CREATE, by),
@@ -205,12 +212,13 @@ public class LocationService {
 
   // ---------- 상태 전환 ----------
 
-  public Outcome<StateResult> changeState(String requestId, String sourceSystem, StateChange c) {
-    Parts p =
-        LocationCode.parse(c.locationCode())
-            .orElseThrow(
-                () -> PmartException.notFound("NOT_FOUND", "위치 " + c.locationCode() + " 가 없습니다."));
-    String by = Operators.requireCenter(p.center());
+  public Outcome<StateResult> changeState(
+      String requestId, String sourceSystem, String cdcId, StateChange c) {
+    String by = Operators.requireCenter(cdcId);
+    LocationCode.parse(c.locationCode())
+        .filter(p -> p.center().equals(cdcId))
+        .orElseThrow(
+            () -> PmartException.notFound("NOT_FOUND", "위치 " + c.locationCode() + " 가 없습니다."));
     if ("RETIRE".equals(c.action()) && (c.approvalRef() == null || c.approvalRef().isBlank())) {
       throw new PmartException(
           "APPROVAL_REQUIRED",

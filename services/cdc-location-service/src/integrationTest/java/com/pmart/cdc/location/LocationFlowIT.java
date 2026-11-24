@@ -174,16 +174,26 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(dup.body().path("code").asString()).isEqualTo("LOCATION_CODE_EXISTS");
 
     // 3) 운영자 단건 등록(DRAFT), 다른 센터 운영자 403
-    Res one = post(OPERATOR, "/locations", key(), shelf("CDC01-G-7-61-01-3-1"), null);
+    Res one = post(OPERATOR, "/cdcs/CDC01/locations", key(), shelf("CDC01-G-7-61-01-3-1"), null);
     assertThat(one.status()).as(one.body().toString()).isEqualTo(201);
     assertThat(one.body().path("state").asString()).isEqualTo("DRAFT");
     assertThat(
-            post(OTHER, "/locations", key(), loc("CDC01-G-7-01-01-4-1", "AMBIENT", "RESERVE"), null)
+            post(
+                    OTHER,
+                    "/cdcs/CDC01/locations",
+                    key(),
+                    loc("CDC01-G-7-01-01-4-1", "AMBIENT", "RESERVE"),
+                    null)
                 .status())
         .isEqualTo(403);
 
+    Map<String, Object> wrongCenter = loc("CDC01-G-7-01-01-4-2", "AMBIENT", "RESERVE");
+    wrongCenter.put("centerId", "CDC02");
+    assertThat(post(OPERATOR, "/cdcs/CDC01/locations", key(), wrongCenter, null).status())
+        .isEqualTo(400);
+
     // 4) 조회 — 구간 나눔, 점유는 모름(null), 신선도 UNAVAILABLE
-    JsonNode g = get(OPERATOR, "/locations/CDC01-C-5-01-02-1-2").body();
+    JsonNode g = get(OPERATOR, "/cdcs/CDC01/locations/CDC01-C-5-01-02-1-2").body();
     assertThat(g.path("state").asString()).isEqualTo("ACTIVE");
     assertThat(g.path("version").asInt()).isEqualTo(2);
     assertThat(g.path("locationType").asString()).isEqualTo("RESERVE");
@@ -191,17 +201,17 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(g.path("parts").path("level").asInt()).isEqualTo(1);
     assertThat(g.path("occupiedQty").isNull()).isTrue();
     assertThat(g.path("asOf").path("freshness").asString()).isEqualTo("UNAVAILABLE");
-    assertThat(get(OTHER, "/locations/CDC01-C-5-01-02-1-2").status()).isEqualTo(403);
+    assertThat(get(OTHER, "/cdcs/CDC01/locations/CDC01-C-5-01-02-1-2").status()).isEqualTo(403);
 
     // 5) 거르기·쪽 나누기
     JsonNode staging =
-        get(OPERATOR, "/locations?centerId=CDC01&locationType=STAGING").body().path("items");
+        get(OPERATOR, "/cdcs/CDC01/locations?locationType=STAGING").body().path("items");
     assertThat(staging.size()).isEqualTo(1);
-    JsonNode page1 = get(OPERATOR, "/locations?centerId=CDC01&area=C&floor=5&size=10").body();
+    JsonNode page1 = get(OPERATOR, "/cdcs/CDC01/locations?area=C&floor=5&size=10").body();
     assertThat(page1.path("items").size()).isEqualTo(10);
     String cursor = page1.path("page").path("nextCursor").asString();
     JsonNode page2 =
-        get(OPERATOR, "/locations?centerId=CDC01&area=C&floor=5&size=10&cursor=" + cursor).body();
+        get(OPERATOR, "/cdcs/CDC01/locations?area=C&floor=5&size=10&cursor=" + cursor).body();
     assertThat(page2.path("items").size()).isEqualTo(7); // 랙 16 + 출고대기 1 = 17
     assertThat(page2.path("page").path("nextCursor").isNull()).isTrue();
 
@@ -210,7 +220,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     Res block =
         post(
             OPERATOR,
-            "/locations/" + code + "/state-changes",
+            "/cdcs/CDC01/locations/" + code + "/state-changes",
             key(),
             Map.of("action", "BLOCK", "reason", "랙 점검"),
             2);
@@ -220,7 +230,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     Res stale =
         post(
             OPERATOR,
-            "/locations/" + code + "/state-changes",
+            "/cdcs/CDC01/locations/" + code + "/state-changes",
             key(),
             Map.of("action", "UNBLOCK", "reason", "끝"),
             2);
@@ -229,7 +239,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     Res retireActive =
         post(
             OPERATOR,
-            "/locations/CDC01-C-5-01-02-3-1/state-changes",
+            "/cdcs/CDC01/locations/CDC01-C-5-01-02-3-1/state-changes",
             key(),
             Map.of("action", "RETIRE", "reason", "철거", "approvalRef", "AP-1"),
             null);
@@ -237,7 +247,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     Res noApproval =
         post(
             OPERATOR,
-            "/locations/CDC01-G-7-61-01-3-1/state-changes",
+            "/cdcs/CDC01/locations/CDC01-G-7-61-01-3-1/state-changes",
             key(),
             Map.of("action", "RETIRE", "reason", "잘못 등록"),
             null);
@@ -245,12 +255,16 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     Res retire =
         post(
             OPERATOR,
-            "/locations/CDC01-G-7-61-01-3-1/state-changes",
+            "/cdcs/CDC01/locations/CDC01-G-7-61-01-3-1/state-changes",
             key(),
             Map.of("action", "RETIRE", "reason", "잘못 등록", "approvalRef", "AP-2"),
             null);
     assertThat(retire.status()).isEqualTo(202);
-    assertThat(get(OPERATOR, "/locations/CDC01-G-7-61-01-3-1").body().path("state").asString())
+    assertThat(
+            get(OPERATOR, "/cdcs/CDC01/locations/CDC01-G-7-61-01-3-1")
+                .body()
+                .path("state")
+                .asString())
         .isEqualTo("RETIRED");
   }
 }

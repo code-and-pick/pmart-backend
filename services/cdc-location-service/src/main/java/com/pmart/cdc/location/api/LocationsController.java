@@ -39,7 +39,7 @@ public class LocationsController implements LocationsApi {
 
   @Override
   public ResponseEntity<ListLocations200Response> listLocations(
-      String centerId,
+      String cdcId,
       @Nullable TemperatureZone temperatureZone,
       @Nullable String area,
       @Nullable String floor,
@@ -50,7 +50,7 @@ public class LocationsController implements LocationsApi {
     var page =
         service.list(
             new Filter(
-                centerId,
+                cdcId,
                 temperatureZone == null ? null : temperatureZone.getValue(),
                 area,
                 floor,
@@ -69,21 +69,23 @@ public class LocationsController implements LocationsApi {
 
   @Override
   public ResponseEntity<Location> createLocation(
+      String cdcId,
       String idempotencyKey,
       String xSourceSystem,
       LocationInput body,
       @Nullable String traceparent) {
-    LocationRow r = service.create(idempotencyKey, xSourceSystem, input(body)).value();
+    LocationRow r = service.create(idempotencyKey, xSourceSystem, cdcId, input(body)).value();
     return ResponseEntity.status(HttpStatus.CREATED).body(dto(r));
   }
 
   @Override
-  public ResponseEntity<Location> getLocation(String locationCode) {
-    return ResponseEntity.ok(dto(service.get(locationCode)));
+  public ResponseEntity<Location> getLocation(String cdcId, String locationCode) {
+    return ResponseEntity.ok(dto(service.get(cdcId, locationCode)));
   }
 
   @Override
   public ResponseEntity<CreateLocationBatch200Response> changeLocationState(
+      String cdcId,
       String locationCode,
       String idempotencyKey,
       String xSourceSystem,
@@ -94,6 +96,7 @@ public class LocationsController implements LocationsApi {
             .changeState(
                 idempotencyKey,
                 xSourceSystem,
+                cdcId,
                 new StateChange(
                     locationCode,
                     body.getAction().getValue(),
