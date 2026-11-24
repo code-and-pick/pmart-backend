@@ -489,6 +489,33 @@ public class RiderDeductions {
     return total;
   }
 
+  /**
+   * 지급 실패로 묶음이 다음 지급일로 넘어갈 때(호출자 트랜잭션, 2026-11-24) — 그 묶음에서 뺀 차감을 되돌린다(remaining 복구·기록 지움). 새 묶음이
+   * 지급 중·지급됨이 될 때 다시 뺀다.
+   */
+  public void revertBatch(String riderId, LocalDate payoutDate, Instant now) {
+    List<Map<String, Object>> apps =
+        jdbc.queryForList(
+            "SELECT deduction_id, amount FROM rider_deduction_application WHERE rider_id = ? AND"
+                + " payout_date = ? FOR UPDATE",
+            riderId,
+            payoutDate);
+    for (Map<String, Object> a : apps) {
+      jdbc.update(
+          "UPDATE rider_deduction SET remaining = remaining + ?, updated_at = ? WHERE deduction_id = ?",
+          ((Number) a.get("amount")).intValue(),
+          Timestamp.from(now),
+          a.get("deduction_id"));
+    }
+    if (!apps.isEmpty()) {
+      jdbc.update(
+          "DELETE FROM rider_deduction_application WHERE rider_id = ? AND payout_date = ?",
+          riderId,
+          payoutDate);
+      log.info("라이더 {} {} 지급 실패 — 이 묶음에서 뺀 오배송 차감 {}건을 되돌림", riderId, payoutDate, apps.size());
+    }
+  }
+
   /** 확정되어 앞으로 뺄 금액 합. */
   public long remainingTotal(String riderId) {
     Long v =

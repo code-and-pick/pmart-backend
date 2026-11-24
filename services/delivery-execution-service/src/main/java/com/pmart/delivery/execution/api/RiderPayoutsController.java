@@ -24,11 +24,15 @@ public class RiderPayoutsController implements RiderPayoutsApi {
 
   @Override
   public ResponseEntity<ListRiderPayouts200Response> listRiderPayouts(
-      @Nullable LocalDate payoutDate, @Nullable String riderId, @Nullable String state) {
+      @Nullable LocalDate payoutDate,
+      @Nullable LocalDate from,
+      @Nullable LocalDate to,
+      @Nullable String riderId,
+      @Nullable String state) {
     return ResponseEntity.ok(
         new ListRiderPayouts200Response()
             .items(
-                payouts.list(payoutDate, blank(riderId), blank(state)).stream()
+                payouts.list(payoutDate, from, to, blank(riderId), blank(state)).stream()
                     .map(RiderPayoutsController::view)
                     .toList()));
   }
@@ -69,6 +73,29 @@ public class RiderPayoutsController implements RiderPayoutsApi {
                 idempotencyKey)));
   }
 
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.execution.api.generated.model.ListRiderPayoutRollovers200Response>
+      listRiderPayoutRollovers(@Nullable String riderId) {
+    return ResponseEntity.ok(
+        new com.pmart.delivery.execution.api.generated.model.ListRiderPayoutRollovers200Response()
+            .items(
+                payouts.rollovers(blank(riderId)).stream()
+                    .map(
+                        o ->
+                            new com.pmart.delivery.execution.api.generated.model
+                                    .ListRiderPayoutRollovers200ResponseItemsInner()
+                                .rolloverId(o.rolloverId())
+                                .riderId(o.riderId())
+                                .fromDate(o.fromDate())
+                                .toDate(o.toDate())
+                                .lineCount(o.lineCount())
+                                .total((int) o.total())
+                                .failureReason(o.failureReason())
+                                .rolledAt(o.rolledAt().atOffset(java.time.ZoneOffset.UTC)))
+                    .toList()));
+  }
+
   private static RiderPayout view(PayoutResults.Batch b) {
     RiderPayout v =
         new RiderPayout()
@@ -80,7 +107,9 @@ public class RiderPayoutsController implements RiderPayoutsApi {
             .compensationCount(b.compensationCount())
             .deductionTotal((int) b.deductionTotal())
             .expectedDeduction((int) b.expectedDeduction())
-            .netTotal((int) b.netTotal());
+            .netTotal((int) b.netTotal())
+            .rolledTo(b.rolledTo())
+            .rolledInCount(b.rolledInCount());
     if (b.lastResult() != null) {
       var l = b.lastResult();
       v.lastResult(

@@ -411,6 +411,9 @@ public class ExecutionEvents {
     if (e.payoutDate() != null) {
       p.put("payoutDate", e.payoutDate().toString());
     }
+    if (e.rolledFrom() != null) {
+      p.put("rolledFrom", e.rolledFrom().toString()); // 2026-11-24 지급 실패로 넘어옴 — 알림 "n일에 다시 지급"
+    }
     p.put("recordedAt", at.toString());
     if (adjustment != null) {
       p.put("adjustment", adjustment);

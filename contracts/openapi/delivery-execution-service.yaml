@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-execution-service
-  version: 0.41.0
+  version: 0.42.0
   description: |
     배송 수행 상태(배정→가게 도착→픽업 완료(인계 확정 후)→고객 도착→전달 완료 / 실패 / 중단 / 회수 중→점포 반납), 전달 증빙(대면/비대면 사진 필수), 상태 정정, 도움요청, 회수 수행, 수행료 근거·정산 상태, 라이더 배송 이력의 정본. (docs/architecture/service-map.md §7)
     0.38.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /delivery-metrics` 배송 품질·효율(날짜·센터·라이더별 배정·완료·실패·취소·지연·픽업 대기·배송 소요)과 사고(도움요청 종류별 건수·처리 시간).
@@ -1408,6 +1408,8 @@ paths:
       x-pmart-user-types: [OPERATOR]
       parameters:
         - { name: payoutDate, in: query, schema: { type: string, format: date } }
+        - { name: from, in: query, x-added-in: "2026-11-24", description: "(0.42.0) 기간 — 지급 예정일 from~to(포함, 최대 31일, payoutDate 가 없을 때). 하나만 주면 그날", schema: { type: string, format: date } }
+        - { name: to, in: query, x-added-in: "2026-11-24", schema: { type: string, format: date } }
         - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
         - { name: state, in: query, schema: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED] } }
       responses:
@@ -1420,6 +1422,44 @@ paths:
                 required: [items]
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/RiderPayout' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /rider-payout-rollovers:
+    get:
+      tags: [rider-payouts]
+      summary: (0.42.0) 지급 실패 넘김 기록 (관리자·라이더 운영)
+      x-added-in: '2026-11-24'
+      description: |
+        2026-11-24 사용자 "실패한 지급을 다음 지급일로 자동으로 넘겨". 지급 결과 FAILED 가 표시되면 그 묶음의 실패 줄(수행료·보상금)이 같은 트랜잭션에서 다음 지급일
+        (오늘과 원래 지급일 중 늦은 날의 다음 영업일)로 넘어가 CONFIRMED 가 된다(이미 PAYMENT_FAILED 로 남은 묶음도 1분 주기로 같게). 넘김 횟수 상한 없음.
+        그 묶음에서 뺀 오배송 차감은 되돌려 새 묶음에서 다시 뺀다. 최근 순 200건, riderId 로 거르기. failureReason 은 직원만.
+      operationId: listRiderPayoutRollovers
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [rolloverId, riderId, fromDate, toDate, lineCount, total, rolledAt]
+                      properties:
+                        rolloverId: { type: string }
+                        riderId: { type: string }
+                        fromDate: { type: string, format: date, description: 실패한 지급일 }
+                        toDate: { type: string, format: date, description: 다시 지급할 날 }
+                        lineCount: { type: integer }
+                        total: { type: integer }
+                        failureReason: { type: [string, 'null'], description: 실패 표시 사유(결과 기록) }
+                        rolledAt: { type: string, format: date-time }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /rider-payouts/{riderId}/{payoutDate}/results:
@@ -1934,6 +1974,8 @@ components:
         deductionTotal: { type: integer, description: "(0.41.0) 이 묶음에서 뺀 오배송 차감 합 — 지급 중·지급됨이 되면서 정해진다(그 전은 0)" }
         expectedDeduction: { type: integer, description: "(0.41.0) 아직 빼지 않은 묶음이면 지금 빼게 될 금액(확정 차감 남은 금액을 앞 묶음부터 나눈 값)" }
         netTotal: { type: integer, description: "(0.41.0) 지급할 금액 = total − deductionTotal − expectedDeduction" }
+        rolledTo: { type: [string, "null"], format: date, description: "(0.42.0) 실패 표시 응답에서만 — 실패 줄이 넘어간 다음 지급일" }
+        rolledInCount: { type: integer, description: "(0.42.0) 이 묶음 안 지급 실패로 넘어온 줄 수" }
         state: { type: string, enum: [CONFIRMED, PAYING, PAID, PAYMENT_FAILED, MIXED] }
         lastResult:
           type: [object, 'null']
@@ -2366,6 +2408,8 @@ components:
         recordedAt: { type: string, format: date-time }
         confirmAt: { type: string, format: date-time, description: 수익 확정 시각 — 전달 완료 + 5시간(원문 §7.2, 0.3.0) }
         payoutDate: { type: string, format: date, description: 지급 예정일 — 수행일(Asia/Seoul) + 3영업일(주말·법정공휴일 제외 — 사용자 결정 2026-11-13). 실제 지급은 외부 회계 }
+        rolledFrom: { type: [string, "null"], format: date, x-added-in: "2026-11-24", description: "(0.42.0) 지급 실패로 넘어온 경우 원래(마지막으로 실패한) 지급일" }
+        rolledAt: { type: [string, "null"], format: date-time, x-added-in: "2026-11-24", description: "(0.42.0) 넘긴 시각" }
         note: { type: string, description: 산정 불가 사유 등(calculable false 면 지원센터 조정 필요) }
     RecoveryContact:
       type: object

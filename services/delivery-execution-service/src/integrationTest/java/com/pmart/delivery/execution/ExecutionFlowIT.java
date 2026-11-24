@@ -97,6 +97,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired com.pmart.delivery.execution.application.PhotoSweeper sweeper;
   @Autowired com.pmart.delivery.execution.application.AutoCompletion autoCompletion;
   @Autowired com.pmart.delivery.execution.application.RiderDeductions deductions;
+  @Autowired com.pmart.delivery.execution.application.PayoutResults payouts;
 
   @InjectWireMock("order")
   WireMockServer orderApi;
@@ -1123,8 +1124,56 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
         staffPost(uri, adm, Map.of("result", "FAILED", "failureReason", "계좌 확인 필요"));
     assertThat(failed.getStatusCode().value()).as(failed.getBody()).isEqualTo(200);
     assertThat(body(failed).path("state").asString()).isEqualTo("PAYMENT_FAILED");
-    assertThat(outbox(ids.get(0), "RiderEarningRecorded").path("payload").toString())
-        .doesNotContain("계좌");
+    // 2026-11-24 사용자 "실패한 지급을 다음 지급일로 자동으로 넘겨" — 줄은 다음 영업일 묶음으로 CONFIRMED
+    String next = body(failed).path("rolledTo").asString();
+    assertThat(java.time.LocalDate.parse(next)).isAfter(java.time.LocalDate.parse(today));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_earning WHERE rider_id = ? AND settlement_state ="
+                    + " 'CONFIRMED' AND payout_date = CAST(? AS date) AND rolled_from = CAST(? AS"
+                    + " date) AND roll_count = 1",
+                Integer.class,
+                rider,
+                next,
+                today))
+        .isEqualTo(2);
+    JsonNode rolledPayload = outbox(ids.get(0), "RiderEarningRecorded").path("payload");
+    assertThat(rolledPayload.path("rolledFrom").asString()).isEqualTo(today);
+    assertThat(rolledPayload.path("payoutDate").asString()).isEqualTo(next);
+    assertThat(rolledPayload.toString()).doesNotContain("계좌");
+    JsonNode rolledBatch =
+        body(staffGet("/rider-payouts?riderId=" + rider + "&from=" + today + "&to=" + next, ops))
+            .path("items");
+    assertThat(rolledBatch).hasSize(1);
+    assertThat(rolledBatch.get(0).path("payoutDate").asString()).isEqualTo(next);
+    assertThat(rolledBatch.get(0).path("rolledInCount").asInt()).isEqualTo(2);
+    JsonNode rolls = body(staffGet("/rider-payout-rollovers?riderId=" + rider, ops)).path("items");
+    assertThat(rolls.get(0).path("fromDate").asString()).isEqualTo(today);
+    assertThat(rolls.get(0).path("failureReason").asString()).isEqualTo("계좌 확인 필요");
+    // 넘김 배포 전에 실패로 남은 묶음도 주기 작업이 같게
+    String stale = "DLV-po-" + UUID.randomUUID();
+    created(stale, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID());
+    awaitSql("SELECT count(*) FROM execution_delivery WHERE delivery_id = '" + stale + "'");
+    jdbc.update(
+        "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable, rate_table_version,"
+            + " base_fee, total, settlement_state, performed_on, payout_date, recorded_at, updated_at)"
+            + " VALUES (?, ?, ?, true, 1, 3000, 3000, 'PAYMENT_FAILED', CAST(? AS date) - 5, CAST(?"
+            + " AS date) - 2, now(), now())",
+        "ERN-po-" + stale,
+        stale,
+        rider,
+        today,
+        today);
+    assertThat(payouts.rollStaleFailures()).isGreaterThanOrEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT settlement_state FROM rider_earning WHERE earning_id = ?",
+                String.class,
+                "ERN-po-" + stale))
+        .isEqualTo("CONFIRMED");
+    // 하루가 지나 다시 지급하는 날이 됐다고 치고(오늘로 당김) 이어서 지급
+    jdbc.update(
+        "UPDATE rider_earning SET payout_date = CAST(? AS date) WHERE rider_id = ?", today, rider);
     ResponseEntity<String> paid =
         staffPost(uri, adm, Map.of("result", "PAID", "reference", "ACC-77"));
     assertThat(body(paid).path("state").asString()).isEqualTo("PAID");
@@ -1134,7 +1183,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT count(*) FROM rider_earning WHERE rider_id = ? AND settlement_state = 'PAID'",
                 Integer.class,
                 rider))
-        .isEqualTo(2);
+        .isEqualTo(3); // 넘긴 두 줄 + 주기 작업이 넘긴 한 줄
     assertThat(staffPost(uri, adm, Map.of("result", "PAID")).getStatusCode().value())
         .isEqualTo(409);
     // 지급 예정일 전이면 422, 조치 이력에 남음

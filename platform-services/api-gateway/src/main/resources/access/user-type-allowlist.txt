@@ -311,6 +311,7 @@ GET /api/v1/rider-earnings/adjustment-queue OPERATOR
 GET /api/v1/rider-locations OPERATOR
 GET /api/v1/rider-notices OPERATOR
 GET /api/v1/rider-operating-time OPERATOR
+GET /api/v1/rider-payout-rollovers OPERATOR
 GET /api/v1/rider-payouts OPERATOR
 GET /api/v1/rider-staff-actions OPERATOR
 GET /api/v1/riders OPERATOR

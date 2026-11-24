@@ -105,7 +105,7 @@ spring:
             - id: delivery-execution-service-deliveries
               uri: ${pmart.gateway.upstream.delivery-execution-service}
               predicates:
-                - Path=/api/v1/deliveries/**,/api/v1/delivery-help-requests,/api/v1/delivery-staff-actions,/api/v1/return-handovers,/api/v1/return-handovers/**,/api/v1/rider-payouts,/api/v1/rider-payouts/**,/api/v1/rider-compensations,/api/v1/rider-compensations/**,/api/v1/rider-deductions,/api/v1/rider-deductions/** # 직원 배송 찾기(/deliveries)·도움요청 대기 목록(execution 0.4.0, 2026-11-15)
+                - Path=/api/v1/deliveries/**,/api/v1/delivery-help-requests,/api/v1/delivery-staff-actions,/api/v1/return-handovers,/api/v1/return-handovers/**,/api/v1/rider-payouts,/api/v1/rider-payouts/**,/api/v1/rider-payout-rollovers,/api/v1/rider-compensations,/api/v1/rider-compensations/**,/api/v1/rider-deductions,/api/v1/rider-deductions/** # 직원 배송 찾기(/deliveries)·도움요청 대기 목록(execution 0.4.0, 2026-11-15)
               order: -94
             - id: rider-service-riders
               uri: ${pmart.gateway.upstream.rider-service}

@@ -215,6 +215,8 @@ class ExecutionViews {
         .recordedAt(time(e.recordedAt()))
         .confirmAt(time(e.confirmAt()))
         .payoutDate(e.payoutDate())
+        .rolledFrom(e.rolledFrom())
+        .rolledAt(time(e.rolledAt()))
         .note(e.note());
   }
 

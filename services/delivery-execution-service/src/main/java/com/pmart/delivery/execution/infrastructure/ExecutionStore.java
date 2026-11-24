@@ -119,7 +119,47 @@ public class ExecutionStore {
       @Nullable Instant confirmAt,
       java.time.@Nullable LocalDate payoutDate,
       @Nullable String note,
-      Instant recordedAt) {}
+      Instant recordedAt,
+      java.time.@Nullable LocalDate rolledFrom,
+      @Nullable Instant rolledAt) {
+
+    /** 넘김 정보 없는 줄(새로 만들 때). */
+    public EarningRow(
+        String earningId,
+        String deliveryId,
+        String riderId,
+        boolean calculable,
+        int rateTableVersion,
+        @Nullable String vehicleType,
+        @Nullable Integer distanceM,
+        @Nullable Integer baseFee,
+        @Nullable Integer total,
+        String settlementState,
+        java.time.LocalDate performedOn,
+        @Nullable Instant confirmAt,
+        java.time.@Nullable LocalDate payoutDate,
+        @Nullable String note,
+        Instant recordedAt) {
+      this(
+          earningId,
+          deliveryId,
+          riderId,
+          calculable,
+          rateTableVersion,
+          vehicleType,
+          distanceM,
+          baseFee,
+          total,
+          settlementState,
+          performedOn,
+          confirmAt,
+          payoutDate,
+          note,
+          recordedAt,
+          null,
+          null);
+    }
+  }
 
   public record HandoverRow(
       String handoverId,
@@ -1422,8 +1462,7 @@ public class ExecutionStore {
   /** 지급 묶음(2026-11-18) — 한 라이더의 그 지급 예정일 수행료 전부. */
   public List<EarningRow> earningsForPayout(String riderId, java.time.LocalDate payoutDate) {
     return jdbc.query(
-        "SELECT * FROM rider_earning WHERE rider_id = ? AND payout_date = ? ORDER BY earning_id FOR"
-            + " UPDATE",
+        EARNING_SELECT + " WHERE rider_id = ? AND payout_date = ? ORDER BY earning_id FOR UPDATE",
         this::mapEarning,
         riderId,
         payoutDate);
@@ -1521,7 +1560,7 @@ public class ExecutionStore {
   private static final String EARNING_SELECT =
       "SELECT earning_id, delivery_id, rider_id, calculable, rate_table_version, vehicle_type,"
           + " distance_m, base_fee, total, settlement_state, performed_on, confirm_at, payout_date,"
-          + " note, recorded_at FROM rider_earning";
+          + " note, recorded_at, rolled_from, rolled_at FROM rider_earning";
 
   private EarningRow mapEarning(ResultSet rs, int i) throws SQLException {
     java.sql.Date payout = rs.getDate(13);
@@ -1540,7 +1579,9 @@ public class ExecutionStore {
         instant(rs, 12),
         payout == null ? null : payout.toLocalDate(),
         rs.getString(14),
-        rs.getTimestamp(15).toInstant());
+        rs.getTimestamp(15).toInstant(),
+        rs.getDate(16) == null ? null : rs.getDate(16).toLocalDate(),
+        instant(rs, 17));
   }
 
   private DeliveryRow mapDelivery(ResultSet rs, int i) throws SQLException {
