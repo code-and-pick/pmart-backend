@@ -1021,4 +1021,91 @@ class PromotionsIT extends PostgresKafkaContainerSupport {
                 "SELECT count(*) FROM coupon WHERE promotion_id = ?", Integer.class, id))
         .isEqualTo(1);
   }
+
+  /** 0.3.1 — 쿠폰 발급 기록(고객 기준 PRM-1·행사 기준), 사용자 "쿠폰 발급 기록 조회"·"만들어". */
+  @Test
+  void couponRecordsByCustomerAndPromotion() throws Exception {
+    String a = "CU-R-" + UUID.randomUUID().toString().substring(0, 8);
+    String b = "CU-R-" + UUID.randomUUID().toString().substring(0, 8);
+    Map<String, Object> policy = new LinkedHashMap<>();
+    policy.put("minOrderAmount", 0);
+    policy.put("perCustomerLimit", 1);
+    policy.put("useDays", 7);
+    Map<String, Object> dl = new LinkedHashMap<>(policy);
+    dl.put("issueMode", "DOWNLOAD");
+    Map<String, Object> adm = new LinkedHashMap<>(policy);
+    adm.put("issueMode", "ADMIN");
+    String download = approved(coupon("내려받기 천원", Map.of("type", "AMOUNT", "value", 1000), dl));
+    String admin = approved(coupon("지정 이천원", Map.of("type", "AMOUNT", "value", 2000), adm));
+
+    assertThat(
+            send("POST", TestJwt.customer(a), "/coupon-campaigns/" + download + "/downloads", null)
+                .status())
+        .isEqualTo(201);
+    Res grant =
+        send(
+            "POST",
+            CS,
+            "/promotions/" + admin + "/coupon-grants",
+            Map.of("accountIds", List.of(a, b), "reason", "배송 지연 사과"));
+    assertThat(grant.status()).as(grant.body().toString()).isEqualTo(200);
+
+    // 고객 기준 — 두 행사, 받은 시각 최근 순
+    Res mine = send("GET", CS, "/promotions/coupons?customerId=" + a, null);
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(200);
+    JsonNode items = mine.body().path("items");
+    assertThat(items).hasSize(2);
+    JsonNode staff = items.get(0);
+    assertThat(staff.path("promotionId").asString()).isEqualTo(admin);
+    assertThat(staff.path("promotionName").asString()).isEqualTo("지정 이천원");
+    assertThat(staff.path("source").asString()).isEqualTo("STAFF");
+    assertThat(staff.path("issuedBy").asString()).isEqualTo("cs-1");
+    assertThat(staff.path("issueReason").asString()).isEqualTo("배송 지연 사과");
+    assertThat(staff.path("status").asString()).isEqualTo("AVAILABLE");
+    assertThat(staff.path("discount").path("value").asInt()).isEqualTo(2000);
+    JsonNode down = items.get(1);
+    assertThat(down.path("source").asString()).isEqualTo("DOWNLOAD");
+    assertThat(down.path("issuedBy").isString()).isFalse();
+
+    // 거르기 — 받은 경로·상태(기한 지난 쿠폰은 EXPIRED)
+    assertThat(
+            send("GET", CS, "/promotions/coupons?customerId=" + a + "&source=DOWNLOAD", null)
+                .body()
+                .path("items"))
+        .hasSize(1);
+    jdbc.update(
+        "UPDATE coupon SET valid_until = now() - interval '1 minute' WHERE promotion_id = ?"
+            + " AND account_id = ?",
+        download,
+        a);
+    JsonNode expired =
+        send("GET", CS, "/promotions/coupons?customerId=" + a + "&status=EXPIRED", null)
+            .body()
+            .path("items");
+    assertThat(expired).hasSize(1);
+    assertThat(expired.get(0).path("promotionId").asString()).isEqualTo(download);
+
+    // 행사 기준 — 그 행사에서 나간 쿠폰, 쪽 넘김
+    Res p1 = send("GET", MKT, "/promotions/coupons?promotionId=" + admin + "&size=1", null);
+    assertThat(p1.body().path("items")).hasSize(1);
+    String next = p1.body().path("page").path("nextCursor").asString();
+    Res p2 =
+        send(
+            "GET",
+            MKT,
+            "/promotions/coupons?promotionId=" + admin + "&size=1&cursor=" + next,
+            null);
+    assertThat(p2.body().path("items")).hasSize(1);
+    assertThat(p2.body().path("items").get(0).path("couponId").asString())
+        .isNotEqualTo(p1.body().path("items").get(0).path("couponId").asString());
+    assertThat(p2.body().path("page").path("nextCursor").isString()).isFalse();
+
+    // 거르기 없음 400, 권한 없음 403
+    assertThat(send("GET", CS, "/promotions/coupons", null).status()).isEqualTo(400);
+    assertThat(send("GET", MD, "/promotions/coupons?customerId=" + a, null).status())
+        .isEqualTo(403);
+    assertThat(
+            send("GET", TestJwt.customer(a), "/promotions/coupons?customerId=" + a, null).status())
+        .isEqualTo(403);
+  }
 }
