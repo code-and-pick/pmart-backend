@@ -589,6 +589,19 @@ public class DispatchStore {
         limit);
   }
 
+  /** 같은 원래 배송에 다른 사건으로 만든 오배송 회수·다시 배송(상태 무관) — 있으면 그 배송 ID, 없으면 null(2026-11-24 중복 회수 막기). */
+  public @Nullable String misdeliveryFollowUpOfOtherCase(String originDeliveryId, String caseId) {
+    List<String> ids =
+        jdbc.queryForList(
+            "SELECT delivery_id FROM delivery WHERE origin_delivery_id = ? AND purpose IN"
+                + " ('MISDELIVERY_RECOVERY', 'MISDELIVERY_REDELIVERY') AND (case_id IS NULL OR"
+                + " case_id <> ?) ORDER BY created_at LIMIT 1",
+            String.class,
+            originDeliveryId,
+            caseId);
+    return ids.isEmpty() ? null : ids.get(0);
+  }
+
   /** 자동 취소 결과 기록(ACCEPTED 또는 거절 코드) — 다시 부르지 않는다. */
   public void autoCancelDone(String deliveryId, String result, Instant now) {
     jdbc.update(

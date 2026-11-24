@@ -76,6 +76,14 @@ public class RecoveryHandler {
           origin.state());
       return;
     }
+    // 2026-11-24(사용자 "막기" — LAN 28767701 -4 에 이어 -5): 같은 원래 배송에 다른 사건의 회수·다시 배송이 이미 있으면(진행 중·끝남·포기
+    // 모두)
+    // 새로 만들지 않는다 — 같은 상품을 두 번 가지러 가지 않는다. 같은 사건 재수신은 아래 insert 가 하나로.
+    String other = store.misdeliveryFollowUpOfOtherCase(originId, caseId);
+    if (other != null) {
+      log.warn("오배송 확인 {} — 배송 {} 에 이미 다른 사건의 회수·다시 배송 {} 이 있어 새로 만들지 않음", caseId, originId, other);
+      return;
+    }
     Instant now = clock.instant();
     if (redeliver) {
       String id = redeliveryDeliveryId(caseId);

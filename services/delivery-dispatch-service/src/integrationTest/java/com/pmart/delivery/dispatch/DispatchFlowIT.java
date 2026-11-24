@@ -2493,6 +2493,22 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
     assertThat(cancelled.path("reason").asString()).isEqualTo("RECOVERY_ABANDONED");
     assertThat(cancelled.path("purpose").asString()).isEqualTo("MISDELIVERY_RECOVERY");
     assertThat(cancelled.path("caseId").asString()).isEqualTo(caseId);
+
+    // 같은 배송에 다른 사건의 오배송 확인이 또 와도(환불용 사건 등) 회수 배송을 또 만들지 않는다(LAN 28767701-5)
+    String again = "CASE-" + UUID.randomUUID();
+    misdeliveryConfirmed(again, origin, r1);
+    try {
+      Thread.sleep(3000);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM delivery WHERE origin_delivery_id = ? AND purpose ="
+                    + " 'MISDELIVERY_RECOVERY'",
+                Integer.class,
+                origin))
+        .isEqualTo(1);
   }
 
   /**
