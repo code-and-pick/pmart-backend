@@ -32,4 +32,5 @@
   - 같은 TRF 의 할당·출발은 권고 잠금(`pg_advisory_xact_lock`)으로 줄 세운다 — 다른 trfVersion 첫 할당 동시 요청도 하나만 들어간다.
   - 아직 계산하지 않음: 품목군 최소 잔여일수(제조일 입력 없음), 승인량 초과 검사(replenishment 없음).
 - 내부 이동(0.3.0, 2026-11-25, Flyway V4): `/internal/move-postings` — 같은 SKU·LOT·품질로 위치만 바꾼다(총량·LOT 최초 인수시각 그대로). 줄에 `allocationId` 가 있으면 그 할당이 원위치에 잡은 예약을 함께 옮긴다(`allocation_lot.moved_out/moved_in`, 남은 예약 = 할당 + 옮겨 옴 − 옮겨 감 − 해제 − 출발) — 팔레트 랙 → 피킹 선반 보충(칠곡 CDC-7). 없으면 예약 안 된 현물만. 예약은 RELEASED 에만. 위치 상태는 cdc-location 이 본다(여기서는 안 봄). 원결과 MOVE.
-- 아직 501: 수령 확인·품질·손실·조정·스냅샷·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
+- 재고 스냅샷(0.4.0): `/internal/snapshots?cdcId&sku?` — 지금 장부 그대로(snapshotId 는 이번 조회 식별, 보관 안 함 — 지난 id 는 404). sku 를 비우면 현물 행이 있는 SKU 전부. 취급 OFF·안전량 미설정도 거절하지 않고 handlingActive·safety.state NOT_SET·available null 로 보인다. `lots[].locations[]` = 위치·품질별 현물·예약(시뮬레이터가 칸별 재고를 그린다).
+- 아직 501: 수령 확인·품질·손실·조정·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.

@@ -540,6 +540,26 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(commit.path("postingKind").asString()).isEqualTo("MOVE");
     assertThat(commit.toString()).contains("\"bucket\":\"RESERVED\"");
 
+    // 2-1) 스냅샷 — LOT 마다 위치별 현물·예약(선반에 옮긴 예약 60), 취급·안전량 표시
+    JsonNode snap = get(SERVICE, "/internal/snapshots?cdcId=" + CENTER + "&sku=" + sku).body();
+    JsonNode item = snap.path("items").get(0);
+    assertThat(item.path("handlingActive").asBoolean()).isTrue();
+    assertThat(item.path("safety").path("state").asString()).isEqualTo("VALUE");
+    int shelfReserved = 0;
+    int shelfOnHand = 0;
+    for (JsonNode lot : item.path("lots")) {
+      for (JsonNode loc : lot.path("locations")) {
+        if (shelf.equals(loc.path("locationCode").asString())) {
+          shelfReserved += loc.path("reserved").asInt();
+          shelfOnHand += loc.path("onHand").asInt();
+        }
+      }
+    }
+    assertThat(shelfReserved).isEqualTo(60);
+    assertThat(shelfOnHand).isEqualTo(90);
+    assertThat(get(SERVICE, "/internal/snapshots?cdcId=" + CENTER + "&snapshotId=OLD").status())
+        .isEqualTo(404);
+
     // 3) 선반에서 출발 전기(위치를 비우면 할당이 잡은 위치 = 선반)
     Map<String, Object> dep = new LinkedHashMap<>();
     dep.put("cdcId", CENTER);

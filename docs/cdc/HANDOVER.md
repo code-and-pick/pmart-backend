@@ -10,7 +10,7 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 ## 1. 지금 있는 것
 | 무엇 | 상태 |
 |---|---|
-| `services/cdc-inventory-service` | 스캐폴딩(2026-10-30, 86xx 첫 서비스, 로컬 포트 8601). 상품 등록 슬라이스만: `commerce.product.v1` SkuIssued·ProductVersionPublished → `sku_projection`(물류 규격 units_per_box·boxes_per_pallet·ti·hi), 센터 취급 `center_sku_handling`(레코드 없음 = OFF, `/cdcs/{cdcId}/sku-handlings`). Flyway V1·V2. **장부(0.2.0, 2026-11-25)**: 초기 보유 `/internal/initial-balances`(센터·SKU·LOT 1회)·안전량 `/internal/safety-stocks`(새 경로)·가용 `max(0,E−R−S)`·FEFO 다LOT 할당/해제·TOUT 출발 전기(`TransferDeparted` 발행 — mfc-inbound 가 받음)·원결과·Transit 조회, Flyway V3. **내부 이동(0.3.0)**: `/internal/move-postings` — `allocationId` 를 주면 할당 예약을 함께 옮김(랙 → 피킹 선반 보충), Flyway V4. **아직 501: 수령 확인(receipt-acks)·품질·손실·조정·스냅샷·일일 대사.** 게이트웨이·LAN 배치·Helm 미등록 |
+| `services/cdc-inventory-service` | 스캐폴딩(2026-10-30, 86xx 첫 서비스, 로컬 포트 8601). 상품 등록 슬라이스만: `commerce.product.v1` SkuIssued·ProductVersionPublished → `sku_projection`(물류 규격 units_per_box·boxes_per_pallet·ti·hi), 센터 취급 `center_sku_handling`(레코드 없음 = OFF, `/cdcs/{cdcId}/sku-handlings`). Flyway V1·V2. **장부(0.2.0, 2026-11-25)**: 초기 보유 `/internal/initial-balances`(센터·SKU·LOT 1회)·안전량 `/internal/safety-stocks`(새 경로)·가용 `max(0,E−R−S)`·FEFO 다LOT 할당/해제·TOUT 출발 전기(`TransferDeparted` 발행 — mfc-inbound 가 받음)·원결과·Transit 조회, Flyway V3. **내부 이동(0.3.0)**: `/internal/move-postings` — `allocationId` 를 주면 할당 예약을 함께 옮김(랙 → 피킹 선반 보충), Flyway V4. **재고 스냅샷(0.4.0)**: `/internal/snapshots` — LOT 마다 위치별 현물·예약. **아직 501: 수령 확인(receipt-acks)·품질·손실·조정·일일 대사.** 게이트웨이·LAN 배치·Helm 미등록 |
 | `services/cdc-location-service` | 2026-11-25 새로 만듦(로컬 포트 8602). 위치 마스터: 등록·일괄 등록 `/internal/location-batches`·조회·상태 전환(`LocStateChanged`), 칠곡 코드 문법 검사(CDC-3~5·7). 점유는 모름(null). 적치 후보·공간 예약·도크 예약은 501. pmart-config 정본 파일·게이트웨이·LAN 배치 없음(PC1 요청) |
 | `services/cdc-outbound-service` | 2026-11-25 새로 만듦(로컬 포트 8603, 계약 0.3.0). TRF 인수 → cdc-inventory 할당, Wave 생성·릴리스(할당의 지금 위치로 구역·층별 PICK Task), PDA 다음 작업 받기·착수·피킹 실적(부족 → PickShortageReported). Task 경로 `/cdcs/{cdcId}/tasks…`. 0.4.0: 분류·검품·상차(BOX·RT 롤테이너)·출발 검증 → TOUT·잔여 해제·매니페스트. **아직 501: 출발 준비·미출발 취소.** pmart-config·게이트웨이·LAN 없음(PC1 요청) |
 | 계약 | `contracts/openapi/cdc-{inventory,inbound,location,outbound,quality}-service.yaml` 다섯 개 모두 있음(구현은 inventory 일부만) |
@@ -51,3 +51,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: cdc-outbound 서비스 첫 판(0.3.0 — 인수·할당·Wave·Task·피킹) — PR `cdc/outbound-service`. 출발 쪽은 다음 PR.
 - 2026-11-25: cdc-outbound 0.4.0(분류·검품·상차·출발 검증 → TOUT·매니페스트) — PR `cdc/outbound-departure`. R-15 회신(SIMULATED 도 TOUT).
 - 2026-11-25: 사용자 "MFC랑 같은 sku"·"10,900 설계에 맞춰 선반 확장" — CDC-7 기록, 시뮬레이터에 선반 확장·위치 목록 재내보내기 요청(B-1). 시작 재고는 실제 LAN SKU 만(시드 다음 PR).
+- 2026-11-25: cdc-inventory 0.4.0 재고 스냅샷(칸별 재고 조회) — PR `cdc/inventory-snapshot`.

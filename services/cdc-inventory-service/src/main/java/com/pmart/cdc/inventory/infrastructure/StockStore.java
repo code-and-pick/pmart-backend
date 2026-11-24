@@ -104,6 +104,14 @@ public class StockStore {
         Timestamp.from(at));
   }
 
+  /** 센터에 현물 행이 있는 SKU(오름차순). */
+  public List<String> skusWithStock(String cdcId) {
+    return jdbc.queryForList(
+        "SELECT DISTINCT sku FROM stock_balance WHERE cdc_id = ? ORDER BY sku",
+        String.class,
+        cdcId);
+  }
+
   /** SKU 의 모든 현물 행(조회). */
   public List<BalanceRow> balances(String cdcId, String sku) {
     return jdbc.query(

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
     CDC 재고 단일 쓰기 주체. 위치·LOT·품질상태별 On-hand, 이관 예약 R(0 ≤ R ≤ E ≤ 장부), Held, 안전량 S, 가용 max(0, E−R−S),
     LOT 식별/소비기한/FEFO, 초기 보유 INITIAL_BALANCE, 승인 TRF 다LOT FEFO 할당, TOUT 1회 전기, Transit 소유·대사(q = r + l + t),
@@ -10,6 +10,7 @@ info:
     모든 변경 요청은 commitId를 발급하며 호출자는 자체 사본으로 성공을 판단하지 않는다. 모든 경로는 서비스 간(internal)이다.
     0.2.0(2026-11-25): 초기 보유·안전량·가용·할당/해제·TOUT·원결과·Transit 조회 구현. 안전량 설정 경로·출발 목적지 toMfcId 추가.
     잔여일수 판정은 소비기한 당일부터 차단(D ≥ 1)과 호출자가 준 minRemainingDays 만 — 총기간 T(제조일) 입력이 아직 없어 품목군 정책값은 계산하지 않는다.
+    0.4.0(2026-11-25): 재고 스냅샷 조회(snapshots) 구현 — LOT 마다 위치별 현물·예약(locations[]), 안전량 미설정이면 available null(0 이 아님).
     0.3.0(2026-11-25): 내부 이동 전기(move-postings) 구현 — 줄에 allocationId 를 주면 그 할당의 예약을 함께 옮긴다(팔레트 랙 → 피킹 선반 보충, 칠곡 CDC-7).
 servers:
   - url: /api/v1
@@ -627,6 +628,11 @@ paths:
     get:
       tags: [availability]
       summary: '[replenishment→cdc-inventory] 재고 스냅샷 조회 (InventorySnapshotPublished와 같은 내용·버전)'
+      description: |
+        (0.4.0) 지금 장부를 그대로 읽은 조회 사본(snapshotId = 이번 조회 식별, 저장하지 않음). sku 를 비우면 센터에 현물 행이 있는 SKU 전부(SKU 오름차순).
+        가용 조회와 달리 취급 OFF·안전량 미설정이어도 거절하지 않는다 — handlingActive=false, safety.state NOT_SET 이면 available 은 null.
+        lots[].locations[] 에 위치·품질 상태별 현물(onHand)·예약(reserved)을 준다(칠곡 시뮬레이터 실서버 모드가 칸별 재고를 그린다).
+        지난 snapshotId 는 보관하지 않아 404.
       operationId: getSnapshot
       parameters:
         - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
@@ -811,7 +817,7 @@ components:
         reserved: { type: integer, minimum: 0, description: R 이관 예약 }
         held: { type: integer, minimum: 0 }
         safety: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
-        available: { type: integer, minimum: 0 }
+        available: { type: [integer, 'null'], minimum: 0, description: '안전량 미설정(safety NOT_SET)이면 null — 0 으로 대신하지 않는다(스냅샷)' }
         transit: { type: integer, minimum: 0, description: 출발·미대사 Transit 합 }
         handlingActive: { type: boolean, description: 센터 취급 활성 }
         lots:
@@ -826,6 +832,16 @@ components:
               eligible: { type: integer }
               reserved: { type: integer }
               held: { type: integer }
+              locations:
+                type: array
+                description: 위치·품질 상태별 현물·예약(0.4.0 — 스냅샷만, 가용 조회는 비움)
+                items:
+                  type: object
+                  properties:
+                    locationCode: { type: string }
+                    qualityState: { $ref: '#/components/schemas/QualityState' }
+                    onHand: { type: integer }
+                    reserved: { type: integer }
     Allocation:
       type: object
       properties:

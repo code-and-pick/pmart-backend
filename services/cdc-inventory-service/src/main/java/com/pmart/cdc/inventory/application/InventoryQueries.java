@@ -24,6 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class InventoryQueries {
 
+  /** 위치·품질 상태별 현물·예약(스냅샷만). */
+  public record Place(String locationCode, String qualityState, int onHand, int reserved) {}
+
   public record LotAvailability(
       String lot,
       @Nullable LocalDate expiresAt,
@@ -31,7 +34,8 @@ public class InventoryQueries {
       String identification,
       int eligible,
       int reserved,
-      int held) {}
+      int held,
+      List<Place> places) {}
 
   public record AvailabilityView(
       String cdcId,
@@ -41,10 +45,14 @@ public class InventoryQueries {
       int eligible,
       int reserved,
       int held,
-      SafetyRow safety,
-      int available,
+      @Nullable SafetyRow safety,
+      @Nullable Integer available,
       int transit,
+      boolean handlingActive,
       List<LotAvailability> lots) {}
+
+  public record Snapshot(
+      String snapshotId, String cdcId, Instant asOf, List<AvailabilityView> items) {}
 
   public record CommitView(CommitRow commit, List<Delta> deltas) {}
 
@@ -55,12 +63,19 @@ public class InventoryQueries {
   private final StockStore stock;
   private final LedgerStore ledgerStore;
   private final SkuGate gate;
+  private final SkuHandlingService handlings;
   private final Ledger ledger;
 
-  public InventoryQueries(StockStore stock, LedgerStore ledgerStore, SkuGate gate, Ledger ledger) {
+  public InventoryQueries(
+      StockStore stock,
+      LedgerStore ledgerStore,
+      SkuGate gate,
+      SkuHandlingService handlings,
+      Ledger ledger) {
     this.stock = stock;
     this.ledgerStore = ledgerStore;
     this.gate = gate;
+    this.handlings = handlings;
     this.ledger = ledger;
   }
 
@@ -69,9 +84,40 @@ public class InventoryQueries {
   public AvailabilityView availability(String cdcId, String sku) {
     gate.requireAllocatable(cdcId, List.of(sku));
     SafetyRow safety = gate.requireSafety(cdcId, sku);
+    return compute(cdcId, sku, safety, true, false);
+  }
+
+  /**
+   * 재고 스냅샷(0.4.0) — 지금 장부의 조회 사본. 취급 OFF·안전량 미설정도 거절하지 않고(available null), LOT 마다 위치별 현물·예약을 준다.
+   * sku 를 비우면 현물 행이 있는 SKU 전부.
+   */
+  @Transactional(readOnly = true)
+  public Snapshot snapshot(String cdcId, @Nullable String sku) {
+    List<String> skus = sku == null ? stock.skusWithStock(cdcId) : List.of(sku);
+    Map<String, Boolean> flags = handlings.enabledFlags(cdcId, skus);
+    List<AvailabilityView> items = new ArrayList<>();
+    for (String s : skus) {
+      items.add(
+          compute(
+              cdcId,
+              s,
+              stock.safety(cdcId, s).orElse(null),
+              Boolean.TRUE.equals(flags.get(s)),
+              true));
+    }
+    return new Snapshot(Ledger.newId("SNAP"), cdcId, ledger.now(), items);
+  }
+
+  private AvailabilityView compute(
+      String cdcId,
+      String sku,
+      @Nullable SafetyRow safety,
+      boolean handlingActive,
+      boolean withPlaces) {
     LocalDate today = ledger.today();
     Map<String, int[]> perLot = new LinkedHashMap<>(); // eligible, reserved, held
     Map<String, BalanceRow> lotInfo = new LinkedHashMap<>();
+    Map<String, List<Place>> places = new LinkedHashMap<>();
     int onHand = 0;
     int e = 0;
     int rOnEligible = 0;
@@ -80,6 +126,11 @@ public class InventoryQueries {
     for (BalanceRow b : stock.balances(cdcId, sku)) {
       int[] acc = perLot.computeIfAbsent(b.lot(), k -> new int[3]);
       lotInfo.putIfAbsent(b.lot(), b);
+      if (withPlaces) {
+        places
+            .computeIfAbsent(b.lot(), k -> new ArrayList<>())
+            .add(new Place(b.locationCode(), b.qualityState(), b.onHand(), b.reserved()));
+      }
       onHand += b.onHand();
       reserved += b.reserved();
       acc[1] += b.reserved();
@@ -103,7 +154,8 @@ public class InventoryQueries {
               b.identification(),
               x.getValue()[0],
               x.getValue()[1],
-              x.getValue()[2]));
+              x.getValue()[2],
+              places.getOrDefault(x.getKey(), List.of())));
     }
     return new AvailabilityView(
         cdcId,
@@ -114,8 +166,9 @@ public class InventoryQueries {
         reserved,
         held,
         safety,
-        Fefo.cap(e, rOnEligible, safety.qty()),
+        safety == null ? null : Fefo.cap(e, rOnEligible, safety.qty()),
         stock.transitQty(cdcId, sku),
+        handlingActive,
         lots);
   }
 

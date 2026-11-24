@@ -121,3 +121,9 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 끝나면 `npm run export:locations` 로 위치 목록을 다시 내보내 커밋을 알려 달라 — 백엔드 사본·`ChilgokLayoutIT`·시드를 바꾼다.
 - 시작 재고: 실제 LAN SKU(기록상 504개, MFC 와 같음)만 칸에 들어간다(백엔드 시드 — 다음 백엔드 PR). 실서버 모드에서 칸별 재고는 cdc-inventory 조회로 읽게 한다(다음 백엔드 PR 에서 조회 경로를 알린다).
 
+## 공지 — 칸별 재고 조회 경로 (cdc-inventory 0.4.0, 2026-11-25)
+- `GET /internal/snapshots?cdcId=CDC01`(내부 — LAN 직접, CDC-9). sku 를 주면 그 SKU 만, 비우면 현물 행이 있는 SKU 전부(오름차순).
+- 항목 = 가용 조회와 같은 모양 + **`lots[].locations[]`**(locationCode·qualityState·onHand·reserved) — 칸별로 무슨 SKU·LOT 가 몇 개, 얼마나 예약됐는지.
+- 취급 OFF·안전량 미설정이어도 거절하지 않는다(`handlingActive`, `safety.state` NOT_SET 이면 `available` null). 매번 지금 장부(보관하는 스냅샷 없음).
+- 주기 조회 권장: 작업에 나온 SKU 만 `sku=` 로, 전체는 드물게(시작·재동기화 때) — MFC SIM-5 와 같은 원칙.
+
