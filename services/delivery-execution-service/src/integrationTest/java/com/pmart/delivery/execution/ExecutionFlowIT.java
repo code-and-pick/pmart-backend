@@ -3554,11 +3554,28 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(after.path("items").get(0).path("applications").get(0).path("amount").asInt())
         .isEqualTo(10000);
 
+    // 같은 오배송 배송에 다른 사건(환불용)이 또 와서 그 회수를 운영자가 접어도 차감은 배송당 한 번
+    String refundCase = "CASE-" + UUID.randomUUID();
+    misdelivery(refundCase, origin, rider, "RIDER");
+    awaitSql("SELECT count(*) FROM misdelivery_fault WHERE case_id = '" + refundCase + "'");
+    String refundRecovery = recoveryEnded(refundCase, origin, order, "CANCELLED_OPERATOR");
+    awaitSql(
+        "SELECT count(*) FROM execution_delivery WHERE delivery_id = '"
+            + refundRecovery
+            + "' AND state = 'CANCELLED'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_deduction WHERE origin_delivery_id = ?",
+                Integer.class,
+                origin))
+        .isEqualTo(1);
+
     // 시스템 귀책 사건의 회수 포기는 차감 없음
+    String sysOrigin = delivered(order, rider);
     String sysCase = "CASE-" + UUID.randomUUID();
-    misdelivery(sysCase, origin, rider, "SYSTEM");
+    misdelivery(sysCase, sysOrigin, rider, "SYSTEM");
     awaitSql("SELECT count(*) FROM misdelivery_fault WHERE case_id = '" + sysCase + "'");
-    String sysRecovery = recoveryAbandoned(sysCase, origin, order);
+    String sysRecovery = recoveryAbandoned(sysCase, sysOrigin, order);
     awaitSql(
         "SELECT count(*) FROM execution_delivery WHERE delivery_id = '"
             + sysRecovery
@@ -3568,11 +3585,16 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 "SELECT count(*) FROM rider_deduction WHERE case_id = ?", Integer.class, sysCase))
         .isZero();
 
+    // 귀책 사본 전 옛 사건(LAN 28767701): 원래 배송 수행료가 "라이더 귀책 오배송"으로 막혀 있으면 RIDER — 운영자 취소로 끝나도 차감,
     // 이의 없이 기한이 지나면 확정
+    String oldOrigin = delivered(order, rider);
+    awaitSql("SELECT count(*) FROM rider_earning WHERE delivery_id = '" + oldOrigin + "'");
+    jdbc.update(
+        "UPDATE rider_earning SET settlement_state = 'ADJUSTED', calculable = false, note ="
+            + " '라이더 귀책 오배송(사건 CASE-OLD) — 배달료 미지급' WHERE delivery_id = ?",
+        oldOrigin);
     String lateCase = "CASE-" + UUID.randomUUID();
-    misdelivery(lateCase, origin, rider, "RIDER");
-    awaitSql("SELECT count(*) FROM misdelivery_fault WHERE case_id = '" + lateCase + "'");
-    recoveryAbandoned(lateCase, origin, order);
+    recoveryEnded(lateCase, oldOrigin, order, "CANCELLED_OPERATOR");
     awaitSql("SELECT count(*) FROM rider_deduction WHERE case_id = '" + lateCase + "'");
     jdbc.update(
         "UPDATE rider_deduction SET objection_deadline = now() - interval '1 minute' WHERE case_id ="
@@ -3583,6 +3605,16 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT state FROM rider_deduction WHERE case_id = ?", String.class, lateCase))
         .isEqualTo("CONFIRMED");
+  }
+
+  /** 라이더가 전달 완료한 배송. @return 배송 ID */
+  String delivered(String order, String rider) {
+    String id = "DLV-" + UUID.randomUUID();
+    pickedUp(id, "SHP-" + UUID.randomUUID(), order, rider);
+    post(id, "customer-arrivals", rider, Map.of());
+    String photo = body(upload(id, rider, JPEG)).path("photoRef").asString();
+    post(id, "completions", rider, completion(List.of(photo), Instant.now().toString()));
+    return id;
   }
 
   void misdelivery(String caseId, String deliveryId, String riderId, String fault) {
@@ -3612,6 +3644,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
 
   /** 회수 배송 생성 → dispatch 의 하루 포기(픽업 전 취소 RECOVERY_ABANDONED). @return 회수 배송 ID */
   String recoveryAbandoned(String caseId, String origin, String order) {
+    return recoveryEnded(caseId, origin, order, "RECOVERY_ABANDONED");
+  }
+
+  /** 회수 배송 생성 → 픽업 전 취소(reason). @return 회수 배송 ID */
+  String recoveryEnded(String caseId, String origin, String order, String reason) {
     String rc = "DLV-rc-" + UUID.randomUUID();
     Map<String, Object> created = new java.util.LinkedHashMap<>();
     created.put("deliveryId", rc);
@@ -3629,7 +3666,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     cancel.put("deliveryId", rc);
     cancel.put("orderId", order);
     cancel.put("assignmentVersion", 0);
-    cancel.put("reason", "RECOVERY_ABANDONED");
+    cancel.put("reason", reason);
     cancel.put("purpose", "MISDELIVERY_RECOVERY");
     cancel.put("caseId", caseId);
     cancel.put("cancelledAt", Instant.now().toString());

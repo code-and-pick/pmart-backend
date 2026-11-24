@@ -33,9 +33,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <ol>
  *   <li>case {@code MisdeliveryConfirmed} → 귀책 사본({@code misdelivery_fault}, 사건마다 처음 값).
- *   <li>dispatch {@code DeliveryCancelledBeforePickup} reason RECOVERY_ABANDONED(회수 배송 하루 포기) + 귀책
- *       RIDER → 그 오배송 배송의 라이더에게 차감 예정(PENDING_OBJECTION, 금액 = order 결제 금액 − 배달비, 이의 기한 5일) +
- *       RiderDeductionScheduled. 하루 안에 회수되면 포기가 없으니 차감도 없다.
+ *   <li>오배송 회수 배송이 상품을 못 가져오고 끝나면(dispatch {@code DeliveryCancelledBeforePickup} — 하루 포기
+ *       RECOVERY_ABANDONED 든 운영자 취소든, 2026-11-24 사용자) 귀책 RIDER 면 그 오배송 배송의 라이더에게 차감
+ *       예정(PENDING_OBJECTION, 금액 = order 결제 금액 − 배달비, 이의 기한 5일) + RiderDeductionScheduled. 오배송된 배송
+ *       하나당 한 번(V28). 귀책 사본이 없는 옛 사건은 원래 배송 수행료의 "라이더 귀책 오배송" 미지급 기록으로 본다. MFC 에 반납되면(회수 성공) 차감 없음.
  *   <li>라이더 이의(기한 전 한 번) → OBJECTED. 지원센터(RIDER_OPS·OPERATOR_ADMIN) 받아들임 → CANCELLED, 거절 →
  *       CONFIRMED. 이의 없이 기한이 지나면 CONFIRMED({@link #confirmDue}).
  *   <li>확정 차감은 지급 묶음이 지급 중·지급됨이 될 때 먼저 확정된 것부터 뺀다({@link #applyToBatch} — {@link PayoutResults}),
@@ -155,7 +156,7 @@ public class RiderDeductions {
     }
     jdbc.update(
         "INSERT INTO misdelivery_fault (case_id, origin_delivery_id, rider_id, fault, recorded_at)"
-            + " VALUES (?,?,?,?,?) ON CONFLICT (case_id) DO NOTHING",
+            + " VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
         caseId,
         originDeliveryId,
         riderId,
@@ -178,8 +179,17 @@ public class RiderDeductions {
             "SELECT origin_delivery_id, rider_id, fault FROM misdelivery_fault WHERE case_id = ?",
             (rs, i) -> new String[] {rs.getString(1), rs.getString(2), rs.getString(3)},
             caseId);
+    if (fault.isEmpty() && recovery.originDeliveryId() != null) {
+      // 귀책 사본(V27) 전에 받은 오배송 확인 — 원래 배송 수행료를 "라이더 귀책 오배송"으로 막은 기록이 있으면 RIDER 로 본다(LAN 28767701)
+      fault =
+          jdbc.query(
+              "SELECT delivery_id, rider_id, 'RIDER' FROM rider_earning WHERE delivery_id = ? AND note LIKE"
+                  + " '라이더 귀책 오배송%' LIMIT 1",
+              (rs, i) -> new String[] {rs.getString(1), rs.getString(2), rs.getString(3)},
+              recovery.originDeliveryId());
+    }
     if (fault.isEmpty()) {
-      log.warn("회수 배송 {} 포기 — 사건 {} 의 귀책 사본이 없어 차감 안 함(지원센터 확인)", recovery.deliveryId(), caseId);
+      log.warn("회수 배송 {} 끝 — 사건 {} 의 귀책을 몰라 차감 안 함(지원센터 확인)", recovery.deliveryId(), caseId);
       return;
     }
     if (!"RIDER".equals(fault.get(0)[2])) {
@@ -211,7 +221,7 @@ public class RiderDeductions {
             "INSERT INTO rider_deduction (deduction_id, case_id, origin_delivery_id, delivery_number,"
                 + " recovery_delivery_id, order_id, rider_id, amount, remaining, state,"
                 + " objection_deadline, created_at, updated_at) VALUES"
-                + " (?,?,?,?,?,?,?,?,?,'PENDING_OBJECTION',?,?,?) ON CONFLICT (case_id) DO NOTHING",
+                + " (?,?,?,?,?,?,?,?,?,'PENDING_OBJECTION',?,?,?) ON CONFLICT DO NOTHING",
             id,
             caseId,
             originId,
@@ -225,7 +235,7 @@ public class RiderDeductions {
             Timestamp.from(now),
             Timestamp.from(now));
     if (n == 0) {
-      return; // 같은 사건 — 이미 있음
+      return; // 같은 사건이나 같은 오배송 배송 — 이미 있음(배송당 한 번)
     }
     Row r = one("WHERE deduction_id = ?", id).orElseThrow();
     events.deduction(

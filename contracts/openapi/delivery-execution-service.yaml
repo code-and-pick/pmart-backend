@@ -1587,8 +1587,8 @@ paths:
       summary: (0.41.0) 오배송 정산 차감 목록 (라이더 운영·관리자·상담원 보기)
       x-added-in: '2026-11-24'
       description: |
-        ADR-0086(사용자 결정 2026-11-24 — DE-9). 라이더 귀책 오배송의 회수 배송이 하루 안에 끝나지 않아 포기되면(dispatch `DeliveryCancelledBeforePickup` reason
-        RECOVERY_ABANDONED) 그 오배송 배송의 라이더에게 차감 예정이 생긴다. 금액 = order 결제 금액 − 배달비(`approvedAmount − deliveryTip`, 봉투값 포함·쿠폰 뒤).
+        ADR-0086(사용자 결정 2026-11-24 — DE-9). 라이더 귀책 오배송의 회수 배송이 상품을 못 가져오고 끝나면(dispatch `DeliveryCancelledBeforePickup` — 하루 포기
+        RECOVERY_ABANDONED 든 운영자 취소든, 2026-11-24 사용자) 그 오배송 배송의 라이더에게 차감 예정이 생긴다. 오배송된 배송 하나당 한 번. 금액 = order 결제 금액 − 배달비(`approvedAmount − deliveryTip`, 봉투값 포함·쿠폰 뒤).
         이의 기간 5일(PENDING_OBJECTION) → 이의(OBJECTED) → 지원센터 받아들임(CANCELLED)·거절(CONFIRMED), 이의 없이 기한이 지나도 CONFIRMED.
         확정된 차감은 다음 지급 묶음에서 빼고 모자라면 다음 묶음으로(상한 없음, `remaining` = 남은 금액). 최근 순 200건.
         `riderId` 를 주면 `remainingTotal`(그 라이더의 확정·남은 차감 합 + 아직 확정 전 금액은 `pendingTotal`). RIDER_OPS·OPERATOR_ADMIN·CS_AGENT(그 밖 403).

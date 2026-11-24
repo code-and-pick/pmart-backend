@@ -319,9 +319,9 @@ public class ExecutionEventHandler {
         }
         store.setState(deliveryId, "CANCELLED", now);
         HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
-        if (RiderDeductions.RECOVERY_ABANDONED.equals(p.path("reason").asString(""))
-            && "MISDELIVERY_RECOVERY".equals(d.purpose())) {
-          deductions.onRecoveryAbandoned(d, p.path("caseId").asString(null)); // ADR-0086
+        if ("MISDELIVERY_RECOVERY".equals(d.purpose())) {
+          // ADR-0086(2026-11-24 사용자 "회수 못 했잖아 … 차감해야지"): 회수가 상품을 못 가져오고 끝나면 — 하루 포기든 운영자 취소든 같게
+          deductions.onRecoveryAbandoned(d, p.path("caseId").asString(null));
         }
         store.history(
             deliveryId,
