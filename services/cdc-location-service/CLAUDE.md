@@ -27,4 +27,4 @@
   - 만들 때는 사건을 내지 않는다.
 - 코드 문법(`domain/LocationCode`): 모든 센터 = 계약 패턴 + 첫 구간 = centerId. **칠곡 `CDC01`** = `docs/simulator/cdc/chilgok-dc.md` CDC-3~5·7 — 구역 글자 ↔ 온도대(A 냉동·B 냉장·C~H 상온), 통로 01~60 팔레트 랙(층 5~7·베이 01~40·단 1~4·슬롯 1~2·RESERVE/QUARANTINE/TEMPORARY), 61~89 피킹 선반(층 5~7·베이 01~·단 1~5·칸 1~3·PICK_FACE), 90 DOCK(B1)·91·92 STAGING(5~7, 단 0·슬롯 1), 93~99 비움. 층 배치(어느 층에 어느 구역)는 검사하지 않는다 — 데이터.
 - 피킹면 최소·목표량은 PICK_FACE 만, 기본값 없음(비우면 미설정).
-- 아직 501: 적치 후보·공간 예약·도크 예약. 게이트웨이·LAN 배치·Helm 미등록. 칠곡 위치 목록 사본 `docs/simulator/cdc/layout/chilgok-locations.json`(23,076칸)은 `ChilgokLayoutIT` 가 실제 규칙으로 모두 넣어 본다 — 사본을 바꾸면 이 시험이 같이 확인한다. 넣기 스크립트 `deploy/lan/seed/cdc_locations.py`.
+- 아직 501: 적치 후보·공간 예약·도크 예약. 게이트웨이·LAN 배치·Helm 미등록. 칠곡 위치 목록 사본 `docs/simulator/cdc/layout/chilgok-locations.json`(32,436칸)은 `ChilgokLayoutIT` 가 실제 규칙으로 모두 넣어 본다 — 사본을 바꾸면 이 시험이 같이 확인한다. 넣기 스크립트 `deploy/lan/seed/cdc_locations.py`.

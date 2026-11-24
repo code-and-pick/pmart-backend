@@ -5,4 +5,4 @@
 - 범위(`../scope.md` S-3·S-6): **출고·피킹·상차만**. 입고·재고 조정·품질·수요예측은 넣지 않는다. CDC 재고는 시작 재고(시드).
 - 근거 업무 문서: `docs/business/WMS-business-logic.md`(정본) + `docs/business/WMS-dc-wave-business-logic.md`(Wave·지역 피킹·분배·라인·보충 MOV — 2026-11-24 사용자 "근거로 삼고 넣어"). MFC 문서(`MFC-business-logic.md`)와 섞지 않는다.
 - 백엔드 현황: CDC 쪽은 `cdc-inventory-service` 만 있다. 출고·피킹·상차를 맡을 `cdc-outbound`·`cdc-location` 은 없다(service-map). 이어지는 운송은 TMS(scope S-4·S-7).
-- 도면: CDC 도 센터마다 다르다(ADR-0050 과 같은 원칙). 시뮬레이터 층별 도면(R-05)을 받으면 이 폴더 `layout/` 에 둔다. 위치 목록 사본 `layout/chilgok-locations.json`(2026-11-25, 23,076칸 — chilgok-dc.md CDC-7). 참고 문서(사용자 제공 구축 명세서)는 `reference/`.
+- 도면: CDC 도 센터마다 다르다(ADR-0050 과 같은 원칙). 시뮬레이터 층별 도면(R-05)을 받으면 이 폴더 `layout/` 에 둔다. 위치 목록 사본 `layout/chilgok-locations.json`(2026-11-25, 32,436칸 — chilgok-dc.md CDC-7). 참고 문서(사용자 제공 구축 명세서)는 `reference/`.

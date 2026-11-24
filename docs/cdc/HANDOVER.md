@@ -22,7 +22,7 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 서비스: `cdc-inbound`·`cdc-quality`. cdc-outbound 출발 준비·미출발 취소, 피킹 부족 즉시 해제·재할당, TRF 새 버전 대체.
 - cdc-outbound 가 TMS 에 줄 것(TMS 정본 2.1, chilgok-dc.md CDC-8): 21:30 출고 작업 완료·22:00 MFC·온도대별 R/T 수(박스 스캔 → R/T 매핑), 방문 역순 상차 대조, 실제 출발 때만 TOUT. 회수(빈 R/T·회수품) 반품 입고는 cdc-inbound.
 - cdc-outbound 게이트웨이: `/api/v1/tasks/**` 는 mfc-fulfillment 라우트가 잡고 있다(PR 백엔드 #443 댓글) — cdc-outbound 를 만들 때 Task 경로를 `/cdcs/{cdcId}/tasks…` 처럼 겹치지 않게 바꾸고 게이트웨이 허용 목록·라우트를 같이 요청한다.
-- 칠곡 위치를 실제로 넣는 일 — 목록 사본(23,076칸)·스크립트 `deploy/lan/seed/cdc_locations.py` 는 있다. cdc-location LAN 배치 뒤 PC1 이 `--apply`. 오토스토어 빈 코드(R-05)는 아직 없다.
+- 칠곡 위치를 실제로 넣는 일 — 목록 사본(32,436칸 — 선반 12,480, B-1 뒤 dd3d185)·스크립트 `deploy/lan/seed/cdc_locations.py` 는 있다. cdc-location LAN 배치 뒤 PC1 이 `--apply`. 오토스토어 빈 코드(R-05)는 아직 없다.
 - cdc-inventory 의 MFC 수령 확인(Transit −r)·손실·이동·품질·조정·스냅샷·일일 대사.
 - 품목군 최소 잔여일수(총기간 T 의 30%·20%) — 제조일 입력이 없어 아직 계산하지 않음(할당 요청의 `minRemainingDays` 와 당일 차단만).
 - 승인량 초과 할당 검사 — 승인 정본(replenishment)이 없음.
@@ -51,3 +51,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: cdc-outbound 서비스 첫 판(0.3.0 — 인수·할당·Wave·Task·피킹) — PR `cdc/outbound-service`. 출발 쪽은 다음 PR.
 - 2026-11-25: cdc-outbound 0.4.0(분류·검품·상차·출발 검증 → TOUT·매니페스트) — PR `cdc/outbound-departure`. R-15 회신(SIMULATED 도 TOUT).
 - 2026-11-25: 사용자 "MFC랑 같은 sku"·"10,900 설계에 맞춰 선반 확장" — CDC-7 기록, 시뮬레이터에 선반 확장·위치 목록 재내보내기 요청(B-1). 시작 재고는 실제 LAN SKU 만(시드 다음 PR).
+- 2026-11-25: 위치 목록 사본을 시뮬레이터 dd3d185(B-1 선반 확장)로 — 32,436칸, PR `cdc/chilgok-locations-v2`.
