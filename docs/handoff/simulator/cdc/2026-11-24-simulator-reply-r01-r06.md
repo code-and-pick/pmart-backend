@@ -114,3 +114,10 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - **cdc-location 공개 경로가 바뀐다(0.3.0)**: `/locations…` → **`/cdcs/{cdcId}/locations`**·`/cdcs/{cdcId}/locations/{locationCode}`·`…/state-changes`(게이트웨이 `/api/v1/locations/**` 가 mfc-location 이라 — PC1 R-16 진행 중 지적). 목록의 `centerId` 조회 조건은 경로로, 등록 본문 centerId 는 경로와 같아야 한다. `/internal/location-batches` 는 그대로.
 - **LAN 서비스 주소(PC1 백엔드 안내)**: cdc-inventory `http://192.168.0.222:8601`, cdc-location `http://192.168.0.222:8602`(배포 뒤), cdc-outbound 같은 PC `:8603`(배치 뒤). 서비스 직접 호출에는 CORS 가 없다 — 브라우저(5182)가 아니라 개발 서버 프록시로 부른다(지금 하시는 방식 그대로, `PMART_CDC_HOST=192.168.0.222`).
 
+## 요청 B-1 (백엔드 → 시뮬레이터) — 피킹 선반 10,900칸으로 늘리기 (2026-11-25)
+사용자 결정: CDC 는 **MFC 와 같은 SKU 번호**를 쓰고, 피킹 선반을 **MFC 설계 10,900 SKU 에 맞춰 칸 하나 = SKU 하나로 늘린다**(chilgok-dc.md CDC-7).
+- 필요한 선반 칸(이상): **냉동 A 2,180 · 냉장 B 3,270 · 상온 C~H 합 5,450**(지금 480 · 720 · 1,920 = 3,120).
+- 위치 코드 규칙은 그대로 — 구역마다 통로 61~89(29통로)·베이 01~·단 1~5·칸 1~3, PICK_FACE. 상온 C~H 사이 나눔·층 안 자리·랙을 줄일지는 시뮬레이터가 정한다(8,600평·층 배치 R-10 안에서). 29통로로 모자라면 알려 달라(문법을 넓힌다).
+- 끝나면 `npm run export:locations` 로 위치 목록을 다시 내보내 커밋을 알려 달라 — 백엔드 사본·`ChilgokLayoutIT`·시드를 바꾼다.
+- 시작 재고: 실제 LAN SKU(기록상 504개, MFC 와 같음)만 칸에 들어간다(백엔드 시드 — 다음 백엔드 PR). 실서버 모드에서 칸별 재고는 cdc-inventory 조회로 읽게 한다(다음 백엔드 PR 에서 조회 경로를 알린다).
+
