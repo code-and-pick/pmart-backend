@@ -16,6 +16,12 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - [ ] 결제 모니터링 초안(작업 트리 payment-service·monitoring 미커밋) — 아래 §0 줄과 같음.
 - [x] **칠곡 DC `CDC01` center-master 등록** — 2026-11-25 LAN 끝(`deploy/lan/seed/cdc_center.py --apply`, 승인 AP-858d6c29, version 1). local 은 로컬 스택 띄울 때 같은 스크립트(로컬 토큰) —(cdc 세션 요청 2026-11-24, CDC 시뮬레이터 R-01) — `service-requests/center-master-service.md` CM-3. 값은 `docs/simulator/cdc/chilgok-dc.md` §1.
 - [x] **cdc-location-service 설정 정본**(2026-11-25 PR 세션 pmart-config 9ae3fbb, #445 병합 전) — pmart-config 에 `cdc-location-service.yml`(시험 사본 `services/cdc-location-service/src/integrationTest/resources/pmart-config/cdc-location-service.yml` 과 같게 — 포트 8602·`pmart.messaging.domain: cdc`·소비 없음). LAN 배치·게이트웨이 라우트는 시뮬레이터 실서버 모드 때 cdc 세션이 따로 요청(cdc 세션 2026-11-25).
+- [ ] **CDC 시뮬레이터 실서버 모드 준비(R-16, cdc 세션 2026-11-25)** — 근거 `docs/simulator/cdc/chilgok-dc.md` CDC-9(사용자 "LAN 서비스 직접 호출"), 시뮬레이터 `docs/backend-requests.md` R-16.
+  1. **LAN 배치**: cdc-inventory·cdc-location 먼저(설정 정본 있음), 이어서 cdc-outbound(#452 병합 뒤 — 정본 `cdc-outbound-service.yml` 과 `pmart.outbound.cdc-inventory-base-url`). 배치 뒤 시드 `deploy/lan/seed/cdc_locations.py --apply --approval-ref <BO-06>`(위치 23,076칸). 시작 재고·안전량 시드는 SKU 정해지면 cdc 세션이 스크립트로 준다.
+  2. **게이트웨이 라우트(공개 경로만 — `/internal/**` 차단은 그대로)**: cdc-outbound `/api/v1/waves/**`·`/api/v1/cdcs/*/tasks/**`·`/api/v1/cdcs/*/workers/*/next-tasks`, cdc-location `/api/v1/locations/**`(cdc-inventory `/api/v1/cdcs/*/sku-handlings/**`·`sku-handling-batches/**` 는 이미 있음). fleet·transport-execution 은 TMS 쪽 결정과 함께.
+  3. **시뮬레이터 → LAN 내부 경로 직접**: 시뮬레이터 PC 에서 cdc-outbound·cdc-inventory 서비스 포트(8603·8601)에 닿게(방화벽·주소 안내). 게이트웨이로 `/internal` 을 열지 않는다.
+  4. **CORS** `http://localhost:5182`(R-06).
+  5. **시험 계정(칠곡 `CDC01`)**: 운영자 1명(제안 `claude-cdc-sup`)과 가상 작업자(제안 `cdcw-fc-01~10` FC·`cdcw-dl-01~05` 분배/라인·`cdcw-qc-01~05` 검품·`cdcw-ld-01~05` 상차·`cdcw-fk-01~03` 지게차) — 센터 클레임 `CDC01`. CDC 역할 이름은 `staff-roles.md` 에 아직 없음(제안 `CDC_SUPERVISOR`·`CDC_WORKER` — 지금 CDC 서비스는 역할을 보지 않고 운영자 토큰·centers 만 본다). 만들면 `lan-test-accounts.md` 에 적고 시뮬레이터 세션에 이름을 알린다(토큰 발급 흐름을 그 이름으로 맞춤).
 
 ## 0. 2026-11-21 정리 — 사용자 "9시 이후에 할게"
 - [x] **LAN 행사 승인 2건(사용자)** — 2026-11-23 사용자 승인, 두 행사 APPROVED(기간 안). 대기 보상·가입 지급 0건이라 발급 없음(다음 배차 불가 취소·새 가입부터). — 백오피스 승인 화면, MARKETING·OPERATOR_ADMIN: 배차 불가 보상 2,000원 `AP-477d415d-…`(행사 `PRM-f1be8d6d-…`), 가입 축하 3,000원 `AP-5b307c83-…`(`PRM-45734b27-…`). 내가 다른 시험 계정으로 승인하는 것은 자동 모드가 막음(감독 우회). 승인 뒤 PC 1: 행사 RUNNING·대기 보상 발급·"보상 쿠폰이 도착했어요" 알림 확인.

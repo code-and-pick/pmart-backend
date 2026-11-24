@@ -102,6 +102,21 @@ WMS 원문 0.6 대로 자동화 설비 자체는 구현하지 않고 **가상 �
 - 흐름(시뮬레이터 제안, 백엔드 반영 예정): 할당은 FEFO, 같은 LOT 이면 선반을 먼저 잡는다. 팔레트에 잡힌 예약은 선반 보충(MOV) 뒤에만 Wave 를 배포한다 → cdc-inventory `move-postings`(지금 501)가 필요하다.
 - 1단 피킹면이 SKU 수보다 적은 문제(명세서 3장: 1단 4,960 < 10,000 SKU)는 랙 1단을 피킹면으로 쓰지 않으므로 생기지 않는다 — 선반 칸 수가 피킹 SKU 수를 정한다.
 
+### CDC-9 실서버 모드 — 없는 서비스 역할은 LAN 내부 경로 직접 (사용자 2026-11-25)
+- 시뮬레이터가 아직 없는 **보충 승인(replenishment)·TMS 역할**을 대신할 때는 게이트웨이를 거치지 않고 **LAN 서비스 주소로 `/internal/*` 을 직접** 부른다(사용자 2026-11-25 "LAN 서비스 직접 호출"). 게이트웨이의 `/internal/**` 차단은 그대로. 토큰 없이 `X-Source-System: pmart-cdc-simulation`(ADR-0026 — 신원 표시이지 권한 증명이 아님), 멱등 키는 늘.
+  MFC 시뮬레이터의 "`/internal/*` 안 부름" 원칙(SIM-4a)과 다르다 — CDC 는 위 상위 서비스가 아직 없어서다. 그 서비스가 생기면 그쪽 경로(사건·공개 API)로 바꾼다.
+- 내부로 부르는 것(역할 → 경로):
+
+| 시뮬레이터가 대신하는 역할 | 서비스 | 경로 |
+|---|---|---|
+| 보충 승인(TRF 승인) | cdc-outbound | `POST /internal/transfer-intakes`, `GET /internal/transfer-intakes/{trfId}` |
+| TMS 실제 출발 | cdc-outbound | `POST /internal/departure-validations`(다음 PR), `GET …/{departureId}`, `GET /internal/shipment-manifests/{trfId}`, `GET /internal/outbound-readiness` |
+| 센터 개시·현황 조회 | cdc-inventory | `GET /internal/availability`·`/internal/allocations/{id}`·`/internal/transits`·`/internal/commits/{id}`, `POST /internal/move-postings`(보충 MOV) |
+| 개시 시드(PC1 이 한 번) | cdc-inventory·cdc-location | `/internal/initial-balances`·`/internal/safety-stocks`·`/internal/location-batches` — 시드 스크립트로, 시뮬레이터가 부르지 않음 |
+
+- **게이트웨이(공개 — 직원 토큰)로 부르는 것**: cdc-outbound `/api/v1/waves/**`·`/api/v1/cdcs/*/tasks/**`·`/api/v1/cdcs/*/workers/*/next-tasks`(그리고 다음 PR 의 분류·검품·상차 결과), cdc-location `/api/v1/locations/**`, cdc-inventory `/api/v1/cdcs/*/sku-handlings/**`(이미 있음). CORS `http://localhost:5182`(R-06).
+- 계정·게이트웨이·CORS·LAN 배치는 PC1 백엔드 몫(R-16 — `docs/operations/pc1-todo.md`).
+
 ### CDC-6 공급 대상 MFC 와 지역 (사용자 2026-11-24 "MFC 5곳 전부에" — 2026-11-25 다시 확인, 대응표는 cdc-outbound)
 - **지금 공급 대상은 MFC 다섯 곳**(사용자 2026-11-25 "지금은 일단 공급대상 MFC 5곳으로 해"). TMS 정본의 26곳(충청·강원 9·경상·전라 17, `docs/business/TMS-business-logic.md` §4.1·§4.2)은 확장 계획이다 — 지금 CDC 설계·시뮬레이터는 다섯 곳만 쓴다.
 - **지역은 4지역 묶음**(사용자 2026-11-25 "일단 지역은 4지역 묶음(부산권·호남권·충청권·강원권)") — 같은 날 TMS 계획 그룹으로 바꿨던 것(#447)을 되돌림. 지역(Region — PDA 지역 바코드 단위)은 MFC 와 다른 개념이고(DC Wave §2-1), 대응표는 cdc-outbound 가 가진다.
@@ -131,7 +146,7 @@ WMS 원문 0.6 대로 자동화 설비 자체는 구현하지 않고 **가상 �
 
 - **운송 단위**: 적재 용량은 **롤테이너(R/T)**, 수량 검증은 **박스 바코드**. 간선 운송에 팔레트는 쓰지 않는다(TMS D-07) — 팔레트 랙(RESERVE)은 DC 안 보관 자리일 뿐 출고 단위가 아니다. 출고대기 91 은 R/T 자리, TOUT 줄의 `lpns` 는 박스(필요하면 R/T) 식별값.
 - 차량: 기본 5톤, 상온·냉장·냉동 차량 분리(지하 접안 90 의 구역 칸 = 차량 온도, CDC-5). 이관요청서(TRF) 1건 = 차량 1대(TMS 7.2).
-- **회수**(TMS D-11): 빈 R/T 와 OMS/CS 가 접수한 회수품이 MFC → DC 로 돌아온다 → WMS 반품 입고(cdc-inbound). 시뮬레이터 범위(출고·피킹·상차) 밖이라 아직 다루지 않는다.
+- **회수는 뺀다**(사용자 2026-11-25 "회수는 빼" — TMS 2.3 D-11 도 같음). 빈 R/T·회수품 운송·반품 입고를 만들지 않는다. 운행은 칠곡 복귀까지만.
 - 시각은 센터 달력·설정값으로 둔다(코드에 고정하지 않음). 저장은 UTC, 판정은 Asia/Seoul(ADR-0010).
 
 ## 4. 남은 일
