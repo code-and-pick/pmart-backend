@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: case-service
-  version: 0.40.0
+  version: 0.40.1
   description: |
+    **0.40.1(2026-11-24 — PC 1 #423 검토 후속)**: API 모양 변화 없음. 라이더 문의 접수 때 운행 센터를 읽는 rider `GET /riders/me` 호출을 연결 0.5초·응답 2초로 줄임(서비스 기본 1초·5초) — 넘으면 기다리지 않고 센터 없이 받는다.
     **0.40.0(2026-11-24 — R-17 웹 요청, 사용자 "b 로 하고 라이더는 운행 센터로")**: 직원 `GET /inquiries?centerId=`(보기 거르기, 권한 그대로) + 목록 줄 `centerId`.
       고객 문의 센터 = 주문 이행 센터(order mfcId — 받을 때 저장, 그 전 문의는 서버가 order 원장으로 한 번 채움), 라이더 문의 센터 = **접수 때 운행 센터**(rider `GET /riders/me` operating.mfcId — 라이더 본인 토큰,
       나중에 바뀌어도 그대로). **센터가 없는 문의(주문 없는 고객 문의·운행 센터 없는 라이더·읽지 못함)는 centerId 를 줘도 늘 함께**(결정 b — 놓치지 않게, 줄 centerId null).

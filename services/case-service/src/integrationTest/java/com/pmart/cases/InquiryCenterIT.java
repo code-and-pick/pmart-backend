@@ -162,6 +162,32 @@ class InquiryCenterIT extends PostgresKafkaContainerSupport {
   }
 
   @Test
+  void slowRiderServiceDoesNotHoldRiderInquiry() {
+    // 0.40.1: rider-service 가 응답 시간 제한(2초)보다 늦으면 기다리지 않고 센터 없이 받는다
+    String suffix = UUID.randomUUID().toString().substring(0, 6);
+    String admin = TestJwt.operator("admin-s", List.of("OPERATOR_ADMIN"), List.of());
+    rider.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/riders/me"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withFixedDelay(4000)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"riderId\":\"RD-S\",\"operating\":{\"mfcId\":\"MFC-S\"}}")));
+    try {
+      long started = System.nanoTime();
+      String id = ask(TestJwt.rider("RD-S-" + suffix), null, "SETTLEMENT");
+      long tookMs = (System.nanoTime() - started) / 1_000_000;
+      assertThat(tookMs).as("2초 응답 시간 제한에서 끊김(4초 지연을 기다리지 않음)").isLessThan(3500);
+      assertThat(list(admin, "&centerId=OTHER-" + suffix).get(id).path("centerId").isString())
+          .as("센터 없음 — 늘 함께")
+          .isFalse();
+    } finally {
+      rider.resetAll();
+    }
+  }
+
+  @Test
   void pastInquiriesGetOrderCenterFromLedger() {
     String suffix = UUID.randomUUID().toString().substring(0, 6);
     String me = TestJwt.customer("CU-B-" + suffix);
