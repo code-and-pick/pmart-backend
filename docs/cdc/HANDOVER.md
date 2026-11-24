@@ -20,7 +20,7 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 ## 2. 없는 것
 - 서비스: `cdc-outbound`(시뮬레이터 범위에 먼저 필요), `cdc-inbound`·`cdc-quality`.
 - cdc-outbound 게이트웨이: `/api/v1/tasks/**` 는 mfc-fulfillment 라우트가 잡고 있다(PR 백엔드 #443 댓글) — cdc-outbound 를 만들 때 Task 경로를 `/cdcs/{cdcId}/tasks…` 처럼 겹치지 않게 바꾸고 게이트웨이 허용 목록·라우트를 같이 요청한다.
-- 칠곡 위치 전체 시드(랙·선반·출고대기·승강기 문·접안) — 시뮬레이터 배치 내보내기(R-13 회신) 또는 도면(R-05)을 받으면 만든다.
+- 칠곡 위치를 실제로 넣는 일 — 목록 사본(23,076칸)·스크립트 `deploy/lan/seed/cdc_locations.py` 는 있다. cdc-location LAN 배치 뒤 PC1 이 `--apply`. 오토스토어 빈 코드(R-05)는 아직 없다.
 - cdc-inventory 의 MFC 수령 확인(Transit −r)·손실·이동·품질·조정·스냅샷·일일 대사.
 - 품목군 최소 잔여일수(총기간 T 의 30%·20%) — 제조일 입력이 없어 아직 계산하지 않음(할당 요청의 `minRemainingDays` 와 당일 차단만).
 - 승인량 초과 할당 검사 — 승인 정본(replenishment)이 없음.

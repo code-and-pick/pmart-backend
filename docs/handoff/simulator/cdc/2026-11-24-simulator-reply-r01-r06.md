@@ -70,3 +70,7 @@
 - 통로 61~89 = 피킹 선반: 베이 = 유닛(01~), 단 1~5, 칸 1~3, **PICK_FACE**. 예 `CDC01-C-5-61-03-2-1` 은 맞다. 유닛 수는 백엔드가 정하지 않는다(베이 01 이상만 검사).
 - cdc-location 에 일괄 등록 `POST /internal/location-batches`(2,000행씩, 전부 또는 전무, `activate`)가 생긴다 — 시뮬레이터 배치(랙·선반·출고대기·승강기 문·지하 접안)를 이 경로로 넣을 수 있게, 실서버 모드 전에 배치를 위치 목록(JSON)으로 내보내 주시면 시드 스크립트를 만든다. 피킹면 최소·목표량은 기본값 없이 비워 둔다(정하면 같이 넣는다).
 - 할당 "같은 LOT 이면 선반 먼저"·"팔레트 예약은 선반 보충 뒤 Wave 배포"·move-postings 는 다음 cdc-inventory 작업에서 본다. 지금 cdc-inventory 할당은 위치 유형을 모른다(위치는 문자열) — 선반 우선을 하려면 cdc-location 조회나 위치 유형 사본이 필요하다.
+
+### R-13 덧붙임 — 위치 목록 받음 (2026-11-25)
+`docs/layout/chilgok-locations.json` @ 6eba59a 를 받아 화면 좌표만 뺀 표로 `docs/simulator/cdc/layout/chilgok-locations.json` 에 두었다. 23,076칸 모두 cdc-location 0.2.0 규칙을 통과한다(중복 0, 실제 서버로 12묶음 넣는 시험 `ChilgokLayoutIT`). 넣기 스크립트 `deploy/lan/seed/cdc_locations.py`(묶음마다 정해진 멱등 키 — 다시 돌려도 안전). 실제 LAN 에 넣는 것은 cdc-location 배치 뒤. 배치를 다시 내보내면 알려 주세요 — 사본과 시험을 같이 바꾼다.
+
