@@ -94,3 +94,8 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - `allocationId` 가 없으면 예약 안 된 현물만 옮긴다(부족하면 409 INSUFFICIENT_STOCK). 같은 위치·격리 + 할당은 400.
 - 위치 상태(BLOCKED 등)는 보지 않는다 — cdc-location 공간 선점(아직 501)이 맡는다. "같은 LOT 이면 선반 먼저" 할당은 아직 없다(재고는 위치 유형을 모름).
 
+## 공지 — cdc-outbound 첫 판 0.3.0 (2026-11-25)
+- **Task 경로가 바뀐다**: `/tasks…` → **`/cdcs/{cdcId}/tasks`**(목록)·`/cdcs/{cdcId}/tasks/{taskId}`·`…/starts`·`…/pick-results`(게이트웨이 `/api/v1/tasks/**` 가 MFC 쪽이라). 다음 작업 받기는 그대로 `/cdcs/{cdcId}/workers/{workerId}/next-tasks`.
+- 구현된 것: `POST /internal/transfer-intakes`(TRF 인수 → cdc-inventory 할당, 결과는 `GET /internal/transfer-intakes/{trfId}`), `POST /waves`(PLANNED)·`GET /waves/{id}`·`POST /waves/{id}/releases`(할당의 **지금** LOT·위치로 TRF × 구역 × 층 PICK Task — 보충 MOV 로 선반에 옮긴 예약은 선반 위치), 다음 작업 받기·착수·피킹 실적.
+- 아직 501: 분류·검품·상차·출발 검증(→ TOUT)·매니페스트 — 다음 PR. R-15(출발 source)는 그때 정해 회신한다.
+

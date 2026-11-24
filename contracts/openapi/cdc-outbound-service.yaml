@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -9,6 +9,8 @@ info:
     불변식: 상차 ≤ 검품합격 ≤ 분류 ≤ 실피킹 ≤ 유효할당 ≤ 승인. 같은 TRF의 후속 분할 출발 금지.
     0.2.0(2026-11-25): 작업자 PDA 다음 작업 받기(시스템 자동 배정 — 사용자 결정 "피킹은 다음 작업을 PDA 가 자동 배정")·작업 착수 추가.
     MFC 의 mfc-capacity `POST /mfcs/{mfcId}/workers/{workerId}/next-tasks` 를 CDC 판으로 옮긴 것(사용자 "MFC 기능의 DC 버전"). CDC 는 작업자·근무 정본이 아직 없어 근무·업무 자격·온도대 출입 검사는 뒤로 미룬다.
+    0.3.0(2026-11-25, 첫 구현): TRF 인수·cdc-inventory 할당 요청·Wave 생성/릴리스(피킹 Task 생성)·Task 조회/다음 작업 받기/착수/피킹 실적. **Task 경로를 `/cdcs/{cdcId}/tasks…` 로 옮김**
+    — 게이트웨이 `/api/v1/tasks/**` 가 mfc-fulfillment 라우트라 겹치지 않게(PR #443 검토). 분류·검품·상차·출발 검증·매니페스트·출발 준비·미출발 취소는 아직 501.
 servers:
   - url: /api/v1
 security:
@@ -28,6 +30,9 @@ paths:
       description: |
         trfId·trfVersion당 1건. 같은 버전·다른 본문은 409 TRANSFER_INTAKE_CONFLICT. 새 버전(TransferChanged)은 기존 인수를 대체한다.
         인수(ACCEPTED)는 확보가 아니다. 확보 결과는 GET /internal/transfer-intakes/{trfId}.
+        (0.3.0) 인수 뒤 같은 요청 안에서 cdc-inventory `POST /internal/allocations` 를 부른다(멱등 키 = trfId·버전 고정). 결과에 따라 상태
+        ALLOCATED / PARTIALLY_ALLOCATED / ALLOCATION_FAILED(재고 쪽 4xx — 사유를 남김). 응답 불명·미전달이면 ALLOCATING 으로 남고, **같은 본문을 다시 보내면 같은 키로 다시 부른다**(재고는 한 번만 반영).
+        응답 status 는 ACCEPTED(resultId = trfId) — 결과는 조회로. 새 버전으로 대체하는 것(할당 해제·재할당)은 아직 없다 — 409 TRANSFER_CHANGE_NOT_SUPPORTED. 더 낮은 버전은 409 INVALID_STATE.
       operationId: intakeTransfer
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -41,7 +46,7 @@ paths:
       responses:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
         '409':
-          description: TRANSFER_INTAKE_CONFLICT (같은 버전 다른 본문) / IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발)
+          description: TRANSFER_INTAKE_CONFLICT (같은 버전 다른 본문) / IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발·낮은 버전) / TRANSFER_CHANGE_NOT_SUPPORTED (0.3.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -66,6 +71,9 @@ paths:
     post:
       tags: [waves]
       summary: Wave 생성 (여러 TRF 묶음, 출발 창·차량 유형 기준)
+      description: |
+        (0.3.0) 만든 Wave 는 PLANNED. TRF 는 같은 센터이고 확보(ALLOCATED·PARTIALLY_ALLOCATED)된 것만 — 아니면 409 INVALID_STATE, 다른 Wave 에 있으면 409 TRF_ALREADY_IN_WAVE.
+        자기 센터 운영자만(centers 클레임).
       operationId: createWave
       x-pmart-user-types: [OPERATOR]
       x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
@@ -122,6 +130,10 @@ paths:
     post:
       tags: [waves]
       summary: Wave 릴리스 (PLANNED→RELEASED, 피킹 Task 생성) → WaveStateChanged
+      description: |
+        (0.3.0) 릴리스 때 TRF 마다 cdc-inventory `GET /internal/allocations/{id}` 로 **지금** 잡힌 LOT·위치를 읽어(보충 MOV 로 선반에 옮긴 예약은 선반 위치)
+        TRF × 구역 × 층(위치 코드 둘째·셋째 구간)마다 PICK Task 하나를 만든다(줄 = SKU·LOT·위치·계획 수량, CREATED·담당 없음).
+        잡힌 예약이 0 인 TRF 는 Task 를 만들지 않는다. 재고 조회가 안 되면 503(릴리스 안 함). 팔레트 예약을 선반으로 먼저 보충할지는 호출자가 정한다.
       operationId: releaseWave
       x-pmart-user-types: [OPERATOR]
       x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
@@ -138,14 +150,14 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  /tasks:
+  /cdcs/{cdcId}/tasks:
     get:
       tags: [tasks]
-      summary: 작업 목록 (Wave·상태·작업자 기준)
+      summary: 작업 목록 (Wave·상태·작업자 기준 — 0.3.0 경로 `/cdcs/{cdcId}/tasks`)
       operationId: listTasks
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: waveId, in: query, required: true, schema: { type: string } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/TaskState' } }
         - { name: assigneeId, in: query, schema: { type: string } }
@@ -209,7 +221,7 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  /tasks/{taskId}/starts:
+  /cdcs/{cdcId}/tasks/{taskId}/starts:
     post:
       tags: [tasks]
       summary: '[작업자 PDA] 작업 착수 (ACCEPTED → IN_PROGRESS, 0.2.0)'
@@ -219,6 +231,7 @@ paths:
       operationId: startTask
       x-pmart-user-types: [OPERATOR]
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -236,14 +249,14 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  /tasks/{taskId}:
+  /cdcs/{cdcId}/tasks/{taskId}:
     get:
       tags: [tasks]
       summary: 작업 상세 (피킹 결과·부족 포함)
       operationId: getTask
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: taskId, in: path, required: true, schema: { type: string } }
       responses:
         '200':
@@ -253,17 +266,20 @@ paths:
               schema: { $ref: '#/components/schemas/Task' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
-  /tasks/{taskId}/pick-results:
+  /cdcs/{cdcId}/tasks/{taskId}/pick-results:
     post:
       tags: [tasks]
       summary: 실피킹 결과 등록 (부족 보고 → PickShortageReported → 재할당 또는 축소)
       description: |
         실피킹 ≤ 유효할당. 부족분은 cdc-inventory 해제 후 재할당을 시도하며 불가하면 TRF 축소 대상으로 replenishment에 통지한다.
         (0.2.0) 담당(workerId = assigneeId)의 IN_PROGRESS 작업에만 — 아니면 409 NOT_ASSIGNEE / INVALID_STATE.
+        (0.3.0) 줄은 Task 줄(SKU·LOT·위치)과 맞아야 한다(없으면 400). 한 번에 다 보내도, 나눠 보내도 된다 — 줄마다 pickedQty + shortQty ≤ 남은 계획(아니면 409 PICK_EXCEEDS_ALLOCATION).
+        모든 줄이 끝나면(실피킹 + 부족 = 계획) Task DONE(부족이 있으면 PARTIAL), Wave 의 모든 Task 가 끝나면 Wave WORK_DONE. 부족은 PickShortageReported(cdc.outbound.v1)로 알린다.
+        부족분의 재고 해제·재할당은 아직 하지 않는다 — 예약은 출발 뒤 잔여 해제(RESIDUAL_CLOSED)로 풀린다.
       operationId: reportPickResult
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: taskId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -292,6 +308,8 @@ paths:
                       shortReason: { type: string, enum: [NOT_FOUND, DAMAGED, EXPIRED, LOCATION_BLOCKED, OTHER] }
       responses:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
           description: INVALID_STATE / VERSION_CONFLICT / PICK_EXCEEDS_ALLOCATION / NOT_ASSIGNEE
           content:

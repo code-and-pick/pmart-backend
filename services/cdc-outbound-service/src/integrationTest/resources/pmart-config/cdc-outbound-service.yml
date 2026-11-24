@@ -1,0 +1,9 @@
+# cdc-outbound-service 고유 설정(모든 프로필). 환경별 값은 cdc-outbound-service-<프로필>.yml, 모든 서비스 공통은 application.yml. ADR-0029
+# 정본은 pmart-config 저장소 — 이 파일은 시험 사본. 2026-11-25 새 서비스: 정본에 같은 파일을 넣어야 한다(PC1 백엔드 요청).
+server:
+  port: 8603
+pmart:
+  messaging:
+    domain: cdc
+# 이벤트 소비 없음(발행만 — outbox). TransferApproved 등 구독을 더하면 spring.cloud.function.definition·bindings 를 같이 넣는다
+# cdc-inventory 주소는 환경별(cdc-outbound-service-<프로필>.yml 의 pmart.outbound.cdc-inventory-base-url)

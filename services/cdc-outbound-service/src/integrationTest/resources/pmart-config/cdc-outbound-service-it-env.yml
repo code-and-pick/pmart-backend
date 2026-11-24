@@ -1,0 +1,21 @@
+# 시험 전용: 옮기기 전 application.yml 의 환경 자리표시자(기본값 포함) 그대로 — 시험은 Testcontainers·각 시험 properties 가 덮는다
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${PMART_JWKS_URI}
+  datasource:
+    url: ${PMART_DB_URL}
+    username: ${PMART_DB_USERNAME}
+    password: ${PMART_DB_PASSWORD}
+  kafka:
+    bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
+pmart:
+  outbound:
+    cdc-inventory-base-url: ${PMART_CDC_INVENTORY_BASE_URL:http://cdc-inventory-service:8601}
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: ${PMART_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}

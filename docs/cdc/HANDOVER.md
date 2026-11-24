@@ -12,13 +12,14 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 |---|---|
 | `services/cdc-inventory-service` | 스캐폴딩(2026-10-30, 86xx 첫 서비스, 로컬 포트 8601). 상품 등록 슬라이스만: `commerce.product.v1` SkuIssued·ProductVersionPublished → `sku_projection`(물류 규격 units_per_box·boxes_per_pallet·ti·hi), 센터 취급 `center_sku_handling`(레코드 없음 = OFF, `/cdcs/{cdcId}/sku-handlings`). Flyway V1·V2. **장부(0.2.0, 2026-11-25)**: 초기 보유 `/internal/initial-balances`(센터·SKU·LOT 1회)·안전량 `/internal/safety-stocks`(새 경로)·가용 `max(0,E−R−S)`·FEFO 다LOT 할당/해제·TOUT 출발 전기(`TransferDeparted` 발행 — mfc-inbound 가 받음)·원결과·Transit 조회, Flyway V3. **내부 이동(0.3.0)**: `/internal/move-postings` — `allocationId` 를 주면 할당 예약을 함께 옮김(랙 → 피킹 선반 보충), Flyway V4. **아직 501: 수령 확인(receipt-acks)·품질·손실·조정·스냅샷·일일 대사.** 게이트웨이·LAN 배치·Helm 미등록 |
 | `services/cdc-location-service` | 2026-11-25 새로 만듦(로컬 포트 8602). 위치 마스터: 등록·일괄 등록 `/internal/location-batches`·조회·상태 전환(`LocStateChanged`), 칠곡 코드 문법 검사(CDC-3~5·7). 점유는 모름(null). 적치 후보·공간 예약·도크 예약은 501. pmart-config 정본 파일·게이트웨이·LAN 배치 없음(PC1 요청) |
+| `services/cdc-outbound-service` | 2026-11-25 새로 만듦(로컬 포트 8603, 계약 0.3.0). TRF 인수 → cdc-inventory 할당, Wave 생성·릴리스(할당의 지금 위치로 구역·층별 PICK Task), PDA 다음 작업 받기·착수·피킹 실적(부족 → PickShortageReported). Task 경로 `/cdcs/{cdcId}/tasks…`. **아직 501: 분류·검품·상차·출발 검증(TOUT)·매니페스트·미출발 취소.** pmart-config·게이트웨이·LAN 없음(PC1 요청) |
 | 계약 | `contracts/openapi/cdc-{inventory,inbound,location,outbound,quality}-service.yaml` 다섯 개 모두 있음(구현은 inventory 일부만) |
 | 설계 | `docs/architecture/service-map.md` §4 CDC WMS — 다섯 서비스 소유·발행·구독·사가 S7(적치) |
 | 업무 원문 | `docs/business/WMS-business-logic.md`(정본) + `docs/business/WMS-dc-wave-business-logic.md`(Wave·지역 바코드 피킹·분배·라인·보충 MOV — 2026-11-24 사용자 채택) — `MFC-business-logic.md` 와 섞지 않는다 |
 | 시뮬레이터 | `pmart-cdc-simulation`(세션 "cdc 시뮬레이션", 2026-11-24 설계 시작). 센터 **칠곡 DC `CDC01`** — 고정값(8,600평·5~7층·520만 유닛·주소)·현장 근거·결정 CDC-1~8(층 배치·위치 코드·온도 글자·비랙 위치·공급 MFC 5곳·4지역·피킹 선반·하루 시간표)은 `docs/simulator/cdc/chilgok-dc.md`, 회신 `docs/handoff/simulator/cdc/`. 범위 **출고·피킹·상차만**(S-3·S-6), CDC 재고는 시작 재고(시드) |
 
 ## 2. 없는 것
-- 서비스: `cdc-outbound`(시뮬레이터 범위에 먼저 필요), `cdc-inbound`·`cdc-quality`.
+- 서비스: `cdc-inbound`·`cdc-quality`. cdc-outbound 의 분류·검품·상차·출발 검증(→ TOUT)·매니페스트(다음 PR).
 - cdc-outbound 가 TMS 에 줄 것(TMS 정본 2.1, chilgok-dc.md CDC-8): 21:30 출고 작업 완료·22:00 MFC·온도대별 R/T 수(박스 스캔 → R/T 매핑), 방문 역순 상차 대조, 실제 출발 때만 TOUT. 회수(빈 R/T·회수품) 반품 입고는 cdc-inbound.
 - cdc-outbound 게이트웨이: `/api/v1/tasks/**` 는 mfc-fulfillment 라우트가 잡고 있다(PR 백엔드 #443 댓글) — cdc-outbound 를 만들 때 Task 경로를 `/cdcs/{cdcId}/tasks…` 처럼 겹치지 않게 바꾸고 게이트웨이 허용 목록·라우트를 같이 요청한다.
 - 칠곡 위치를 실제로 넣는 일 — 목록 사본(23,076칸)·스크립트 `deploy/lan/seed/cdc_locations.py` 는 있다. cdc-location LAN 배치 뒤 PC1 이 `--apply`. 오토스토어 빈 코드(R-05)는 아직 없다.
@@ -47,3 +48,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: cdc-location 서비스·위치 마스터(계약 0.2.0) — PR `cdc/location-service`. 사용자 제공 CDC 구축 명세서는 참고 문서로만("칠곡 결정 유지"). R-13 피킹 선반(통로 61~ PICK_FACE, 랙 전부 RESERVE).
 - 2026-11-25: TMS 흐름 맞춤 — 공급 MFC 26곳(충청·강원 9·경상·전라 17, 지금 등록 5곳), DC 하루 시간표·R/T 운송 단위·회수(CDC-6·8). 사용자 노션 "TMS"(2026-11-25)와 TMS 정본 2.1 의 차이(고객 주문 시작 08:00↔09:00, 마지막 MFC 도착 07:30↔08:30)는 TMS·고객 쪽 결정이라 고치지 않고 사용자에게 물음.
 - 2026-11-25: 사용자 "지역은 4지역 묶음, 공급 대상은 일단 MFC 5곳", "TMS 문서 오늘 준 게 기준" — CDC-6 되돌림, TMS 정본 2.2(마지막 MFC 도착 07:30·인계 08:00·고객 주문 08:00~). 다른 도메인 문서의 고객 주문 09:00 은 그대로(사용자에게 알림).
+- 2026-11-25: cdc-outbound 서비스 첫 판(0.3.0 — 인수·할당·Wave·Task·피킹) — PR `cdc/outbound-service`. 출발 쪽은 다음 PR.
