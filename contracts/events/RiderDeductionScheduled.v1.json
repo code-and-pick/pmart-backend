@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/RiderDeductionScheduled.v1.json",
+  "title": "RiderDeductionScheduled",
+  "description": "오배송 정산 차감 예정(2026-11-24, ADR-0086 — DE-9). 라이더 귀책 오배송의 회수 배송이 하루 안에 끝나지 않아 포기(dispatch DeliveryCancelledBeforePickup RECOVERY_ABANDONED)되면 그 오배송 배송의 라이더에게. 금액 = 결제 금액 − 배달비. 이의 기한 5일. 발행 delivery-execution. 구독 notification(라이더 앱 알림 — 요청), BI. 토픽 delivery.delivery.v1(aggregate = 오배송 배송). 단계 ①",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "RiderDeductionScheduled"
+        },
+        "aggregateType": {
+          "const": "Delivery"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "deductionId",
+            "caseId",
+            "deliveryId",
+            "riderId",
+            "amount",
+            "remaining",
+            "state",
+            "objectionDeadline",
+            "recordedAt"
+          ],
+          "properties": {
+            "deductionId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "caseId": { "type": "string", "maxLength": 64 },
+            "deliveryId": { "$ref": "_defs.v1.json#/$defs/Ref", "description": "오배송된(원래) 배송" },
+            "deliveryNumber": { "type": "string", "maxLength": 32 },
+            "recoveryDeliveryId": { "type": "string", "maxLength": 64 },
+            "orderId": { "type": "string", "maxLength": 64 },
+            "riderId": { "$ref": "_defs.v1.json#/$defs/Ref" },
+            "amount": { "type": "integer", "minimum": 1 },
+            "remaining": { "type": "integer", "minimum": 0 },
+            "state": { "type": "string", "enum": ["PENDING_OBJECTION", "OBJECTED", "CONFIRMED", "CANCELLED"] },
+            "objectionDeadline": { "$ref": "_defs.v1.json#/$defs/DateTime" },
+            "decision": { "type": "string", "enum": ["ACCEPT", "REJECT"], "description": "이의 결정으로 바뀐 때만" },
+            "recordedAt": { "$ref": "_defs.v1.json#/$defs/DateTime" }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

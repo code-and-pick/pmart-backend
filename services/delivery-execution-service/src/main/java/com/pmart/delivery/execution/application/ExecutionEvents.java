@@ -425,6 +425,40 @@ public class ExecutionEvents {
         p);
   }
 
+  /**
+   * 오배송 정산 차감(2026-11-24, ADR-0086) — RiderDeductionScheduled·Confirmed·Cancelled. aggregate = 오배송된
+   * 배송(수행료 사건과 같이), version 은 호출자가 올린 배송 버전.
+   */
+  public void deduction(
+      String type,
+      RiderDeductions.Row d,
+      int version,
+      EventEnvelope.Actor actor,
+      @org.jspecify.annotations.Nullable String decision,
+      Instant at) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("deductionId", d.deductionId());
+    p.put("caseId", d.caseId());
+    p.put("deliveryId", d.deliveryId());
+    if (d.deliveryNumber() != null) {
+      p.put("deliveryNumber", d.deliveryNumber());
+    }
+    if (d.recoveryDeliveryId() != null) {
+      p.put("recoveryDeliveryId", d.recoveryDeliveryId());
+    }
+    p.put("orderId", d.orderId());
+    p.put("riderId", d.riderId());
+    p.put("amount", d.amount());
+    p.put("remaining", d.remaining());
+    p.put("state", d.state());
+    p.put("objectionDeadline", d.objectionDeadline().toString());
+    if (decision != null) {
+      p.put("decision", decision);
+    }
+    p.put("recordedAt", at.toString());
+    events.publish(type, 1, "Delivery", d.deliveryId(), version, actor, p);
+  }
+
   /** 운영자 상태 정정(2026-11-17). basis = 사유(직원이 적은 글 — 개인정보를 적지 않게 화면 안내). */
   public void statusCorrected(
       DeliveryRow before,

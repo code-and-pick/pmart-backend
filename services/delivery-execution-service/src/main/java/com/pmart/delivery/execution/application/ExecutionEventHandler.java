@@ -52,6 +52,7 @@ public class ExecutionEventHandler {
   private final Clock clock;
   private final com.pmart.delivery.execution.infrastructure.OrderClient orders;
   private final FailureDecisionService failures;
+  private final RiderDeductions deductions;
 
   public ExecutionEventHandler(
       ExecutionStore store,
@@ -60,7 +61,9 @@ public class ExecutionEventHandler {
       ObjectMapper mapper,
       Clock clock,
       com.pmart.delivery.execution.infrastructure.OrderClient orders,
-      FailureDecisionService failures) {
+      FailureDecisionService failures,
+      RiderDeductions deductions) {
+    this.deductions = deductions;
     this.failures = failures;
     this.store = store;
     this.pickup = pickup;
@@ -171,6 +174,11 @@ public class ExecutionEventHandler {
 
   public void onCase(EventEnvelope e) {
     JsonNode p = e.payload();
+    deductions.recordFault(
+        p.path("caseId").asString(""),
+        p.path("deliveryId").asString(""),
+        p.path("riderId").asString(""),
+        p.path("fault").asString("")); // 2026-11-24 ADR-0086 — 회수 포기 때 차감 판단용
     if (!"RIDER".equals(p.path("fault").asString(""))) {
       return;
     }
@@ -311,6 +319,10 @@ public class ExecutionEventHandler {
         }
         store.setState(deliveryId, "CANCELLED", now);
         HelpRequestService.closeOnDeliveryEnded(store, deliveryId, now);
+        if (RiderDeductions.RECOVERY_ABANDONED.equals(p.path("reason").asString(""))
+            && "MISDELIVERY_RECOVERY".equals(d.purpose())) {
+          deductions.onRecoveryAbandoned(d, p.path("caseId").asString(null)); // ADR-0086
+        }
         store.history(
             deliveryId,
             "CANCELLED",

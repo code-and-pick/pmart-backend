@@ -49,7 +49,10 @@ public class PayoutResults {
       long total,
       String state,
       @Nullable LastResult lastResult,
-      int compensationCount) {}
+      int compensationCount,
+      long deductionTotal,
+      long expectedDeduction,
+      long netTotal) {}
 
   private record Comp(String id, String state, int amount) {}
 
@@ -72,13 +75,16 @@ public class PayoutResults {
   private final ExecutionEvents events;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final RiderDeductions deductions;
 
   public PayoutResults(
       JdbcTemplate jdbc,
       ExecutionStore store,
       ExecutionEvents events,
       TransactionTemplate tx,
-      Clock clock) {
+      Clock clock,
+      RiderDeductions deductions) {
+    this.deductions = deductions;
     this.jdbc = jdbc;
     this.store = store;
     this.events = events;
@@ -220,6 +226,10 @@ public class PayoutResults {
                 c.id());
             total += c.amount();
           }
+          if ("PAYING".equals(result) || "PAID".equals(result)) {
+            // 2026-11-24 ADR-0086 — 확정된 오배송 차감을 이 묶음에서(한 번, 모자라면 다음 묶음으로)
+            deductions.applyToBatch(riderId, payoutDate, gross(rows, comps), now);
+          }
           jdbc.update(
               "INSERT INTO rider_payout_result (result_id, request_key, rider_id, payout_date, result,"
                   + " reference, failure_reason, earning_count, total, recorded_by, recorded_at) VALUES"
@@ -244,6 +254,41 @@ public class PayoutResults {
               compChange.size());
           return batch(riderId, payoutDate).orElseThrow();
         });
+  }
+
+  private static long gross(List<EarningRow> rows, List<Comp> comps) {
+    long g = 0;
+    for (EarningRow e : rows) {
+      g += e.total() == null ? 0 : e.total();
+    }
+    for (Comp c : comps) {
+      g += c.amount();
+    }
+    return g;
+  }
+
+  /** 아직 빼지 않은 묶음의 예상 차감(ADR-0086) — 그 라이더의 확정 차감 남은 금액을, 이 묶음보다 앞선 빼지 않은 확정 묶음부터 채운 뒤. */
+  private long expectedDeduction(String riderId, LocalDate payoutDate, long gross) {
+    long remaining = deductions.remainingTotal(riderId);
+    if (remaining == 0) {
+      return 0;
+    }
+    Long earlier =
+        jdbc.queryForObject(
+            "SELECT COALESCE(sum(t), 0) FROM (SELECT COALESCE(total, 0) AS t, payout_date FROM"
+                + " rider_earning WHERE rider_id = ? AND payout_date < ? AND settlement_state IN"
+                + " ('CONFIRMED', 'PAYMENT_FAILED') UNION ALL SELECT amount, payout_date FROM rider_compensation"
+                + " WHERE rider_id = ? AND payout_date < ? AND settlement_state IN ('CONFIRMED',"
+                + " 'PAYMENT_FAILED')) x WHERE NOT EXISTS (SELECT 1 FROM rider_deduction_application a WHERE"
+                + " a.rider_id = ? AND a.payout_date = x.payout_date)",
+            Long.class,
+            riderId,
+            payoutDate,
+            riderId,
+            payoutDate,
+            riderId);
+    return com.pmart.delivery.execution.domain.DeductionRules.expected(
+        remaining, earlier == null ? 0 : earlier, gross);
   }
 
   private Optional<Batch> batch(String riderId, LocalDate payoutDate) {
@@ -284,8 +329,20 @@ public class PayoutResults {
             .stream()
             .findFirst()
             .orElse(null);
+    long applied = deductions.appliedTo(riderId, payoutDate);
+    boolean open = Set.of("CONFIRMED", "PAYMENT_FAILED").contains(state);
+    long expected = applied == 0 && open ? expectedDeduction(riderId, payoutDate, total) : 0;
     return Optional.of(
         new Batch(
-            riderId, payoutDate, rows.size() + comps.size(), total, state, last, comps.size()));
+            riderId,
+            payoutDate,
+            rows.size() + comps.size(),
+            total,
+            state,
+            last,
+            comps.size(),
+            applied,
+            expected,
+            total - applied - expected));
   }
 }

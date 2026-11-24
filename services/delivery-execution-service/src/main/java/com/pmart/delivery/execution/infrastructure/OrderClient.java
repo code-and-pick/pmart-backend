@@ -166,6 +166,36 @@ public class OrderClient {
   }
 
   /**
+   * 오배송 정산 차감 금액의 근거(2026-11-24, ADR-0086): order {@code GET /internal/orders/{id}} 의
+   * [approvedAmount, deliveryTip](배달팁 없으면 0). 없는 주문 empty, 장애는 Downstream 규칙(예외 — 사건을 다시 받게).
+   */
+  public Optional<long[]> paidAndTip(String orderId) {
+    String body;
+    try {
+      body =
+          Downstream.call(
+              "order-service order",
+              () ->
+                  order
+                      .get()
+                      .uri("/api/v1/internal/orders/{id}", orderId)
+                      .retrieve()
+                      .body(String.class));
+    } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+      return Optional.empty();
+    }
+    if (body == null) {
+      return Optional.empty();
+    }
+    JsonNode n = mapper.readTree(body);
+    if (!n.path("approvedAmount").isNumber()) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new long[] {n.path("approvedAmount").asLong(), n.path("deliveryTip").asLong(0)});
+  }
+
+  /**
    * 화면용 주문번호(8자리, order {@code GET /internal/orders/{id}} orderNumber — 2026-11-18). 배송이 생길 때 한 번
    * 읽어 직원 배송 찾기가 배차 전에도 주문번호로 찾게 한다. 없거나 부르지 못하면 비어 있다(배정 사건이 나중에 채운다) — 사건 처리를 막지 않는다.
    */

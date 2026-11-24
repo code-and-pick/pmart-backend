@@ -96,6 +96,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
   @Autowired EarningService earnings;
   @Autowired com.pmart.delivery.execution.application.PhotoSweeper sweeper;
   @Autowired com.pmart.delivery.execution.application.AutoCompletion autoCompletion;
+  @Autowired com.pmart.delivery.execution.application.RiderDeductions deductions;
 
   @InjectWireMock("order")
   WireMockServer orderApi;
@@ -3425,6 +3426,215 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 String.class,
                 id2))
         .isEqualTo("PAID");
+  }
+
+  /**
+   * ADR-0086(2026-11-24 — DE-9): 라이더 귀책 오배송의 회수 배송이 포기(RECOVERY_ABANDONED)되면 그 라이더에게 차감 예정(결제 금액 −
+   * 배달비) → 라이더 이의 → 지원센터 거절 = 확정 → 지급 묶음에서 빼고 남은 것은 이월. 시스템 귀책 사건의 포기는 차감 없음. 이의 없이 기한이 지나면 확정.
+   */
+  @Test
+  void abandonedRiderFaultRecoveryDeductsOrderAmountWithObjection() {
+    String origin = "DLV-" + UUID.randomUUID();
+    String order = "ORD-" + UUID.randomUUID();
+    String rider = "RDR-ded-" + UUID.randomUUID();
+    pickedUp(origin, "SHP-" + UUID.randomUUID(), order, rider);
+    post(origin, "customer-arrivals", rider, Map.of());
+    String photo = body(upload(origin, rider, JPEG)).path("photoRef").asString();
+    post(origin, "completions", rider, completion(List.of(photo), Instant.now().toString()));
+    orderApi.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo(
+                    "/api/v1/internal/orders/" + order))
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    "{\"orderId\":\""
+                        + order
+                        + "\",\"accountId\":\"ACC-1\",\"approvedAmount\":19970,\"deliveryTip\":4000}")));
+    String caseId = "CASE-" + UUID.randomUUID();
+    misdelivery(caseId, origin, rider, "RIDER");
+    awaitSql("SELECT count(*) FROM misdelivery_fault WHERE case_id = '" + caseId + "'");
+    String recovery = recoveryAbandoned(caseId, origin, order);
+    awaitSql("SELECT count(*) FROM rider_deduction WHERE case_id = '" + caseId + "'");
+    Map<String, Object> d =
+        jdbc.queryForMap(
+            "SELECT deduction_id, amount, remaining, state, rider_id, recovery_delivery_id FROM"
+                + " rider_deduction WHERE case_id = ?",
+            caseId);
+    assertThat(d.get("amount")).isEqualTo(15970); // 19,970 − 배달비 4,000
+    assertThat(d.get("state")).isEqualTo("PENDING_OBJECTION");
+    assertThat(d.get("rider_id")).isEqualTo(rider);
+    assertThat(d.get("recovery_delivery_id")).isEqualTo(recovery);
+    String dedId = (String) d.get("deduction_id");
+    JsonNode scheduled = outbox(origin, "RiderDeductionScheduled").path("payload");
+    assertThat(scheduled.path("amount").asInt()).isEqualTo(15970);
+    assertThat(scheduled.path("caseId").asString()).isEqualTo(caseId);
+
+    JsonNode mine = body(riderGet("/riders/me/deductions", "", rider));
+    assertThat(mine.path("pendingTotal").asInt()).isEqualTo(15970);
+    assertThat(mine.path("remainingTotal").asInt()).isZero();
+    String ops = TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    String cs = TestJwt.operator("OP-CS", List.of("CS_AGENT"), List.of());
+    String adm = TestJwt.operator("OP-ADM", List.of("OPERATOR_ADMIN"), List.of());
+    String decide = "/rider-deductions/" + dedId + "/decisions";
+    // 이의 전에는 결정 못 함
+    assertThat(
+            staffPost(decide, ops, Map.of("decision", "REJECT", "note", "근거 확인"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    String objections = "/riders/me/deductions/" + dedId + "/objections";
+    assertThat(
+            staffPost(objections, TestJwt.rider("RDR-other"), Map.of("note", "제 것이 아님"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(404);
+    ResponseEntity<String> obj =
+        staffPost(objections, TestJwt.rider(rider), Map.of("note", "고객이 주소를 잘못 알려 줬어요"));
+    assertThat(obj.getStatusCode().value()).as(obj.getBody()).isEqualTo(200);
+    assertThat(body(obj).path("state").asString()).isEqualTo("OBJECTED");
+    assertThat(
+            staffPost(objections, TestJwt.rider(rider), Map.of("note", "다시 이의"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(409);
+    assertThat(
+            staffPost(decide, cs, Map.of("decision", "ACCEPT", "note", "확인"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(403); // 상담원은 보기만
+    ResponseEntity<String> rejected =
+        staffPost(decide, ops, Map.of("decision", "REJECT", "note", "완료 사진의 문 번호가 달라요"));
+    assertThat(rejected.getStatusCode().value()).as(rejected.getBody()).isEqualTo(200);
+    assertThat(body(rejected).path("state").asString()).isEqualTo("CONFIRMED");
+    assertThat(
+            outbox(origin, "RiderDeductionConfirmed").path("payload").path("decision").asString())
+        .isEqualTo("REJECT");
+    JsonNode staffList = body(staffGet("/rider-deductions?riderId=" + rider, cs));
+    assertThat(staffList.path("remainingTotal").asInt()).isEqualTo(15970);
+    assertThat(staffList.path("items").get(0).path("decision").path("decidedBy").asString())
+        .isEqualTo("OP-RO");
+    assertThat(
+            body(riderGet("/riders/me/deductions", "", rider))
+                .path("items")
+                .get(0)
+                .path("decision")
+                .path("decidedBy")
+                .isNull())
+        .isTrue(); // 라이더에게는 결정한 직원을 안 보인다
+
+    // 지급 묶음 10,000원 — 예상 차감 10,000, 지급하면 빼고 5,970 이월
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    String paidDelivery = "DLV-ded-" + UUID.randomUUID();
+    created(paidDelivery, "SHP-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID());
+    awaitSql("SELECT count(*) FROM execution_delivery WHERE delivery_id = '" + paidDelivery + "'");
+    jdbc.update(
+        "INSERT INTO rider_earning (earning_id, delivery_id, rider_id, calculable, rate_table_version,"
+            + " base_fee, total, settlement_state, performed_on, payout_date, recorded_at, updated_at)"
+            + " VALUES (?, ?, ?, true, 1, 10000, 10000, 'CONFIRMED', CAST(? AS date) - 3, CAST(? AS"
+            + " date), now(), now())",
+        "ERN-ded-" + paidDelivery,
+        paidDelivery,
+        rider,
+        today,
+        today);
+    JsonNode batch = body(staffGet("/rider-payouts?riderId=" + rider, ops)).path("items").get(0);
+    assertThat(batch.path("expectedDeduction").asInt()).isEqualTo(10000);
+    assertThat(batch.path("netTotal").asInt()).isZero();
+    JsonNode paid =
+        body(
+            staffPost(
+                "/rider-payouts/" + rider + "/" + today + "/results",
+                adm,
+                Map.of("result", "PAID")));
+    assertThat(paid.path("deductionTotal").asInt()).isEqualTo(10000);
+    assertThat(paid.path("expectedDeduction").asInt()).isZero();
+    assertThat(paid.path("netTotal").asInt()).isZero();
+    JsonNode after = body(riderGet("/riders/me/deductions", "", rider));
+    assertThat(after.path("remainingTotal").asInt()).isEqualTo(5970);
+    assertThat(after.path("items").get(0).path("applications").get(0).path("amount").asInt())
+        .isEqualTo(10000);
+
+    // 시스템 귀책 사건의 회수 포기는 차감 없음
+    String sysCase = "CASE-" + UUID.randomUUID();
+    misdelivery(sysCase, origin, rider, "SYSTEM");
+    awaitSql("SELECT count(*) FROM misdelivery_fault WHERE case_id = '" + sysCase + "'");
+    String sysRecovery = recoveryAbandoned(sysCase, origin, order);
+    awaitSql(
+        "SELECT count(*) FROM execution_delivery WHERE delivery_id = '"
+            + sysRecovery
+            + "' AND state = 'CANCELLED'");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM rider_deduction WHERE case_id = ?", Integer.class, sysCase))
+        .isZero();
+
+    // 이의 없이 기한이 지나면 확정
+    String lateCase = "CASE-" + UUID.randomUUID();
+    misdelivery(lateCase, origin, rider, "RIDER");
+    awaitSql("SELECT count(*) FROM misdelivery_fault WHERE case_id = '" + lateCase + "'");
+    recoveryAbandoned(lateCase, origin, order);
+    awaitSql("SELECT count(*) FROM rider_deduction WHERE case_id = '" + lateCase + "'");
+    jdbc.update(
+        "UPDATE rider_deduction SET objection_deadline = now() - interval '1 minute' WHERE case_id ="
+            + " ?",
+        lateCase);
+    deductions.confirmDue();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM rider_deduction WHERE case_id = ?", String.class, lateCase))
+        .isEqualTo("CONFIRMED");
+  }
+
+  void misdelivery(String caseId, String deliveryId, String riderId, String fault) {
+    String json =
+        EventEnvelopeFixtures.envelope("MisdeliveryConfirmed")
+            .from("case-service")
+            .aggregate("Case", caseId, 1)
+            .payload(
+                Map.of(
+                    "caseId",
+                    caseId,
+                    "deliveryId",
+                    deliveryId,
+                    "riderId",
+                    riderId,
+                    "confirmedBy",
+                    "OP-CS",
+                    "confirmedAt",
+                    Instant.now().toString(),
+                    "fault",
+                    fault,
+                    "resolution",
+                    "RESHIP"))
+            .buildJson();
+    kafka.send("platform.case.v1", caseId, json).join();
+  }
+
+  /** 회수 배송 생성 → dispatch 의 하루 포기(픽업 전 취소 RECOVERY_ABANDONED). @return 회수 배송 ID */
+  String recoveryAbandoned(String caseId, String origin, String order) {
+    String rc = "DLV-rc-" + UUID.randomUUID();
+    Map<String, Object> created = new java.util.LinkedHashMap<>();
+    created.put("deliveryId", rc);
+    created.put("orderId", order);
+    created.put("shipmentId", "RCV-" + caseId);
+    created.put("type", "RETURN");
+    created.put("purpose", "MISDELIVERY_RECOVERY");
+    created.put("caseId", caseId);
+    created.put("originDeliveryId", origin);
+    created.put("mfcId", "MFC-1");
+    created.put("dropAddressRef", "mfc:MFC-1");
+    send("delivery.delivery.v1", "DeliveryCreated", "Delivery", rc, created);
+    awaitSql("SELECT count(*) FROM execution_delivery WHERE delivery_id = '" + rc + "'");
+    Map<String, Object> cancel = new java.util.LinkedHashMap<>();
+    cancel.put("deliveryId", rc);
+    cancel.put("orderId", order);
+    cancel.put("assignmentVersion", 0);
+    cancel.put("reason", "RECOVERY_ABANDONED");
+    cancel.put("purpose", "MISDELIVERY_RECOVERY");
+    cancel.put("caseId", caseId);
+    cancel.put("cancelledAt", Instant.now().toString());
+    send("delivery.delivery.v1", "DeliveryCancelledBeforePickup", "Delivery", rc, cancel);
+    return rc;
   }
 
   /**
