@@ -1,12 +1,14 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
     수량 전기는 cdc-inventory(할당/해제/TOUT), 차량·운행은 TMS(transport-*), 승인은 replenishment가 정본.
     불변식: 상차 ≤ 검품합격 ≤ 분류 ≤ 실피킹 ≤ 유효할당 ≤ 승인. 같은 TRF의 후속 분할 출발 금지.
+    0.2.0(2026-11-25): 작업자 PDA 다음 작업 받기(시스템 자동 배정 — 사용자 결정 "피킹은 다음 작업을 PDA 가 자동 배정")·작업 착수 추가.
+    MFC 의 mfc-capacity `POST /mfcs/{mfcId}/workers/{workerId}/next-tasks` 를 CDC 판으로 옮긴 것(사용자 "MFC 기능의 DC 버전"). CDC 는 작업자·근무 정본이 아직 없어 근무·업무 자격·온도대 출입 검사는 뒤로 미룬다.
 servers:
   - url: /api/v1
 security:
@@ -160,6 +162,80 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Task' } }
                   page: { $ref: '_common.yaml#/components/schemas/Page' }
 
+  /cdcs/{cdcId}/workers/{workerId}/next-tasks:
+    post:
+      tags: [tasks]
+      summary: '[작업자 PDA] 다음 작업 받기 — 시스템이 작업을 하나씩 자동 배정 (0.2.0)'
+      description: |
+        2026-11-25 사용자 결정: 피킹은 PDA 가 다음 작업을 자동 배정한다(관리자 배정 아님). 작업자 본인(토큰 주체 = workerId, centers 클레임에 cdcId)이 부른다.
+        - 이미 들고 있는 작업(이 작업자가 담당인 ACCEPTED·IN_PROGRESS)이 있으면 그 작업을 200 으로 돌려준다(한 번에 하나).
+        - 없으면 RELEASED·IN_PROGRESS Wave 의 **담당 없는 CREATED 작업** 중 하나를 이 작업자에게 배정해 201(state ACCEPTED — 받기가 곧 수락, CDC-F-017 상세안 5번).
+          동시에 두 작업자가 받으면 한 작업은 한 사람에게만 간다(조건부 갱신 — 진 쪽은 다음 후보를 받거나 409 NO_TASK_AVAILABLE).
+        - 순서: TRF 기한(dueAt) 이른 순 → 작업 만든 순. 원문의 품질·안전·유효 할당 검사를 먼저 통과한 작업만 후보다. 가중치·SCM 우선순위는 승인 전이라 쓰지 않는다(CDC-F-017 상세안 3번).
+        - 본문 kind(PICK·SORT·INSPECT·LOAD)·zone(구역 글자)·floor(층)를 주면 그 범위 안에서만 배정한다. 생략하면 전체.
+        - 줄 작업이 없으면 409 NO_TASK_AVAILABLE. 근무·업무 자격·온도대 출입 검사(CDC 만 구분)는 작업자 정본이 생기면 더한다 — 그 전에는 하지 않는다.
+        - 관리자 수동 배정은 예외 처리용으로 나중에 따로 둔다(지금 계약에 없음).
+      operationId: pullNextTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: workerId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind: { type: string, enum: [PICK, SORT, INSPECT, LOAD] }
+                zone: { type: string, pattern: '^[A-Z]$', description: 구역 글자(칠곡 CDC-4) }
+                floor: { type: string, description: 층(칠곡 5·6·7) }
+      responses:
+        '200':
+          description: 이미 들고 있는 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '201':
+          description: 새로 배정한 작업(state ACCEPTED, assigneeId = workerId)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: NO_TASK_AVAILABLE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /tasks/{taskId}/starts:
+    post:
+      tags: [tasks]
+      summary: '[작업자 PDA] 작업 착수 (ACCEPTED → IN_PROGRESS, 0.2.0)'
+      description: |
+        담당(assigneeId)만 착수한다 — 다른 작업자는 409 NOT_ASSIGNEE(이전 단말·다른 작업자의 동시 시작 차단, CDC-F-017). 이미 IN_PROGRESS 면 그대로 200.
+        착수는 실피킹 완료가 아니다. 첫 착수 때 Wave 가 RELEASED 면 IN_PROGRESS 로. X-Expected-Version 은 Task version.
+      operationId: startTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      responses:
+        '200':
+          description: 착수(또는 이미 착수)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Task' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: NOT_ASSIGNEE / INVALID_STATE / VERSION_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /tasks/{taskId}:
     get:
       tags: [tasks]
@@ -181,7 +257,9 @@ paths:
     post:
       tags: [tasks]
       summary: 실피킹 결과 등록 (부족 보고 → PickShortageReported → 재할당 또는 축소)
-      description: 실피킹 ≤ 유효할당. 부족분은 cdc-inventory 해제 후 재할당을 시도하며 불가하면 TRF 축소 대상으로 replenishment에 통지한다.
+      description: |
+        실피킹 ≤ 유효할당. 부족분은 cdc-inventory 해제 후 재할당을 시도하며 불가하면 TRF 축소 대상으로 replenishment에 통지한다.
+        (0.2.0) 담당(workerId = assigneeId)의 IN_PROGRESS 작업에만 — 아니면 409 NOT_ASSIGNEE / INVALID_STATE.
       operationId: reportPickResult
       x-pmart-user-types: [OPERATOR]
       x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
@@ -215,7 +293,7 @@ paths:
       responses:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
         '409':
-          description: INVALID_STATE / VERSION_CONFLICT / PICK_EXCEEDS_ALLOCATION
+          description: INVALID_STATE / VERSION_CONFLICT / PICK_EXCEEDS_ALLOCATION / NOT_ASSIGNEE
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -631,6 +709,9 @@ components:
         waveId: { type: string }
         trfId: { type: string }
         kind: { type: string, enum: [PICK, SORT, INSPECT, LOAD] }
+        zone: { type: string, description: 구역 글자(0.2.0 — 다음 작업 받기 거르기) }
+        floor: { type: string, description: 층(0.2.0) }
+        dueAt: { type: string, format: date-time, description: TRF 기한(0.2.0 — 배정 순서) }
         state: { $ref: '#/components/schemas/TaskState' }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
         assigneeId: { type: string }

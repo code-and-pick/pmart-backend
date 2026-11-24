@@ -14,6 +14,8 @@
 
 `CREATED → ASSIGNED → ACCEPTED → IN_PROGRESS → PARTIAL | DONE` / `EXCEPTION` / `CANCELLED`. 작업 진행 축: 피킹중 → 피킹완료 → 검품완료 → 상차완료(LOADED). `DONE ≠ QUANTITY_SETTLED ≠ CLOSED`.
 
+배정(2026-11-25 사용자 결정 "피킹은 다음 작업을 PDA 가 자동 배정", 계약 0.2.0): 작업자 PDA 의 **다음 작업 받기**(`POST /cdcs/{cdcId}/workers/{workerId}/next-tasks`)는 `CREATED → ACCEPTED`(받기 = 수락, 한 작업 한 사람), **착수**(`POST /tasks/{taskId}/starts`, 담당만)는 `ACCEPTED → IN_PROGRESS`. `ASSIGNED` 는 관리자 수동 배정(예외, 아직 경로 없음) 자리로 남긴다.
+
 ## TRF 출고 축 (cdc-outbound → cdc-inventory)
 
 `RECEIVED → ALLOCATED(부분 PARTIALLY_ALLOCATED) → PICKED → LOADED → DEPARTED / TOUT_POSTED`. 취소 축: `접수 → 중지/확인대기 → 실물·권리정리 → 해제`.

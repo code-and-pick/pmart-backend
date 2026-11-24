@@ -32,6 +32,7 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 
 ## 4. 남은 결정(사용자)
 - ~~첫 작업~~ → 2026-11-25 사용자 "cdc-inventory 부터", ~~시작 재고 방식~~ → "초기 보유 API 로". 다음 순서(세션 추천): cdc-location(CDC-3~5 코드) → cdc-outbound(지역 Wave·FC·분배·라인, 시뮬레이터 R-11 작업 배정 API 포함) → cdc-inbound 보충 MOV.
+- ~~피킹 배정 방식~~ → 2026-11-25 사용자 "PDA 있고, MFC 기능은 다 구현되어 있으니까 그거 DC 버전 만들어서 쓰면 돼. 피킹은 다음 작업을 PDA 가 자동 배정". cdc-outbound 계약 0.2.0 에 MFC `next-tasks` 의 CDC 판(다음 작업 받기·착수)을 넣음. CDC 화면(PDA)도 MFC PDA 의 DC 판으로 만든다(pmart-clients 몫 — 클라이언트에 요청할 때 이 결정을 근거로).
 - cdc 영역을 따로 둘지(일지 폴더·PC).
 
 ## 5. 기록
