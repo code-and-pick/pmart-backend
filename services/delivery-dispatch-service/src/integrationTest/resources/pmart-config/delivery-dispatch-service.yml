@@ -17,8 +17,6 @@ pmart:
     operating-end: '24:00'
     location-max-age: PT2M # 설계값 — 이보다 오래된 라이더 위치는 후보에서 뺀다
     tick-interval: PT5S
-    # 시험은 engine.tick() 을 직접 부른다 — 배경 판단 주기가 시험의 tick 과 겹쳐 흔들리던 것(2026-11-25, DispatchFlowIT.restrictedRider…) 막으려 시험 중에는 시작하지 않는다
-    tick-initial-delay: PT24H
     late-weight: 2
     solver-time-limit: PT2S
     poll-after-sec: 5
