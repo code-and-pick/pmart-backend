@@ -60,7 +60,8 @@ public class LpnStore {
       @Nullable String postingStatus,
       @Nullable String commitId,
       @Nullable String rejectReason,
-      @Nullable String manifestId) {}
+      @Nullable String manifestId,
+      @Nullable String residualStatus) {}
 
   public record MismatchRow(
       String kind, @Nullable String lpn, @Nullable String trfId, String detail) {}
@@ -291,7 +292,7 @@ public class LpnStore {
   public List<DepartureTransferRow> departureTransfers(String departureId) {
     return jdbc.query(
         "SELECT trf_id, line_no, mfc_id, result, departed_qty, posting_status, commit_id, reject_reason,"
-            + " manifest_id FROM departure_transfer WHERE departure_id = ? ORDER BY line_no",
+            + " manifest_id, residual_status FROM departure_transfer WHERE departure_id = ? ORDER BY line_no",
         (rs, i) -> departureTransfer(rs),
         departureId);
   }
@@ -300,7 +301,7 @@ public class LpnStore {
     return jdbc
         .query(
             "SELECT trf_id, line_no, mfc_id, result, departed_qty, posting_status, commit_id, reject_reason,"
-                + " manifest_id FROM departure_transfer WHERE trf_id = ?",
+                + " manifest_id, residual_status FROM departure_transfer WHERE trf_id = ?",
             (rs, i) -> departureTransfer(rs),
             trfId)
         .stream()
@@ -411,7 +412,16 @@ public class LpnStore {
         rs.getString("posting_status"),
         rs.getString("commit_id"),
         rs.getString("reject_reason"),
-        rs.getString("manifest_id"));
+        rs.getString("manifest_id"),
+        rs.getString("residual_status"));
+  }
+
+  public void setResidual(String departureId, String trfId, String status) {
+    jdbc.update(
+        "UPDATE departure_transfer SET residual_status = ? WHERE departure_id = ? AND trf_id = ?",
+        status,
+        departureId,
+        trfId);
   }
 
   private static LpnRow row(ResultSet rs) throws SQLException {

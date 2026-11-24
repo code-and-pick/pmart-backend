@@ -420,11 +420,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     inventory.stubFor(
         com.github.tomakehurst.wiremock.client.WireMock.post(
                 urlPathEqualTo(ALLOC + "/ALC-1/releases"))
-            .willReturn(
-                aResponse()
-                    .withHeader("Content-Type", "application/json")
-                    .withBody(
-                        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-10\"}")));
+            .willReturn(aResponse().withStatus(503).withBody("{}"))); // 잔여 해제 불명 → PENDING
     String dep = "DEP-" + UUID.randomUUID();
     Map<String, Object> depBody = new LinkedHashMap<>();
     depBody.put("departureId", dep);
@@ -460,17 +456,33 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
             .withRequestBody(matchingJsonPath("$.departureSource", equalTo("SIMULATED")))
             .withRequestBody(matchingJsonPath("$.toMfcId", equalTo("MFC-BJG-01")))
             .withRequestBody(matchingJsonPath("$.lines.length()", equalTo("2"))));
+    int releases = releases();
+    assertThat(releases).isGreaterThanOrEqualTo(1);
     inventory.verify(
-        1,
+        releases,
         postRequestedFor(urlPathEqualTo(ALLOC + "/ALC-1/releases"))
             .withRequestBody(matchingJsonPath("$.reason", equalTo("RESIDUAL_CLOSED"))));
     assertThat(outbox("TruckDepartureValidated")).isEqualTo(2);
     assertThat(outbox("OutboundDiscrepancyRaised")).isEqualTo(1);
     assertThat(outbox("TransferShipmentManifestIssued")).isEqualTo(1);
 
-    // 같은 본문 다시 → 재고 다시 안 부름, 다른 본문 → 409
+    assertThat(residual(dep, trf1)).isEqualTo("PENDING");
+
+    // 같은 본문 다시 → TOUT 은 다시 안 부르고 불명이던 잔여 해제만 다시(DONE), 다른 본문 → 409
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo(ALLOC + "/ALC-1/releases"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-10\"}")));
     assertThat(post(SERVICE, "/internal/departure-validations", depBody).status()).isEqualTo(200);
     inventory.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings")));
+    assertThat(releases()).isEqualTo(releases + 1);
+    assertThat(residual(dep, trf1)).isEqualTo("DONE");
+    assertThat(post(SERVICE, "/internal/departure-validations", depBody).status()).isEqualTo(200);
+    assertThat(releases()).isEqualTo(releases + 1);
     Map<String, Object> changed = new LinkedHashMap<>(depBody);
     changed.put("vehicleId", "VH-9");
     assertThat(
@@ -493,6 +505,18 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     }
     assertThat(departed).isEqualTo(7);
     assertThat(get(SERVICE, "/internal/shipment-manifests/" + trf3).status()).isEqualTo(404);
+  }
+
+  int releases() {
+    return inventory.findAll(postRequestedFor(urlPathEqualTo(ALLOC + "/ALC-1/releases"))).size();
+  }
+
+  String residual(String dep, String trf) {
+    return jdbc.queryForObject(
+        "SELECT residual_status FROM departure_transfer WHERE departure_id = ? AND trf_id = ?",
+        String.class,
+        dep,
+        trf);
   }
 
   static Map<String, Object> box(String lpn, String parent, String sku, String lot, int qty) {

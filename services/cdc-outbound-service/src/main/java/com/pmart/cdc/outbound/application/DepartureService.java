@@ -96,10 +96,13 @@ public class DepartureService {
     tx.executeWithoutResult(s -> record(cmd, hash));
     // 2) 일치 TRF 중 아직 반영 안 된 것 TOUT (트랜잭션 밖)
     for (DepartureTransferRow t : lpns.departureTransfers(cmd.departureId())) {
-      if ("MATCHED".equals(t.result())
-          && !"APPLIED".equals(t.postingStatus())
-          && !"REJECTED".equals(t.postingStatus())) {
+      if (!"MATCHED".equals(t.result()) || "REJECTED".equals(t.postingStatus())) {
+        continue;
+      }
+      if (!"APPLIED".equals(t.postingStatus())) {
         post(cmd, t);
+      } else if (!"DONE".equals(t.residualStatus())) {
+        releaseResidual(cmd, store.transfer(t.trfId(), false).orElseThrow());
       }
     }
     return view(cmd.departureId());
@@ -202,6 +205,7 @@ public class DepartureService {
               ok ? "PENDING" : null,
               null,
               null,
+              null,
               null));
       mismatches.addAll(m);
       publishValidated(cmd, t, ok, m, declared, at);
@@ -298,15 +302,30 @@ public class DepartureService {
           store.setTransferState(t.trfId(), "DEPARTED", null, at);
           publishManifest(cmd, t, manifestId, manifest, at);
         });
-    // 남은 할당 해제(출발 뒤 잔여는 예약에서 풀린다 — 이미 다 나갔으면 재고가 409, 무시)
+    releaseResidual(cmd, t);
+  }
+
+  /**
+   * 출발 뒤 남은 할당 해제(RESIDUAL_CLOSED). 이미 다 나갔거나 풀렸으면 재고가 409 INVALID_STATE — 끝난 것으로 본다. 불명·미전달은
+   * PENDING 으로 남기고 같은 출발 재전송이 같은 키로 다시 부른다.
+   */
+  private void releaseResidual(Validate cmd, TransferRow t) {
+    if (t.allocationId() == null) {
+      tx.executeWithoutResult(s -> lpns.setResidual(cmd.departureId(), t.trfId(), "DONE"));
+      return;
+    }
+    String status;
     try {
       inventory.release(
           t.allocationId(),
           "outbound-residual-" + t.trfId(),
           Map.of("reason", "RESIDUAL_CLOSED", "sourceRef", cmd.departureId()));
+      status = "DONE";
     } catch (PmartException e) {
-      // INVALID_STATE(이미 DEPARTED/RELEASED)·불명 — 잔여 해제는 다시 보내도 같은 키로 한 번만
+      status = TransferService.unknown(e) ? "PENDING" : "DONE";
     }
+    String st = status;
+    tx.executeWithoutResult(s -> lpns.setResidual(cmd.departureId(), t.trfId(), st));
   }
 
   /** 할당 LOT → 소비기한(매니페스트·사건용). 조회가 안 되면 비운다. */
