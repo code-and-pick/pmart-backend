@@ -17,12 +17,15 @@ public class DispatchMetricsController implements DispatchMetricsApi {
 
   private final OnTimeMetrics metrics;
   private final com.pmart.delivery.dispatch.application.DispatchEfficiency efficiency;
+  private final com.pmart.delivery.dispatch.application.AutoCancellations autoCancellations;
   private final Clock clock;
 
   public DispatchMetricsController(
       OnTimeMetrics metrics,
       com.pmart.delivery.dispatch.application.DispatchEfficiency efficiency,
+      com.pmart.delivery.dispatch.application.AutoCancellations autoCancellations,
       Clock clock) {
+    this.autoCancellations = autoCancellations;
     this.metrics = metrics;
     this.efficiency = efficiency;
     this.clock = clock;
@@ -89,6 +92,51 @@ public class DispatchMetricsController implements DispatchMetricsApi {
                                     .GetDispatchMetrics200ResponseFailureReasonsInner()
                                 .reason(x.reason())
                                 .rounds(x.rounds()))
+                    .toList()));
+  }
+
+  /**
+   * 배차 불가 자동 취소 내역(0.17.0) — 규칙은 {@link com.pmart.delivery.dispatch.application.AutoCancellations}.
+   */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.dispatch.api.generated.model.ListAutoCancellations200Response>
+      listAutoCancellations(
+          @Nullable LocalDate from, @Nullable LocalDate to, @Nullable String mfcId, String filter) {
+    com.pmart.delivery.dispatch.application.AutoCancellations.Filter which;
+    try {
+      which = com.pmart.delivery.dispatch.application.AutoCancellations.Filter.valueOf(filter);
+    } catch (IllegalArgumentException e) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED,
+          "filter 는 ALL·CANCELLED·BLOCKED·BLOCKED_OPEN 입니다.");
+    }
+    var r = autoCancellations.list(from, to, mfcId, which);
+    return ResponseEntity.ok(
+        new com.pmart.delivery.dispatch.api.generated.model.ListAutoCancellations200Response()
+            .from(r.from())
+            .to(r.to())
+            .items(
+                r.items().stream()
+                    .map(
+                        x ->
+                            new com.pmart.delivery.dispatch.api.generated.model
+                                    .ListAutoCancellations200ResponseItemsInner()
+                                .deliveryId(x.deliveryId())
+                                .orderId(x.orderId())
+                                .mfcId(x.mfcId())
+                                .deliveryNumber(x.deliveryNumber())
+                                .promisedAt(
+                                    x.promisedAt() == null
+                                        ? null
+                                        : x.promisedAt().atOffset(ZoneOffset.UTC))
+                                .attemptedAt(x.attemptedAt().atOffset(ZoneOffset.UTC))
+                                .result(
+                                    com.pmart.delivery.dispatch.api.generated.model
+                                        .ListAutoCancellations200ResponseItemsInner.ResultEnum
+                                        .fromValue(x.result()))
+                                .rejectCode(x.rejectCode())
+                                .deliveryState(x.deliveryState()))
                     .toList()));
   }
 }

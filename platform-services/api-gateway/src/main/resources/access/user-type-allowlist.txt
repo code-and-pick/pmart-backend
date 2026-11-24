@@ -192,6 +192,7 @@ GET /api/v1/me/wishlist-items CUSTOMER
 GET /api/v1/me/wishlist-product-ids CUSTOMER
 GET /api/v1/me/withdrawals CUSTOMER
 GET /api/v1/me/withdrawals/{withdrawalId} CUSTOMER
+GET /api/v1/metrics/auto-cancellations OPERATOR
 GET /api/v1/metrics/dispatch OPERATOR
 GET /api/v1/metrics/on-time-deliveries OPERATOR
 GET /api/v1/metrics/picking-lines OPERATOR

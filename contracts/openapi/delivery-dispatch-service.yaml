@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: delivery-dispatch-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
     0.16.0(2026-11-23, 라이더 백오피스 "운영 통계" — 사용자 "필요한 기능 … 특히 2번이랑 4번"): `GET /metrics/dispatch` 배차 효율(날짜·센터별 배차 요청·배정·평균 배차 소요·재배차·실패 회차·자동 취소·제안 수락률·배정 출처, 실패 사유).
     0.15.0(2026-11-23, 라이더 백오피스 라이더 목록 "진행 중 n" — 사용자 요청): 내부 `GET /internal/riders/active-delivery-counts?riderIds=` — 라이더 여럿의 맡은 배송 수(ASSIGNED·PICKED_UP) 한 번에. rider-service 직원 목록이 부른다.
@@ -567,6 +567,53 @@ paths:
                       properties:
                         reason: { type: string }
                         rounds: { type: integer }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /metrics/auto-cancellations:
+    get:
+      tags: [dispatch-metrics]
+      summary: (0.17.0) 배차 불가 자동 취소 내역 — 건별
+      x-added-in: '2026-11-24'
+      description: |
+        라이더 백오피스(2026-11-24 사용자 "자동 취소한 것도 라이더 백오피스에서 확인"). 약속 + 30분이 지나도 라이더 없이 배차 대기였던 고객 배송에 claim 시스템 취소를 부른 결과.
+        - result CANCELLED: claim 이 받았다(주문 전체 취소·환불·쿠폰). BLOCKED: claim 이 거절해 다시 부르지 않는다 — MFC 관리자 수동 취소 필요, rejectCode 에 거절 코드.
+        - filter ALL·CANCELLED·BLOCKED 는 시도 시각(attemptedAt)의 Asia/Seoul 날짜로 from·to(포함, 기본 오늘, 최대 31일). BLOCKED_OPEN 은 날짜와 무관하게 막혔고 아직 배차 대기(DISPATCHING)인 것만.
+        - 최근 시도 순, 200건까지. 응답 없음으로 1분 뒤 다시 부를 건(아직 결과 없음)은 없다.
+        권한은 배차 효율과 같다 — OPERATOR_ADMIN·RIDER_OPS·CS_AGENT 는 모든 센터, 그 밖 운영자는 mfcId(그 센터 권한) 필수.
+      operationId: listAutoCancellations
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: filter, in: query, schema: { type: string, enum: [ALL, CANCELLED, BLOCKED, BLOCKED_OPEN], default: ALL } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, items]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [deliveryId, mfcId, attemptedAt, result, deliveryState]
+                      properties:
+                        deliveryId: { type: string }
+                        orderId: { type: [string, 'null'] }
+                        mfcId: { type: string }
+                        deliveryNumber: { type: [string, 'null'], description: '화면 배송 번호(ADR-0085). 주문번호를 모르면 null' }
+                        promisedAt: { type: [string, 'null'], format: date-time }
+                        attemptedAt: { type: string, format: date-time, description: 자동 취소를 부른 시각(결과를 기록한 때) }
+                        result: { type: string, enum: [CANCELLED, BLOCKED] }
+                        rejectCode: { type: [string, 'null'], description: BLOCKED 일 때 claim 거절 코드 }
+                        deliveryState: { type: string, description: '지금 배송 상태(CANCELLED 면 취소 반영됨, DISPATCHING 이면 아직 대기)' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 

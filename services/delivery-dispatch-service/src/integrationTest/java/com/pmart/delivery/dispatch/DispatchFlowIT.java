@@ -1569,6 +1569,59 @@ class DispatchFlowIT extends PostgresKafkaContainerSupport {
             .withHeader("Idempotency-Key", equalTo("dispatch-no-rider:" + deliveryId))
             .withRequestBody(matchingJsonPath("$.reason", equalTo("DISPATCH_UNAVAILABLE")))
             .withRequestBody(matchingJsonPath("$.orderId", equalTo(orderId))));
+
+    // 자동 취소 내역(0.17.0): 받은 것 CANCELLED, 막힌 것 BLOCKED(거절 코드) — BLOCKED_OPEN 은 막혔고 아직 배차 대기인 것만
+    String blocked = readyShipment(mfc, "SHP-" + UUID.randomUUID(), "PKG-29b-" + UUID.randomUUID());
+    jdbc.update(
+        "UPDATE delivery SET state = 'DISPATCHING', auto_cancel_at = now(), auto_cancel_result ="
+            + " 'ORDER_NOT_CANCELLABLE' WHERE delivery_id = ?",
+        blocked);
+    String ops = "Bearer " + TestJwt.operator("OP-RO", List.of("RIDER_OPS"), List.of());
+    JsonNode all =
+        body(
+            http.get()
+                .uri("/metrics/auto-cancellations?mfcId={m}", mfc)
+                .header("Authorization", ops)
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(all.path("items")).hasSize(2);
+    java.util.Map<String, JsonNode> byId = new java.util.HashMap<>();
+    all.path("items").forEach(x -> byId.put(x.path("deliveryId").asString(), x));
+    assertThat(byId.get(deliveryId).path("result").asString()).isEqualTo("CANCELLED");
+    assertThat(byId.get(deliveryId).path("rejectCode").isNull()).isTrue();
+    assertThat(byId.get(deliveryId).path("orderId").asString()).isEqualTo(orderId);
+    assertThat(byId.get(blocked).path("result").asString()).isEqualTo("BLOCKED");
+    assertThat(byId.get(blocked).path("rejectCode").asString()).isEqualTo("ORDER_NOT_CANCELLABLE");
+    JsonNode open =
+        body(
+            http.get()
+                .uri("/metrics/auto-cancellations?mfcId={m}&filter=BLOCKED_OPEN", mfc)
+                .header("Authorization", ops)
+                .retrieve()
+                .toEntity(String.class));
+    assertThat(open.path("items")).hasSize(1);
+    assertThat(open.path("items").get(0).path("deliveryId").asString()).isEqualTo(blocked);
+    assertThat(
+            http.get()
+                .uri("/metrics/auto-cancellations?filter=NOPE")
+                .header("Authorization", ops)
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(400);
+    assertThat(
+            http.get()
+                .uri("/metrics/auto-cancellations?mfcId={m}", mfc)
+                .header(
+                    "Authorization",
+                    "Bearer "
+                        + TestJwt.operator("OP-X", List.of("MFC_SUPERVISOR"), List.of("MFC-OTHER")))
+                .retrieve()
+                .toEntity(String.class)
+                .getStatusCode()
+                .value())
+        .isEqualTo(403);
   }
 
   @Test
