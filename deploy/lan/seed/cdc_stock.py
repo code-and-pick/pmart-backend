@@ -18,7 +18,8 @@
   PMART_CDC_INVENTORY=http://<호스트>:8601/api/v1 python -I deploy/lan/seed/cdc_stock.py --apply \\
       --stock-approval <초기 보유 승인> --safety-approval <안전량 승인>
 
-- 묶음마다 멱등 키가 정해져 있어(`cdc-stock-<단계>-<SKU 목록 지문>-<번호>`) 다시 돌려도 안전하다. SKU 가 늘면 지문이 바뀌어 새 키가 되고,
+- 묶음마다 멱등 키가 정해져 있어(`cdc-stock-<단계>-<SKU 목록 지문>[-<기준일>]-<번호>`) 다시 돌려도 안전하다. 소비기한은 기준일(`--base-date YYYY-MM-DD`,
+  없으면 오늘)에서 센다 — 중간에 멈춘 것을 다른 날 이어서 돌릴 때는 처음 날짜를 준다(PR #460 검토). SKU 가 늘면 지문이 바뀌어 새 키가 되고,
   이미 넣은 LOT 은 409 INITIAL_BALANCE_EXISTS 로 멈춘다 — 늘어난 SKU 만 넣으려면 `--only-new`(이미 재고가 있는 SKU 를 스냅샷으로 빼고 넣음).
 - 승인 번호(초기 보유·안전량)는 지어내지 않는다 — 인자로 받는다. 모든 값은 사용자 제공 설계 가정·시험 데이터다(chilgok-dc.md §1).
 """
@@ -125,7 +126,8 @@ def main():
     for s in (sys.stdout, sys.stderr):
         s.reconfigure(encoding="utf-8")  # Windows 콘솔(cp949)에서도 한글 출력
     args = sys.argv
-    today = date.today()
+    # 소비기한 기준일 — 이어서 돌릴 때 같은 날을 줘야 같은 본문(같은 멱등 키)이 된다
+    today = date.fromisoformat(args[args.index("--base-date") + 1]) if "--base-date" in args else date.today()
     inv = os.environ.get("PMART_CDC_INVENTORY")
     if "--skus-file" in args:
         with open(args[args.index("--skus-file") + 1], encoding="utf-8") as f:
@@ -145,6 +147,7 @@ def main():
         skus = [s for s in skus if s[0] not in have]
     lines, skipped, per_zone = plan(skus, load_locations(), today)
     fp = hashlib.sha256("|".join(s for s, _ in skus).encode()).hexdigest()[:12]
+    print(f"기준일 {today.isoformat()} — 이어서 돌릴 때는 --base-date {today.isoformat()}")
     print(f"센터 {CENTER} · SKU {len(skus)}(배치 {sum(per_zone.values())}, 건너뜀 {len(skipped)}) · 재고 줄 {len(lines)} · 합 {sum(l['qty'] for l in lines):,}개 · 지문 {fp}")
     for z in sorted(per_zone):
         print(f"  구역 {z}: {per_zone[z]} SKU")
@@ -194,9 +197,12 @@ def main():
     for n, chunk in enumerate(batches):
         st, b = http("POST", f"{inv}/internal/initial-balances",
                      {"cdcId": CENTER, "approvalRef": stock_ref, "lines": chunk},
-                     {**src, "Idempotency-Key": f"cdc-stock-initial-{fp}-{n:03d}"})
+                     {**src, "Idempotency-Key": f"cdc-stock-initial-{fp}-{today.isoformat()}-{n:03d}"})
         if st != 200:
-            sys.exit(f"시작 재고 묶음 {n} 실패 HTTP {st} {json.dumps(b, ensure_ascii=False)[:800]}")
+            hint = ""
+            if b.get("code") == "INITIAL_BALANCE_EXISTS":
+                hint = " — 이미 넣은 LOT 입니다. 처음 돌린 날의 --base-date 로 다시 돌리거나 --only-new 로 새 SKU 만"
+            sys.exit(f"시작 재고 묶음 {n} 실패 HTTP {st} {json.dumps(b, ensure_ascii=False)[:800]}{hint}")
         total += b.get("appliedQty", 0)
         print(f"시작 재고 묶음 {n} ({len(chunk)}줄) 반영")
     print(f"끝: {total:,}개(재생된 묶음 포함)")
