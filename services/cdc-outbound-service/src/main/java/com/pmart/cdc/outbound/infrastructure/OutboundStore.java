@@ -47,10 +47,11 @@ public class OutboundStore {
       Instant createdAt,
       @Nullable Instant releasedAt) {}
 
+  /** trfId 는 TRF 하나짜리 작업만(0.9.0 — 묶음이면 비움, 몫은 {@link ShareRow}). */
   public record TaskRow(
       String taskId,
       String waveId,
-      String trfId,
+      @Nullable String trfId,
       String cdcId,
       String kind,
       @Nullable String zone,
@@ -60,7 +61,23 @@ public class OutboundStore {
       int version,
       @Nullable String assigneeId,
       Instant createdAt,
-      @Nullable Instant completedAt) {}
+      @Nullable Instant completedAt,
+      @Nullable String pickMode,
+      @Nullable String pickMethod,
+      @Nullable String regionCode) {}
+
+  /** 줄의 TRF 몫(0.9.0). */
+  public record ShareRow(
+      int lineNo,
+      String trfId,
+      String mfcId,
+      Instant dueAt,
+      int plannedQty,
+      int pickedQty,
+      int shortQty) {}
+
+  /** 지역 ↔ MFC(0.9.0). */
+  public record RegionRow(String mfcId, String regionCode, String regionName) {}
 
   public record TaskLineRow(
       int lineNo,
@@ -284,12 +301,18 @@ public class OutboundStore {
 
   private static final String TASK_COLS =
       "t.task_id, t.wave_id, t.trf_id, t.cdc_id, t.kind, t.zone, t.floor, t.due_at, t.state,"
-          + " t.row_version, t.assignee_id, t.created_at, t.completed_at";
+          + " t.row_version, t.assignee_id, t.created_at, t.completed_at, t.pick_mode, t.pick_method,"
+          + " t.region_code";
 
-  public void insertTask(TaskRow t, List<TaskLineRow> lines) {
+  /** 몫이 든 작업(단건 작업도 몫 한 줄씩 — V7). */
+  private static final String TASKS_OF_TRF =
+      "SELECT DISTINCT task_id FROM task_line_share WHERE trf_id = ?";
+
+  public void insertTask(TaskRow t, List<TaskLineRow> lines, List<ShareRow> shares) {
     jdbc.update(
         "INSERT INTO task (task_id, wave_id, trf_id, cdc_id, kind, zone, floor, due_at, state,"
-            + " row_version, assignee_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " row_version, assignee_id, created_at, pick_mode, pick_method, region_code)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         t.taskId(),
         t.waveId(),
         t.trfId(),
@@ -301,7 +324,10 @@ public class OutboundStore {
         t.state(),
         t.version(),
         t.assigneeId(),
-        Timestamp.from(t.createdAt()));
+        Timestamp.from(t.createdAt()),
+        t.pickMode() == null ? "DISCRETE" : t.pickMode(),
+        t.pickMethod(),
+        t.regionCode());
     for (TaskLineRow l : lines) {
       jdbc.update(
           "INSERT INTO task_line (task_id, line_no, sku, lot, location_code, planned_qty)"
@@ -313,6 +339,71 @@ public class OutboundStore {
           l.locationCode(),
           l.plannedQty());
     }
+    for (ShareRow r : shares) {
+      jdbc.update(
+          "INSERT INTO task_line_share (task_id, line_no, trf_id, mfc_id, due_at, planned_qty)"
+              + " VALUES (?,?,?,?,?,?)",
+          t.taskId(),
+          r.lineNo(),
+          r.trfId(),
+          r.mfcId(),
+          Timestamp.from(r.dueAt()),
+          r.plannedQty());
+    }
+  }
+
+  /** 작업의 몫(줄 → TRF 순). */
+  public List<ShareRow> shares(String taskId) {
+    return jdbc.query(
+        "SELECT line_no, trf_id, mfc_id, due_at, planned_qty, picked_qty, short_qty"
+            + " FROM task_line_share WHERE task_id = ? ORDER BY line_no, trf_id",
+        (rs, i) ->
+            new ShareRow(
+                rs.getInt("line_no"),
+                rs.getString("trf_id"),
+                rs.getString("mfc_id"),
+                rs.getTimestamp("due_at").toInstant(),
+                rs.getInt("planned_qty"),
+                rs.getInt("picked_qty"),
+                rs.getInt("short_qty")),
+        taskId);
+  }
+
+  public void addShareResult(String taskId, int lineNo, String trfId, int picked, int shortQty) {
+    jdbc.update(
+        "UPDATE task_line_share SET picked_qty = picked_qty + ?, short_qty = short_qty + ?"
+            + " WHERE task_id = ? AND line_no = ? AND trf_id = ?",
+        picked,
+        shortQty,
+        taskId,
+        lineNo,
+        trfId);
+  }
+
+  // ---------- region (0.9.0) ----------
+
+  public List<RegionRow> regions(String cdcId) {
+    return jdbc.query(
+        "SELECT mfc_id, region_code, region_name FROM region_mfc WHERE cdc_id = ?"
+            + " ORDER BY region_code, mfc_id",
+        (rs, i) ->
+            new RegionRow(
+                rs.getString("mfc_id"), rs.getString("region_code"), rs.getString("region_name")),
+        cdcId);
+  }
+
+  public void upsertRegion(String cdcId, RegionRow r, String by, Instant at) {
+    jdbc.update(
+        "INSERT INTO region_mfc (cdc_id, mfc_id, region_code, region_name, updated_by, updated_at)"
+            + " VALUES (?,?,?,?,?,?) ON CONFLICT (cdc_id, mfc_id) DO UPDATE SET"
+            + " region_code = EXCLUDED.region_code, region_name = EXCLUDED.region_name,"
+            + " updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at",
+        cdcId,
+        r.mfcId(),
+        r.regionCode(),
+        r.regionName(),
+        by,
+        Timestamp.from(at));
   }
 
   public Optional<TaskRow> task(String taskId, boolean lock) {
@@ -398,7 +489,11 @@ public class OutboundStore {
 
   /** 담당 없는 CREATED 작업 하나를 잠근다(다른 요청이 잠근 줄은 건너뜀 — 동시에 받아도 한 작업은 한 사람). 순서 TRF 기한 → 만든 순. */
   public Optional<TaskRow> lockNextCandidate(
-      String cdcId, @Nullable String kind, @Nullable String zone, @Nullable String floor) {
+      String cdcId,
+      @Nullable String kind,
+      @Nullable String zone,
+      @Nullable String floor,
+      @Nullable String pickMode) {
     StringBuilder sql =
         new StringBuilder(
             "SELECT "
@@ -418,6 +513,10 @@ public class OutboundStore {
     if (floor != null) {
       sql.append(" AND t.floor = ?");
       args.add(floor);
+    }
+    if (pickMode != null) {
+      sql.append(" AND t.pick_mode = ?");
+      args.add(pickMode);
     }
     sql.append(" ORDER BY t.due_at, t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED");
     return jdbc.query(sql.toString(), (rs, i) -> task(rs), args.toArray()).stream().findFirst();
@@ -462,8 +561,9 @@ public class OutboundStore {
   public java.util.Map<String, Integer> pickedByLot(String trfId) {
     java.util.Map<String, Integer> out = new java.util.HashMap<>();
     jdbc.query(
-        "SELECT l.sku, l.lot, SUM(l.picked_qty) AS q FROM task_line l JOIN task t ON t.task_id = l.task_id"
-            + " WHERE t.trf_id = ? GROUP BY l.sku, l.lot",
+        "SELECT l.sku, l.lot, SUM(s.picked_qty) AS q FROM task_line_share s JOIN task_line l"
+            + " ON l.task_id = s.task_id AND l.line_no = s.line_no"
+            + " WHERE s.trf_id = ? GROUP BY l.sku, l.lot",
         rs -> {
           out.put(rs.getString("sku") + "|" + rs.getString("lot"), rs.getInt("q"));
         },
@@ -474,18 +574,18 @@ public class OutboundStore {
   /** TRF 의 Task (종류, 상태) 목록 — 출발 준비 조회. */
   public List<String[]> taskStates(String trfId) {
     return jdbc.query(
-        "SELECT kind, state FROM task WHERE trf_id = ? ORDER BY task_id",
+        "SELECT kind, state FROM task WHERE task_id IN (" + TASKS_OF_TRF + ") ORDER BY task_id",
         (rs, i) -> new String[] {rs.getString("kind"), rs.getString("state")},
         trfId);
   }
 
-  /** 아직 끝나지 않은 Task 수(Wave 단위 / TRF 단위). */
+  /** 아직 끝나지 않은 Task 수(Wave 단위 / TRF 단위 — TRF 는 몫이 든 작업). */
   public int openTasks(String column, String id) {
     Integer n =
         jdbc.queryForObject(
             "SELECT count(*) FROM task WHERE "
-                + ("trf_id".equals(column) ? "trf_id" : "wave_id")
-                + " = ? AND state NOT IN ('DONE', 'PARTIAL', 'CANCELLED')",
+                + ("trf_id".equals(column) ? "task_id IN (" + TASKS_OF_TRF + ")" : "wave_id = ?")
+                + " AND state NOT IN ('DONE', 'PARTIAL', 'CANCELLED')",
             Integer.class,
             id);
     return n == null ? 0 : n;
@@ -505,7 +605,10 @@ public class OutboundStore {
         rs.getInt("row_version"),
         rs.getString("assignee_id"),
         rs.getTimestamp("created_at").toInstant(),
-        instant(rs, "completed_at"));
+        instant(rs, "completed_at"),
+        rs.getString("pick_mode"),
+        rs.getString("pick_method"),
+        rs.getString("region_code"));
   }
 
   private static @Nullable Instant instant(ResultSet rs, String col) throws SQLException {

@@ -1,11 +1,13 @@
 package com.pmart.cdc.outbound.application;
 
 import com.pmart.cdc.outbound.application.Support.CommandResult;
-import com.pmart.cdc.outbound.domain.PickPlan;
-import com.pmart.cdc.outbound.domain.PickPlan.Group;
+import com.pmart.cdc.outbound.domain.BatchPlan;
 import com.pmart.cdc.outbound.domain.PickPlan.Held;
 import com.pmart.cdc.outbound.infrastructure.InventoryClient;
+import com.pmart.cdc.outbound.infrastructure.LocationClient;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore;
+import com.pmart.cdc.outbound.infrastructure.OutboundStore.RegionRow;
+import com.pmart.cdc.outbound.infrastructure.OutboundStore.ShareRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TaskLineRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TaskRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TransferRow;
@@ -29,8 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Wave 생성·릴리스(0.3.0). 생성 = 확보된 TRF 묶음(PLANNED). 릴리스 = 재고 서비스에서 TRF 마다 지금 잡힌 LOT·위치를 읽어 TRF × 구역 × 층
- * PICK Task 를 만들고 RELEASED → WaveStateChanged.
+ * Wave 생성·릴리스(0.3.0). 생성 = 확보된 TRF 묶음(PLANNED). 릴리스 = 재고 서비스에서 TRF 마다 지금 잡힌 LOT·위치를 읽고, 위치 서비스에서 통로
+ * 피킹 방식을 읽어(0.9.0) {@link BatchPlan} 대로 PICK Task(단건·지역 묶음·SKU 묶음)를 만들고 RELEASED →
+ * WaveStateChanged.
  */
 @Service
 public class WaveService {
@@ -51,20 +54,26 @@ public class WaveService {
   private final OutboundStore store;
   private final com.pmart.cdc.outbound.infrastructure.CancellationStore cancels;
   private final InventoryClient inventory;
+  private final LocationClient locations;
   private final RequestIdempotency idempotency;
   private final Support support;
+  private final OutboundProperties props;
 
   public WaveService(
       OutboundStore store,
       com.pmart.cdc.outbound.infrastructure.CancellationStore cancels,
       InventoryClient inventory,
+      LocationClient locations,
       RequestIdempotency idempotency,
-      Support support) {
+      Support support,
+      OutboundProperties props) {
     this.store = store;
     this.cancels = cancels;
     this.inventory = inventory;
+    this.locations = locations;
     this.idempotency = idempotency;
     this.support = support;
+    this.props = props;
   }
 
   public Outcome<WaveView> create(String requestId, String sourceSystem, Create c) {
@@ -153,11 +162,18 @@ public class WaveService {
     String by = Support.requireCenter(before.cdcId());
     // 재고 조회는 트랜잭션 밖에서(PLANNED 일 때만 — 이미 릴리스됐으면 아래 멱등 재생 또는 상태 거절)
     Map<String, List<Held>> held = new HashMap<>();
+    Map<String, String> methods = new HashMap<>();
     if ("PLANNED".equals(before.state())) {
       for (TransferRow t : store.transfersOfWave(waveId)) {
         if (!CancellationService.CANCEL_STATES.contains(t.state())) {
           held.put(t.trfId(), held(t));
         }
+      }
+      // 통로 피킹 방식(cdc-location 0.5.0) — 안 되면 503 으로 릴리스하지 않는다
+      Set<String> codes = new TreeSet<>();
+      held.values().forEach(l -> l.forEach(h -> codes.add(h.locationCode())));
+      if (!codes.isEmpty()) {
+        methods.putAll(locations.pickMethods(before.cdcId(), codes));
       }
     }
     return idempotency.execute(
@@ -175,6 +191,11 @@ public class WaveService {
             throw PmartException.invalidState("Wave 상태 " + w.state() + " 에서는 릴리스할 수 없습니다.");
           }
           List<TransferRow> trfs = store.transfersOfWave(waveId);
+          Map<String, String> regionOf = new HashMap<>();
+          for (RegionRow r : store.regions(w.cdcId())) {
+            regionOf.put(r.mfcId(), r.regionCode());
+          }
+          List<BatchPlan.Item> items = new ArrayList<>();
           for (TransferRow t : trfs) {
             if (CancellationService.CANCEL_STATES.contains(t.state())) {
               continue; // 미출발 취소(0.7.0) — 작업을 만들지 않는다
@@ -183,30 +204,52 @@ public class WaveService {
             if (h == null) {
               throw PmartException.versionConflict("Wave 의 TRF 가 방금 바뀌었습니다. 다시 릴리스하세요.");
             }
-            for (Group g : PickPlan.group(h)) {
-              List<TaskLineRow> lines = new ArrayList<>();
-              for (int i = 0; i < g.lines().size(); i++) {
-                var l = g.lines().get(i);
-                lines.add(
-                    new TaskLineRow(i, l.sku(), l.lot(), l.locationCode(), l.qty(), 0, 0, null));
-              }
-              store.insertTask(
-                  new TaskRow(
-                      Support.newId("TASK"),
-                      waveId,
+            for (Held x : h) {
+              items.add(
+                  new BatchPlan.Item(
                       t.trfId(),
-                      w.cdcId(),
-                      "PICK",
-                      g.zone(),
-                      g.floor(),
+                      t.mfcId(),
                       t.dueAt(),
-                      "CREATED",
-                      1,
-                      null,
-                      at,
-                      null),
-                  lines);
+                      regionOf.get(t.mfcId()),
+                      x.sku(),
+                      x.lot(),
+                      x.locationCode(),
+                      x.qty(),
+                      methods.get(x.locationCode())));
             }
+          }
+          for (BatchPlan.Task p : BatchPlan.plan(items, props.batchMaxLines())) {
+            String taskId = Support.newId("TASK");
+            List<TaskLineRow> lines = new ArrayList<>();
+            List<ShareRow> shares = new ArrayList<>();
+            for (int i = 0; i < p.lines().size(); i++) {
+              var l = p.lines().get(i);
+              lines.add(
+                  new TaskLineRow(i, l.sku(), l.lot(), l.locationCode(), l.qty(), 0, 0, null));
+              for (BatchPlan.Share sh : l.shares()) {
+                shares.add(new ShareRow(i, sh.trfId(), sh.mfcId(), sh.dueAt(), sh.qty(), 0, 0));
+              }
+            }
+            store.insertTask(
+                new TaskRow(
+                    taskId,
+                    waveId,
+                    p.trfId(),
+                    w.cdcId(),
+                    "PICK",
+                    p.zone(),
+                    p.floor(),
+                    p.dueAt(),
+                    "CREATED",
+                    1,
+                    null,
+                    at,
+                    null,
+                    p.pickMode(),
+                    p.pickMethod(),
+                    p.regionCode()),
+                lines,
+                shares);
           }
           if (!store.setWaveState(waveId, "RELEASED", w.version(), at)) {
             throw PmartException.versionConflict("Wave 가 방금 바뀌었습니다.");

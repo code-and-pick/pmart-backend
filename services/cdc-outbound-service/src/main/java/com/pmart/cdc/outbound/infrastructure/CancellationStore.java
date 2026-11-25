@@ -130,12 +130,49 @@ public class CancellationStore {
         cancellationId);
   }
 
-  /** 아직 착수하지 않은 TRF 작업(CREATED·ASSIGNED·ACCEPTED)을 CANCELLED 로. 바꾼 수. */
+  /**
+   * 아직 착수하지 않은 작업(CREATED·ASSIGNED·ACCEPTED)에서 이 TRF 몫을 뺀다(0.9.0 — 묶음 작업은 다른 TRF 몫이 남는다). 줄 계획 −몫,
+   * 몫만 있던 줄은 지움, 줄이 남지 않은 작업은 CANCELLED, 남은 작업 기한 = 남은 몫의 가장 이른 기한. 바꾼 작업 수.
+   */
   public int cancelOpenTasks(String trfId) {
-    return jdbc.update(
-        "UPDATE task SET state = 'CANCELLED', row_version = row_version + 1"
-            + " WHERE trf_id = ? AND state IN ('CREATED', 'ASSIGNED', 'ACCEPTED')",
-        trfId);
+    String open =
+        "SELECT s.task_id FROM task_line_share s JOIN task t ON t.task_id = s.task_id"
+            + " WHERE s.trf_id = ? AND t.state IN ('CREATED', 'ASSIGNED', 'ACCEPTED')";
+    java.util.List<String> tasks = jdbc.queryForList(open, String.class, trfId);
+    if (tasks.isEmpty()) {
+      return 0;
+    }
+    java.util.Set<String> ids = new java.util.LinkedHashSet<>(tasks);
+    for (String taskId : ids) {
+      jdbc.update(
+          "DELETE FROM task_line l USING task_line_share s WHERE s.task_id = l.task_id"
+              + " AND s.line_no = l.line_no AND s.trf_id = ? AND l.task_id = ?"
+              + " AND l.planned_qty <= s.planned_qty",
+          trfId,
+          taskId);
+      jdbc.update(
+          "UPDATE task_line l SET planned_qty = l.planned_qty - s.planned_qty FROM task_line_share s"
+              + " WHERE s.task_id = l.task_id AND s.line_no = l.line_no AND s.trf_id = ?"
+              + " AND l.task_id = ?",
+          trfId,
+          taskId);
+      jdbc.update("DELETE FROM task_line_share WHERE trf_id = ? AND task_id = ?", trfId, taskId);
+      Integer left =
+          jdbc.queryForObject(
+              "SELECT count(*) FROM task_line WHERE task_id = ?", Integer.class, taskId);
+      if (left == null || left == 0) {
+        jdbc.update(
+            "UPDATE task SET state = 'CANCELLED', row_version = row_version + 1 WHERE task_id = ?",
+            taskId);
+      } else {
+        jdbc.update(
+            "UPDATE task SET row_version = row_version + 1, due_at = (SELECT min(due_at) FROM"
+                + " task_line_share WHERE task_id = ?) WHERE task_id = ?",
+            taskId,
+            taskId);
+      }
+    }
+    return ids.size();
   }
 
   /** TRF 줄 축소 — 할당 −released, 취소 승인량 +reduced. */

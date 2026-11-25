@@ -1,8 +1,11 @@
 package com.pmart.cdc.outbound.application;
 
 import com.pmart.cdc.outbound.application.Support.CommandResult;
+import com.pmart.cdc.outbound.domain.BatchPlan;
+import com.pmart.cdc.outbound.domain.BatchPlan.ShareState;
 import com.pmart.cdc.outbound.domain.PickPlan;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore;
+import com.pmart.cdc.outbound.infrastructure.OutboundStore.ShareRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TaskLineRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TaskRow;
 import com.pmart.cdc.outbound.infrastructure.OutboundStore.TransferRow;
@@ -18,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -34,7 +38,21 @@ public class TaskService {
   static final String OP_START = "cdcOutbound:startTask";
   static final String OP_PICK = "cdcOutbound:pickResult";
 
-  public record TaskView(TaskRow task, List<TaskLineRow> lines) {}
+  /** shares = 줄의 TRF 몫(0.9.0 — 이전 저장 결과 재생이면 null). */
+  public record TaskView(TaskRow task, List<TaskLineRow> lines, @Nullable List<ShareRow> shares) {
+
+    /** 몫이 든 TRF(trfId 순). */
+    public List<String> trfIds() {
+      TreeSet<String> out = new TreeSet<>();
+      if (shares != null) {
+        shares.forEach(s -> out.add(s.trfId()));
+      }
+      if (out.isEmpty() && task.trfId() != null) {
+        out.add(task.trfId());
+      }
+      return List.copyOf(out);
+    }
+  }
 
   public record NextResult(boolean created, TaskView task) {}
 
@@ -74,7 +92,7 @@ public class TaskService {
     boolean more = rows.size() > size;
     List<TaskView> items = new ArrayList<>();
     for (TaskRow t : more ? rows.subList(0, size) : rows) {
-      items.add(new TaskView(t, store.taskLines(t.taskId())));
+      items.add(new TaskView(t, store.taskLines(t.taskId()), store.shares(t.taskId())));
     }
     return new Page(items, more ? items.get(items.size() - 1).task().taskId() : null);
   }
@@ -83,7 +101,7 @@ public class TaskService {
   public TaskView get(String cdcId, String taskId) {
     Support.requireCenter(cdcId);
     TaskRow t = find(cdcId, taskId, false);
-    return new TaskView(t, store.taskLines(taskId));
+    return new TaskView(t, store.taskLines(taskId), store.shares(taskId));
   }
 
   public Outcome<NextResult> next(
@@ -93,7 +111,8 @@ public class TaskService {
       String workerId,
       @Nullable String kind,
       @Nullable String zone,
-      @Nullable String floor) {
+      @Nullable String floor,
+      @Nullable String pickMode) {
     Support.requireSelf(cdcId, workerId);
     Map<String, String> req = new LinkedHashMap<>();
     req.put("cdcId", cdcId);
@@ -101,6 +120,9 @@ public class TaskService {
     req.put("kind", String.valueOf(kind));
     req.put("zone", String.valueOf(zone));
     req.put("floor", String.valueOf(floor));
+    if (pickMode != null) {
+      req.put("pickMode", pickMode);
+    }
     return idempotency.execute(
         Support.key(sourceSystem, requestId, OP_NEXT, workerId),
         req,
@@ -113,7 +135,7 @@ public class TaskService {
           }
           TaskRow cand =
               store
-                  .lockNextCandidate(cdcId, kind, zone, floor)
+                  .lockNextCandidate(cdcId, kind, zone, floor, pickMode)
                   .orElseThrow(
                       () ->
                           new PmartException(
@@ -235,34 +257,49 @@ public class TaskService {
           if (!unknown.isEmpty()) {
             throw new PmartException(ErrorCode.VALIDATION_FAILED, "작업에 없는 줄이 있습니다.", unknown);
           }
-          // 2) 반영
-          TransferRow trf = store.transfer(t.trfId(), true).orElseThrow();
+          // 2) 반영 — 줄 실적을 TRF 몫에 나눈다(0.9.0: 실피킹은 기한 이른 몫부터, 부족은 기한 늦은 몫부터 — 사용자 결정 §7-2)
+          List<ShareRow> shares = store.shares(taskId);
+          Map<String, TransferRow> trfs = new LinkedHashMap<>();
+          for (String id : new TreeSet<>(shares.stream().map(ShareRow::trfId).toList())) {
+            trfs.put(id, store.transfer(id, true).orElseThrow()); // trfId 순으로 잠근다
+          }
           for (int i = 0; i < lines.size(); i++) {
             PickLine l = lines.get(i);
             TaskLineRow row = matched.get(i);
             store.addLineResult(taskId, row.lineNo(), l.pickedQty(), l.shortQty(), l.shortReason());
-            store.addLinePicked(t.trfId(), l.sku(), l.pickedQty(), l.shortQty());
-            if (l.shortQty() > 0) {
-              Map<String, Object> p = new LinkedHashMap<>();
-              p.put("trfId", t.trfId());
-              if (trf.allocationId() != null) {
-                p.put("allocationId", trf.allocationId());
+            List<ShareState> states = new ArrayList<>();
+            for (ShareRow sh : store.shares(taskId)) {
+              if (sh.lineNo() == row.lineNo()) {
+                states.add(
+                    new ShareState(
+                        sh.trfId(), sh.dueAt(), sh.plannedQty(), sh.pickedQty(), sh.shortQty()));
               }
-              p.put("waveId", t.waveId());
-              p.put("pickTaskId", taskId);
-              p.put("sku", l.sku());
-              p.put("lot", l.lot());
-              p.put("locCode", l.locationCode());
-              p.put("shortQty", l.shortQty());
-              p.put("reason", l.shortReason() == null ? "OTHER" : l.shortReason());
-              p.put("reportedAt", at.toString());
-              support.publish(
-                  "PickShortageReported",
-                  "OutboundTransfer",
-                  t.trfId(),
-                  trf.version(),
-                  workerId,
-                  p);
+            }
+            for (Map.Entry<String, int[]> e :
+                BatchPlan.attribute(states, l.pickedQty(), l.shortQty()).entrySet()) {
+              String trfId = e.getKey();
+              int dp = e.getValue()[0];
+              int ds = e.getValue()[1];
+              store.addShareResult(taskId, row.lineNo(), trfId, dp, ds);
+              store.addLinePicked(trfId, l.sku(), dp, ds);
+              if (ds > 0) {
+                TransferRow trf = trfs.get(trfId);
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("trfId", trfId);
+                if (trf.allocationId() != null) {
+                  p.put("allocationId", trf.allocationId());
+                }
+                p.put("waveId", t.waveId());
+                p.put("pickTaskId", taskId);
+                p.put("sku", l.sku());
+                p.put("lot", l.lot());
+                p.put("locCode", l.locationCode());
+                p.put("shortQty", ds);
+                p.put("reason", l.shortReason() == null ? "OTHER" : l.shortReason());
+                p.put("reportedAt", at.toString());
+                support.publish(
+                    "PickShortageReported", "OutboundTransfer", trfId, trf.version(), workerId, p);
+              }
             }
           }
           List<int[]> after = new ArrayList<>();
@@ -274,8 +311,10 @@ public class TaskService {
           if (!state.equals(t.state())) {
             store.setTaskState(taskId, state, at);
             version++;
-            if (store.openTasks("trf_id", t.trfId()) == 0) {
-              store.setTransferState(t.trfId(), "PICKED", null, at);
+            for (String trfId : trfs.keySet()) {
+              if (store.openTasks("trf_id", trfId) == 0) {
+                store.setTransferState(trfId, "PICKED", null, at);
+              }
             }
             if (store.openTasks("wave_id", t.waveId()) == 0) {
               WaveRow w = store.wave(t.waveId(), true).orElseThrow();
@@ -290,7 +329,8 @@ public class TaskService {
   }
 
   private TaskView view(String taskId) {
-    return new TaskView(store.task(taskId, false).orElseThrow(), store.taskLines(taskId));
+    return new TaskView(
+        store.task(taskId, false).orElseThrow(), store.taskLines(taskId), store.shares(taskId));
   }
 
   private TaskRow find(String cdcId, String taskId, boolean lock) {

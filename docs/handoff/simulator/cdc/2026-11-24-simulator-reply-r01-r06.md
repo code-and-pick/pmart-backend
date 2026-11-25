@@ -144,3 +144,11 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 사용자 결정(묶음 피킹 설계 §7 결정 4, WMS CDC-F-017): TRF 의 실피킹이 그 TRF BOX 에 담은 수량보다 많으면(SKU 별) 출발 검증에서 그 TRF 는 **MISMATCHED**, 불일치 `kind = UNEXPLAINED_QTY`(lpn 비움, detail = 실피킹·분류·차이). TOUT 하지 않고 `OutboundDiscrepancyRaised`(MISSING)를 낸다.
 - 지금 단건 피킹에도 적용된다. 집은 것을 다 담지 않고 출발시키면 그 TRF 는 출발 처리되지 않는다(불일치 TRF 는 다시 출발 검증할 수 없음 — 조사 몫, 0.4.0 그대로).
 - 부탁: 출발 전 `GET /internal/outbound-readiness?trfId` 의 `blockers` 에 `UNSORTED_QTY` 가 없는지 본다. 화면 mismatches 목록에 새 kind 가 보일 수 있다(enum 값 추가).
+
+### 알림 — 묶음 피킹 2단계 (cdc-outbound 0.9.0·cdc-location 0.5.0, 2026-11-25)
+- 설계 `docs/cdc/design/2026-11-25-batch-picking.md`(사용자 결정 §7). Wave 릴리스가 위치 통로 방식(cdc-location `aisle-pick-methods` → 조회 pickMethod)으로 작업을 만든다:
+  DPS·방식 없음 = DISCRETE(지금과 같음), BOX_PICK·FC·DISTRIBUTION = REGION_BATCH(지역 카트 — 지역 × 방식 × 구역 × 층), LINE = SKU_BATCH(라인 DAS — Wave 안 모든 MFC).
+- **Task 모양 변화**: `pickMode`·`pickMethod`·`regionCode`·`trfIds[]`, 줄마다 `shares[]`(trfId·mfcId·dueAt·plannedQty·pickedQty·shortQty — 라인 불·분배 PDA 숫자). **묶음 작업이면 `trfId` 가 비어 있다**(사용자 결정) — 화면은 trfIds·shares 를 본다. 단건 작업은 지금처럼 trfId 가 있다.
+- 피킹 실적은 지금처럼 줄 합계(SKU·LOT·위치). 서버가 기한 이른 TRF 몫부터 채우고 부족은 기한 늦은 몫부터 뺀다. 나눠 담기는 지금 `/sorting-results`(BOX = TRF 하나, 분류 ≤ 그 TRF 몫 실피킹).
+- 다음 작업 받기 본문에 `pickMode` 거르기를 더했다. 지역표 `GET /cdcs/{cdcId}/regions`(칠곡 BUSAN·HONAM·CHUNGCHEONG·GANGWON — 지역 코드 = 지역 바코드 값).
+- LAN 은 cdc-location 0.5.0 배포와 칠곡 통로 방식 값을 넣기 전까지 모두 단건으로 돈다.

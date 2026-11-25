@@ -5,7 +5,7 @@
 ## 계약
 - REST: `contracts/openapi/cdc-outbound-service.yaml` → `openApiGenerate` 가 `com.pmart.cdc.outbound.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
 - 이벤트: 발행 `WaveStateChanged`·`PickShortageReported`·`TruckDepartureValidated`·`OutboundDiscrepancyRaised`·`TransferShipmentManifestIssued`(토픽 `cdc.outbound.v1`, outbox). 소비 없음(TransferApproved 등은 아직 — 지금은 `/internal/transfer-intakes` 로 받는다).
-- 동기 호출: cdc-inventory `POST /internal/allocations`·`GET /internal/allocations/{id}`·`POST /internal/departure-postings`(TOUT)·`POST /internal/allocations/{id}/releases`(잔여 RESIDUAL_CLOSED)(`infrastructure/InventoryClient`, `Downstream`). 주소 `pmart.outbound.cdc-inventory-base-url`.
+- 동기 호출: cdc-location `POST /internal/location-lookups`(0.9.0 — Wave 릴리스 때 통로 pickMethod, `infrastructure/LocationClient`, 주소 `pmart.outbound.cdc-location-base-url`, 안 되면 릴리스 503). cdc-inventory `POST /internal/allocations`·`GET /internal/allocations/{id}`·`POST /internal/departure-postings`(TOUT)·`POST /internal/allocations/{id}/releases`(잔여 RESIDUAL_CLOSED)(`infrastructure/InventoryClient`, `Downstream`). 주소 `pmart.outbound.cdc-inventory-base-url`.
 
 ## 패키지
 `com.pmart.cdc.outbound.{api, application, domain, infrastructure}` (service-architecture.md). Controller 에 업무 규칙 금지.
@@ -34,4 +34,10 @@
   - 같은 작업자의 다음 작업 받기는 권고 잠금으로 줄 세움(다른 키 동시 두 번에도 한 작업).
 - 출발 준비 조회(0.6.0): `/internal/outbound-readiness?trfId` — WMS 자기 사실만으로 단계(NOT_STARTED→PICKING→PICKED→SORTED→INSPECTED→LOADED, DEPARTED·CANCELLED)·검품 합격 BOX 수량·무게·온도대·막힌 이유, TMS·MFC 조건은 보지 않음(CDC-F-020).
 - 미출발 취소·축소(0.7.0, Flyway V6, CDC-F-026): `/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations`(게이트웨이 `/api/v1/transfers/**` 는 replenishment) — **피킹 시작 전 범위**(사용자 2026-11-25). 기록·작업 막기(남은 PICK CREATED·ASSIGNED·ACCEPTED → CANCELLED, TRF CANCELLING) → 트랜잭션 밖 재고 해제(키 `outbound-cancel-<id>`) → TRF CANCELLED·Wave 닫기. 미할당이면 재고 호출 없이 바로. PARTIAL 은 Wave 릴리스 전에만(할당된 만큼 해제, `transfer_line.cancelled_qty`). 불명 UNKNOWN(같은 본문 재전송이 같은 키로), 거절 REJECTED·FULL 은 CANCEL_HOLD. 피킹·분류가 시작됐으면 409 PICKING_STARTED(**취소는 피킹 전에만 — 사용자 확정 2026-11-25**, 공급 쪽 취소 사건 구독·취소 사건 발행은 하지 않음). 취소 중·취소된 TRF 는 Wave 편성·릴리스·출발 검증에서 빠진다. 사건 발행 없음.
+- 묶음 피킹(0.9.0, Flyway V7, 설계 `docs/cdc/design/2026-11-25-batch-picking.md` §7): Wave 릴리스가 위치 통로 방식으로 `domain/BatchPlan` —
+  DPS·방식 없음(팔레트 랙·설정 없음) = DISCRETE(지금처럼 TRF × 구역 × 층 — 사용자 "지금처럼 TRF 하나씩"), BOX_PICK·FC·DISTRIBUTION = REGION_BATCH(지역 × 방식 × 구역 × 층), LINE = SKU_BATCH(방식 × 구역 × 층).
+  같은 SKU·LOT·위치는 한 줄, 줄 밑 `task_line_share`(TRF·MFC·기한·계획·실피킹·부족 — 단건 작업도 몫 한 줄). 묶음이면 `task.trf_id` 비움(사용자 2026-11-25), 응답 trfIds·shares.
+  실적은 줄 합계 → 실피킹은 기한 이른 몫부터, 부족은 늦은 몫부터(같으면 trfId 순) → TRF 줄·`PickShortageReported` 는 TRF 마다. TRF 는 몫이 든 작업이 다 끝나면 PICKED.
+  지역표 `region_mfc`(`GET·POST /cdcs/{cdcId}/regions`, 칠곡 5곳·4지역 BUSAN·HONAM·CHUNGCHEONG·GANGWON 은 V7 시드 — 지역 코드 = PDA 지역 바코드 값). 묶음 크기 `pmart.outbound.batch-max-lines`(없으면 자르지 않음).
+  착수 전 미출발 취소는 묶음 작업에서 그 TRF 몫만 뺀다(줄 계획 −몫, 빈 작업은 CANCELLED). 재고 MOV 없음(설계 §4).
 - 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.

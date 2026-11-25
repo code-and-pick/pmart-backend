@@ -14,6 +14,7 @@ spring:
 pmart:
   outbound:
     cdc-inventory-base-url: ${PMART_CDC_INVENTORY_BASE_URL:http://cdc-inventory-service:8601}
+    cdc-location-base-url: ${PMART_CDC_LOCATION_BASE_URL:http://cdc-location-service:8602}
 management:
   tracing:
     export:

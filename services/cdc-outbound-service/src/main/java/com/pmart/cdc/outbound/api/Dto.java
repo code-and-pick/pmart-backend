@@ -2,14 +2,18 @@ package com.pmart.cdc.outbound.api;
 
 import com.pmart.cdc.outbound.api.generated.model.GetOutboundReadiness200ResponseAsOf;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
+import com.pmart.cdc.outbound.api.generated.model.PickMode;
 import com.pmart.cdc.outbound.api.generated.model.Task;
 import com.pmart.cdc.outbound.api.generated.model.TaskLinesInner;
+import com.pmart.cdc.outbound.api.generated.model.TaskLinesInnerSharesInner;
 import com.pmart.cdc.outbound.api.generated.model.TaskState;
 import com.pmart.cdc.outbound.application.Support.CommandResult;
 import com.pmart.cdc.outbound.application.TaskService.TaskView;
+import com.pmart.cdc.outbound.infrastructure.OutboundStore.ShareRow;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /** 응답 변환 공통. */
@@ -48,6 +52,11 @@ final class Dto {
     out.setTaskId(t.taskId());
     out.setWaveId(t.waveId());
     out.setTrfId(t.trfId());
+    out.setTrfIds(v.trfIds());
+    out.setPickMode(PickMode.fromValue(t.pickMode() == null ? "DISCRETE" : t.pickMode()));
+    out.setPickMethod(
+        t.pickMethod() == null ? null : Task.PickMethodEnum.fromValue(t.pickMethod()));
+    out.setRegionCode(t.regionCode());
     out.setKind(Task.KindEnum.fromValue(t.kind()));
     out.setZone(t.zone());
     out.setFloor(t.floor());
@@ -69,6 +78,24 @@ final class Dto {
                   x.setPickedQty(l.pickedQty());
                   x.setShortQty(l.shortQty());
                   x.setShortReason(l.shortReason());
+                  List<ShareRow> mine =
+                      v.shares() == null
+                          ? List.of()
+                          : v.shares().stream().filter(s -> s.lineNo() == l.lineNo()).toList();
+                  x.setShares(
+                      mine.stream()
+                          .map(
+                              s -> {
+                                var y = new TaskLinesInnerSharesInner();
+                                y.setTrfId(s.trfId());
+                                y.setMfcId(s.mfcId());
+                                y.setDueAt(time(s.dueAt()));
+                                y.setPlannedQty(s.plannedQty());
+                                y.setPickedQty(s.pickedQty());
+                                y.setShortQty(s.shortQty());
+                                return y;
+                              })
+                          .toList());
                   return x;
                 })
             .toList());

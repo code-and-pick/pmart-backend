@@ -71,7 +71,8 @@ public class TasksController implements TasksApi {
                 workerId,
                 body == null || body.getKind() == null ? null : body.getKind().getValue(),
                 body == null ? null : body.getZone(),
-                body == null ? null : body.getFloor())
+                body == null ? null : body.getFloor(),
+                body == null || body.getPickMode() == null ? null : body.getPickMode().getValue())
             .value();
     return ResponseEntity.status(r.created() ? HttpStatus.CREATED : HttpStatus.OK)
         .body(Dto.task(r.task()));

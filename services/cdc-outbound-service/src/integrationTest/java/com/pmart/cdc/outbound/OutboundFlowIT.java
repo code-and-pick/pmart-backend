@@ -48,10 +48,12 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock(
-    @ConfigureWireMock(
-        name = "inventory",
-        baseUrlProperties = "pmart.outbound.cdc-inventory-base-url"))
+@EnableWireMock({
+  @ConfigureWireMock(
+      name = "inventory",
+      baseUrlProperties = "pmart.outbound.cdc-inventory-base-url"),
+  @ConfigureWireMock(name = "location", baseUrlProperties = "pmart.outbound.cdc-location-base-url")
+})
 @TestMethodOrder(MethodOrderer.MethodName.class) // 주 흐름의 outbox 수 세기가 취소 시나리오(CDC02) 사건과 섞이지 않게 먼저
 class OutboundFlowIT extends PostgresKafkaContainerSupport {
 
@@ -72,6 +74,9 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("inventory")
   WireMockServer inventory;
 
+  @InjectWireMock("location")
+  WireMockServer location;
+
   RestClient http;
 
   @BeforeEach
@@ -81,6 +86,15 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
             .baseUrl("http://localhost:" + port + "/api/v1")
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
+    // 위치 서비스 기본 — 방식 없음(모두 단건). 묶음 시나리오는 더 높은 우선순위로 덮는다.
+    location.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .atPriority(10)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"items\":[],\"missing\":[]}")));
   }
 
   record Res(int status, JsonNode body) {}
@@ -923,6 +937,319 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
         .contains("\"actualQty\": 2");
     assertThat(get(SERVICE, "/internal/transfer-intakes/" + trf).body().path("state").asString())
         .isNotEqualTo("DEPARTED");
+  }
+
+  void stubAllocationLots(String alc, String lots) {
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(urlPathEqualTo(ALLOC + "/" + alc))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"allocationId\":\""
+                            + alc
+                            + "\",\"state\":\"ALLOCATED\",\"lines\":["
+                            + lots
+                            + "]}")));
+  }
+
+  Map<String, Object> trfAt(String trfId, String cdc, String mfc, String due, int a, int b) {
+    Map<String, Object> m = new LinkedHashMap<>(trf(trfId, a, b));
+    m.put("cdcId", cdc);
+    m.put("mfcId", mfc);
+    m.put("dueAt", due);
+    return m;
+  }
+
+  /**
+   * 묶음 피킹(0.9.0): 지역표 설정 → 통로 방식(FC·LINE, 위치 WireMock)으로 릴리스 → 지역 묶음(부산권 BJG36·BNG24 = 60)·SKU
+   * 묶음(라인) 작업, trfId 비움·trfIds·shares → pickMode 로 받기 → 56 집고 4 부족 = 기한 이른 BNG 24 먼저, 부족은 늦은 BJG
+   * 에서(PickShortageReported BJG 만) → 라인 작업까지 끝나야 두 TRF PICKED → 분류 ≤ 몫 실피킹 → 다른 Wave 에서 묶음 작업 안 한
+   * TRF 취소 = 몫만 빠짐. CDC04.
+   */
+  @Test
+  void regionAndLineBatchPicking() {
+    String c4 = "CDC04";
+    String ops4 = TestJwt.operator("ops-4", List.of("CDC_MANAGER"), List.of(c4));
+    String w7 = TestJwt.operator("w7", List.of("CDC_WORKER"), List.of(c4));
+    String w6 = TestJwt.operator("w6", List.of("CDC_WORKER"), List.of(c4));
+    String early =
+        Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString();
+    String late = Instant.now().plus(2, ChronoUnit.DAYS).truncatedTo(ChronoUnit.SECONDS).toString();
+    String fc = "CDC04-E-5-61-01-1-1";
+    String line = "CDC04-B-6-62-01-1-1";
+
+    // 0) 지역표 — 같은 MFC 두 번 400, 설정 뒤 조회
+    Res dupRegion =
+        post(
+            ops4,
+            "/cdcs/" + c4 + "/regions",
+            Map.of(
+                "items",
+                List.of(
+                    Map.of("mfcId", "MFC-BJG-01", "regionCode", "BUSAN", "regionName", "부산권"),
+                    Map.of("mfcId", "MFC-BJG-01", "regionCode", "HONAM", "regionName", "호남권"))));
+    assertThat(dupRegion.status()).isEqualTo(400);
+    Res reg =
+        post(
+            ops4,
+            "/cdcs/" + c4 + "/regions",
+            Map.of(
+                "items",
+                List.of(
+                    Map.of("mfcId", "MFC-BJG-01", "regionCode", "BUSAN", "regionName", "부산권"),
+                    Map.of("mfcId", "MFC-BNG-01", "regionCode", "BUSAN", "regionName", "부산권"))));
+    assertThat(reg.status()).as(reg.body().toString()).isEqualTo(200);
+    JsonNode regions = get(ops4, "/cdcs/" + c4 + "/regions").body().path("items");
+    assertThat(regions.size()).isEqualTo(1);
+    assertThat(regions.get(0).path("mfcIds").toString()).contains("MFC-BJG-01", "MFC-BNG-01");
+    // 칠곡 처음 값(V7)
+    assertThat(get(OPS, "/cdcs/CDC01/regions").body().path("items").size()).isEqualTo(4);
+
+    // 1) 인수 — A = BJG(기한 늦음) 36·3, B = BNG(기한 이름) 24·2
+    String trfA = "TRF-" + UUID.randomUUID();
+    String trfB = "TRF-" + UUID.randomUUID();
+    String alcA = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String alcB = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    stubAllocate(
+        trfA,
+        200,
+        "{\"allocationId\":\""
+            + alcA
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":36},{\"sku\":\"E-00000002\",\"allocatedQty\":3}]}");
+    stubAllocate(
+        trfB,
+        200,
+        "{\"allocationId\":\""
+            + alcB
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":24},{\"sku\":\"E-00000002\",\"allocatedQty\":2}]}");
+    stubAllocationLots(
+        alcA,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + fc
+            + "\",\"qty\":36}]},{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\""
+            + line
+            + "\",\"qty\":3}]}");
+    stubAllocationLots(
+        alcB,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + fc
+            + "\",\"qty\":24}]},{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\""
+            + line
+            + "\",\"qty\":2}]}");
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trfA, c4, "MFC-BJG-01", late, 36, 3))
+                .status())
+        .isEqualTo(202);
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trfB, c4, "MFC-BNG-01", early, 24, 2))
+                .status())
+        .isEqualTo(202);
+    location.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .withRequestBody(matchingJsonPath("$.centerId", equalTo(c4)))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"locationCode\":\""
+                            + fc
+                            + "\",\"pickMethod\":\"FC\"},"
+                            + "{\"locationCode\":\""
+                            + line
+                            + "\",\"pickMethod\":\"LINE\"}],\"missing\":[]}")));
+
+    // 2) 릴리스 → 지역 묶음 1·SKU 묶음 1
+    String waveId =
+        post(ops4, "/waves", Map.of("cdcId", c4, "trfIds", List.of(trfA, trfB)))
+            .body()
+            .path("waveId")
+            .asString();
+    Res rel = post(ops4, "/waves/" + waveId + "/releases", null);
+    assertThat(rel.status()).as(rel.body().toString()).isEqualTo(202);
+    location.verify(
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .withHeader(
+                "Idempotency-Key",
+                com.github.tomakehurst.wiremock.client.WireMock.matching(
+                    "cdc-outbound-location-lookup-.+")));
+    JsonNode items = get(ops4, "/cdcs/" + c4 + "/tasks?waveId=" + waveId).body().path("items");
+    assertThat(items.size()).isEqualTo(2);
+    JsonNode region = null;
+    JsonNode skuBatch = null;
+    for (JsonNode t : items) {
+      if ("REGION_BATCH".equals(t.path("pickMode").asString())) {
+        region = t;
+      } else {
+        skuBatch = t;
+      }
+    }
+    assertThat(region).isNotNull();
+    assertThat(skuBatch.path("pickMode").asString()).isEqualTo("SKU_BATCH");
+    assertThat(region.path("regionCode").asString()).isEqualTo("BUSAN");
+    assertThat(region.path("pickMethod").asString()).isEqualTo("FC");
+    assertThat(region.path("trfId").isNull() || region.path("trfId").isMissingNode()).isTrue();
+    assertThat(region.path("trfIds").size()).isEqualTo(2);
+    assertThat(Instant.parse(region.path("dueAt").asString())).isEqualTo(Instant.parse(early));
+    JsonNode l0 = region.path("lines").get(0);
+    assertThat(l0.path("plannedQty").asInt()).isEqualTo(60);
+    assertThat(l0.path("shares").size()).isEqualTo(2);
+    assertThat(skuBatch.path("lines").get(0).path("plannedQty").asInt()).isEqualTo(5);
+
+    // 3) pickMode 로 받기 → 지역 묶음, 56 집고 4 부족
+    Res n = post(w7, "/cdcs/" + c4 + "/workers/w7/next-tasks", Map.of("pickMode", "REGION_BATCH"));
+    assertThat(n.status()).as(n.body().toString()).isEqualTo(201);
+    String regionTask = n.body().path("taskId").asString();
+    assertThat(regionTask).isEqualTo(region.path("taskId").asString());
+    post(w7, "/cdcs/" + c4 + "/tasks/" + regionTask + "/starts", null);
+    Map<String, Object> shortPick = new LinkedHashMap<>();
+    shortPick.put("sku", "E-00000001");
+    shortPick.put("lot", "L1");
+    shortPick.put("locationCode", fc);
+    shortPick.put("pickedQty", 56);
+    shortPick.put("shortQty", 4);
+    shortPick.put("shortReason", "NOT_FOUND");
+    Res pr =
+        post(
+            w7,
+            "/cdcs/" + c4 + "/tasks/" + regionTask + "/pick-results",
+            Map.of("workerId", "w7", "lines", List.of(shortPick)));
+    assertThat(pr.status()).as(pr.body().toString()).isEqualTo(202);
+    JsonNode after = get(ops4, "/cdcs/" + c4 + "/tasks/" + regionTask).body();
+    assertThat(after.path("state").asString()).isEqualTo("PARTIAL");
+    Map<String, int[]> got = new LinkedHashMap<>();
+    for (JsonNode sh : after.path("lines").get(0).path("shares")) {
+      got.put(
+          sh.path("trfId").asString(),
+          new int[] {sh.path("pickedQty").asInt(), sh.path("shortQty").asInt()});
+    }
+    assertThat(got.get(trfB)).containsExactly(24, 0); // 기한 이른 BNG 먼저
+    assertThat(got.get(trfA)).containsExactly(32, 4); // 부족은 늦은 BJG
+    Integer shortEvents =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM outbox_event WHERE type = 'PickShortageReported' AND aggregateid = ?",
+            Integer.class,
+            trfA);
+    assertThat(shortEvents).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE type = 'PickShortageReported' AND aggregateid = ?",
+                Integer.class,
+                trfB))
+        .isZero();
+    JsonNode progA = get(SERVICE, "/internal/transfer-intakes/" + trfA).body();
+    assertThat(progA.path("state").asString()).isEqualTo("IN_WAVE"); // 라인 작업이 남음
+
+    // 4) 라인 작업(SKU 묶음) 5 다 집음 → 두 TRF PICKED·Wave WORK_DONE
+    Res n2 = post(w6, "/cdcs/" + c4 + "/workers/w6/next-tasks", Map.of());
+    String lineTask = n2.body().path("taskId").asString();
+    assertThat(lineTask).isEqualTo(skuBatch.path("taskId").asString());
+    post(w6, "/cdcs/" + c4 + "/tasks/" + lineTask + "/starts", null);
+    Res pr2 =
+        post(
+            w6,
+            "/cdcs/" + c4 + "/tasks/" + lineTask + "/pick-results",
+            Map.of(
+                "workerId",
+                "w6",
+                "lines",
+                List.of(
+                    Map.of(
+                        "sku", "E-00000002", "lot", "L2", "locationCode", line, "pickedQty", 5))));
+    assertThat(pr2.status()).as(pr2.body().toString()).isEqualTo(202);
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trfA).body().path("state").asString())
+        .isEqualTo("PICKED");
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trfB).body().path("state").asString())
+        .isEqualTo("PICKED");
+    assertThat(get(ops4, "/waves/" + waveId).body().path("state").asString())
+        .isEqualTo("WORK_DONE");
+    assertThat(readiness(trfB).path("readiness").asString()).isEqualTo("PICKED");
+
+    // 5) 분류 ≤ 몫 실피킹 — BNG 는 SKU1 24 까지
+    Map<String, Object> overSort = new LinkedHashMap<>();
+    overSort.put("waveId", waveId);
+    overSort.put("trfId", trfB);
+    overSort.put("workerId", "w6");
+    overSort.put(
+        "lpns",
+        List.of(
+            box(
+                "BOX-" + UUID.randomUUID().toString().substring(0, 8),
+                null,
+                "E-00000001",
+                "L1",
+                25)));
+    assertThat(post(ops4, "/sorting-results", overSort).body().path("code").asString())
+        .isEqualTo("SORT_EXCEEDS_PICKED");
+    Map<String, Object> sort = new LinkedHashMap<>(overSort);
+    sort.put(
+        "lpns",
+        List.of(
+            box(
+                "BOX-" + UUID.randomUUID().toString().substring(0, 8),
+                null,
+                "E-00000001",
+                "L1",
+                24)));
+    assertThat(post(ops4, "/sorting-results", sort).status()).isEqualTo(202);
+
+    // 6) 다른 Wave — C(BJG)·D(BNG) 지역 묶음, 착수 전 C 전량 취소 → 작업엔 D 몫만
+    String trfC = "TRF-" + UUID.randomUUID();
+    String trfD = "TRF-" + UUID.randomUUID();
+    String alcC = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String alcD = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    stubAllocate(
+        trfC,
+        200,
+        "{\"allocationId\":\""
+            + alcC
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":5},{\"sku\":\"E-00000002\",\"allocatedQty\":0}]}");
+    stubAllocate(
+        trfD,
+        200,
+        "{\"allocationId\":\""
+            + alcD
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":7},{\"sku\":\"E-00000002\",\"allocatedQty\":0}]}");
+    stubAllocationLots(
+        alcC,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + fc
+            + "\",\"qty\":5}]}");
+    stubAllocationLots(
+        alcD,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + fc
+            + "\",\"qty\":7}]}");
+    post(SERVICE, "/internal/transfer-intakes", trfAt(trfC, c4, "MFC-BJG-01", early, 5, 1));
+    post(SERVICE, "/internal/transfer-intakes", trfAt(trfD, c4, "MFC-BNG-01", late, 7, 1));
+    String wave2 =
+        post(ops4, "/waves", Map.of("cdcId", c4, "trfIds", List.of(trfC, trfD)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops4, "/waves/" + wave2 + "/releases", null).status()).isEqualTo(202);
+    JsonNode t2 = get(ops4, "/cdcs/" + c4 + "/tasks?waveId=" + wave2).body().path("items").get(0);
+    assertThat(t2.path("lines").get(0).path("plannedQty").asInt()).isEqualTo(12);
+    stubRelease(
+        alcC,
+        200,
+        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-C\",\"appliedQty\":5}");
+    Res cancel =
+        postKey(
+            ops4,
+            "/cdcs/" + c4 + "/transfers/" + trfC + "/pre-departure-cancellations",
+            UUID.randomUUID().toString(),
+            Map.of("reason", "TRANSFER_CANCELLED", "scope", "FULL"));
+    assertThat(cancel.body().path("status").asString())
+        .as(cancel.body().toString())
+        .isEqualTo("APPLIED");
+    JsonNode t2b = get(ops4, "/cdcs/" + c4 + "/tasks/" + t2.path("taskId").asString()).body();
+    assertThat(t2b.path("state").asString()).isEqualTo("CREATED");
+    assertThat(t2b.path("lines").get(0).path("plannedQty").asInt()).isEqualTo(7);
+    assertThat(t2b.path("trfIds").toString()).doesNotContain(trfC).contains(trfD);
+    assertThat(t2b.path("dueAt").asString()).isNotEmpty();
   }
 
   JsonNode readiness(String trf) {
