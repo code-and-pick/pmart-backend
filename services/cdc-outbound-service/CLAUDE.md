@@ -40,4 +40,5 @@
   실적은 줄 합계 → 실피킹은 기한 이른 몫부터, 부족은 늦은 몫부터(같으면 trfId 순) → TRF 줄·`PickShortageReported` 는 TRF 마다. TRF 는 몫이 든 작업이 다 끝나면 PICKED.
   지역표 `region_mfc`(`GET·POST /cdcs/{cdcId}/regions`, 칠곡 5곳·4지역 BUSAN·HONAM·CHUNGCHEONG·GANGWON 은 V7 시드 — 지역 코드 = PDA 지역 바코드 값). 묶음 크기 `pmart.outbound.batch-max-lines`(없으면 자르지 않음).
   착수 전 미출발 취소는 묶음 작업에서 그 TRF 몫만 뺀다(줄 계획 −몫, 빈 작업은 CANCELLED). 재고 MOV 없음(설계 §4).
+  DPS 는 TRF × 구역 × 층 × **선반 통로**(0.10.0, Flyway V8 `task.aisle` — 시뮬레이터 R-20, 사용자 "제안대로"): 컨베이어 통로 작업자가 다음 작업 받기 `aisles` 로 자기 통로만 받는다(TRF 끼리는 묶지 않음).
 - 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.

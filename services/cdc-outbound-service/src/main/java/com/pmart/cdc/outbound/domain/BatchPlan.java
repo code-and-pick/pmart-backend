@@ -14,7 +14,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>방식은 위치 통로 설정값(cdc-location pickMethod)으로 정한다 — 상품 분류 글자로 정하지 않는다(WMS CDC-F-017).
- *   <li>DPS·방식 없음 → DISCRETE: TRF × 방식 × 구역 × 층(사용자 "방식 없으면 지금처럼 TRF 하나씩").
+ *   <li>방식 없음 → DISCRETE: TRF × 구역 × 층(사용자 "방식 없으면 지금처럼 TRF 하나씩").
+ *   <li>DPS → DISCRETE: TRF × 구역 × 층 × 선반 통로(0.10.0, R-20 — 컨베이어 통로 작업자가 자기 통로 몫만).
  *   <li>BOX_PICK·FC·DISTRIBUTION → REGION_BATCH: 지역 × 방식 × 구역 × 층. 지역이 없는 TRF 는 DISCRETE.
  *   <li>LINE → SKU_BATCH: 방식 × 구역 × 층(Wave 안 모든 TRF).
  *   <li>같은 SKU·LOT·위치는 한 줄 — 줄 밑에 TRF 별 몫(trfId 순). 작업 기한 = 몫 TRF 중 가장 이른 기한.
@@ -52,6 +53,7 @@ public final class BatchPlan {
       @Nullable String trfId,
       @Nullable String zone,
       @Nullable String floor,
+      @Nullable String aisle,
       Instant dueAt,
       List<Line> lines) {}
 
@@ -74,17 +76,33 @@ public final class BatchPlan {
       }
       String zone = null;
       String floor = null;
+      String aisle = null;
       if (PickPlan.CODE.matcher(it.locationCode()).matches()) {
         String[] p = it.locationCode().split("-");
         zone = p[1];
         floor = p[2];
+        if ("DPS".equals(it.pickMethod())) {
+          aisle = p[3]; // DPS 는 통로마다 작업(R-20)
+        }
       }
       String mode = modeOf(it.pickMethod(), it.regionCode());
       String trf = DISCRETE.equals(mode) ? it.trfId() : null;
       String region = REGION_BATCH.equals(mode) ? it.regionCode() : null;
       String gk =
-          mode + "|" + trf + "|" + region + "|" + it.pickMethod() + "|" + zone + "|" + floor;
-      heads.putIfAbsent(gk, new Head(mode, it.pickMethod(), region, trf, zone, floor));
+          mode
+              + "|"
+              + trf
+              + "|"
+              + region
+              + "|"
+              + it.pickMethod()
+              + "|"
+              + zone
+              + "|"
+              + floor
+              + "|"
+              + aisle;
+      heads.putIfAbsent(gk, new Head(mode, it.pickMethod(), region, trf, zone, floor, aisle));
       String lk = it.sku() + "|" + it.lot() + "|" + it.locationCode();
       lines
           .computeIfAbsent(gk, k -> new LinkedHashMap<>())
@@ -113,7 +131,16 @@ public final class BatchPlan {
                 .min(Comparator.naturalOrder())
                 .orElseThrow();
         out.add(
-            new Task(h.mode(), h.method(), h.region(), h.trf(), h.zone(), h.floor(), due, part));
+            new Task(
+                h.mode(),
+                h.method(),
+                h.region(),
+                h.trf(),
+                h.zone(),
+                h.floor(),
+                h.aisle(),
+                due,
+                part));
       }
     }
     return out;
@@ -125,7 +152,8 @@ public final class BatchPlan {
       @Nullable String region,
       @Nullable String trf,
       @Nullable String zone,
-      @Nullable String floor) {}
+      @Nullable String floor,
+      @Nullable String aisle) {}
 
   /** 몫 하나의 지금 상태. */
   public record ShareState(String trfId, Instant dueAt, int planned, int picked, int shortQty) {

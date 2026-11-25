@@ -127,4 +127,28 @@ class BatchPlanTest {
     assertThatThrownBy(() -> BatchPlan.attribute(List.of(new ShareState("T-A", D1, 5, 4, 0)), 2, 0))
         .isInstanceOf(IllegalArgumentException.class);
   }
+
+  @Test
+  void dpsSplitsPerAisleOtherModesHaveNoAisle() {
+    var tasks =
+        BatchPlan.plan(
+            List.of(
+                item("T1", "BJG", D1, "BUSAN", "S1", "CDC01-A-5-61-01-1-1", 2, "DPS"),
+                item("T1", "BJG", D1, "BUSAN", "S2", "CDC01-A-5-61-02-1-1", 1, "DPS"),
+                item("T1", "BJG", D1, "BUSAN", "S3", "CDC01-A-5-62-01-1-1", 4, "DPS"),
+                item("T2", "BNG", D2, "BUSAN", "S3", "CDC01-A-5-62-01-1-1", 1, "DPS"),
+                item("T1", "BJG", D1, "BUSAN", "S4", "CDC01-A-5-01-01-2-1", 3, null),
+                item("T1", "BJG", D1, "BUSAN", "S5", "CDC01-E-5-61-01-1-1", 3, "FC")),
+            null);
+    // T1 통로 61·62, T2 통로 62(TRF 끼리 묶지 않음), 랙 단건, FC 지역 묶음
+    assertThat(tasks)
+        .extracting(BatchPlan.Task::trfId, BatchPlan.Task::aisle)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple("T1", "61"),
+            org.assertj.core.groups.Tuple.tuple("T1", "62"),
+            org.assertj.core.groups.Tuple.tuple("T2", "62"),
+            org.assertj.core.groups.Tuple.tuple("T1", null),
+            org.assertj.core.groups.Tuple.tuple(null, null));
+    assertThat(tasks.get(0).lines()).hasSize(2);
+  }
 }

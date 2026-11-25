@@ -157,3 +157,9 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 피킹 실적은 지금처럼 줄 합계(SKU·LOT·위치). 서버가 기한 이른 TRF 몫부터 채우고 부족은 기한 늦은 몫부터 뺀다. 나눠 담기는 지금 `/sorting-results`(BOX = TRF 하나, 분류 ≤ 그 TRF 몫 실피킹).
 - 다음 작업 받기 본문에 `pickMode` 거르기를 더했다. 지역표 `GET /cdcs/{cdcId}/regions`(칠곡 BUSAN·HONAM·CHUNGCHEONG·GANGWON — 지역 코드 = 지역 바코드 값).
 - LAN 은 cdc-location 0.5.0 배포와 칠곡 통로 방식 값을 넣기 전까지 모두 단건으로 돈다.
+
+### R-20 회신 — DPS 통로 작업 (cdc-outbound 0.10.0, 2026-11-25)
+- 사용자 결정("제안대로"): DPS 작업 = TRF × 구역 × 층 × **선반 통로 하나**(`Task.aisle`). TRF 끼리는 묶지 않는다(DPS 는 TRF 하나 그대로). 컨베이어 구역 경계 설정값은 두지 않는다.
+- 다음 작업 받기 본문 `aisles: ["61","62",…]`(위치 코드 넷째 구간, 30개까지) — 그 통로 작업(aisle 이 있는 DPS 작업)만 받는다. 통로 구역 작업자는 자기 통로들을 넣어 받는다.
+- 그 밖 작업은 `aisle` 이 비어 있다(aisles 를 주면 받기 후보에서 빠짐).
+- 칠곡 통로 → pickMethod 시드는 `deploy/lan/seed/cdc_pick_methods.py`(PR #488) — LAN 에는 위치 전환 때 같이 넣는다(사용자).

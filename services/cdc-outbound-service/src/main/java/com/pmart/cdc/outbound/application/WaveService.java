@@ -247,7 +247,8 @@ public class WaveService {
                     null,
                     p.pickMode(),
                     p.pickMethod(),
-                    p.regionCode()),
+                    p.regionCode(),
+                    p.aisle()),
                 lines,
                 shares);
           }

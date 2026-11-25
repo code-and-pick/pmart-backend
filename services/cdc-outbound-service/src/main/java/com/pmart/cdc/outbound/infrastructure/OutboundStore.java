@@ -64,7 +64,8 @@ public class OutboundStore {
       @Nullable Instant completedAt,
       @Nullable String pickMode,
       @Nullable String pickMethod,
-      @Nullable String regionCode) {}
+      @Nullable String regionCode,
+      @Nullable String aisle) {}
 
   /** 줄의 TRF 몫(0.9.0). */
   public record ShareRow(
@@ -302,7 +303,7 @@ public class OutboundStore {
   private static final String TASK_COLS =
       "t.task_id, t.wave_id, t.trf_id, t.cdc_id, t.kind, t.zone, t.floor, t.due_at, t.state,"
           + " t.row_version, t.assignee_id, t.created_at, t.completed_at, t.pick_mode, t.pick_method,"
-          + " t.region_code";
+          + " t.region_code, t.aisle";
 
   /** 몫이 든 작업(단건 작업도 몫 한 줄씩 — V7). */
   private static final String TASKS_OF_TRF =
@@ -311,8 +312,8 @@ public class OutboundStore {
   public void insertTask(TaskRow t, List<TaskLineRow> lines, List<ShareRow> shares) {
     jdbc.update(
         "INSERT INTO task (task_id, wave_id, trf_id, cdc_id, kind, zone, floor, due_at, state,"
-            + " row_version, assignee_id, created_at, pick_mode, pick_method, region_code)"
-            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            + " row_version, assignee_id, created_at, pick_mode, pick_method, region_code, aisle)"
+            + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         t.taskId(),
         t.waveId(),
         t.trfId(),
@@ -327,7 +328,8 @@ public class OutboundStore {
         Timestamp.from(t.createdAt()),
         t.pickMode() == null ? "DISCRETE" : t.pickMode(),
         t.pickMethod(),
-        t.regionCode());
+        t.regionCode(),
+        t.aisle());
     for (TaskLineRow l : lines) {
       jdbc.update(
           "INSERT INTO task_line (task_id, line_no, sku, lot, location_code, planned_qty)"
@@ -493,7 +495,8 @@ public class OutboundStore {
       @Nullable String kind,
       @Nullable String zone,
       @Nullable String floor,
-      @Nullable String pickMode) {
+      @Nullable String pickMode,
+      @Nullable List<String> aisles) {
     StringBuilder sql =
         new StringBuilder(
             "SELECT "
@@ -517,6 +520,12 @@ public class OutboundStore {
     if (pickMode != null) {
       sql.append(" AND t.pick_mode = ?");
       args.add(pickMode);
+    }
+    if (aisles != null && !aisles.isEmpty()) {
+      sql.append(" AND t.aisle IN (")
+          .append(String.join(",", java.util.Collections.nCopies(aisles.size(), "?")))
+          .append(")");
+      args.addAll(aisles);
     }
     sql.append(" ORDER BY t.due_at, t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED");
     return jdbc.query(sql.toString(), (rs, i) -> task(rs), args.toArray()).stream().findFirst();
@@ -608,7 +617,8 @@ public class OutboundStore {
         instant(rs, "completed_at"),
         rs.getString("pick_mode"),
         rs.getString("pick_method"),
-        rs.getString("region_code"));
+        rs.getString("region_code"),
+        rs.getString("aisle"));
   }
 
   private static @Nullable Instant instant(ResultSet rs, String col) throws SQLException {

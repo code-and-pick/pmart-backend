@@ -1252,6 +1252,76 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(t2b.path("dueAt").asString()).isNotEmpty();
   }
 
+  /**
+   * DPS 통로 작업(0.10.0, R-20): DPS 위치 통로 61·62 에 걸친 TRF 하나 → 통로마다 작업(aisle), 다음 작업 받기 aisles 거르기 — 자기
+   * 통로만 받고, 없는 통로면 409. CDC05.
+   */
+  @Test
+  void wavesSplitDpsPerAisleAndFilterByAisle() {
+    String c5 = "CDC05";
+    String ops5 = TestJwt.operator("ops-5", List.of("CDC_MANAGER"), List.of(c5));
+    String w5 = TestJwt.operator("w5", List.of("CDC_WORKER"), List.of(c5));
+    String trf = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String a61 = "CDC05-A-5-61-01-1-1";
+    String a62 = "CDC05-A-5-62-01-1-1";
+    stubAllocate(
+        trf,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":2},{\"sku\":\"E-00000002\",\"allocatedQty\":3}]}");
+    stubAllocationLots(
+        alc,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + a61
+            + "\",\"qty\":2}]},{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\""
+            + a62
+            + "\",\"qty\":3}]}");
+    location.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .withRequestBody(matchingJsonPath("$.centerId", equalTo(c5)))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"locationCode\":\""
+                            + a61
+                            + "\",\"pickMethod\":\"DPS\"},{\"locationCode\":\""
+                            + a62
+                            + "\",\"pickMethod\":\"DPS\"}],\"missing\":[]}")));
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trf, c5, "MFC-BJG-01", DUE, 2, 3))
+                .status())
+        .isEqualTo(202);
+    String waveId =
+        post(ops5, "/waves", Map.of("cdcId", c5, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops5, "/waves/" + waveId + "/releases", null).status()).isEqualTo(202);
+    JsonNode items = get(ops5, "/cdcs/" + c5 + "/tasks?waveId=" + waveId).body().path("items");
+    assertThat(items.size()).isEqualTo(2);
+    for (JsonNode t : items) {
+      assertThat(t.path("pickMode").asString()).isEqualTo("DISCRETE");
+      assertThat(t.path("pickMethod").asString()).isEqualTo("DPS");
+      assertThat(t.path("trfId").asString()).isEqualTo(trf);
+      assertThat(t.path("lines").size()).isEqualTo(1);
+    }
+    assertThat(
+            post(w5, "/cdcs/" + c5 + "/workers/w5/next-tasks", Map.of("aisles", List.of("70")))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_TASK_AVAILABLE");
+    Res mine = post(w5, "/cdcs/" + c5 + "/workers/w5/next-tasks", Map.of("aisles", List.of("62")));
+    assertThat(mine.status()).as(mine.body().toString()).isEqualTo(201);
+    assertThat(mine.body().path("aisle").asString()).isEqualTo("62");
+    assertThat(mine.body().path("lines").get(0).path("locationCode").asString()).isEqualTo(a62);
+  }
+
   JsonNode readiness(String trf) {
     Res r = get(SERVICE, "/internal/outbound-readiness?trfId=" + trf);
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
