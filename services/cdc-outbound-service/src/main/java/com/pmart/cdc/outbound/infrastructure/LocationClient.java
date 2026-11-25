@@ -37,9 +37,40 @@ public class LocationClient {
     this.mapper = mapper;
   }
 
+  /** 위치 한 칸(일괄 조회 응답 줄). */
+  public record Place(
+      String locationCode, String locationType, String state, String temperatureZone) {}
+
+  /** 위치 코드 → 위치(유형·상태·온도대). 없는 코드는 빠진다. 피킹 재고 출고대기 자리 고르기(R-22 — 구역 글자를 코드에 박지 않음). */
+  public Map<String, Place> places(String centerId, Collection<String> codes) {
+    Map<String, Place> out = new HashMap<>();
+    for (JsonNode it : lookup(centerId, codes)) {
+      String c = it.path("locationCode").asString();
+      out.put(
+          c,
+          new Place(
+              c,
+              it.path("locationType").asString(""),
+              it.path("state").asString(""),
+              it.path("temperatureZone").asString("")));
+    }
+    return out;
+  }
+
   /** 위치 코드 → 통로 피킹 방식. 방식이 없는 위치(팔레트 랙·설정 없음·없는 코드)는 빠진다. */
   public Map<String, String> pickMethods(String centerId, Collection<String> codes) {
     Map<String, String> out = new HashMap<>();
+    for (JsonNode it : lookup(centerId, codes)) {
+      String m = it.path("pickMethod").asString(null);
+      if (m != null && !m.isBlank()) {
+        out.put(it.path("locationCode").asString(), m);
+      }
+    }
+    return out;
+  }
+
+  private List<JsonNode> lookup(String centerId, Collection<String> codes) {
+    List<JsonNode> out = new ArrayList<>();
     List<String> all = new ArrayList<>(new TreeSet<>(codes));
     for (int i = 0; i < all.size(); i += CHUNK) {
       List<String> chunk = all.subList(i, Math.min(all.size(), i + CHUNK));
@@ -66,10 +97,7 @@ public class LocationClient {
       }
       JsonNode n = mapper.readTree(raw == null ? "{}" : raw);
       for (JsonNode it : n.path("items")) {
-        String m = it.path("pickMethod").asString(null);
-        if (m != null && !m.isBlank()) {
-          out.put(it.path("locationCode").asString(), m);
-        }
+        out.add(it);
       }
     }
     return out;

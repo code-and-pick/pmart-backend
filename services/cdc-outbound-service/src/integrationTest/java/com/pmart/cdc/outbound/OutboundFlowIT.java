@@ -1788,7 +1788,8 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
 
   /**
    * 피킹 재고 출고대기 자리로 옮겨 적기(0.14.0): 지역표 stagingBay 01 → 3 집으면 move-postings(PICK_MOVE, allocationId,
-   * 칸 → CDC08-C-5-91-01-0-1). 불명이면 PICK_MOVE_PENDING, 다시 부르면 같은 키로 끝남. CDC08.
+   * 칸 → CDC08-C-5-91-01-0-1 — R-22 부터 위치 서비스에서 같은 층·온도대 STAGING 으로 고름, 냉동 A-5-91 은 아님). 불명이면
+   * PICK_MOVE_PENDING, 다시 부르면 같은 키로 끝남. CDC08.
    */
   @Test
   void pickedStockMovesToStagingSlot() {
@@ -1817,6 +1818,23 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     String trf = "TRF-" + UUID.randomUUID();
     String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
     String loc = "CDC08-C-5-61-01-1-1";
+    // R-22: 출고대기 자리는 위치 서비스에서 같은 층·온도대 91 STAGING 으로 고른다
+    location.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .atPriority(1)
+            .withRequestBody(
+                com.github.tomakehurst.wiremock.client.WireMock.containing("CDC08-C-5-91-01-0-1"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"items\":[{\"locationCode\":\"CDC08-C-5-61-01-1-1\",\"locationType\":\"PICK_FACE\","
+                            + "\"state\":\"ACTIVE\",\"temperatureZone\":\"AMBIENT\"},"
+                            + "{\"locationCode\":\"CDC08-C-5-91-01-0-1\",\"locationType\":\"STAGING\","
+                            + "\"state\":\"ACTIVE\",\"temperatureZone\":\"AMBIENT\"},"
+                            + "{\"locationCode\":\"CDC08-A-5-91-01-0-1\",\"locationType\":\"STAGING\","
+                            + "\"state\":\"ACTIVE\",\"temperatureZone\":\"FROZEN\"}],\"missing\":[]}")));
     stubAllocate(
         trf,
         200,

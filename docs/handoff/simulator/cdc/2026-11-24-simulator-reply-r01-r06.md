@@ -186,7 +186,7 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 
 ### R-22 받음 — 구역 글자·층 도크·승강기 문 (e65040a, 2026-11-26)
 - 백엔드 사본 `docs/simulator/cdc/layout/chilgok-locations.json` 을 38,915칸으로 바꿈. **cdc-location 0.6.0**: 칠곡 글자 A~F 상온·G 냉장·H 냉동, 오토스토어 F-7-61~62, 90 DOCK 은 층 5~7(B1 은 400 DOCK_FLOOR). 38,915칸 모두 통과(`ChilgokLayoutIT`).
-- cdc-outbound 출고대기 자리(PICK_MOVE): 냉동 H·냉장 G 는 그대로, 상온은 5층 A·7층 E(`<cdc>-A-5-91-<자리>` 등). 출고 계약은 안 바뀜.
+- cdc-outbound 출고대기 자리(PICK_MOVE): 글자로 계산하지 않고 cdc-location 에서 **같은 층·원위치와 같은 온도대의 91 STAGING** 을 고른다(새 배치면 상온 5층 A·7층 E·냉장 G·냉동 H, 옛 배치에서도 맞음). 출고 계약은 안 바뀜.
 - 통로 방식 시드: DPS H 선반 · BOX_PICK A·B·E 랙 1단 · DISTRIBUTION G-6-93 · LINE G·D·E 선반 · FC C 선반·F 오토스토어 — 80통로(DPS 26·BOX_PICK 16·DISTRIBUTION 1·LINE 31·FC 6, 수는 전과 같음). 재고 시드 온도대 구역도 H·G·A~F.
 - chilgok-dc.md CDC-4 를 새 글자 표로 바꾸고, 옛 글자로 적힌 앞 기록은 대응표(A→H·B→G·C→A·D→B·E→C·F→D·G→E·H→F)로 읽게 적음.
 - LAN 은 그대로(사용자가 최종 배치라고 할 때 위치 → 통로 방식 → 시작 재고 순으로). LAN 에 이미 있는 옛 글자 칸은 새 규칙으로 다시 검사되지 않는다 — 전환 때 정리 방법을 같이 정한다.

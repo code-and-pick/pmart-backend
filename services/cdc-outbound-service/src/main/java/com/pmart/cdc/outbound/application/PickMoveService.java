@@ -1,9 +1,11 @@
 package com.pmart.cdc.outbound.application;
 
 import com.pmart.cdc.outbound.infrastructure.InventoryClient;
+import com.pmart.cdc.outbound.infrastructure.LocationClient;
 import com.pmart.common.web.PmartException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,8 +21,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * 피킹 재고를 출고대기 자리로 옮겨 적기(0.14.0 — 사용자 2026-11-25 "피킹재고는 피킹재고로 따로" → "출고대기 자리로 옮겨 적기", 설계
  * docs/cdc/design/2026-11-25-count-adjustment.md §5). 실피킹(TRF 몫·줄)마다 cdc-inventory
  * move-postings(PICK_MOVE, allocationId — 예약도 함께)로 그 칸 → 그 층 출고대기(통로 91)의 목적 MFC 자리. 총현물·예약 수는
- * 그대로(정책 17.4), 칸 장부에는 칸에 실제 남은 물건만 남는다. 재고 호출은 트랜잭션 밖 — 불명이면 주기 재시도(같은 키), 거절·자리 없음이면 FAILED(원위치에
- * 남음, 경고).
+ * 그대로(정책 17.4), 칸 장부에는 칸에 실제 남은 물건만 남는다. 자리는 cdc-location 에서 같은 층·같은 온도대의 91 STAGING 을 고른다(R-22 —
+ * 구역 글자를 코드에 박지 않아 옛·새 배치 모두 맞다). 재고 호출은 트랜잭션 밖 — 불명이면 주기 재시도(같은 키), 거절·자리 없음이면 FAILED(원위치에 남음,
+ * 경고).
  */
 @Service
 public class PickMoveService {
@@ -41,40 +44,64 @@ public class PickMoveService {
 
   private final JdbcTemplate jdbc;
   private final InventoryClient inventory;
+  private final LocationClient locations;
   private final TransactionTemplate tx;
   private final Support support;
 
   public PickMoveService(
-      JdbcTemplate jdbc, InventoryClient inventory, TransactionTemplate tx, Support support) {
+      JdbcTemplate jdbc,
+      InventoryClient inventory,
+      LocationClient locations,
+      TransactionTemplate tx,
+      Support support) {
     this.jdbc = jdbc;
     this.inventory = inventory;
+    this.locations = locations;
     this.tx = tx;
     this.support = support;
   }
 
   /**
-   * 출고대기 자리 코드 — 구역 글자는 온도대(냉동 H·냉장 G 는 그대로), 칠곡 상온은 5층 A·7층 E(도면의 91 행, CDC-5 — R-22 사용자
-   * 2026-11-26 구역 글자 바뀜). 위치 코드가 7구간이 아니면 null.
+   * 출고대기 자리 후보 — 원위치와 같은 센터·층의 통로 91, 자리 번호 = 지역표 stagingBay, 구역 글자 A~Z 전부(R-22: 글자 뜻이 배치마다 바뀌어 코드에
+   * 박지 않는다 — 실제 고르기는 cdc-location 의 유형 STAGING·온도대 = 원위치 온도대). 위치 코드가 7구간이 아니면 빈 목록.
    */
-  static @Nullable String stagingCode(String fromLocation, String bay) {
+  static List<String> stagingCandidates(String fromLocation, String bay) {
     String[] p = fromLocation.split("-");
     if (p.length != 7) {
-      return null;
+      return List.of();
     }
-    String area = p[1];
-    String floor = p[2];
-    if ("CDC01".equals(p[0]) && !"H".equals(area) && !"G".equals(area)) {
-      area =
-          switch (floor) {
-            case "5" -> "A";
-            case "7" -> "E";
-            default -> area;
-          };
+    List<String> out = new ArrayList<>();
+    for (char a = 'A'; a <= 'Z'; a++) {
+      out.add(p[0] + "-" + a + "-" + p[2] + "-91-" + bay + "-0-1");
     }
-    return p[0] + "-" + area + "-" + floor + "-91-" + bay + "-0-1";
+    return out;
   }
 
-  /** 피킹 실적 트랜잭션 안 — 옮겨 적기 기록. 자리가 없으면 바로 FAILED(원위치에 남음). */
+  /** 후보 중 원위치와 온도대가 같은 사용 중(ACTIVE) 출고대기 자리. 없으면 null. */
+  static @Nullable String pickStaging(
+      String from, List<String> candidates, Map<String, LocationClient.Place> places) {
+    LocationClient.Place src = places.get(from);
+    if (src == null || src.temperatureZone().isBlank()) {
+      return null;
+    }
+    return candidates.stream()
+        .map(places::get)
+        .filter(
+            x ->
+                x != null
+                    && "STAGING".equals(x.locationType())
+                    && "ACTIVE".equals(x.state())
+                    && src.temperatureZone().equals(x.temperatureZone()))
+        .map(LocationClient.Place::locationCode)
+        .sorted()
+        .findFirst()
+        .orElse(null);
+  }
+
+  /**
+   * 피킹 실적 트랜잭션 안 — 옮겨 적기 기록(자리는 처리 때 cdc-location 으로 고른다 — 트랜잭션 밖). 지역표 자리 번호·할당이 없으면 바로
+   * FAILED(원위치에 남음).
+   */
   void record(
       String cdcId,
       String trfId,
@@ -86,10 +113,10 @@ public class PickMoveService {
       @Nullable String stagingBay,
       int qty,
       Instant at) {
-    String to = stagingBay == null ? null : stagingCode(from, stagingBay);
-    String state = to == null || allocationId == null ? "FAILED" : "PENDING";
+    String to = null; // 처리 때 고름(R-22)
+    String state = stagingBay == null || allocationId == null ? "FAILED" : "PENDING";
     String reason =
-        to == null ? "출고대기 자리 없음(지역표 stagingBay)" : allocationId == null ? "할당 없음" : null;
+        stagingBay == null ? "출고대기 자리 없음(지역표 stagingBay)" : allocationId == null ? "할당 없음" : null;
     jdbc.update(
         "INSERT INTO pick_move (move_id, trf_id, task_id, allocation_id, sku, lot, from_location,"
             + " to_location, qty, state, reason, created_at, updated_at)"
@@ -153,11 +180,53 @@ public class PickMoveService {
   }
 
   private void process(Move m) {
+    String to = m.to();
+    if (to == null) {
+      String bay =
+          jdbc
+              .query(
+                  "SELECT r.staging_bay FROM transfer t JOIN region_mfc r ON r.cdc_id = t.cdc_id"
+                      + " AND r.mfc_id = t.mfc_id WHERE t.trf_id = ?",
+                  (rs, i) -> rs.getString(1),
+                  m.trfId())
+              .stream()
+              .filter(java.util.Objects::nonNull)
+              .findFirst()
+              .orElse(null);
+      List<String> cands = bay == null ? List.of() : stagingCandidates(m.from(), bay);
+      String chosen = null;
+      if (!cands.isEmpty()) {
+        List<String> codes = new ArrayList<>(cands);
+        codes.add(m.from());
+        Map<String, LocationClient.Place> places;
+        try {
+          places = locations.places(m.cdcId(), codes);
+        } catch (PmartException e) {
+          log.warn("출고대기 자리 조회 안 됨 — {} 다음에 다시: {}", m.moveId(), e.getMessage());
+          return; // 위치 서비스 불명·거절 — 다음 주기에 다시
+        }
+        chosen = pickStaging(m.from(), cands, places);
+      }
+      if (chosen == null) {
+        String reason = "출고대기 자리 없음(같은 층·온도대 91-" + bay + ")";
+        log.warn("피킹 재고 옮겨 적기 안 함 — trfId={} {} {}: {}", m.trfId(), m.sku(), m.from(), reason);
+        finish(m.moveId(), "FAILED", reason);
+        return;
+      }
+      to = chosen;
+      String t = to;
+      tx.executeWithoutResult(
+          x ->
+              jdbc.update(
+                  "UPDATE pick_move SET to_location = ? WHERE move_id = ? AND to_location IS NULL",
+                  t,
+                  m.moveId()));
+    }
     Map<String, Object> line = new LinkedHashMap<>();
     line.put("sku", m.sku());
     line.put("lot", m.lot());
     line.put("fromLocationCode", m.from());
-    line.put("toLocationCode", m.to());
+    line.put("toLocationCode", to);
     line.put("qty", m.qty());
     line.put("allocationId", m.allocationId());
     Map<String, Object> body = new LinkedHashMap<>();
@@ -178,17 +247,19 @@ public class PickMoveService {
       reason = DepartureService.residualReason(e);
       log.warn("피킹 재고 옮겨 적기 거절 — trfId={} {} {}: {}", m.trfId(), m.sku(), m.from(), reason);
     }
-    String s = state;
-    String r = reason;
+    finish(m.moveId(), state, reason);
+  }
+
+  private void finish(String moveId, String state, @Nullable String reason) {
     Instant at = support.now();
     tx.executeWithoutResult(
         x ->
             jdbc.update(
                 "UPDATE pick_move SET state = ?, reason = ?, updated_at = ? WHERE move_id = ?"
                     + " AND state = 'PENDING'",
-                s,
-                r,
+                state,
+                reason,
                 Timestamp.from(at),
-                m.moveId()));
+                moveId));
   }
 }
