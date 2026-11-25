@@ -61,3 +61,14 @@
 - **사용자 결정**: 필요 없음(판정 규칙은 지금 결정 API 그대로).
 - **구현(2026-11-18, PC 1 — approval 0.4.0)**: `GET /approvals/{id}`·`GET /approvals` 항목에 `viewerCanDecide`·`viewerDecideBlockedReason`(NOT_PENDING·SELF_APPROVAL·CONFIG_REQUIRED·NO_ROLE·GRANT_TO_SELF — 결정 API 와 같은 검사 `ApprovalRules`), 목록 거르기 `decidableByMe=true`. 시험 `ApprovalRulesTest`·`GrantRequestIT`.
 
+## AP-4. CDC 재고 조정 승인 종류 `CDC_STOCK_ADJUSTMENT` (2026-11-25 기록, 보낸 영역 cdc — D 클론 cdc 세션)
+
+- **요청한 곳**: cdc-inventory 재계수·실사 조정(설계 `docs/cdc/design/2026-11-25-count-adjustment.md`, WMS CDC-F-029·030).
+- **왜**: 사용자 결정(2026-11-25) "MFC 와 같은 본사 승인 기준" — 한 건 손실 10만 원 이상 또는 한 SKU 20개 이상이면 본사 승인 번호를 approval-service 로 한 번 사용·범위 확인한다. 지금 종류는 `MFC_STOCK_ADJUSTMENT`(대상 mfc-inventory·mfc-quality)뿐이다.
+- **필요한 것**
+  1. 종류 `CDC_STOCK_ADJUSTMENT` — 대상 서비스 `cdc-inventory-service`, targetRef `<cdcId>:COUNT_ADJUSTMENT:<countSessionId>`(kind 는 처음엔 COUNT_ADJUSTMENT 하나), 재고 행(SKU·수량 ≥ 1) 검사는 MFC 와 같게(`domain/MfcTargets` 같은 CDC 판).
+  2. `approver-roles.CDC_STOCK_ADJUSTMENT: INVENTORY_APPROVER`(MFC 와 같은 역할 — 다르게 할지는 사용자).
+  3. `/internal/approval-ref-checks`·`/internal/approval-ref-uses` 가 이 종류도 받기(useRef = `cdc-inventory-service:COUNT_ADJUSTMENT:<id>`).
+- **지금(임시)**: cdc-inventory 는 `pmart.inventory.approval-ref.mode: RECORD_ONLY`(번호 필수, 확인 없음)로만 돈다. VERIFY 는 이 요청이 끝난 뒤.
+- **함께 PC 1 몫**: pmart-config `cdc-inventory-service.yml` 에 `pmart.inventory.approval-ref.hq-loss-krw: 100000`·`hq-sku-qty: 20`(사용자 "MFC 와 같게"), lan 은 처음엔 `mode: RECORD_ONLY`.
+- **사용자 결정**: 기준값 — 받음(MFC 와 같게). 승인 역할 — MFC 와 같다고 가정(다르면 알려 주기).
