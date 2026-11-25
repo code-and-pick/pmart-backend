@@ -23,6 +23,17 @@ public class LpnStore {
 
   public record Content(String sku, String lot, int qty) {}
 
+  /** 출발 준비 조회용 BOX 사실(수량 = 내용물 합). */
+  public record BoxFact(
+      String lpn,
+      @Nullable String inspection,
+      @Nullable Instant inspectedAt,
+      boolean loaded,
+      @Nullable String departureId,
+      @Nullable Integer weightG,
+      @Nullable String temperatureZone,
+      int qty) {}
+
   public record LpnRow(
       String lpn,
       String trfId,
@@ -137,6 +148,29 @@ public class LpnStore {
         "SELECT " + COLS + " FROM lpn WHERE parent_lpn = ? ORDER BY lpn",
         (rs, i) -> row(rs),
         parentLpn);
+  }
+
+  /** TRF 의 BOX 전부와 내용물 합. */
+  public List<BoxFact> boxFacts(String trfId) {
+    return jdbc.query(
+        "SELECT l.lpn, l.inspection, l.inspected_at, l.loaded, l.departure_id, l.weight_g,"
+            + " l.temperature_zone, COALESCE(SUM(c.qty), 0) AS q"
+            + " FROM lpn l LEFT JOIN lpn_content c ON c.lpn = l.lpn"
+            + " WHERE l.trf_id = ? AND l.unit_type = 'BOX'"
+            + " GROUP BY l.lpn ORDER BY l.lpn",
+        (rs, i) -> {
+          var at = rs.getTimestamp("inspected_at");
+          return new BoxFact(
+              rs.getString("lpn"),
+              rs.getString("inspection"),
+              at == null ? null : at.toInstant(),
+              rs.getBoolean("loaded"),
+              rs.getString("departure_id"),
+              (Integer) rs.getObject("weight_g"),
+              rs.getString("temperature_zone"),
+              rs.getInt("q"));
+        },
+        trfId);
   }
 
   public List<Content> contents(String lpn) {

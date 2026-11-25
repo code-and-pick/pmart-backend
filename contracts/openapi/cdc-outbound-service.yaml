@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -651,6 +651,14 @@ paths:
     get:
       tags: [internal]
       summary: '[transport-planning→cdc-outbound] 출발 준비 적격 조회 (TMS 편성 조건)'
+      description: |
+        (0.6.0 구현, WMS CDC-F-020) TRF 하나의 **WMS 자기 화물·작업 사실만**으로 단계와 막힌 이유를 돌려준다. 조회만 한다.
+        TMS 운행·구획·ETA·MFC 수령창은 보지 않는다 — 외부 조건과 합쳐 "실행 가능"을 판정하는 것은 transport-planning 몫이다.
+        - readiness: DEPARTED·CANCELLED(TRF 상태) → NOT_STARTED(피킹 실적 없음) → PICKING(끝나지 않은 PICK 작업, 또는 실피킹+부족 < 할당)
+          → PICKED(피킹 끝·분류 BOX 없음) → SORTED(BOX 수량 < 실피킹, 또는 합격 아닌 BOX) → INSPECTED(모든 BOX 합격·수량 일치) → LOADED(그 BOX 모두 상차).
+        - readyLpnCount·readyQty·totalWeightG·temperatureZones: 검품 합격 BOX(DEPARTED 면 출발한 BOX) 기준. RT·PLT 는 세지 않는다(수량은 BOX 에만).
+        - earliestReadyAt: INSPECTED·LOADED·DEPARTED 일 때 마지막 BOX 합격 시각(화물 전체가 준비된 때), 그 밖에는 null.
+        - blockers: NOT_ALLOCATED·ALLOCATION_FAILED·NOT_IN_WAVE·TASK_EXCEPTION·NOTHING_PICKED(전량 부족)·UNSORTED_QTY·NOT_INSPECTED·INSPECTION_FAILED.
       operationId: getOutboundReadiness
       parameters:
         - { name: trfId, in: query, required: true, schema: { type: string } }
@@ -664,7 +672,7 @@ paths:
                 properties:
                   trfId: { type: string }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-                  readiness: { type: string, enum: [NOT_STARTED, PICKING, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
+                  readiness: { type: string, enum: [NOT_STARTED, PICKING, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
                   readyLpnCount: { type: integer }
                   readyQty: { type: integer }
                   totalWeightG: { type: integer }

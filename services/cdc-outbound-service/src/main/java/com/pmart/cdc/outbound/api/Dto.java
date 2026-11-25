@@ -1,5 +1,6 @@
 package com.pmart.cdc.outbound.api;
 
+import com.pmart.cdc.outbound.api.generated.model.GetOutboundReadiness200ResponseAsOf;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
 import com.pmart.cdc.outbound.api.generated.model.Task;
 import com.pmart.cdc.outbound.api.generated.model.TaskLinesInner;
@@ -18,6 +19,14 @@ final class Dto {
 
   static @Nullable OffsetDateTime time(@Nullable Instant i) {
     return i == null ? null : i.atOffset(ZoneOffset.UTC);
+  }
+
+  /** 지금 장부를 읽은 조회(CURRENT). */
+  static GetOutboundReadiness200ResponseAsOf asOf(Instant at) {
+    var a = new GetOutboundReadiness200ResponseAsOf();
+    a.setAsOf(time(at));
+    a.setFreshness(GetOutboundReadiness200ResponseAsOf.FreshnessEnum.CURRENT);
+    return a;
   }
 
   static IntakeTransfer202Response command(CommandResult r) {

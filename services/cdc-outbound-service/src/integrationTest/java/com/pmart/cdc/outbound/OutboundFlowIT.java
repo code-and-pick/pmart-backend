@@ -180,6 +180,10 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(r1.status()).as(r1.body().toString()).isEqualTo(202);
     assertThat(r1.body().path("status").asString()).isEqualTo("ACCEPTED");
     JsonNode i1 = get(SERVICE, "/internal/transfer-intakes/" + trf1).body();
+    JsonNode rd0 = readiness(trf1);
+    assertThat(rd0.path("readiness").asString()).isEqualTo("NOT_STARTED");
+    assertThat(rd0.path("blockers").toString()).contains("NOT_IN_WAVE");
+    assertThat(get(SERVICE, "/internal/outbound-readiness?trfId=TRF-NONE").status()).isEqualTo(404);
     assertThat(i1.path("state").asString()).isEqualTo("PARTIALLY_ALLOCATED");
     assertThat(i1.path("allocationId").asString()).isEqualTo("ALC-1");
     assertThat(i1.path("progress").get(0).path("allocatedQty").asInt()).isEqualTo(5);
@@ -346,6 +350,9 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
       picked += p.path("pickedQty").asInt();
     }
     assertThat(picked).isEqualTo(7); // 5 + (3 − 1)
+    JsonNode rdPicked = readiness(trf1);
+    assertThat(rdPicked.path("readiness").asString()).isEqualTo("PICKED");
+    assertThat(rdPicked.path("blockers").toString()).contains("UNSORTED_QTY");
     JsonNode list = get(OPS, "/cdcs/CDC01/tasks?waveId=" + waveId).body();
     assertThat(list.path("items").size()).isEqualTo(2);
 
@@ -387,6 +394,11 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     String wr = sorted.body().path("resultId").asString();
     assertThat(get(OPS, "/work-results/" + wr).body().path("kind").asString()).isEqualTo("SORTING");
 
+    JsonNode rdSorted = readiness(trf1);
+    assertThat(rdSorted.path("readiness").asString()).isEqualTo("SORTED");
+    assertThat(rdSorted.path("blockers").toString()).contains("NOT_INSPECTED");
+    assertThat(rdSorted.path("readyLpnCount").asInt()).isZero();
+
     // 10) 검품 전 상차 409, 검품(RT → BOX 둘 합격) 뒤 상차, 다른 운행 409
     Map<String, Object> load = new LinkedHashMap<>();
     load.put("trfId", trf1);
@@ -402,7 +414,14 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     insp.put("inspectorId", "q1");
     insp.put("items", List.of(Map.of("lpn", rt, "result", "PASSED")));
     assertThat(post(OPS, "/inspection-results", insp).status()).isEqualTo(202);
+    JsonNode rdInsp = readiness(trf1);
+    assertThat(rdInsp.path("readiness").asString()).as(rdInsp.toString()).isEqualTo("INSPECTED");
+    assertThat(rdInsp.path("readyLpnCount").asInt()).isEqualTo(2);
+    assertThat(rdInsp.path("readyQty").asInt()).isEqualTo(7);
+    assertThat(rdInsp.path("blockers").size()).isZero();
+    assertThat(rdInsp.path("earliestReadyAt").isNull()).isFalse();
     assertThat(post(OPS, "/loading-results", load).status()).isEqualTo(202);
+    assertThat(readiness(trf1).path("readiness").asString()).isEqualTo("LOADED");
     Map<String, Object> other = new LinkedHashMap<>(load);
     other.put("tripId", "TRIP-2");
     assertThat(post(OPS, "/loading-results", other).body().path("code").asString())
@@ -528,6 +547,15 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     }
     assertThat(departed).isEqualTo(7);
     assertThat(get(SERVICE, "/internal/shipment-manifests/" + trf3).status()).isEqualTo(404);
+    JsonNode rdDep = readiness(trf1);
+    assertThat(rdDep.path("readiness").asString()).isEqualTo("DEPARTED");
+    assertThat(rdDep.path("readyQty").asInt()).isEqualTo(7);
+  }
+
+  JsonNode readiness(String trf) {
+    Res r = get(SERVICE, "/internal/outbound-readiness?trfId=" + trf);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    return r.body();
   }
 
   int releases() {

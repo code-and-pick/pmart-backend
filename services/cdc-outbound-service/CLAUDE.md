@@ -31,4 +31,5 @@
   - 분류 ≤ 실피킹(SKU·LOT), 검품은 RT 면 안의 BOX 모두, 상차는 PASSED BOX 만·한 운행에만.
   - 출발 검증: departureId 당 한 번(같은 본문 재전송 = 불명 TOUT 재시도, 다른 본문 409). BOX 대조(LPN_NOT_LOADED·LPN_NOT_IN_DEPARTURE·WRONG_TRF·WRONG_MFC·SEAL_MISMATCH) → 일치 TRF 만 TOUT(트랜잭션 밖, 키 `outbound-tout-<dep>-<trf>`, 줄 키 `DL-<sha>`), 이어서 잔여 해제(RESIDUAL_CLOSED, 409 INVALID_STATE 는 끝난 것 — 불명이면 `residual_status` PENDING, 그 밖의 거절은 FAILED·`residual_reason`(0.5.0, Flyway V5, 경고 로그), PENDING·FAILED 는 같은 출발 재전송이 다시 부름, 응답 `transfers[].residualStatus·residualReason`), 매니페스트(BOX 줄 + LOT 소비기한) → TRF DEPARTED. **SIMULATED 도 TOUT**(재고 기록에 SIMULATED). 불일치 TRF 는 다시 출발 검증할 수 없다(같은 TRF 2회 출발 금지 — 조사 몫).
   - 같은 작업자의 다음 작업 받기는 권고 잠금으로 줄 세움(다른 키 동시 두 번에도 한 작업).
-- 아직 501: 출발 준비(outbound-readiness), 미출발 취소. 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.
+- 출발 준비 조회(0.6.0): `/internal/outbound-readiness?trfId` — WMS 자기 사실만으로 단계(NOT_STARTED→PICKING→PICKED→SORTED→INSPECTED→LOADED, DEPARTED·CANCELLED)·검품 합격 BOX 수량·무게·온도대·막힌 이유, TMS·MFC 조건은 보지 않음(CDC-F-020).
+- 아직 501: 미출발 취소. 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.

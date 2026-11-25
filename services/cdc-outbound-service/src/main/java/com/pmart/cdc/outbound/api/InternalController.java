@@ -4,6 +4,7 @@ import com.pmart.cdc.outbound.api.generated.InternalApi;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidation;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidationMismatchesInner;
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidationTransfersInner;
+import com.pmart.cdc.outbound.api.generated.model.GetOutboundReadiness200Response;
 import com.pmart.cdc.outbound.api.generated.model.IntakeTransfer202Response;
 import com.pmart.cdc.outbound.api.generated.model.LpnComposition;
 import com.pmart.cdc.outbound.api.generated.model.LpnCompositionContentsInner;
@@ -18,6 +19,7 @@ import com.pmart.cdc.outbound.application.DepartureService;
 import com.pmart.cdc.outbound.application.DepartureService.Composition;
 import com.pmart.cdc.outbound.application.DepartureService.Validate;
 import com.pmart.cdc.outbound.application.DepartureService.View;
+import com.pmart.cdc.outbound.application.ReadinessService;
 import com.pmart.cdc.outbound.application.TransferService;
 import com.pmart.cdc.outbound.application.TransferService.Intake;
 import com.pmart.cdc.outbound.application.TransferService.IntakeLine;
@@ -28,16 +30,19 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi — TRF 인수·조회(0.3.0), 출발 검증·매니페스트(0.4.0). 출발 준비는 아직 인터페이스 default(501). */
+/** 계약 InternalApi — TRF 인수·조회(0.3.0), 출발 검증·매니페스트(0.4.0). 출발 준비 조회(0.6.0). */
 @RestController
 public class InternalController implements InternalApi {
 
   private final TransferService transfers;
   private final DepartureService departures;
+  private final ReadinessService readiness;
 
-  public InternalController(TransferService transfers, DepartureService departures) {
+  public InternalController(
+      TransferService transfers, DepartureService departures, ReadinessService readiness) {
     this.transfers = transfers;
     this.departures = departures;
+    this.readiness = readiness;
   }
 
   @Override
@@ -251,5 +256,24 @@ public class InternalController implements InternalApi {
     p.setLoadedQty(st[2]);
     p.setDepartedQty(st[3]);
     return p;
+  }
+
+  @Override
+  public ResponseEntity<GetOutboundReadiness200Response> getOutboundReadiness(String trfId) {
+    var r = readiness.of(trfId);
+    var out = new GetOutboundReadiness200Response();
+    out.setTrfId(r.trfId());
+    out.setAsOf(Dto.asOf(r.asOf()));
+    out.setReadiness(GetOutboundReadiness200Response.ReadinessEnum.fromValue(r.readiness()));
+    out.setReadyLpnCount(r.readyLpnCount());
+    out.setReadyQty(r.readyQty());
+    out.setTotalWeightG((int) Math.min(Integer.MAX_VALUE, r.totalWeightG()));
+    out.setTemperatureZones(
+        r.temperatureZones().stream()
+            .map(GetOutboundReadiness200Response.TemperatureZonesEnum::fromValue)
+            .toList());
+    out.setEarliestReadyAt(Dto.time(r.earliestReadyAt()));
+    out.setBlockers(r.blockers());
+    return ResponseEntity.ok(out);
   }
 }

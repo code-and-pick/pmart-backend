@@ -471,6 +471,14 @@ public class OutboundStore {
     return out;
   }
 
+  /** TRF 의 Task (종류, 상태) 목록 — 출발 준비 조회. */
+  public List<String[]> taskStates(String trfId) {
+    return jdbc.query(
+        "SELECT kind, state FROM task WHERE trf_id = ? ORDER BY task_id",
+        (rs, i) -> new String[] {rs.getString("kind"), rs.getString("state")},
+        trfId);
+  }
+
   /** 아직 끝나지 않은 Task 수(Wave 단위 / TRF 단위). */
   public int openTasks(String column, String id) {
     Integer n =
