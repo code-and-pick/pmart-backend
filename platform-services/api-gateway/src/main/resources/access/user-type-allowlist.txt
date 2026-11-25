@@ -71,6 +71,7 @@ GET /api/v1/cases/{caseId}/notes OPERATOR
 GET /api/v1/categories/tree PUBLIC
 GET /api/v1/categories/{categoryId}/filters PUBLIC
 GET /api/v1/category-tree-versions/{version} OPERATOR
+GET /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
@@ -448,6 +449,7 @@ POST /api/v1/cases/{caseId}/views OPERATOR
 POST /api/v1/category-tree-addition-uploads OPERATOR
 POST /api/v1/category-tree-additions OPERATOR
 POST /api/v1/category-tree-versions OPERATOR
+POST /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations/{locationCode}/state-changes OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR

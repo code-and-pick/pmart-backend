@@ -24,6 +24,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
   3. **시뮬레이터 → LAN 내부 경로 직접**: 시뮬레이터 PC 에서 cdc-outbound·cdc-inventory 서비스 포트(8603·8601)에 닿게(방화벽·주소 안내). 게이트웨이로 `/internal` 을 열지 않는다.
   4. **CORS** `http://localhost:5182`(R-06).
   5. **시험 계정(칠곡 `CDC01`)**: 운영자 1명(제안 `claude-cdc-sup`)과 가상 작업자(제안 `cdcw-fc-01~10` FC·`cdcw-dl-01~05` 분배/라인·`cdcw-qc-01~05` 검품·`cdcw-ld-01~05` 상차·`cdcw-fk-01~03` 지게차) — 센터 클레임 `CDC01`. CDC 역할 이름은 `staff-roles.md` 에 아직 없음(제안 `CDC_SUPERVISOR`·`CDC_WORKER` — 지금 CDC 서비스는 역할을 보지 않고 운영자 토큰·centers 만 본다). 만들면 `lan-test-accounts.md` 에 적고 시뮬레이터 세션에 이름을 알린다(토큰 발급 흐름을 그 이름으로 맞춤).
+- [ ] **CDC 통로 피킹 방식 게이트웨이 라우트(cdc 세션 2026-11-25, PR `cdc/location-pick-method` 병합 뒤)** — cdc-location 0.5.0 `/api/v1/cdcs/*/aisle-pick-methods`(GET·POST, 운영자 — 허용 목록은 PR 에서 재생성). 이미지 재배포 함께(Flyway V3 `aisle_pick_method`).
 
 ## 0. 2026-11-21 정리 — 사용자 "9시 이후에 할게"
 - [x] **LAN 행사 승인 2건(사용자)** — 2026-11-23 사용자 승인, 두 행사 APPROVED(기간 안). 대기 보상·가입 지급 0건이라 발급 없음(다음 배차 불가 취소·새 가입부터). — 백오피스 승인 화면, MARKETING·OPERATOR_ADMIN: 배차 불가 보상 2,000원 `AP-477d415d-…`(행사 `PRM-f1be8d6d-…`), 가입 축하 3,000원 `AP-5b307c83-…`(`PRM-45734b27-…`). 내가 다른 시험 계정으로 승인하는 것은 자동 모드가 막음(감독 우회). 승인 뒤 PC 1: 행사 RUNNING·대기 보상 발급·"보상 쿠폰이 도착했어요" 알림 확인.
