@@ -6,10 +6,15 @@ import com.pmart.cdc.inventory.api.generated.model.AvailabilityLotsInner;
 import com.pmart.cdc.inventory.api.generated.model.AvailabilityLotsInnerLocationsInner;
 import com.pmart.cdc.inventory.api.generated.model.AvailabilitySafety;
 import com.pmart.cdc.inventory.api.generated.model.GetSnapshot200Response;
+import com.pmart.cdc.inventory.api.generated.model.ListRecountHolds200Response;
 import com.pmart.cdc.inventory.api.generated.model.LotIdentification;
 import com.pmart.cdc.inventory.api.generated.model.QualityState;
+import com.pmart.cdc.inventory.api.generated.model.RecountHold;
+import com.pmart.cdc.inventory.api.generated.model.ReleaseRecountHoldRequest;
 import com.pmart.cdc.inventory.application.InventoryQueries;
 import com.pmart.cdc.inventory.application.InventoryQueries.AvailabilityView;
+import com.pmart.cdc.inventory.application.RecountHoldService;
+import com.pmart.cdc.inventory.infrastructure.RecountHoldStore.HoldRow;
 import com.pmart.common.web.PmartException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
@@ -20,9 +25,48 @@ import org.springframework.web.bind.annotation.RestController;
 public class AvailabilityController implements AvailabilityApi {
 
   private final InventoryQueries queries;
+  private final RecountHoldService holds;
 
-  public AvailabilityController(InventoryQueries queries) {
+  public AvailabilityController(InventoryQueries queries, RecountHoldService holds) {
     this.queries = queries;
+    this.holds = holds;
+  }
+
+  @Override
+  public ResponseEntity<ListRecountHolds200Response> listRecountHolds(
+      String cdcId, @Nullable String state) {
+    var out = new ListRecountHolds200Response();
+    out.setItems(holds.list(cdcId, state).stream().map(AvailabilityController::hold).toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<RecountHold> releaseRecountHold(
+      String cdcId,
+      String holdId,
+      String idempotencyKey,
+      String xSourceSystem,
+      ReleaseRecountHoldRequest body) {
+    return ResponseEntity.ok(
+        hold(
+            holds.release(idempotencyKey, xSourceSystem, cdcId, holdId, body.getReason()).value()));
+  }
+
+  private static RecountHold hold(HoldRow h) {
+    var x = new RecountHold();
+    x.setHoldId(h.holdId());
+    x.setSku(h.sku());
+    x.setLot(h.lot());
+    x.setLocationCode(h.locationCode());
+    x.setState(RecountHold.StateEnum.fromValue(h.state()));
+    x.setShortQty(h.shortQty());
+    x.setAllocationId(h.allocationId());
+    x.setSourceRef(h.sourceRef());
+    x.setCreatedAt(Dto.time(h.createdAt()));
+    x.setReleasedAt(Dto.time(h.releasedAt()));
+    x.setReleasedBy(h.releasedBy());
+    x.setReleaseReason(h.releaseReason());
+    return x;
   }
 
   @Override

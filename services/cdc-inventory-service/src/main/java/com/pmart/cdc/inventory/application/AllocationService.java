@@ -11,6 +11,7 @@ import com.pmart.cdc.inventory.infrastructure.AllocationStore.LotRow;
 import com.pmart.cdc.inventory.infrastructure.LedgerStore;
 import com.pmart.cdc.inventory.infrastructure.LedgerStore.Delta;
 import com.pmart.cdc.inventory.infrastructure.LocationClient;
+import com.pmart.cdc.inventory.infrastructure.RecountHoldStore;
 import com.pmart.cdc.inventory.infrastructure.StockStore;
 import com.pmart.cdc.inventory.infrastructure.StockStore.BalanceRow;
 import com.pmart.common.messaging.EventEnvelope;
@@ -18,6 +19,7 @@ import com.pmart.common.messaging.EventEnvelopeCodec;
 import com.pmart.common.messaging.EventPublisher;
 import com.pmart.common.messaging.RequestIdempotency;
 import com.pmart.common.messaging.RequestIdempotency.Outcome;
+import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 import java.time.Instant;
@@ -45,20 +47,36 @@ public class AllocationService {
 
   static final String OP_ALLOCATE = "cdcInventory:allocate";
   static final String OP_RELEASE = "cdcInventory:release";
+  static final String OP_ADD = "cdcInventory:allocationAdd";
   static final Set<String> ACTIVE = Set.of("ALLOCATED", "PARTIAL");
 
   public record AllocateLine(String sku, int requestedQty, @Nullable Integer minRemainingDays) {}
 
   public record Allocate(String cdcId, String trfId, int trfVersion, List<AllocateLine> lines) {}
 
-  public record ReleaseLine(String sku, @Nullable String lot, int qty) {}
+  /** locationCode(0.7.0)를 주면 그 위치에 남은 할당만. */
+  public record ReleaseLine(
+      String sku, @Nullable String lot, @Nullable String locationCode, int qty) {}
 
+  /** recountHold(0.7.0) = 줄의 SKU·LOT·위치를 재계수 대기로(PICK_SHORTAGE 만). */
   public record Release(
       String allocationId,
       String reason,
       @Nullable String sourceRef,
       @Nullable Integer expectedVersion,
-      List<ReleaseLine> lines) {}
+      List<ReleaseLine> lines,
+      boolean recountHold) {}
+
+  /** 추가 할당 줄(0.7.0). */
+  public record AddLine(String sku, int qty, @Nullable Integer minRemainingDays) {}
+
+  public record Add(
+      String allocationId, String reason, @Nullable String sourceRef, List<AddLine> lines) {}
+
+  public record AddedLine(String sku, int requestedQty, int addedQty, List<LotView> lots) {}
+
+  public record AddResult(
+      String requestId, String commitId, int addedQty, List<AddedLine> lines, Instant at) {}
 
   public record LotView(String lot, String locationCode, int qty, @Nullable LocalDate expiresAt) {}
 
@@ -93,6 +111,7 @@ public class AllocationService {
   private final Ledger ledger;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
+  private final RecountHoldStore holds;
 
   public AllocationService(
       StockStore stock,
@@ -103,7 +122,9 @@ public class AllocationService {
       RequestIdempotency idempotency,
       Ledger ledger,
       EventPublisher events,
-      EventEnvelopeCodec codec) {
+      EventEnvelopeCodec codec,
+      RecountHoldStore holds) {
+    this.holds = holds;
     this.stock = stock;
     this.locations = locations;
     this.allocations = allocations;
@@ -180,29 +201,11 @@ public class AllocationService {
           new TreeSet<>(skus).forEach(s -> bySku.put(s, null));
           cmd.lines().forEach(l -> bySku.put(l.sku(), l));
           for (AllocateLine l : bySku.values()) {
-            List<Candidate> candidates = new ArrayList<>();
-            int e = 0;
-            int r = 0;
-            for (BalanceRow b : stock.lockBalances(cmd.cdcId(), l.sku())) {
-              if (Fefo.RELEASED.equals(b.qualityState())
-                  && Fefo.eligibleLot(
-                      b.identification(), b.expiresAt(), today, l.minRemainingDays())) {
-                candidates.add(
-                    new Candidate(
-                        b.lot(),
-                        b.locationCode(),
-                        b.expiresAt(),
-                        b.firstReceivedAt(),
-                        b.onHand(),
-                        b.reserved(),
-                        pickFaces.contains(b.locationCode())));
-                e += b.onHand();
-                r += b.reserved();
-              }
-            }
-            int want = Math.min(l.requestedQty(), Fefo.cap(e, r, safety.get(l.sku())));
+            Pool pool = pool(cmd.cdcId(), l.sku(), today, l.minRemainingDays(), pickFaces);
+            int want =
+                Math.min(l.requestedQty(), Fefo.cap(pool.e(), pool.r(), safety.get(l.sku())));
             requested += l.requestedQty();
-            for (Pick p : Fefo.pick(candidates, want)) {
+            for (Pick p : Fefo.pick(pool.candidates(), want)) {
               Candidate c = p.candidate();
               if (!stock.addReserved(
                   cmd.cdcId(), l.sku(), c.lot(), c.locationCode(), p.qty(), at)) {
@@ -257,6 +260,25 @@ public class AllocationService {
   // ---------- 해제 ----------
 
   public Outcome<CommandResult> release(String requestId, String sourceSystem, Release cmd) {
+    if (cmd.recountHold()) {
+      List<PmartException.Detail> bad = new ArrayList<>();
+      if (!"PICK_SHORTAGE".equals(cmd.reason())) {
+        bad.add(new PmartException.Detail("recountHold", "PICK_SHORTAGE_ONLY"));
+      }
+      if (cmd.lines().isEmpty()) {
+        bad.add(new PmartException.Detail("lines", "LINES_REQUIRED"));
+      }
+      for (int i = 0; i < cmd.lines().size(); i++) {
+        ReleaseLine l = cmd.lines().get(i);
+        if (l.lot() == null || l.locationCode() == null) {
+          bad.add(new PmartException.Detail("lines[" + i + "]", "LOT_AND_LOCATION_REQUIRED"));
+        }
+      }
+      if (!bad.isEmpty()) {
+        throw new PmartException(
+            ErrorCode.VALIDATION_FAILED, "재계수 대기는 피킹 부족에서 LOT·위치를 준 줄에만 겁니다.", bad);
+      }
+    }
     return idempotency.execute(
         Ledger.key(sourceSystem, requestId, OP_RELEASE),
         cmd,
@@ -301,6 +323,22 @@ public class AllocationService {
             deltas.add(new Delta(l.sku(), l.lot(), l.locationCode(), "RESERVED", -q));
             total += q;
           }
+          if (cmd.recountHold()) {
+            // 부족 칸은 다시 셀 때까지 새 할당에서 뺀다(CDC-F-018 — 현물은 지우지 않는다)
+            String by = PmartPrincipal.current().map(PmartPrincipal::subject).orElse(sourceSystem);
+            for (ReleaseLine l : cmd.lines()) {
+              holds.hold(
+                  a.cdcId(),
+                  l.sku(),
+                  l.lot(),
+                  l.locationCode(),
+                  l.qty(),
+                  a.allocationId(),
+                  cmd.sourceRef(),
+                  by,
+                  at);
+            }
+          }
           List<LotRow> after = allocations.lots(a.allocationId());
           String state = nextState(a.state(), after);
           allocations.updateState(a.allocationId(), state);
@@ -317,7 +355,136 @@ public class AllocationService {
         });
   }
 
-  /** 해제 계획: 줄이 없으면 남은 전량, 있으면 SKU(·LOT)별로 소비기한이 늦은 할당부터. */
+  // ---------- 추가 할당(0.7.0) ----------
+
+  /**
+   * 피킹 부족분을 같은 할당에 다른 적격 LOT 로 다시 잡는다(WMS CDC-F-018). 규칙은 처음 할당과 같고 재계수 대기 칸은 뺀다. 못 잡은 만큼은 addedQty
+   * 가 작다(0 도 성공).
+   */
+  public Outcome<AddResult> add(String requestId, String sourceSystem, Add cmd) {
+    Set<String> seen = new HashSet<>();
+    for (AddLine l : cmd.lines()) {
+      if (!seen.add(l.sku())) {
+        throw new PmartException(ErrorCode.VALIDATION_FAILED, "같은 SKU 가 두 번 있습니다: " + l.sku());
+      }
+    }
+    AllocationRow head =
+        allocations
+            .find(cmd.allocationId(), false)
+            .orElseThrow(
+                () ->
+                    PmartException.notFound("NOT_FOUND", "할당 " + cmd.allocationId() + " 이 없습니다."));
+    Set<String> codes = new HashSet<>();
+    for (AddLine l : cmd.lines()) {
+      stock.balances(head.cdcId(), l.sku()).forEach(b -> codes.add(b.locationCode()));
+    }
+    Set<String> pickFaces = codes.isEmpty() ? Set.of() : locations.pickFaces(head.cdcId(), codes);
+    return idempotency.execute(
+        Ledger.key(sourceSystem, requestId, OP_ADD),
+        cmd,
+        AddResult.class,
+        () -> {
+          Instant at = ledger.now();
+          LocalDate today = ledger.today();
+          allocations.lockTrf(head.trfId());
+          AllocationRow a = allocations.find(cmd.allocationId(), true).orElseThrow();
+          if (!ACTIVE.contains(a.state()) && !"RELEASED".equals(a.state())) {
+            throw PmartException.invalidState("할당 상태 " + a.state() + " 에서는 더 잡을 수 없습니다.");
+          }
+          if (ledgerStore.findTransit(a.trfId()).isPresent()) {
+            throw PmartException.invalidState("TRF " + a.trfId() + " 는 이미 출발 전기됐습니다.");
+          }
+          Map<String, Integer> safety =
+              gate.requireAllocatable(a.cdcId(), cmd.lines().stream().map(AddLine::sku).toList());
+          List<LotRow> existing = allocations.lots(a.allocationId());
+          int rankBase = existing.stream().mapToInt(LotRow::fefoRank).max().orElse(0) + 1;
+          List<Delta> deltas = new ArrayList<>();
+          List<AddedLine> out = new ArrayList<>();
+          int total = 0;
+          List<AddLine> ordered = new ArrayList<>(cmd.lines());
+          ordered.sort(Comparator.comparing(AddLine::sku)); // 잠금 순서 고정
+          for (AddLine l : ordered) {
+            Pool pool = pool(a.cdcId(), l.sku(), today, l.minRemainingDays(), pickFaces);
+            int want = Math.min(l.qty(), Fefo.cap(pool.e(), pool.r(), safety.get(l.sku())));
+            List<LotView> got = new ArrayList<>();
+            int added = 0;
+            for (Pick p : Fefo.pick(pool.candidates(), want)) {
+              Candidate c = p.candidate();
+              if (!stock.addReserved(a.cdcId(), l.sku(), c.lot(), c.locationCode(), p.qty(), at)) {
+                throw PmartException.versionConflict("재고가 방금 바뀌었습니다. 다시 요청하세요.");
+              }
+              allocations.addAllocated(
+                  a.allocationId(),
+                  new LotRow(
+                      l.sku(),
+                      c.lot(),
+                      c.locationCode(),
+                      c.expiresAt(),
+                      rankBase + p.rank(),
+                      p.qty(),
+                      0,
+                      0,
+                      0,
+                      0));
+              deltas.add(new Delta(l.sku(), c.lot(), c.locationCode(), "RESERVED", p.qty()));
+              got.add(new LotView(c.lot(), c.locationCode(), p.qty(), c.expiresAt()));
+              added += p.qty();
+            }
+            out.add(new AddedLine(l.sku(), l.qty(), added, got));
+            total += added;
+          }
+          String commitId =
+              ledger.record(
+                  requestId,
+                  "ALLOCATION_ADD",
+                  sourceSystem,
+                  cmd.reason() + (cmd.sourceRef() == null ? "" : ":" + cmd.sourceRef()),
+                  a.cdcId(),
+                  at,
+                  deltas);
+          if (total > 0 && "RELEASED".equals(a.state())) {
+            allocations.updateState(a.allocationId(), "PARTIAL");
+          } else if (total > 0) {
+            allocations.updateState(a.allocationId(), a.state()); // version +1
+          }
+          return new AddResult(requestId, commitId, total, out, at);
+        });
+  }
+
+  /** 할당 후보(잠금): 적격 LOT·위치 중 재계수 대기가 아닌 것. e·r = 그 후보들의 현물·예약 합. */
+  private Pool pool(
+      String cdcId,
+      String sku,
+      LocalDate today,
+      @Nullable Integer minRemainingDays,
+      Set<String> pickFaces) {
+    Set<String> held = holds.heldKeys(cdcId, sku);
+    List<Candidate> candidates = new ArrayList<>();
+    int e = 0;
+    int r = 0;
+    for (BalanceRow b : stock.lockBalances(cdcId, sku)) {
+      if (Fefo.RELEASED.equals(b.qualityState())
+          && Fefo.eligibleLot(b.identification(), b.expiresAt(), today, minRemainingDays)
+          && !held.contains(b.lot() + "|" + b.locationCode())) {
+        candidates.add(
+            new Candidate(
+                b.lot(),
+                b.locationCode(),
+                b.expiresAt(),
+                b.firstReceivedAt(),
+                b.onHand(),
+                b.reserved(),
+                pickFaces.contains(b.locationCode())));
+        e += b.onHand();
+        r += b.reserved();
+      }
+    }
+    return new Pool(candidates, e, r);
+  }
+
+  private record Pool(List<Candidate> candidates, int e, int r) {}
+
+  /** 해제 계획: 줄이 없으면 남은 전량, 있으면 SKU(·LOT·위치)별로 소비기한이 늦은 할당부터. */
   static Map<LotRow, Integer> plan(List<LotRow> lots, List<ReleaseLine> lines) {
     Map<LotRow, Integer> plan = new LinkedHashMap<>();
     if (lines.isEmpty()) {
@@ -332,6 +499,7 @@ public class AllocationService {
           lots.stream()
               .filter(l -> l.sku().equals(rl.sku()))
               .filter(l -> rl.lot() == null || l.lot().equals(rl.lot()))
+              .filter(l -> rl.locationCode() == null || l.locationCode().equals(rl.locationCode()))
               .sorted(Comparator.comparingInt(LotRow::fefoRank).reversed())
               .toList();
       int need = rl.qty();

@@ -543,6 +543,138 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     location.resetAll();
   }
 
+  /**
+   * 피킹 부족 재할당(0.7.0, CDC-F-018): 부족 해제(위치·재계수 대기) → 운영자 목록 → 추가 할당은 대기 칸을 뺀 다른 칸 → 다른 TRF 새 할당도 대기
+   * 칸을 뺌 → 운영자가 풀면 다시 후보.
+   */
+  @Test
+  void pickShortageRecountHoldAndAddition() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String a = "CDC01-C-5-01-07-1-1";
+    String b = "CDC01-C-5-01-08-1-1";
+    assertThat(
+            post(
+                    SERVICE,
+                    "/internal/initial-balances",
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "approvalRef",
+                        "APV-INIT-H",
+                        "lines",
+                        List.of(
+                            ib(sku, "H1", a, 10, today.plusDays(30), "VERIFIED", "RELEASED"),
+                            ib(sku, "H1", b, 50, today.plusDays(30), "VERIFIED", "RELEASED"))))
+                .status())
+        .isEqualTo(200);
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-H",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    JsonNode first = allocate(sku, 10); // 위치 코드 순 — 칸 a 10
+    String alc = first.path("allocationId").asString();
+    assertThat(first.path("lines").get(0).path("lots").get(0).path("locationCode").asString())
+        .isEqualTo(a);
+
+    // 재계수 대기는 PICK_SHORTAGE·LOT·위치가 있어야
+    Res bad =
+        post(
+            SERVICE,
+            "/internal/allocations/" + alc + "/releases",
+            key(),
+            Map.of(
+                "reason",
+                "PICK_SHORTAGE",
+                "recountHold",
+                true,
+                "lines",
+                List.of(Map.of("sku", sku, "qty", 4))));
+    assertThat(bad.status()).isEqualTo(400);
+    Res rel =
+        post(
+            SERVICE,
+            "/internal/allocations/" + alc + "/releases",
+            key(),
+            Map.of(
+                "reason",
+                "PICK_SHORTAGE",
+                "sourceRef",
+                "TASK-1",
+                "recountHold",
+                true,
+                "lines",
+                List.of(Map.of("sku", sku, "lot", "H1", "locationCode", a, "qty", 4))));
+    assertThat(rel.status()).as(rel.body().toString()).isEqualTo(200);
+    JsonNode held = get(OPERATOR, "/cdcs/" + CENTER + "/recount-holds?state=HELD").body();
+    JsonNode mine = null;
+    for (JsonNode h : held.path("items")) {
+      if (sku.equals(h.path("sku").asString())) {
+        mine = h;
+      }
+    }
+    assertThat(mine).as(held.toString()).isNotNull();
+    assertThat(mine.path("locationCode").asString()).isEqualTo(a);
+    assertThat(mine.path("shortQty").asInt()).isEqualTo(4);
+
+    // 추가 할당 4 — 대기 칸 a(남은 현물 4)를 빼고 b 에서
+    String addKey = key();
+    Map<String, Object> add =
+        Map.of(
+            "reason",
+            "PICK_SHORTAGE_REALLOCATION",
+            "sourceRef",
+            "TASK-1",
+            "lines",
+            List.of(Map.of("sku", sku, "qty", 4)));
+    Res added = post(SERVICE, "/internal/allocations/" + alc + "/additions", addKey, add);
+    assertThat(added.status()).as(added.body().toString()).isEqualTo(200);
+    assertThat(added.body().path("addedQty").asInt()).isEqualTo(4);
+    JsonNode addedLot = added.body().path("lines").get(0).path("lots").get(0);
+    assertThat(addedLot.path("locationCode").asString()).isEqualTo(b);
+    assertThat(post(SERVICE, "/internal/allocations/" + alc + "/additions", addKey, add).status())
+        .isEqualTo(200); // 같은 키 재생
+    JsonNode now = get(SERVICE, "/internal/allocations/" + alc).body();
+    int heldTotal = 0;
+    for (JsonNode l : now.path("lines").get(0).path("lots")) {
+      heldTotal += l.path("qty").asInt();
+    }
+    assertThat(heldTotal).as(now.toString()).isEqualTo(14); // a 처음 10(해제 4 포함 이력) + b 4
+
+    // 다른 TRF 새 할당도 대기 칸 a 를 뺀다
+    JsonNode other = allocate(sku, 3);
+    assertThat(other.path("lines").get(0).path("lots").get(0).path("locationCode").asString())
+        .isEqualTo(b);
+
+    // 운영자가 풀면 a 가 다시 후보(위치 코드 순이라 a 먼저)
+    Res free =
+        post(
+            OPERATOR,
+            "/cdcs/" + CENTER + "/recount-holds/" + mine.path("holdId").asString() + "/releases",
+            key(),
+            Map.of("reason", "다시 세어 보니 맞음"));
+    assertThat(free.status()).as(free.body().toString()).isEqualTo(200);
+    assertThat(free.body().path("state").asString()).isEqualTo("RELEASED");
+    assertThat(free.body().path("releasedBy").asString()).isEqualTo("op-1");
+    JsonNode again = allocate(sku, 2);
+    assertThat(again.path("lines").get(0).path("lots").get(0).path("locationCode").asString())
+        .isEqualTo(a);
+  }
+
   JsonNode allocate(String sku, int qty) {
     Res r =
         post(

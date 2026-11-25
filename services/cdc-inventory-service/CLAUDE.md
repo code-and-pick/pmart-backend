@@ -34,5 +34,9 @@
 - 내부 이동(0.3.0, 2026-11-25, Flyway V4): `/internal/move-postings` — 같은 SKU·LOT·품질로 위치만 바꾼다(총량·LOT 최초 인수시각 그대로). 줄에 `allocationId` 가 있으면 그 할당이 원위치에 잡은 예약을 함께 옮긴다(`allocation_lot.moved_out/moved_in`, 남은 예약 = 할당 + 옮겨 옴 − 옮겨 감 − 해제 − 출발) — 팔레트 랙 → 피킹 선반 보충(칠곡 CDC-7). 없으면 예약 안 된 현물만. 예약은 RELEASED 에만. 위치 상태는 cdc-location 이 본다(여기서는 안 봄). 원결과 MOVE.
 - 재고 스냅샷(0.4.0): `/internal/snapshots?cdcId&sku?` — 지금 장부 그대로(snapshotId 는 이번 조회 식별, 보관 안 함 — 지난 id 는 404). sku 를 비우면 현물 행이 있는 SKU 전부. 취급 OFF·안전량 미설정도 거절하지 않고 handlingActive·safety.state NOT_SET·available null 로 보인다. `lots[].locations[]` = 위치·품질별 현물·예약(시뮬레이터가 칸별 재고를 그린다).
 - 피킹 선반 먼저(0.5.0, 2026-11-25): 할당 FEFO 순서 기한 → 최초 인수 → LOT → **PICK_FACE 먼저** → 위치. 위치 유형은 cdc-location `POST /internal/location-lookups`(`LocationClient`, 주소 `pmart.inventory.cdc-location-base-url`, 연결 0.5초·응답 1.5초, 호출마다 새 Idempotency-Key — 없으면 공통 헤더 검사가 400, LAN #462 배포에서 확인)를 트랜잭션·행 잠금 **밖**에서 미리 읽는다. 조회가 안 되면 경고 로그만 남기고 위치 코드 순(랙 01~ 이 선반 61~ 보다 앞)으로 잡는다 — 동선 선호라 할당을 막지 않는다.
+- 피킹 부족 재할당(0.7.0, Flyway V5 `recount_hold`, WMS CDC-F-018 — 사용자 2026-11-25 "부족 칸은 새 할당에서 뺀다"):
+  - 해제 줄 `locationCode`(그 위치만)·`recountHold`(PICK_SHORTAGE 에서 줄마다 LOT·위치 필수 → 그 SKU·LOT·위치 재계수 대기, 이미 대기면 부족 수만 더함). 대기 칸은 새 할당·추가 할당 후보와 한도 E'·R' 에서 빠진다(현물·걸린 예약은 그대로, 손실 차감 없음).
+  - 추가 할당 `POST /internal/allocations/{id}/additions`(PICK_SHORTAGE_REALLOCATION): 같은 할당에 FEFO 로 더 잡기(부분·0 허용, 같은 LOT·위치 행은 allocated 에 더함, RELEASED 였으면 PARTIAL), 원결과 ALLOCATION_ADD.
+  - 운영자 `GET /cdcs/{cdcId}/recount-holds`·`POST …/{holdId}/releases`(다시 후보로). 센 결과 반영(조정)은 아직 — 4번 조정 때 잇는다.
 - 아직 501: 수령 확인·품질·손실·조정·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 재고 현황(2026-11-25, 0.6.0)**: `GET /cdcs/{cdcId}/stock-snapshot?sku=&withPlaces=`(`AvailabilityController.getCenterStockSnapshot`) — 내부 `/internal/snapshots` 와 같은 `InventoryQueries.snapshot`, 자기 센터 운영자만(`Operator.requireCenter`), withPlaces 기본 false(LOT·위치 빼고). 시험 `StockLedgerFlowIT` 2-2.

@@ -1,14 +1,19 @@
 package com.pmart.cdc.inventory.api;
 
 import com.pmart.cdc.inventory.api.generated.AllocationsApi;
+import com.pmart.cdc.inventory.api.generated.model.AddToAllocation200Response;
+import com.pmart.cdc.inventory.api.generated.model.AddToAllocation200ResponseLinesInner;
+import com.pmart.cdc.inventory.api.generated.model.AddToAllocation200ResponseLinesInnerLotsInner;
+import com.pmart.cdc.inventory.api.generated.model.AddToAllocationRequest;
 import com.pmart.cdc.inventory.api.generated.model.Allocation;
 import com.pmart.cdc.inventory.api.generated.model.AllocationLinesInner;
-import com.pmart.cdc.inventory.api.generated.model.AllocationLinesInnerLotsInner;
 import com.pmart.cdc.inventory.api.generated.model.CreateAllocation200Response;
 import com.pmart.cdc.inventory.api.generated.model.CreateAllocationRequest;
 import com.pmart.cdc.inventory.api.generated.model.ReleaseAllocation200Response;
 import com.pmart.cdc.inventory.api.generated.model.ReleaseAllocationRequest;
 import com.pmart.cdc.inventory.application.AllocationService;
+import com.pmart.cdc.inventory.application.AllocationService.Add;
+import com.pmart.cdc.inventory.application.AllocationService.AddLine;
 import com.pmart.cdc.inventory.application.AllocationService.Allocate;
 import com.pmart.cdc.inventory.application.AllocationService.AllocateLine;
 import com.pmart.cdc.inventory.application.AllocationService.AllocationView;
@@ -91,7 +96,7 @@ public class AllocationsController implements AllocationsApi {
         body.getLines() == null
             ? List.of()
             : body.getLines().stream()
-                .map(l -> new ReleaseLine(l.getSku(), l.getLot(), l.getQty()))
+                .map(l -> new ReleaseLine(l.getSku(), l.getLot(), l.getLocationCode(), l.getQty()))
                 .toList();
     var cmd =
         new Release(
@@ -99,8 +104,56 @@ public class AllocationsController implements AllocationsApi {
             body.getReason().getValue(),
             body.getSourceRef(),
             xExpectedVersion,
-            lines);
+            lines,
+            Boolean.TRUE.equals(body.getRecountHold()));
     return ResponseEntity.ok(Dto.command(service.release(idempotencyKey, xSourceSystem, cmd)));
+  }
+
+  @Override
+  public ResponseEntity<AddToAllocation200Response> addToAllocation(
+      String allocationId,
+      String idempotencyKey,
+      String xSourceSystem,
+      AddToAllocationRequest body) {
+    var cmd =
+        new Add(
+            allocationId,
+            body.getReason().getValue(),
+            body.getSourceRef(),
+            body.getLines().stream()
+                .map(l -> new AddLine(l.getSku(), l.getQty(), l.getMinRemainingDays()))
+                .toList());
+    var r = service.add(idempotencyKey, xSourceSystem, cmd).value();
+    var out = new AddToAllocation200Response();
+    out.setStatus(AddToAllocation200Response.StatusEnum.APPLIED);
+    out.setRequestId(r.requestId());
+    out.setResultId(r.commitId());
+    out.setAddedQty(r.addedQty());
+    out.setOccurredAt(Dto.time(r.at()));
+    out.setLines(
+        r.lines().stream()
+            .map(
+                l -> {
+                  var d = new AddToAllocation200ResponseLinesInner();
+                  d.setSku(l.sku());
+                  d.setRequestedQty(l.requestedQty());
+                  d.setAddedQty(l.addedQty());
+                  d.setLots(
+                      l.lots().stream()
+                          .map(
+                              x -> {
+                                var lot = new AddToAllocation200ResponseLinesInnerLotsInner();
+                                lot.setLot(x.lot());
+                                lot.setLocationCode(x.locationCode());
+                                lot.setQty(x.qty());
+                                lot.setExpiresAt(x.expiresAt());
+                                return lot;
+                              })
+                          .toList());
+                  return d;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
   }
 
   private static List<AllocationLinesInner> lines(AllocationView v) {
@@ -118,7 +171,7 @@ public class AllocationsController implements AllocationsApi {
                   l.lots().stream()
                       .map(
                           x -> {
-                            var lot = new AllocationLinesInnerLotsInner();
+                            var lot = new AddToAllocation200ResponseLinesInnerLotsInner();
                             lot.setLot(x.lot());
                             lot.setLocationCode(x.locationCode());
                             lot.setQty(x.qty());

@@ -75,6 +75,7 @@ GET /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
+GET /api/v1/cdcs/{cdcId}/recount-holds OPERATOR
 GET /api/v1/cdcs/{cdcId}/regions OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 GET /api/v1/cdcs/{cdcId}/stock-snapshot OPERATOR
@@ -459,6 +460,7 @@ POST /api/v1/category-tree-versions OPERATOR
 POST /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations/{locationCode}/state-changes OPERATOR
+POST /api/v1/cdcs/{cdcId}/recount-holds/{holdId}/releases OPERATOR
 POST /api/v1/cdcs/{cdcId}/regions OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR

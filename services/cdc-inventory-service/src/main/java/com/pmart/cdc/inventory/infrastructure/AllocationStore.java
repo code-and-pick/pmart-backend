@@ -146,6 +146,22 @@ public class AllocationStore {
         allocationId);
   }
 
+  /** 추가 할당(0.7.0): 같은 LOT·위치 행이 있으면 처음 할당량에 더하고, 없으면 새 행. */
+  public void addAllocated(String allocationId, LotRow l) {
+    jdbc.update(
+        "INSERT INTO allocation_lot (allocation_id, sku, lot, location_code, expires_at, fefo_rank,"
+            + " allocated_qty) VALUES (?,?,?,?,?,?,?)"
+            + " ON CONFLICT (allocation_id, sku, lot, location_code)"
+            + " DO UPDATE SET allocated_qty = allocation_lot.allocated_qty + EXCLUDED.allocated_qty",
+        allocationId,
+        l.sku(),
+        l.lot(),
+        l.locationCode(),
+        l.expiresAt() == null ? null : Date.valueOf(l.expiresAt()),
+        l.fefoRank(),
+        l.allocatedQty());
+  }
+
   public void addReleased(String allocationId, LotRow l, int qty) {
     jdbc.update(
         "UPDATE allocation_lot SET released_qty = released_qty + ?"
