@@ -1,7 +1,7 @@
 # 칠곡 CDC 재계수·실사 조정 설계 — 초안
 
 - 작성: cdc 세션, 2026-11-25. 사용자 "1부터 4까지 차례대로" 중 4번(재고 남은 기능)의 첫 항목.
-- 상태: **구현 중** — §7-1 피킹 재고 옮겨 적기(#497 배포), §7-2 실사 세션(cdc-inventory 0.8.0, PR `cdc/count-sessions`), §7-3 approval AP-4(PC 1), §7-4 예약 부족 연결(남음).
+- 상태: **구현 중** — §7-1 피킹 재고 옮겨 적기(#497 배포), §7-2 실사 세션(cdc-inventory 0.8.0, PR `cdc/count-sessions`), §7-3 approval AP-4(PC 1), §7-4 예약 부족 연결(cdc-inventory 0.10.0·cdc-outbound 0.17.0, PR `cdc/count-shortfall`).
 - 대상: cdc-inventory(주)·cdc-outbound(피킹 재고 옮겨 적기·예약 부족 연결). 승인 확인은 approval-service(PC 1 몫 — 요청 필요).
 - 근거: `docs/business/WMS-business-logic.md` CDC-F-029(위치 실사·재계수·원거래 차이 조사), CDC-F-030(조사 차이의 승인·부분집행·원장 조정).
 

@@ -38,6 +38,7 @@ import tools.jackson.databind.JsonNode;
 public class ShortageService {
 
   private static final Logger log = LoggerFactory.getLogger(ShortageService.class);
+  static final String NO_WAVE = "-";
   static final Set<String> GONE = Set.of("DEPARTED", "CANCELLED", "CANCELLING", "CANCEL_HOLD");
 
   private final ShortageStore shortages;
@@ -75,6 +76,35 @@ public class ShortageService {
       String locationCode,
       int shortQty,
       Instant at) {
+    record(trfId, waveId, taskId, sku, lot, locationCode, shortQty, "PENDING", at);
+  }
+
+  /**
+   * 재고가 이미 예약을 푼 부족(실사 AllocationShortfall, 0.17.0) — 해제 단계를 건너뛴 RELEASED 로 기록한다. Wave 에 안 든 TRF 는
+   * waveId "-"(새 작업 없이 추가 할당만 — 나중 Wave 릴리스가 할당의 지금 LOT 을 읽는다).
+   */
+  void recordReleased(
+      String trfId,
+      String waveId,
+      String taskId,
+      String sku,
+      String lot,
+      String locationCode,
+      int shortQty,
+      Instant at) {
+    record(trfId, waveId, taskId, sku, lot, locationCode, shortQty, "RELEASED", at);
+  }
+
+  private void record(
+      String trfId,
+      String waveId,
+      String taskId,
+      String sku,
+      String lot,
+      String locationCode,
+      int shortQty,
+      String state,
+      Instant at) {
     shortages.insert(
         new FollowupRow(
             Support.newId("PSF"),
@@ -85,7 +115,7 @@ public class ShortageService {
             lot,
             locationCode,
             shortQty,
-            "PENDING",
+            state,
             0,
             0,
             null,
@@ -198,8 +228,9 @@ public class ShortageService {
     }
     Instant at = support.now();
     TransferRow t = store.transfer(f.trfId(), true).orElseThrow();
+    boolean noWave = NO_WAVE.equals(f.waveId());
     List<String> ids =
-        items.isEmpty() ? List.of() : waves.createTasks(t.cdcId(), f.waveId(), items, at);
+        items.isEmpty() || noWave ? List.of() : waves.createTasks(t.cdcId(), f.waveId(), items, at);
     store.reallocated(f.trfId(), f.sku(), reallocated);
     int unresolved = f.shortQty() - reallocated;
     shortages.done(

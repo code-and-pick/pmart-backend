@@ -72,6 +72,9 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Autowired ObjectMapper mapper;
   @Autowired com.pmart.cdc.outbound.application.ShortageService shortages;
   @Autowired com.pmart.cdc.outbound.application.PickMoveService pickMoves;
+  @Autowired com.pmart.cdc.outbound.application.ShortfallService shortfalls;
+  @Autowired com.pmart.common.messaging.EventEnvelopeCodec codec;
+  @Autowired org.springframework.transaction.support.TransactionTemplate txTemplate;
 
   @InjectWireMock("inventory")
   WireMockServer inventory;
@@ -1722,6 +1725,110 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(moves.stream().map(r -> r.getHeader("Idempotency-Key")).distinct().toList())
         .hasSize(1)
         .allMatch(k -> k.startsWith("outbound-pickmove-"));
+  }
+
+  /**
+   * 실사 부족 받기(0.17.0): 아직 안 집은 작업 줄(칸 x 5)에 AllocationShortfall 2 → 줄 부족 2(COUNT_LOSS)·TRF 줄 부족 2·후속
+   * RELEASED → 추가 할당 2(칸 y) → 새 작업·PickShortageResolved(2, 0)·TRF 줄 부족 0. 소비자와 같이 트랜잭션 안에서 부른다.
+   * CDC09.
+   */
+  @Test
+  void shortfallFromCountReallocates() {
+    String c9 = "CDC09";
+    String ops9 = TestJwt.operator("ops-9", List.of("CDC_MANAGER"), List.of(c9));
+    String trf = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String x = "CDC09-C-5-61-01-1-1";
+    String y = "CDC09-C-5-61-05-1-1";
+    stubAllocate(
+        trf,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":5},{\"sku\":\"E-00000002\",\"allocatedQty\":0}]}");
+    stubAllocationLots(
+        alc,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + x
+            + "\",\"qty\":5}]}");
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trf, c9, "MFC-BJG-01", DUE, 5, 1))
+                .status())
+        .isEqualTo(202);
+    String wave =
+        post(ops9, "/waves", Map.of("cdcId", c9, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops9, "/waves/" + wave + "/releases", null).status()).isEqualTo(202);
+    String task =
+        get(ops9, "/cdcs/" + c9 + "/tasks?waveId=" + wave)
+            .body()
+            .path("items")
+            .get(0)
+            .path("taskId")
+            .asString();
+
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("cdcId", c9);
+    p.put("trfId", trf);
+    p.put("allocationId", alc);
+    p.put("sku", "E-00000001");
+    p.put("lot", "L1");
+    p.put("locationCode", x);
+    p.put("qty", 2);
+    p.put("reason", "COUNT_LOSS");
+    p.put("sourceRef", "CNT-1");
+    var env =
+        codec.create(
+            "cdc-inventory-service",
+            "AllocationShortfall",
+            1,
+            "Allocation",
+            alc,
+            1,
+            null,
+            com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+            p);
+    txTemplate.executeWithoutResult(s -> shortfalls.apply(env));
+    JsonNode t1 = get(ops9, "/cdcs/" + c9 + "/tasks/" + task).body();
+    assertThat(t1.path("lines").get(0).path("shortQty").asInt()).as(t1.toString()).isEqualTo(2);
+    assertThat(t1.path("lines").get(0).path("shortReason").asString()).isEqualTo("COUNT_LOSS");
+    assertThat(t1.path("state").asString()).isEqualTo("CREATED"); // 3 이 남음
+    assertThat(readiness(trf).path("blockers").toString()).contains("SHORTAGE_REALLOCATING");
+
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo(ALLOC + "/" + alc + "/additions"))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"status\":\"APPLIED\",\"addedQty\":2,\"lines\":[{\"sku\":\"E-00000001\",\"requestedQty\":2,\"addedQty\":2,"
+                            + "\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+                            + y
+                            + "\",\"qty\":2}]}]}")));
+    shortages.processOpen();
+    // 해제는 재고가 이미 했다 — 부족 해제 호출 없음
+    assertThat(
+            inventory.findAll(
+                postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases"))
+                    .withRequestBody(matchingJsonPath("$.reason", equalTo("PICK_SHORTAGE")))))
+        .isEmpty();
+    JsonNode items = get(ops9, "/cdcs/" + c9 + "/tasks?waveId=" + wave).body().path("items");
+    assertThat(items.size()).isEqualTo(2);
+    String ev =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'PickShortageResolved' AND aggregateid = ?",
+            String.class,
+            trf);
+    assertThat(ev).contains("\"reallocatedQty\": 2").contains("\"unresolvedQty\": 0");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT short_qty FROM transfer_line WHERE trf_id = ? AND sku = 'E-00000001'",
+                Integer.class,
+                trf))
+        .isZero();
   }
 
   JsonNode readiness(String trf) {

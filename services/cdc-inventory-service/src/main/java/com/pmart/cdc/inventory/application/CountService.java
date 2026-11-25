@@ -1,6 +1,7 @@
 package com.pmart.cdc.inventory.application;
 
 import com.pmart.cdc.inventory.domain.HqApprovalRules.Line;
+import com.pmart.cdc.inventory.infrastructure.AllocationStore;
 import com.pmart.cdc.inventory.infrastructure.CountStore;
 import com.pmart.cdc.inventory.infrastructure.CountStore.Key;
 import com.pmart.cdc.inventory.infrastructure.CountStore.SessionRow;
@@ -61,6 +62,7 @@ public class CountService {
       SessionRow session, List<String> locations, List<Key> sheet, List<LineView> lines) {}
 
   private final CountStore counts;
+  private final AllocationStore allocations;
   private final StockStore stock;
   private final RecountHoldStore holds;
   private final RequestIdempotency idempotency;
@@ -77,7 +79,9 @@ public class CountService {
       Ledger ledger,
       ApprovalGate gate,
       EventPublisher events,
-      EventEnvelopeCodec codec) {
+      EventEnvelopeCodec codec,
+      AllocationStore allocations) {
+    this.allocations = allocations;
     this.counts = counts;
     this.stock = stock;
     this.holds = holds;
@@ -350,18 +354,12 @@ public class CountService {
             if (d == 0) {
               continue;
             }
+            if (d < 0) {
+              // 실물이 예약보다 적어지면 모자란 만큼 그 칸의 늦게 잡힌 할당부터 푼다(설계 §4 — 사용자 결정 3)
+              shortfall(cdcId, sessionId, k, d, at, ledgerDeltas);
+            }
             if (!stock.adjustOnHand(cdcId, k.sku(), k.lot(), k.locationCode(), d, at)) {
-              throw new PmartException(
-                  "COUNT_BELOW_RESERVED",
-                  HttpStatus.CONFLICT,
-                  k.locationCode()
-                      + " "
-                      + k.sku()
-                      + "/"
-                      + k.lot()
-                      + " 실물이 이관 예약보다 적어집니다 — 예약 부족 처리는 다음 단계(설계 §4), 지금은 그 칸 예약을 먼저 정리하세요.",
-                  false,
-                  List.of(new PmartException.Detail(k.locationCode(), "COUNT_BELOW_RESERVED")));
+              throw PmartException.versionConflict("재고가 방금 바뀌었습니다 — 다시 결정하세요.");
             }
             ledgerDeltas.add(new Delta(k.sku(), k.lot(), k.locationCode(), "ON_HAND", d));
             Map<String, Object> m = new LinkedHashMap<>();
@@ -384,6 +382,76 @@ public class CountService {
           }
           return view(sessionId);
         });
+  }
+
+  /**
+   * 조정 뒤 현물(지금 + d)이 예약보다 작으면 모자란 만큼 그 칸에 늦게 잡힌 할당부터 예약을 푼다(0.10.0, 설계 §4). 할당마다
+   * AllocationShortfall(reason COUNT_LOSS) — cdc-outbound 가 받아 다른 LOT 으로 다시 잡거나 못 찾음으로 처리한다.
+   */
+  private void shortfall(
+      String cdcId, String sessionId, Key k, int d, Instant at, List<Delta> ledgerDeltas) {
+    int onHand = 0;
+    int reserved = 0;
+    for (Object[] r : stock.lockAtLocations(cdcId, List.of(k.locationCode()))) {
+      if (k.sku().equals(r[1]) && k.lot().equals(r[2]) && "RELEASED".equals(r[3])) {
+        onHand += (Integer) r[4];
+        reserved += (Integer) r[5];
+      }
+    }
+    int need = reserved - (onHand + d);
+    if (need <= 0) {
+      return;
+    }
+    for (AllocationStore.Holder h :
+        allocations.holdersAt(cdcId, k.sku(), k.lot(), k.locationCode())) {
+      if (need <= 0) {
+        break;
+      }
+      int take = Math.min(need, h.lot().remaining());
+      if (take <= 0) {
+        continue;
+      }
+      if (!stock.addReserved(cdcId, k.sku(), k.lot(), k.locationCode(), -take, at)) {
+        throw PmartException.versionConflict("예약이 방금 바뀌었습니다 — 다시 결정하세요.");
+      }
+      allocations.addReleased(h.allocationId(), h.lot(), take);
+      allocations.updateState(
+          h.allocationId(),
+          AllocationService.nextState(h.state(), allocations.lots(h.allocationId())));
+      ledgerDeltas.add(new Delta(k.sku(), k.lot(), k.locationCode(), "RESERVED", -take));
+      Map<String, Object> p = new LinkedHashMap<>();
+      p.put("cdcId", cdcId);
+      p.put("trfId", h.trfId());
+      p.put("allocationId", h.allocationId());
+      p.put("sku", k.sku());
+      p.put("lot", k.lot());
+      p.put("locationCode", k.locationCode());
+      p.put("qty", take);
+      p.put("reason", "COUNT_LOSS");
+      p.put("sourceRef", sessionId);
+      p.put("occurredAt", at.toString());
+      events.publish(
+          codec.create(
+              events.sourceSystem(),
+              "AllocationShortfall",
+              1,
+              "Allocation",
+              h.allocationId(),
+              1,
+              new EventEnvelope.Actor(EventEnvelope.ActorType.SYSTEM, "cdc-inventory"),
+              EventEnvelope.EventSource.REAL,
+              p),
+          Ledger.TOPIC);
+      need -= take;
+    }
+    if (need > 0) {
+      throw new PmartException(
+          "COUNT_BELOW_RESERVED",
+          HttpStatus.CONFLICT,
+          k.locationCode() + " " + k.sku() + "/" + k.lot() + " 예약을 풀 할당을 찾지 못했습니다(조사 필요).",
+          false,
+          List.of(new PmartException.Detail(k.locationCode(), "COUNT_BELOW_RESERVED")));
+    }
   }
 
   /** 시작자·계수자는 결정할 수 없다(요청자·승인자 분리, CDC-F-029). */

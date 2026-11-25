@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.9.0
+  version: 0.10.0
   description: |
+    0.10.0(2026-11-25, 실사 부족 — 설계 §4·사용자 결정 "조정은 하고 나중 예약부터 부족 표시"): 실사 APPROVE 로 칸 현물이 예약보다 적어지면 409 대신 모자란 만큼
+      그 칸에 늦게 잡힌 할당부터 예약을 풀고(같은 CNT 원결과) 할당마다 AllocationShortfall(reason COUNT_LOSS) — cdc-outbound 가 받아 다시 잡거나 못 찾음으로 처리.
     0.9.0(2026-11-25, DC 백오피스 M-6 칸별 재고 — PC 5 요청, 사용자 "응"): 직원 조회 `GET /cdcs/{cdcId}/location-stocks?locationPrefix=&sku=` — 재고 스냅샷을
       칸 기준으로 펼친 줄(칸·SKU·LOT·품질 상태·현물·예약·소비기한), 칸 코드 순. 자기 센터 운영자만. 읽기만(cdc-location occupiedQty 는 그대로 비움 — 칸 재고는 이 조회로).
     0.8.0(2026-11-25, 재계수·실사 조정 — WMS CDC-F-029·030, 설계 docs/cdc/design/2026-11-25-count-adjustment.md, 사용자 "MFC 실사와 같게"): 실사 세션
@@ -1019,7 +1021,7 @@ paths:
       description: |
         PENDING_APPROVAL 일 때만. 시작자·계수자와 다른 운영자(422 SELF_APPROVAL — 요청자·승인자 분리, CDC-F-029).
         APPROVE: 기준 뒤 그 칸 장부가 바뀌었으면 409 BOOK_CHANGED(다시 실사) → 승인 관문(아래) → 한 원결과(CNT)로 차이(최종 − 기준)만 현물에 반영 → 잠금·재계수 대기 해소 → InventoryAdjustmentPosted.
-        감소로 그 칸 현물이 예약보다 적어지면 409 COUNT_BELOW_RESERVED(아직 — 나중 예약부터 부족 처리는 다음 단계).
+        (0.10.0) 감소로 그 칸 현물이 예약보다 적어지면 모자란 만큼 **그 칸에 늦게 잡힌 할당부터** 예약을 풀고(같은 CNT 원결과에 예약 −) 할당마다 AllocationShortfall(COUNT_LOSS)을 낸다. 풀 할당을 못 찾으면 409 COUNT_BELOW_RESERVED(조사).
         승인 관문(`pmart.inventory.approval-ref.mode`): RECORD_ONLY = approvalRef 필수·확인 없음. VERIFY = MFC 와 같은 본사 기준(한 건 손실 ≥ `hq-loss-krw` 또는 한 SKU ≥ `hq-sku-qty`, 단가 = pricing 판매 기준가, 없으면 본사) —
         아래면 센터 관리자 결정만, 이상이면 approvalRef 없을 때 422 APPROVAL_REQUIRED(details approvalRequest = approval-service 변경 요청 본문), 있으면 approval-service 로 한 번 사용·범위 확인. 그 밖·비움 = 422 CONFIG_REQUIRED.
         REJECT: 조정 없음, 잠금 해소(재계수 대기는 남김 — 다시 실사).

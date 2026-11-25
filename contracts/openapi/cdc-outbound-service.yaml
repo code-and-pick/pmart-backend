@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.16.0
+  version: 0.17.0
   description: |
+    0.17.0(2026-11-25, 실사 부족 받기 — 설계 docs/cdc/design/2026-11-25-count-adjustment.md §4): cdc-inventory `AllocationShortfall`(COUNT_LOSS) 구독(첫 사건 구독) —
+      그 TRF 의 안 끝난 작업 줄에 부족(사유 COUNT_LOSS)·TRF 줄 부족 + → 피킹 부족 후속(재고가 이미 풀었으니 해제 건너뜀)으로 다른 LOT 재할당·새 작업 또는 못 찾음(PickShortageResolved). 경로·모양 변화 없음.
     0.16.0(2026-11-25, DC 백오피스 M-3 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-25-backend-monitoring-gaps.md, 사용자 "응"): 직원 조회 2개(자기 센터 운영자만, 읽기만).
       `GET /cdcs/{cdcId}/departures?result=&page=&size=`(출발 검증 결과 — 줄 = 내부 `DepartureValidation` 과 같은 모양: TRF 별 결과·잔량 해제·불일치 사유, 검증 최신 순),
       `GET /cdcs/{cdcId}/transfers/{trfId}/readiness`(출발 준비 단계·막힌 이유 — 내부 `/internal/outbound-readiness` 와 같은 내용). 운송(차량·기사·운행)은 TMS 서비스 뒤.

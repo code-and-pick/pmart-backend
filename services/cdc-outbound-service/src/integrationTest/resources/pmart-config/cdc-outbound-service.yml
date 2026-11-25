@@ -5,5 +5,14 @@ server:
 pmart:
   messaging:
     domain: cdc
-# 이벤트 소비 없음(발행만 — outbox). TransferApproved 등 구독을 더하면 spring.cloud.function.definition·bindings 를 같이 넣는다
+spring:
+  # 이벤트 소비(Spring Cloud Stream, ADR-0035): 함수(빈) 이름 → 토픽. 그룹·재시도·DLQ·커밋은 common-messaging 기본값.
+  # 0.17.0(2026-11-25) cdc-inventory AllocationShortfall(실사 부족) — 함수를 더하거나 빼면 코드(PmartEventConsumer 빈)와 함께 바꾼다
+  cloud:
+    function:
+      definition: inventoryEvents
+    stream:
+      bindings:
+        inventoryEvents-in-0:
+          destination: cdc.inventory.v1
 # cdc-inventory 주소는 환경별(cdc-outbound-service-<프로필>.yml 의 pmart.outbound.cdc-inventory-base-url)

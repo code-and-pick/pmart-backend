@@ -873,6 +873,108 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(m.body().path("lines").get(0).path("deltaQty").asInt()).isZero();
   }
 
+  /**
+   * 실사 부족(0.10.0, 설계 §4): 칸 10 에 할당 A1 5(먼저)·A2 3(나중) → 실사 최종 4 승인 → 예약 8 > 현물 4 라 4 를 늦은 A2 3 부터,
+   * 남은 1 은 A1 → 할당마다 AllocationShortfall(COUNT_LOSS). 손실 6×1천 원·6개는 본사 기준 아래라 센터 관리자 결정만.
+   */
+  @Test
+  void countLossReleasesLatestAllocationsFirst() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String k3 = "CDC01-C-5-01-31-1-1";
+    String cnt1 = TestJwt.operator("cnt-1", List.of("CDC_WORKER"), List.of(CENTER));
+    String cnt2 = TestJwt.operator("cnt-2", List.of("CDC_WORKER"), List.of(CENTER));
+    String sup = TestJwt.operator("sup-9", List.of("CDC_MANAGER"), List.of(CENTER));
+    post(
+        SERVICE,
+        "/internal/initial-balances",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-INIT-L",
+            "lines",
+            List.of(ib(sku, "L1", k3, 10, today.plusDays(30), "VERIFIED", "RELEASED"))));
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-L",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    String a1 = allocate(sku, 5).path("allocationId").asString();
+    String a2 = allocate(sku, 3).path("allocationId").asString();
+    pricing.stubFor(
+        WireMock.get(WireMock.urlPathEqualTo("/api/v1/internal/prices"))
+            .withQueryParam("skus", WireMock.equalTo(sku))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"sku\":\""
+                        + sku
+                        + "\",\"basePrice\":1000,\"priceVersion\":1}]}")));
+    String base = "/cdcs/" + CENTER + "/count-sessions";
+    String sid =
+        post(OPERATOR, base, key(), Map.of("locationCodes", List.of(k3)))
+            .body()
+            .path("sessionId")
+            .asString();
+    List<Map<String, Object>> four =
+        List.of(Map.of("locationCode", k3, "sku", sku, "lot", "L1", "qty", 4));
+    post(cnt1, base + "/" + sid + "/counts", key(), Map.of("lines", four));
+    assertThat(
+            post(cnt2, base + "/" + sid + "/recounts", key(), Map.of("lines", four))
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("PENDING_APPROVAL");
+    Res ok =
+        post(
+            sup,
+            base + "/" + sid + "/decisions",
+            key(),
+            Map.of("decision", "APPROVE", "reason", "4 확정"));
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("state").asString()).isEqualTo("APPROVED");
+    Map<String, Object> bal =
+        jdbc.queryForMap(
+            "SELECT on_hand, reserved FROM stock_balance WHERE cdc_id = ? AND sku = ? AND location_code = ?",
+            CENTER,
+            sku,
+            k3);
+    assertThat(bal.get("on_hand")).isEqualTo(4);
+    assertThat(bal.get("reserved")).isEqualTo(4);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT released_qty FROM allocation_lot WHERE allocation_id = ?",
+                Integer.class,
+                a2))
+        .isEqualTo(3);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT released_qty FROM allocation_lot WHERE allocation_id = ?",
+                Integer.class,
+                a1))
+        .isEqualTo(1);
+    String ev2 =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'AllocationShortfall' AND aggregateid = ?",
+            String.class,
+            a2);
+    assertThat(ev2).contains("\"qty\": 3").contains("COUNT_LOSS").contains(sid);
+    assertThat(outbox("AllocationShortfall", a1)).isEqualTo(1);
+  }
+
   JsonNode allocate(String sku, int qty) {
     Res r =
         post(

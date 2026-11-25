@@ -162,6 +162,40 @@ public class AllocationStore {
         l.allocatedQty());
   }
 
+  /** 이 칸(SKU·LOT·위치)에 예약이 남은 살아 있는 할당 — 늦게 잡힌 것부터(실사 부족, 0.9.0). */
+  public record Holder(String allocationId, String trfId, String state, LotRow lot) {}
+
+  public List<Holder> holdersAt(String cdcId, String sku, String lot, String locationCode) {
+    return jdbc.query(
+        "SELECT a.allocation_id, a.trf_id, a.state, l.sku, l.lot, l.location_code, l.expires_at,"
+            + " l.fefo_rank, l.allocated_qty, l.released_qty, l.departed_qty, l.moved_in_qty,"
+            + " l.moved_out_qty FROM allocation_lot l JOIN allocation a ON a.allocation_id = l.allocation_id"
+            + " WHERE a.cdc_id = ? AND l.sku = ? AND l.lot = ? AND l.location_code = ?"
+            + " AND a.state IN ('ALLOCATED', 'PARTIAL') ORDER BY a.allocated_at DESC, a.allocation_id DESC",
+        (rs, i) -> {
+          Date exp = rs.getDate("expires_at");
+          return new Holder(
+              rs.getString("allocation_id"),
+              rs.getString("trf_id"),
+              rs.getString("state"),
+              new LotRow(
+                  rs.getString("sku"),
+                  rs.getString("lot"),
+                  rs.getString("location_code"),
+                  exp == null ? null : exp.toLocalDate(),
+                  rs.getInt("fefo_rank"),
+                  rs.getInt("allocated_qty"),
+                  rs.getInt("released_qty"),
+                  rs.getInt("departed_qty"),
+                  rs.getInt("moved_in_qty"),
+                  rs.getInt("moved_out_qty")));
+        },
+        cdcId,
+        sku,
+        lot,
+        locationCode);
+  }
+
   public void addReleased(String allocationId, LotRow l, int qty) {
     jdbc.update(
         "UPDATE allocation_lot SET released_qty = released_qty + ?"
