@@ -2,6 +2,8 @@ package com.pmart.cdc.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.common.test.EventEnvelopeFixtures;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
@@ -30,6 +32,9 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.client.RestClient;
+import org.wiremock.spring.ConfigureWireMock;
+import org.wiremock.spring.EnableWireMock;
+import org.wiremock.spring.InjectWireMock;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -46,6 +51,10 @@ import tools.jackson.databind.ObjectMapper;
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
     })
 @Import(TestJwtConfiguration.class)
+@EnableWireMock(
+    @ConfigureWireMock(
+        name = "location",
+        baseUrlProperties = "pmart.inventory.cdc-location-base-url"))
 class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
@@ -56,6 +65,10 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
   static final String LOC3 = "CDC01-C-5-01-03-1-1";
 
   @LocalServerPort int port;
+
+  @InjectWireMock("location")
+  WireMockServer location;
+
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
@@ -453,6 +466,101 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
    * 내부 이동(0.3.0): 예약 안 된 현물만 옮기기(부족하면 409) → 할당 예약을 랙에서 피킹 선반으로 함께 옮기기(가용 그대로, 할당 위치가 선반으로) → 선반에서
    * 출발 전기 → 격리 현물 이동, 격리 + 할당은 400, 같은 위치 400 → 원결과 MOVE.
    */
+  /** 같은 LOT 이 랙(01)·선반(61)에 있으면 선반부터(0.5.0). 위치 서비스가 안 되면 위치 코드 순(랙부터)으로 그래도 잡는다. */
+  @Test
+  void sameLotAllocatesPickFaceFirstAndFallsBackWithoutLocation() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String rack = "CDC01-C-5-01-05-1-1";
+    String shelf = "CDC01-C-5-61-05-1-1";
+    assertThat(
+            post(
+                    SERVICE,
+                    "/internal/initial-balances",
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "approvalRef",
+                        "APV-INIT-P",
+                        "lines",
+                        List.of(
+                            ib(sku, "P1", rack, 100, today.plusDays(30), "VERIFIED", "RELEASED"),
+                            ib(sku, "P1", shelf, 20, today.plusDays(30), "VERIFIED", "RELEASED"))))
+                .status())
+        .isEqualTo(200);
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-P",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+
+    location.stubFor(
+        WireMock.post(WireMock.urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"locationCode\":\""
+                        + rack
+                        + "\",\"locationType\":\"RESERVE\",\"state\":\"ACTIVE\",\"temperatureZone\":\"AMBIENT\"},"
+                        + "{\"locationCode\":\""
+                        + shelf
+                        + "\",\"locationType\":\"PICK_FACE\",\"state\":\"ACTIVE\",\"temperatureZone\":\"AMBIENT\"}],"
+                        + "\"missing\":[]}")));
+    JsonNode first = allocate(sku, 30);
+    JsonNode lots = first.path("lines").get(0).path("lots");
+    assertThat(lots.size()).as(first.toString()).isEqualTo(2);
+    assertThat(lots.get(0).path("locationCode").asString()).isEqualTo(shelf);
+    assertThat(lots.get(0).path("qty").asInt()).isEqualTo(20);
+    assertThat(lots.get(1).path("locationCode").asString()).isEqualTo(rack);
+    assertThat(lots.get(1).path("qty").asInt()).isEqualTo(10);
+    location.verify(
+        WireMock.postRequestedFor(WireMock.urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .withHeader("X-Source-System", WireMock.equalTo("cdc-inventory-service"))
+            .withRequestBody(WireMock.matchingJsonPath("$.centerId", WireMock.equalTo(CENTER))));
+
+    // 위치 서비스 장애 — 할당은 막지 않고 위치 코드 순(랙 01 이 선반 61 보다 앞)
+    location.resetAll();
+    location.stubFor(
+        WireMock.post(WireMock.urlPathEqualTo("/api/v1/internal/location-lookups"))
+            .willReturn(WireMock.serverError()));
+    JsonNode second = allocate(sku, 5);
+    assertThat(second.path("state").asString()).isEqualTo("ALLOCATED");
+    assertThat(second.path("lines").get(0).path("lots").get(0).path("locationCode").asString())
+        .isEqualTo(rack);
+    location.resetAll();
+  }
+
+  JsonNode allocate(String sku, int qty) {
+    Res r =
+        post(
+            SERVICE,
+            "/internal/allocations",
+            key(),
+            Map.of(
+                "cdcId",
+                CENTER,
+                "trfId",
+                "TRF-" + UUID.randomUUID(),
+                "trfVersion",
+                1,
+                "lines",
+                List.of(Map.of("sku", sku, "requestedQty", qty))));
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    return r.body();
+  }
+
   @Test
   void replenishmentMoveCarriesReservationToShelf() throws Exception {
     String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));

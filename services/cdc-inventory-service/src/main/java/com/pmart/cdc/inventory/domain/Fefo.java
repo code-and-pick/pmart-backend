@@ -15,7 +15,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>적격: 품질 RELEASED · LOT 식별 VERIFIED · 잔여일수 D = 소비기한 − 판정일(Asia/Seoul) ≥ max(1, 최소 잔여일수). 날짜형
  *       소비기한은 당일 00:00 부터 차단하므로 D = 0 은 부적격. 소비기한이 없으면 기한 조건을 보지 않는다.
  *   <li>한도: max(0, E − R − S). E·R 은 같은 필터를 통과한 현물과 거기 걸린 예약.
- *   <li>FEFO: 소비기한 빠른 순(없으면 맨 뒤) → 최초 정상 인수시각 → LOT → 위치.
+ *   <li>FEFO: 소비기한 빠른 순(없으면 맨 뒤) → 최초 정상 인수시각 → LOT → 피킹 선반 먼저(0.5.0 — 동선 선호, CDC-F-009 "동선 효율은
+ *       FEFO 뒤에만") → 위치.
  * </ul>
  *
  * 품목군별 최소 잔여일수(총기간 T 의 30%·20% 등)는 제조일 입력이 아직 없어 여기서 계산하지 않는다 — 호출자가 준 값만 쓴다.
@@ -34,7 +35,8 @@ public final class Fefo {
       @Nullable LocalDate expiresAt,
       Instant firstReceivedAt,
       int onHand,
-      int reserved) {
+      int reserved,
+      boolean pickFace) {
     public int free() {
       return Math.max(0, onHand - reserved);
     }
@@ -48,6 +50,7 @@ public final class Fefo {
               Candidate::expiresAt, Comparator.nullsLast(Comparator.<LocalDate>naturalOrder()))
           .thenComparing(Candidate::firstReceivedAt)
           .thenComparing(Candidate::lot)
+          .thenComparing(Candidate::pickFace, Comparator.reverseOrder())
           .thenComparing(Candidate::locationCode);
 
   /** 잔여일수 D(일). 소비기한이 없으면 null. */

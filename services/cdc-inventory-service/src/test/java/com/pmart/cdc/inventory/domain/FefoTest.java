@@ -37,9 +37,11 @@ class FefoTest {
 
   @Test
   void picksEarliestExpiryFirstAcrossLotsAndSkipsReserved() {
-    var late = new Candidate("L-LATE", "CDC01-C-5-01-01-1-1", TODAY.plusDays(60), T0, 100, 0);
-    var early = new Candidate("L-EARLY", "CDC01-C-5-01-02-1-1", TODAY.plusDays(10), T0, 30, 10);
-    var noExpiry = new Candidate("L-NONE", "CDC01-C-5-01-03-1-1", null, T0, 100, 0);
+    var late =
+        new Candidate("L-LATE", "CDC01-C-5-01-01-1-1", TODAY.plusDays(60), T0, 100, 0, false);
+    var early =
+        new Candidate("L-EARLY", "CDC01-C-5-01-02-1-1", TODAY.plusDays(10), T0, 30, 10, false);
+    var noExpiry = new Candidate("L-NONE", "CDC01-C-5-01-03-1-1", null, T0, 100, 0, false);
     var picks = Fefo.pick(List.of(late, noExpiry, early), 50);
     assertThat(picks).hasSize(2);
     assertThat(picks.get(0).candidate().lot()).isEqualTo("L-EARLY");
@@ -50,10 +52,23 @@ class FefoTest {
 
   @Test
   void sameExpiryOrdersByFirstReceivedThenLot() {
-    var b = new Candidate("L-B", "X", TODAY.plusDays(5), T0, 5, 0);
-    var a = new Candidate("L-A", "X", TODAY.plusDays(5), T0, 5, 0);
-    var older = new Candidate("L-Z", "X", TODAY.plusDays(5), T0.minusSeconds(60), 5, 0);
+    var b = new Candidate("L-B", "X", TODAY.plusDays(5), T0, 5, 0, false);
+    var a = new Candidate("L-A", "X", TODAY.plusDays(5), T0, 5, 0, false);
+    var older = new Candidate("L-Z", "X", TODAY.plusDays(5), T0.minusSeconds(60), 5, 0, false);
     var picks = Fefo.pick(List.of(b, a, older), 15);
     assertThat(picks).extracting(p -> p.candidate().lot()).containsExactly("L-Z", "L-A", "L-B");
+  }
+
+  @Test
+  void sameLotPrefersPickFaceBeforeLocationCode() {
+    var rack = new Candidate("L1", "CDC01-C-5-01-02-3-1", TODAY.plusDays(10), T0, 50, 0, false);
+    var shelf = new Candidate("L1", "CDC01-C-5-61-02-1-1", TODAY.plusDays(10), T0, 30, 0, true);
+    var earlier = new Candidate("L0", "CDC01-C-5-01-03-3-1", TODAY.plusDays(5), T0, 5, 0, false);
+    var picks = Fefo.pick(List.of(rack, shelf, earlier), 40);
+    assertThat(picks)
+        .extracting(p -> p.candidate().locationCode())
+        .containsExactly("CDC01-C-5-01-03-3-1", "CDC01-C-5-61-02-1-1", "CDC01-C-5-01-02-3-1");
+    assertThat(picks.get(1).qty()).isEqualTo(30);
+    assertThat(picks.get(2).qty()).isEqualTo(5);
   }
 }

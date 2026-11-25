@@ -103,6 +103,16 @@ public class LocationService {
         .orElseThrow(() -> PmartException.notFound("NOT_FOUND", "위치 " + code + " 가 없습니다."));
   }
 
+  /** 내부 일괄 조회(0.4.0, cdc-inventory 할당의 선반 먼저) — 바꾸는 것 없음. */
+  @Transactional(readOnly = true)
+  public List<LocationRow> lookup(String centerId, List<String> codes) {
+    if (codes.isEmpty() || codes.size() > MAX_BATCH) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "locationCodes 는 1~" + MAX_BATCH + "개여야 합니다.");
+    }
+    return store.findAll(centerId, new java.util.LinkedHashSet<>(codes));
+  }
+
   @Transactional(readOnly = true)
   public Page list(Filter f, @Nullable String cursor, int size) {
     Operators.requireCenter(f.centerId());

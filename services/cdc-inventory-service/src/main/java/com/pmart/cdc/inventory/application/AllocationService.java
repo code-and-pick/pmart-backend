@@ -10,6 +10,7 @@ import com.pmart.cdc.inventory.infrastructure.AllocationStore.LineRow;
 import com.pmart.cdc.inventory.infrastructure.AllocationStore.LotRow;
 import com.pmart.cdc.inventory.infrastructure.LedgerStore;
 import com.pmart.cdc.inventory.infrastructure.LedgerStore.Delta;
+import com.pmart.cdc.inventory.infrastructure.LocationClient;
 import com.pmart.cdc.inventory.infrastructure.StockStore;
 import com.pmart.cdc.inventory.infrastructure.StockStore.BalanceRow;
 import com.pmart.common.messaging.EventEnvelope;
@@ -84,6 +85,7 @@ public class AllocationService {
   public record AllocateResult(String requestId, AllocationView allocation) {}
 
   private final StockStore stock;
+  private final LocationClient locations;
   private final AllocationStore allocations;
   private final LedgerStore ledgerStore;
   private final SkuGate gate;
@@ -94,6 +96,7 @@ public class AllocationService {
 
   public AllocationService(
       StockStore stock,
+      LocationClient locations,
       AllocationStore allocations,
       LedgerStore ledgerStore,
       SkuGate gate,
@@ -102,6 +105,7 @@ public class AllocationService {
       EventPublisher events,
       EventEnvelopeCodec codec) {
     this.stock = stock;
+    this.locations = locations;
     this.allocations = allocations;
     this.ledgerStore = ledgerStore;
     this.gate = gate;
@@ -124,6 +128,12 @@ public class AllocationService {
     if (cmd.lines().isEmpty() || !dup.isEmpty()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "할당 줄이 비었거나 같은 SKU 가 두 번 있습니다.", dup);
     }
+    // 피킹 선반 여부는 트랜잭션·행 잠금 밖에서 미리 읽는다(위치 서비스를 기다리며 잠그지 않게). 그 사이 새로 생긴 칸은 선반 아님으로 본다
+    Set<String> codes = new HashSet<>();
+    for (AllocateLine l : cmd.lines()) {
+      stock.balances(cmd.cdcId(), l.sku()).forEach(b -> codes.add(b.locationCode()));
+    }
+    Set<String> pickFaces = codes.isEmpty() ? Set.of() : locations.pickFaces(cmd.cdcId(), codes);
     return idempotency.execute(
         Ledger.key(sourceSystem, requestId, OP_ALLOCATE),
         cmd,
@@ -184,7 +194,8 @@ public class AllocationService {
                         b.expiresAt(),
                         b.firstReceivedAt(),
                         b.onHand(),
-                        b.reserved()));
+                        b.reserved(),
+                        pickFaces.contains(b.locationCode())));
                 e += b.onHand();
                 r += b.reserved();
               }

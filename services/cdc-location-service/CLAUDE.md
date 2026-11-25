@@ -22,7 +22,7 @@
 
 ## 상태
 - 2026-11-25 새로 만듦(계약 0.2.0). 위치 마스터:
-  - (0.3.0 경로 `/cdcs/{cdcId}/locations…` — 게이트웨이 `/api/v1/locations/**` 는 mfc-location) 등록 `POST /cdcs/{cdcId}/locations`(운영자, DRAFT, 본문 centerId = 경로)·일괄 등록 `POST /internal/location-batches`(2,000행, 전부 또는 전무, `activate` 면 ACTIVE)·조회·목록(구역·층·유형·상태 거르기, 커서 = 마지막 코드).
+  - (0.3.0 경로 `/cdcs/{cdcId}/locations…` — 게이트웨이 `/api/v1/locations/**` 는 mfc-location) 등록 `POST /cdcs/{cdcId}/locations`(운영자, DRAFT, 본문 centerId = 경로)·일괄 등록 `POST /internal/location-batches`(2,000행, 전부 또는 전무, `activate` 면 ACTIVE)·일괄 조회 `POST /internal/location-lookups`(0.4.0, 2,000개, 유형·상태·온도대, 없는 코드는 missing — cdc-inventory 할당의 피킹 선반 먼저)·조회·목록(구역·층·유형·상태 거르기, 커서 = 마지막 코드).
   - 상태 전환 ACTIVATE·BLOCK·UNBLOCK·DEACTIVATE·RETIRE — version 조건부, 이력 `location_state_history`, `LocStateChanged`. RETIRE 는 DRAFT 만(점유를 확인할 길이 없어 INACTIVE 폐기는 막음), approvalRef 필수.
   - 만들 때는 사건을 내지 않는다.
 - 코드 문법(`domain/LocationCode`): 모든 센터 = 계약 패턴 + 첫 구간 = centerId. **칠곡 `CDC01`** = `docs/simulator/cdc/chilgok-dc.md` CDC-3~5·7 — 구역 글자 ↔ 온도대(A 냉동·B 냉장·C~H 상온), 통로 01~60 팔레트 랙(층 5~7·베이 01~40·단 1~4·슬롯 1~2·RESERVE/QUARANTINE/TEMPORARY), 61~89 피킹 선반(층 5~7·베이 01~·단 1~5·칸 1~3·PICK_FACE), 90 DOCK(B1)·91·92 STAGING(5~7, 단 0·슬롯 1), 93~99 비움. 층 배치(어느 층에 어느 구역)는 검사하지 않는다 — 데이터.

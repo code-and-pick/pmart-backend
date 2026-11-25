@@ -11,6 +11,9 @@ spring:
     password: ${PMART_DB_PASSWORD}
   kafka:
     bootstrap-servers: ${PMART_KAFKA_BOOTSTRAP}
+pmart:
+  inventory:
+    cdc-location-base-url: ${PMART_CDC_LOCATION_BASE_URL:http://cdc-location-service:8602}
 management:
   tracing:
     export:

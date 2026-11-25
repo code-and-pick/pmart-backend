@@ -173,6 +173,23 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(dup.status()).isEqualTo(409);
     assertThat(dup.body().path("code").asString()).isEqualTo("LOCATION_CODE_EXISTS");
 
+    // 2-1) 내부 일괄 조회(0.4.0) — 유형·상태, 없는 코드는 missing
+    Res lk =
+        post(
+            SERVICE,
+            "/internal/location-lookups",
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "locationCodes",
+                List.of("CDC01-C-5-01-01-1-1", "CDC01-C-5-91-01-0-1", "CDC01-C-5-99-01-0-1")),
+            null);
+    assert lk.status() == 200 : lk.body();
+    assertThat(lk.body().path("items").size()).isEqualTo(2);
+    assertThat(lk.body().toString()).contains("STAGING").contains("RESERVE");
+    assertThat(lk.body().path("missing").get(0).asString()).isEqualTo("CDC01-C-5-99-01-0-1");
+
     // 3) 운영자 단건 등록(DRAFT), 다른 센터 운영자 403
     Res one = post(OPERATOR, "/cdcs/CDC01/locations", key(), shelf("CDC01-G-7-61-01-3-1"), null);
     assertThat(one.status()).as(one.body().toString()).isEqualTo(201);

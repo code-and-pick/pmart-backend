@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     CDC 재고 단일 쓰기 주체. 위치·LOT·품질상태별 On-hand, 이관 예약 R(0 ≤ R ≤ E ≤ 장부), Held, 안전량 S, 가용 max(0, E−R−S),
     LOT 식별/소비기한/FEFO, 초기 보유 INITIAL_BALANCE, 승인 TRF 다LOT FEFO 할당, TOUT 1회 전기, Transit 소유·대사(q = r + l + t),
@@ -10,6 +10,7 @@ info:
     모든 변경 요청은 commitId를 발급하며 호출자는 자체 사본으로 성공을 판단하지 않는다. 모든 경로는 서비스 간(internal)이다.
     0.2.0(2026-11-25): 초기 보유·안전량·가용·할당/해제·TOUT·원결과·Transit 조회 구현. 안전량 설정 경로·출발 목적지 toMfcId 추가.
     잔여일수 판정은 소비기한 당일부터 차단(D ≥ 1)과 호출자가 준 minRemainingDays 만 — 총기간 T(제조일) 입력이 아직 없어 품목군 정책값은 계산하지 않는다.
+    0.5.0(2026-11-25): 할당 FEFO 동률(같은 LOT·같은 기한) 안에서 피킹 선반(PICK_FACE) 먼저 — cdc-location 위치 일괄 조회. 조회가 안 되면 위치 코드 순(할당은 막지 않음).
     0.4.0(2026-11-25): 재고 스냅샷 조회(snapshots) 구현 — LOT 마다 위치별 현물·예약(locations[]), 안전량 미설정이면 available null(0 이 아님).
     0.3.0(2026-11-25): 내부 이동 전기(move-postings) 구현 — 줄에 allocationId 를 주면 그 할당의 예약을 함께 옮긴다(팔레트 랙 → 피킹 선반 보충, 칠곡 CDC-7).
 servers:
@@ -58,7 +59,8 @@ paths:
       summary: '[cdc-outbound→cdc-inventory] 승인 TRF 할당 (FEFO 다LOT, 예약 R +allocated) → AllocationResult'
       description: |
         trfId·trfVersion당 1회. 부분 할당 허용(allocated 48 / short 12). 승인량을 넘는 할당 요청은 거절(승인 정본 replenishment 가 아직 없어 지금은 검사하지 않음).
-        SKU별 한도 = max(0, E'−R'−S) — E'·R' 은 잔여일수 조건을 통과한 적격 현물과 거기 걸린 예약. 한도 안에서 FEFO(소비기한 → 최초 인수시각 → LOT → 위치) 순으로 여러 LOT 를 잡는다.
+        SKU별 한도 = max(0, E'−R'−S) — E'·R' 은 잔여일수 조건을 통과한 적격 현물과 거기 걸린 예약. 한도 안에서 FEFO(소비기한 → 최초 인수시각 → LOT → **피킹 선반 먼저**(0.5.0) → 위치) 순으로 여러 LOT 를 잡는다.
+        피킹 선반 여부는 cdc-location `POST /internal/location-lookups`(locationType PICK_FACE)로 읽는다 — 응답이 없으면 위치 코드 순으로 잡는다(동선 선호일 뿐 FEFO·한도는 그대로).
         하나도 못 잡으면 state FAILED(200). 같은 TRF 의 다른 버전 할당이 살아 있으면 409 ALLOCATION_EXISTS(먼저 해제).
         resultId = allocationId. 같은 키·다른 본문은 409 IDEMPOTENCY_CONFLICT. 결과는 AllocationResult(토픽 cdc.inventory.v1)로도 발행한다.
       operationId: createAllocation

@@ -131,6 +131,19 @@ public class LocationStore {
         args);
   }
 
+  /** 여러 코드 한 번에(없는 코드는 빠진다). */
+  public List<LocationRow> findAll(String centerId, Collection<String> codes) {
+    if (codes.isEmpty()) {
+      return List.of();
+    }
+    return named.query(
+        "SELECT "
+            + COLUMNS
+            + " FROM location WHERE center_id = :center AND location_code IN (:codes)",
+        Map.of("center", centerId, "codes", codes),
+        (rs, i) -> row(rs));
+  }
+
   public Optional<LocationRow> find(String code) {
     return jdbc
         .query(
