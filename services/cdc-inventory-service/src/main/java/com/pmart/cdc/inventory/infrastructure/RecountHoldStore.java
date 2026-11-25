@@ -118,6 +118,24 @@ public class RecountHoldStore {
         holdId);
   }
 
+  /** 실사가 끝난 칸의 대기를 푼다(0.8.0 — 다시 세어 장부가 맞춰짐). 푼 수. */
+  public int releaseAt(
+      String cdcId, java.util.Collection<String> locations, String by, String reason, Instant at) {
+    int n = 0;
+    for (String l : locations) {
+      n +=
+          jdbc.update(
+              "UPDATE recount_hold SET state = 'RELEASED', released_at = ?, released_by = ?,"
+                  + " release_reason = ? WHERE cdc_id = ? AND location_code = ? AND state = 'HELD'",
+              Timestamp.from(at),
+              by,
+              reason,
+              cdcId,
+              l);
+    }
+    return n;
+  }
+
   private static HoldRow row(ResultSet rs) throws SQLException {
     Timestamp rel = rs.getTimestamp("released_at");
     return new HoldRow(

@@ -39,5 +39,10 @@
   - 추가 할당 `POST /internal/allocations/{id}/additions`(PICK_SHORTAGE_REALLOCATION): 같은 할당에 FEFO 로 더 잡기(부분·0 허용, 같은 LOT·위치 행은 allocated 에 더함, RELEASED 였으면 PARTIAL), 원결과 ALLOCATION_ADD.
   - 운영자 `GET /cdcs/{cdcId}/recount-holds`·`POST …/{holdId}/releases`(다시 후보로). 센 결과 반영(조정)은 아직 — 4번 조정 때 잇는다.
 - 이동 종류 PICK_MOVE(0.7.1): cdc-outbound 가 피킹 재고를 예약과 함께 출고대기 자리(91)로 옮겨 적는다(move-postings 그대로 — 총현물·예약 수 그대로).
-- 아직 501: 수령 확인·품질·손실·조정·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
+- 위치 실사·CNT 조정(0.8.0, Flyway V6 `count_session`·`count_location`·`count_line`, WMS CDC-F-029·030 — 사용자 2026-11-25 "MFC 실사와 같게", 설계 `docs/cdc/design/2026-11-25-count-adjustment.md`):
+  - `/cdcs/{cdcId}/count-sessions`(`CountService`): 시작(1~200칸, 출고대기 91 은 400 STAGING_NOT_COUNTED, 품질 보류 현물 칸 409 QUALITY_STOCK_PRESENT, 겹침 409 COUNT_IN_PROGRESS) — 정상 현물을 장부 기준(round 0)으로 고정, 칸은 열린 동안 할당·추가 할당 후보에서 빠짐(`AllocationService.pool`).
+  - 계수표에 장부 수량 없음 → 첫 계수(없는 줄 0, 처음 보는 LOT 400 LOT_UNKNOWN) 같으면 MATCHED, 다르면 RECOUNT_REQUIRED → 다른 사람 재계수(409 SAME_COUNTER) 같으면 MATCHED, 다르면 PENDING_APPROVAL.
+  - 결정: 시작·계수자 아님(422 SELF_APPROVAL). APPROVE = 장부 바뀜 409 BOOK_CHANGED → 승인 관문(`ApprovalGate` — 트랜잭션 밖) → CNT 원결과(차이만 ON_HAND) → 잠금·재계수 대기 해소 → `InventoryAdjustmentPosted`(approvalRef 없으면 `CENTER:<세션>`). 예약보다 적어지면 아직 409 COUNT_BELOW_RESERVED(설계 §4 다음). REJECT = 잠금만 풂.
+  - 승인 관문 `pmart.inventory.approval-ref.mode`: VERIFY(`hq-loss-krw`·`hq-sku-qty` — 사용자 "MFC 와 같게" 100000·20, pricing `/internal/prices`·approval `/internal/approval-ref-uses` 종류 CDC_STOCK_ADJUSTMENT — AP-4 대기, 주소 `pricing-base-url`·`approval-base-url`) / RECORD_ONLY(번호 필수·확인 없음) / 그 밖 CONFIG_REQUIRED.
+- 아직 501: 수령 확인·품질·손실·조정(`/internal/adjustments` — 실사 밖 ADJ)·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 재고 현황(2026-11-25, 0.6.0)**: `GET /cdcs/{cdcId}/stock-snapshot?sku=&withPlaces=`(`AvailabilityController.getCenterStockSnapshot`) — 내부 `/internal/snapshots` 와 같은 `InventoryQueries.snapshot`, 자기 센터 운영자만(`Operator.requireCenter`), withPlaces 기본 false(LOT·위치 빼고). 시험 `StockLedgerFlowIT` 2-2.

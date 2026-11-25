@@ -130,6 +130,64 @@ public class StockStore {
         sku);
   }
 
+  /** 실사(0.8.0): 이 칸들의 현물 행 전부(품질 무관) — 칸·SKU·LOT·품질·현물·예약. 잠근다. */
+  public List<Object[]> lockAtLocations(String cdcId, Collection<String> locations) {
+    if (locations.isEmpty()) {
+      return List.of();
+    }
+    return named.query(
+        "SELECT location_code, sku, lot, quality_state, on_hand, reserved FROM stock_balance"
+            + " WHERE cdc_id = :c AND location_code IN (:l) ORDER BY sku, lot, location_code,"
+            + " quality_state FOR UPDATE",
+        Map.of("c", cdcId, "l", locations),
+        (rs, i) ->
+            new Object[] {
+              rs.getString("location_code"),
+              rs.getString("sku"),
+              rs.getString("lot"),
+              rs.getString("quality_state"),
+              rs.getInt("on_hand"),
+              rs.getInt("reserved")
+            });
+  }
+
+  /**
+   * 실사 조정(CNT, 0.8.0): 정상 현물 ±delta. 결과가 예약보다 작아지면 false(아직 예약 부족 처리 없음). 행이 없으면 delta > 0 일 때만
+   * 만든다.
+   */
+  public boolean adjustOnHand(
+      String cdcId, String sku, String lot, String locationCode, int delta, Instant at) {
+    int n =
+        jdbc.update(
+            "UPDATE stock_balance SET on_hand = on_hand + ?, updated_at = ?"
+                + " WHERE cdc_id = ? AND sku = ? AND lot = ? AND location_code = ?"
+                + " AND quality_state = 'RELEASED' AND on_hand + ? >= reserved",
+            delta,
+            Timestamp.from(at),
+            cdcId,
+            sku,
+            lot,
+            locationCode,
+            delta);
+    if (n == 1) {
+      return true;
+    }
+    Integer exists =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM stock_balance WHERE cdc_id = ? AND sku = ? AND lot = ?"
+                + " AND location_code = ? AND quality_state = 'RELEASED'",
+            Integer.class,
+            cdcId,
+            sku,
+            lot,
+            locationCode);
+    if ((exists == null || exists == 0) && delta > 0) {
+      insertBalance(cdcId, sku, lot, locationCode, "RELEASED", delta, at);
+      return true;
+    }
+    return false;
+  }
+
   /** 정상 현물의 예약 ±delta. 0 ≤ reserved ≤ on_hand 를 벗어나면 false. */
   public boolean addReserved(
       String cdcId, String sku, String lot, String locationCode, int delta, Instant at) {

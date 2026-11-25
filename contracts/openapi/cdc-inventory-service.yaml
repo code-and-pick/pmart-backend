@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.7.1
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-25, 재계수·실사 조정 — WMS CDC-F-029·030, 설계 docs/cdc/design/2026-11-25-count-adjustment.md, 사용자 "MFC 실사와 같게"): 실사 세션
+      `/cdcs/{cdcId}/count-sessions` — 시작(칸 잠금: 새 할당 후보에서 뺌)·장부 숨긴 첫 계수·다른 작업자 재계수·시작/계수자 아닌 운영자 결정 → CNT 조정·재계수 대기 해소·InventoryAdjustmentPosted.
+      승인 관문 `pmart.inventory.approval-ref.mode`(VERIFY — MFC 와 같은 본사 기준, RECORD_ONLY — 번호 기록만). 실물이 예약보다 적어지는 조정은 아직 409 COUNT_BELOW_RESERVED(설계 §4 는 다음 PR).
     0.7.1(2026-11-25): 이동 종류 PICK_MOVE — 피킹한 재고를 예약과 함께 출고대기 자리(91)로 옮겨 적기(cdc-outbound, 설계 docs/cdc/design/2026-11-25-count-adjustment.md §5 — 사용자 결정). 경로·모양 변화 없음(enum 값 추가).
     0.7.0(2026-11-25, 피킹 부족 재할당 — WMS CDC-F-018, 사용자 결정): 해제 줄에 locationCode·`recountHold`(부족 칸의 그 LOT 을 재계수 대기로 — 새 할당에서 뺌, 현물은 그대로),
       추가 할당 `POST /internal/allocations/{allocationId}/additions`(같은 TRF 할당에 모자란 만큼 FEFO 로 더 잡기 — 재계수 대기 칸 제외),
@@ -31,6 +34,7 @@ tags:
   - { name: reconciliation, description: Transit 대사·일일 수불 대사 }
   - { name: sku-handlings, description: 센터 SKU 취급 ON·OFF (운영자 — 자기 센터) }
   - { name: skus, description: 상품 SKU 투영 조회 }
+  - { name: counts, description: '위치 실사·재계수·CNT 조정 (운영자 — 자기 센터 0.8.0)' }
 
 paths:
   /internal/availability:
@@ -846,6 +850,172 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /cdcs/{cdcId}/count-sessions:
+    post:
+      tags: [counts]
+      summary: '[운영자] 실사 시작 — 칸 잠금·장부 기준 고정 (0.8.0)'
+      description: |
+        칸 1~200개. 그 칸들의 정상(RELEASED) 현물을 SKU·LOT·칸별 장부 기준으로 고정하고, 끝날 때까지 칸을 **새 할당·추가 할당 후보에서 뺀다**(이미 걸린 예약·이동은 막지 않음 — 결정 때 장부가 바뀌었으면 BOOK_CHANGED).
+        출고대기(통로 91) 칸은 실사 대상이 아니다(400 STAGING_NOT_COUNTED — 출발할 물건, 출발 검증이 대조). 품질 보류·격리 현물이 있는 칸은 409 QUALITY_STOCK_PRESENT(품질 처리 먼저).
+        같은 칸에 열린 실사가 있으면 409 COUNT_IN_PROGRESS. 응답의 계수표에는 장부 수량이 없다.
+      operationId: startCountSession
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locationCodes]
+              properties:
+                locationCodes: { type: array, minItems: 1, maxItems: 200, items: { type: string } }
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '201':
+          description: 시작(COUNTING)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: COUNT_IN_PROGRESS / QUALITY_STOCK_PRESENT / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/count-sessions/{sessionId}:
+    get:
+      tags: [counts]
+      summary: '[운영자] 실사 조회 — 결정 전에는 장부 수량을 보이지 않는다 (0.8.0)'
+      operationId: getCountSession
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/count-sessions/{sessionId}/counts:
+    post:
+      tags: [counts]
+      summary: '[작업자] 첫 계수 (0.8.0) — 같으면 MATCHED, 다르면 RECOUNT_REQUIRED'
+      description: |
+        계수자 = 토큰 주체. 줄 = 칸·SKU·LOT·센 수량(계수표에 없는 줄 = 0). 계수표에 없던 LOT 은 이 센터에 이미 있는 LOT 만(처음 보는 LOT 은 400 LOT_UNKNOWN — 입고 기록 없는 재고 증가 금지, CDC-F-029).
+        실사 칸 밖 줄은 400. COUNTING 일 때만(아니면 409 INVALID_STATE).
+      operationId: submitFirstCount
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CountLines' }
+      responses:
+        '200':
+          description: 반영
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/count-sessions/{sessionId}/recounts:
+    post:
+      tags: [counts]
+      summary: '[작업자] 재계수 (0.8.0) — 첫 계수자와 다른 사람. 최종 = 재계수'
+      description: RECOUNT_REQUIRED 일 때만. 같은 사람이면 409 SAME_COUNTER. 장부 기준과 같으면 MATCHED, 다르면 PENDING_APPROVAL.
+      operationId: submitRecount
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CountLines' }
+      responses:
+        '200':
+          description: 반영
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409':
+          description: INVALID_STATE / SAME_COUNTER / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/count-sessions/{sessionId}/decisions:
+    post:
+      tags: [counts]
+      summary: '[관리자] 실사 결정 — APPROVE(CNT 조정) / REJECT (0.8.0)'
+      description: |
+        PENDING_APPROVAL 일 때만. 시작자·계수자와 다른 운영자(422 SELF_APPROVAL — 요청자·승인자 분리, CDC-F-029).
+        APPROVE: 기준 뒤 그 칸 장부가 바뀌었으면 409 BOOK_CHANGED(다시 실사) → 승인 관문(아래) → 한 원결과(CNT)로 차이(최종 − 기준)만 현물에 반영 → 잠금·재계수 대기 해소 → InventoryAdjustmentPosted.
+        감소로 그 칸 현물이 예약보다 적어지면 409 COUNT_BELOW_RESERVED(아직 — 나중 예약부터 부족 처리는 다음 단계).
+        승인 관문(`pmart.inventory.approval-ref.mode`): RECORD_ONLY = approvalRef 필수·확인 없음. VERIFY = MFC 와 같은 본사 기준(한 건 손실 ≥ `hq-loss-krw` 또는 한 SKU ≥ `hq-sku-qty`, 단가 = pricing 판매 기준가, 없으면 본사) —
+        아래면 센터 관리자 결정만, 이상이면 approvalRef 없을 때 422 APPROVAL_REQUIRED(details approvalRequest = approval-service 변경 요청 본문), 있으면 approval-service 로 한 번 사용·범위 확인. 그 밖·비움 = 422 CONFIG_REQUIRED.
+        REJECT: 조정 없음, 잠금 해소(재계수 대기는 남김 — 다시 실사).
+      operationId: decideCountSession
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason]
+              properties:
+                decision: { type: string, enum: [APPROVE, REJECT] }
+                reason: { type: string, maxLength: 300 }
+                approvalRef: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: 결정 반영
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CountSession' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: INVALID_STATE / BOOK_CHANGED / COUNT_BELOW_RESERVED / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: SELF_APPROVAL / APPROVAL_REQUIRED / CONFIG_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /cdcs/{cdcId}/sku-handlings:
     get:
       tags: [sku-handlings]
@@ -962,6 +1132,60 @@ paths:
 
 components:
   schemas:
+    CountLines:
+      type: object
+      required: [lines]
+      properties:
+        lines:
+          type: array
+          maxItems: 2000
+          items:
+            type: object
+            required: [locationCode, sku, lot, qty]
+            properties:
+              locationCode: { type: string }
+              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+              lot: { type: string }
+              qty: { type: integer, minimum: 0 }
+    CountSession:
+      type: object
+      description: (0.8.0) 실사. state COUNTING → MATCHED / RECOUNT_REQUIRED → MATCHED / PENDING_APPROVAL → APPROVED / REJECTED.
+      properties:
+        sessionId: { type: string }
+        cdcId: { type: string }
+        state: { type: string, enum: [COUNTING, RECOUNT_REQUIRED, PENDING_APPROVAL, MATCHED, APPROVED, REJECTED] }
+        locationCodes: { type: array, items: { type: string } }
+        sheet:
+          type: array
+          description: 계수표 — 칸·SKU·LOT(장부 수량 없음)
+          items:
+            type: object
+            properties:
+              locationCode: { type: string }
+              sku: { type: string }
+              lot: { type: string }
+        lines:
+          type: array
+          description: 결정 뒤(MATCHED·APPROVED·REJECTED)에만 — 장부·첫 계수·최종·차이
+          items:
+            type: object
+            properties:
+              locationCode: { type: string }
+              sku: { type: string }
+              lot: { type: string }
+              bookQty: { type: integer }
+              firstQty: { type: integer }
+              finalQty: { type: integer }
+              deltaQty: { type: integer }
+        startedBy: { type: string }
+        firstCounterId: { type: [string, 'null'] }
+        recounterId: { type: [string, 'null'] }
+        decidedBy: { type: [string, 'null'] }
+        approvalRef: { type: [string, 'null'] }
+        commitId: { type: [string, 'null'], description: CNT 원결과 }
+        reason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: [string, 'null'], format: date-time }
     RecountHold:
       type: object
       description: (0.7.0) 재계수 대기 — 피킹 부족이 난 SKU·LOT·위치. HELD 동안 새 할당 후보에서 빠진다.

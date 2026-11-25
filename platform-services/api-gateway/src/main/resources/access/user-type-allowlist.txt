@@ -72,6 +72,7 @@ GET /api/v1/categories/tree PUBLIC
 GET /api/v1/categories/{categoryId}/filters PUBLIC
 GET /api/v1/category-tree-versions/{version} OPERATOR
 GET /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
+GET /api/v1/cdcs/{cdcId}/count-sessions/{sessionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
@@ -459,6 +460,10 @@ POST /api/v1/category-tree-addition-uploads OPERATOR
 POST /api/v1/category-tree-additions OPERATOR
 POST /api/v1/category-tree-versions OPERATOR
 POST /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
+POST /api/v1/cdcs/{cdcId}/count-sessions OPERATOR
+POST /api/v1/cdcs/{cdcId}/count-sessions/{sessionId}/counts OPERATOR
+POST /api/v1/cdcs/{cdcId}/count-sessions/{sessionId}/decisions OPERATOR
+POST /api/v1/cdcs/{cdcId}/count-sessions/{sessionId}/recounts OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations/{locationCode}/state-changes OPERATOR
 POST /api/v1/cdcs/{cdcId}/recount-holds/{holdId}/releases OPERATOR

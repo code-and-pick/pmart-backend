@@ -74,3 +74,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: TRF 새 승인 버전 대체 — cdc-outbound 0.13.0(Flyway V10), 피킹 시작 전까지(사용자): 몫 빼기·Wave 에서 빼기 → 예전 할당 해제 → 새 버전 할당, CHANGING·CHANGE_HOLD. PR `cdc/transfer-version-change`(#492 0.12.0·V9 다음).
 - 2026-11-25: LAN 실제 확인 9개 OK(PR 세션, 사용자 확인) — 선반 먼저 할당·Wave 릴리스 202(cdc-outbound → cdc-location 기본 주소로 닿음)·미출발 취소 정리. 재계수·실사 조정 설계 `docs/cdc/design/2026-11-25-count-adjustment.md`(사용자 결정 5개 — MFC 실사와 같게·MFC 본사 기준 10만 원·20개·실물<예약이면 나중 예약부터 부족·**피킹 재고는 출고대기 자리로 옮겨 적기**). PR `cdc/count-adjustment-design`.
 - 2026-11-25: 피킹 재고 출고대기 자리로 옮겨 적기 — cdc-outbound 0.14.0(Flyway V11)·cdc-inventory 0.7.1(PICK_MOVE). 실사 설계 §7-1. PR `cdc/pick-move-staging`. 다음: §7-2 실사 세션.
+- 2026-11-25: 위치 실사·CNT 조정 cdc-inventory 0.8.0(Flyway V6) — MFC 실사와 같은 흐름, 승인 관문 VERIFY/RECORD_ONLY(AP-4 전엔 RECORD_ONLY), 실물<예약 조정은 아직 409. PR `cdc/count-sessions`. 다음: 설계 §7-4(예약 부족 → cdc-outbound 첫 사건 구독).

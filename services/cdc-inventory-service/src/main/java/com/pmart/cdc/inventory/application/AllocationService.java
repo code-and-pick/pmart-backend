@@ -112,6 +112,7 @@ public class AllocationService {
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
   private final RecountHoldStore holds;
+  private final com.pmart.cdc.inventory.infrastructure.CountStore counts;
 
   public AllocationService(
       StockStore stock,
@@ -123,8 +124,10 @@ public class AllocationService {
       Ledger ledger,
       EventPublisher events,
       EventEnvelopeCodec codec,
-      RecountHoldStore holds) {
+      RecountHoldStore holds,
+      com.pmart.cdc.inventory.infrastructure.CountStore counts) {
     this.holds = holds;
+    this.counts = counts;
     this.stock = stock;
     this.locations = locations;
     this.allocations = allocations;
@@ -459,13 +462,18 @@ public class AllocationService {
       @Nullable Integer minRemainingDays,
       Set<String> pickFaces) {
     Set<String> held = holds.heldKeys(cdcId, sku);
+    List<BalanceRow> rows = stock.lockBalances(cdcId, sku);
+    // 실사 중인 칸(0.8.0)도 뺀다 — 끝날 때까지 새 할당 후보 아님
+    Set<String> counting =
+        counts.openLocations(cdcId, rows.stream().map(BalanceRow::locationCode).toList());
     List<Candidate> candidates = new ArrayList<>();
     int e = 0;
     int r = 0;
-    for (BalanceRow b : stock.lockBalances(cdcId, sku)) {
+    for (BalanceRow b : rows) {
       if (Fefo.RELEASED.equals(b.qualityState())
           && Fefo.eligibleLot(b.identification(), b.expiresAt(), today, minRemainingDays)
-          && !held.contains(b.lot() + "|" + b.locationCode())) {
+          && !held.contains(b.lot() + "|" + b.locationCode())
+          && !counting.contains(b.locationCode())) {
         candidates.add(
             new Candidate(
                 b.lot(),

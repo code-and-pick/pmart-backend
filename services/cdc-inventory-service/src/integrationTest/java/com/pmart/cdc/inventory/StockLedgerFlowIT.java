@@ -48,13 +48,23 @@ import tools.jackson.databind.ObjectMapper;
     properties = {
       "spring.main.banner-mode=off",
       "pmart.messaging.outbox.delete-after-insert=false",
-      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks"
+      "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
+      "pmart.inventory.approval-ref.mode=VERIFY",
+      "pmart.inventory.approval-ref.hq-loss-krw=100000",
+      "pmart.inventory.approval-ref.hq-sku-qty=20"
     })
 @Import(TestJwtConfiguration.class)
-@EnableWireMock(
-    @ConfigureWireMock(
-        name = "location",
-        baseUrlProperties = "pmart.inventory.cdc-location-base-url"))
+@EnableWireMock({
+  @ConfigureWireMock(
+      name = "location",
+      baseUrlProperties = "pmart.inventory.cdc-location-base-url"),
+  @ConfigureWireMock(
+      name = "pricing",
+      baseUrlProperties = "pmart.inventory.approval-ref.pricing-base-url"),
+  @ConfigureWireMock(
+      name = "approval",
+      baseUrlProperties = "pmart.inventory.approval-ref.approval-base-url")
+})
 class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
@@ -68,6 +78,12 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("location")
   WireMockServer location;
+
+  @InjectWireMock("pricing")
+  WireMockServer pricing;
+
+  @InjectWireMock("approval")
+  WireMockServer approval;
 
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
@@ -673,6 +689,188 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     JsonNode again = allocate(sku, 2);
     assertThat(again.path("lines").get(0).path("lots").get(0).path("locationCode").asString())
         .isEqualTo(a);
+  }
+
+  /**
+   * 실사(0.8.0, CDC-F-029·030 — MFC 실사와 같게): 칸 K1 실사 시작(새 할당에서 빠짐·계수표에 장부 없음) → 겹침 409·출고대기 400 → 첫
+   * 계수 8 (장부 10) RECOUNT_REQUIRED → 같은 사람 재계수 409 → 다른 사람 7 PENDING_APPROVAL → 시작자 결정 422 → 손실 3×5만
+   * 원 ≥ 10만 원이라 본사 번호 없으면 422 APPROVAL_REQUIRED → 번호로 APPROVE(approval-service 한 번 사용) → CNT
+   * −3·사건·K1 다시 후보. 일치 실사는 바로 MATCHED.
+   */
+  @Test
+  void countSessionBlindRecountApprove() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String k1 = "CDC01-C-5-01-21-1-1";
+    String k2 = "CDC01-C-5-01-22-1-1";
+    String cnt1 = TestJwt.operator("cnt-1", List.of("CDC_WORKER"), List.of(CENTER));
+    String cnt2 = TestJwt.operator("cnt-2", List.of("CDC_WORKER"), List.of(CENTER));
+    String sup = TestJwt.operator("sup-9", List.of("CDC_MANAGER"), List.of(CENTER));
+    assertThat(
+            post(
+                    SERVICE,
+                    "/internal/initial-balances",
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "approvalRef",
+                        "APV-INIT-C",
+                        "lines",
+                        List.of(
+                            ib(sku, "C1", k1, 10, today.plusDays(30), "VERIFIED", "RELEASED"),
+                            ib(sku, "C1", k2, 5, today.plusDays(30), "VERIFIED", "RELEASED"))))
+                .status())
+        .isEqualTo(200);
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-C",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    String base = "/cdcs/" + CENTER + "/count-sessions";
+
+    // 시작 — 계수표엔 장부 수량이 없다
+    Res st =
+        post(OPERATOR, base, key(), Map.of("locationCodes", List.of(k1), "reason", "부족 칸 재계수"));
+    assertThat(st.status()).as(st.body().toString()).isEqualTo(201);
+    String sid = st.body().path("sessionId").asString();
+    assertThat(st.body().path("state").asString()).isEqualTo("COUNTING");
+    assertThat(st.body().path("sheet").get(0).path("lot").asString()).isEqualTo("C1");
+    assertThat(st.body().toString()).doesNotContain("bookQty");
+    assertThat(
+            post(OPERATOR, base, key(), Map.of("locationCodes", List.of(k1)))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("COUNT_IN_PROGRESS");
+    assertThat(
+            post(OPERATOR, base, key(), Map.of("locationCodes", List.of("CDC01-C-5-91-01-0-1")))
+                .status())
+        .isEqualTo(400);
+    // 실사 중인 K1 은 새 할당 후보가 아니다 — K2 5 만
+    JsonNode a = allocate(sku, 12);
+    JsonNode lots = a.path("lines").get(0).path("lots");
+    assertThat(lots.size()).as(a.toString()).isEqualTo(1);
+    assertThat(lots.get(0).path("locationCode").asString()).isEqualTo(k2);
+
+    // 첫 계수 8 → 재계수 필요, 같은 사람 409, 다른 사람 7 → 승인 대기
+    List<Map<String, Object>> eight =
+        List.of(Map.of("locationCode", k1, "sku", sku, "lot", "C1", "qty", 8));
+    Res c1 = post(cnt1, base + "/" + sid + "/counts", key(), Map.of("lines", eight));
+    assertThat(c1.status()).as(c1.body().toString()).isEqualTo(200);
+    assertThat(c1.body().path("state").asString()).isEqualTo("RECOUNT_REQUIRED");
+    Res unknownLot =
+        post(
+            cnt2,
+            base + "/" + sid + "/recounts",
+            key(),
+            Map.of(
+                "lines", List.of(Map.of("locationCode", k1, "sku", sku, "lot", "NOPE", "qty", 1))));
+    assertThat(unknownLot.status()).isEqualTo(400);
+    assertThat(
+            post(cnt1, base + "/" + sid + "/recounts", key(), Map.of("lines", eight))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("SAME_COUNTER");
+    Res c2 =
+        post(
+            cnt2,
+            base + "/" + sid + "/recounts",
+            key(),
+            Map.of(
+                "lines", List.of(Map.of("locationCode", k1, "sku", sku, "lot", "C1", "qty", 7))));
+    assertThat(c2.body().path("state").asString())
+        .as(c2.body().toString())
+        .isEqualTo("PENDING_APPROVAL");
+
+    // 결정 — 시작자 422, 본사 기준 이상이면 번호 필요
+    Map<String, Object> approve = Map.of("decision", "APPROVE", "reason", "재계수 7 확정");
+    assertThat(
+            post(OPERATOR, base + "/" + sid + "/decisions", key(), approve)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("SELF_APPROVAL");
+    pricing.stubFor(
+        WireMock.get(WireMock.urlPathEqualTo("/api/v1/internal/prices"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"sku\":\""
+                        + sku
+                        + "\",\"basePrice\":50000,\"priceVersion\":1}]}")));
+    Res need = post(sup, base + "/" + sid + "/decisions", key(), approve);
+    assertThat(need.status()).as(need.body().toString()).isEqualTo(422);
+    assertThat(need.body().toString())
+        .contains("APPROVAL_REQUIRED")
+        .contains("CDC_STOCK_ADJUSTMENT");
+    approval.stubFor(
+        WireMock.post(WireMock.urlPathEqualTo("/api/v1/internal/approval-ref-uses"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"usable\":true,\"lines\":[{\"lineKey\":\""
+                        + sku
+                        + "\",\"requestedQty\":3}]}")));
+    Map<String, Object> withRef = new LinkedHashMap<>(approve);
+    withRef.put("approvalRef", "APV-9");
+    Res ok = post(sup, base + "/" + sid + "/decisions", key(), withRef);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("state").asString()).isEqualTo("APPROVED");
+    assertThat(ok.body().path("approvalRef").asString()).isEqualTo("APV-9");
+    JsonNode line = ok.body().path("lines").get(0);
+    assertThat(line.path("bookQty").asInt()).isEqualTo(10);
+    assertThat(line.path("firstQty").asInt()).isEqualTo(8);
+    assertThat(line.path("finalQty").asInt()).isEqualTo(7);
+    assertThat(line.path("deltaQty").asInt()).isEqualTo(-3);
+    approval.verify(
+        WireMock.postRequestedFor(WireMock.urlPathEqualTo("/api/v1/internal/approval-ref-uses"))
+            .withRequestBody(
+                WireMock.matchingJsonPath("$.type", WireMock.equalTo("CDC_STOCK_ADJUSTMENT")))
+            .withRequestBody(
+                WireMock.matchingJsonPath(
+                    "$.targetRef", WireMock.equalTo(CENTER + ":COUNT_ADJUSTMENT:" + sid))));
+    assertThat(outbox("InventoryAdjustmentPosted", sid)).isEqualTo(1);
+    Integer onHand =
+        jdbc.queryForObject(
+            "SELECT on_hand FROM stock_balance WHERE cdc_id = ? AND sku = ? AND location_code = ?",
+            Integer.class,
+            CENTER,
+            sku,
+            k1);
+    assertThat(onHand).isEqualTo(7);
+
+    // 실사가 끝난 K1 은 다시 후보(K2 는 다 잡힘)
+    JsonNode b = allocate(sku, 2);
+    assertThat(b.path("lines").get(0).path("lots").get(0).path("locationCode").asString())
+        .isEqualTo(k1);
+
+    // 일치 실사는 바로 MATCHED(조정 없음)
+    String sid2 =
+        post(OPERATOR, base, key(), Map.of("locationCodes", List.of(k2)))
+            .body()
+            .path("sessionId")
+            .asString();
+    Res m =
+        post(
+            cnt1,
+            base + "/" + sid2 + "/counts",
+            key(),
+            Map.of(
+                "lines", List.of(Map.of("locationCode", k2, "sku", sku, "lot", "C1", "qty", 5))));
+    assertThat(m.body().path("state").asString()).as(m.body().toString()).isEqualTo("MATCHED");
+    assertThat(m.body().path("lines").get(0).path("deltaQty").asInt()).isZero();
   }
 
   JsonNode allocate(String sku, int qty) {
