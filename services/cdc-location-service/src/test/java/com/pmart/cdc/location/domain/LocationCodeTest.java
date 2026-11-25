@@ -45,9 +45,10 @@ class LocationCodeTest {
   }
 
   @Test
-  void rackLimitsFourLevelsTwoSlotsFortyBays() {
+  void rackLimitsFourLevelsTwoSlotsFortyEightBays() {
     assertThat(rules("CDC01-C-5-01-01-5-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_LEVEL");
-    assertThat(rules("CDC01-C-5-01-41-3-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_BAY");
+    assertThat(rules("CDC01-C-5-01-48-3-1", "AMBIENT", "RESERVE")).isEmpty();
+    assertThat(rules("CDC01-C-5-01-49-3-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_BAY");
     assertThat(rules("CDC01-C-5-01-01-3-3", "AMBIENT", "RESERVE")).isEqualTo("RACK_SLOT");
     assertThat(rules("CDC01-C-5-01-01-1-1", "AMBIENT", "PICK_FACE")).isEqualTo("RACK_TYPE");
     assertThat(rules("CDC01-C-5-60-01-1-1", "AMBIENT", "RESERVE")).isEmpty();

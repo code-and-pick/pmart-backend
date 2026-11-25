@@ -14,8 +14,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>구역 글자 A 냉동·B 냉장·C~H 상온 — temperatureZone 은 글자에서 나온다(CDC-4).
- *   <li>통로 01~60 = 팔레트 랙(입고·적치 보관): 층 5~7, 베이 01~40, 단 1~4(R-12), 슬롯 1~2, 모두 RESERVE(R-13 —
- *       QUARANTINE·TEMPORARY 도 허용).
+ *   <li>통로 01~60 = 팔레트 랙(입고·적치 보관): 층 5~7, 베이 01~48(R-17 랙 묶음 — 통로 한쪽 12 × 2), 단 1~4(R-12), 슬롯 1~2,
+ *       모두 RESERVE(R-13 — QUARANTINE·TEMPORARY 도 허용).
  *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE.
  *   <li>통로 90 = DOCK(층 B1), 91 = STAGING 출고대기, 92 = STAGING 층 승강기 문(층 5~7) — 단 0·슬롯 1(CDC-5). 93~99
  *       는 비워 둔다.
@@ -116,7 +116,7 @@ public final class LocationCode {
       if (!upperFloor) {
         out.add(new Violation("locationCode", "RACK_FLOOR"));
       }
-      if (bay < 1 || bay > 40) {
+      if (bay < 1 || bay > 48) {
         out.add(new Violation("locationCode", "RACK_BAY"));
       }
       if (p.level() < 1 || p.level() > 4) {
