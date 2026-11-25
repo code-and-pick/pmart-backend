@@ -70,6 +70,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @LocalServerPort int port;
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
+  @Autowired com.pmart.cdc.outbound.application.ShortageService shortages;
 
   @InjectWireMock("inventory")
   WireMockServer inventory;
@@ -1348,6 +1349,137 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(mine.body().path("lines").get(0).path("locationCode").asString()).isEqualTo(a62);
   }
 
+  /**
+   * 피킹 부족 재할당(0.12.0, CDC-F-018): 10 중 7 집고 3 부족 → 재고 해제(그 LOT·위치·재계수 대기) → 추가 할당 2(다른 칸) → 새 작업 2,
+   * 못 찾음 1(PickShortageResolved) → 새 작업 끝나면 TRF PICKED(실피킹 9 = 7 + 2, 못 찾음 1). 추가 할당 불명이면
+   * SHORTAGE_REALLOCATING 으로 남고 다시 부르면 끝난다. CDC06.
+   */
+  @Test
+  void shortageReallocatedIntoNewTask() {
+    String c6 = "CDC06";
+    String ops6 = TestJwt.operator("ops-6", List.of("CDC_MANAGER"), List.of(c6));
+    String w4 = TestJwt.operator("w4", List.of("CDC_WORKER"), List.of(c6));
+    String trf = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String x = "CDC06-C-5-61-01-1-1";
+    String y = "CDC06-C-5-61-09-1-1";
+    stubAllocate(
+        trf,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":10},{\"sku\":\"E-00000002\",\"allocatedQty\":0}]}");
+    stubAllocationLots(
+        alc,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + x
+            + "\",\"qty\":10}]}");
+    stubRelease(
+        alc,
+        200,
+        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-R\",\"appliedQty\":3}");
+    String addPath = ALLOC + "/" + alc + "/additions";
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(addPath))
+            .willReturn(aResponse().withStatus(503).withBody("{}"))); // 처음엔 불명
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trf, c6, "MFC-BJG-01", DUE, 10, 1))
+                .status())
+        .isEqualTo(202);
+    String waveId =
+        post(ops6, "/waves", Map.of("cdcId", c6, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops6, "/waves/" + waveId + "/releases", null).status()).isEqualTo(202);
+    String task =
+        post(w4, "/cdcs/" + c6 + "/workers/w4/next-tasks", Map.of())
+            .body()
+            .path("taskId")
+            .asString();
+    post(w4, "/cdcs/" + c6 + "/tasks/" + task + "/starts", null);
+    Map<String, Object> line = new LinkedHashMap<>();
+    line.put("sku", "E-00000001");
+    line.put("lot", "L1");
+    line.put("locationCode", x);
+    line.put("pickedQty", 7);
+    line.put("shortQty", 3);
+    line.put("shortReason", "NOT_FOUND");
+    Res pr =
+        post(
+            w4,
+            "/cdcs/" + c6 + "/tasks/" + task + "/pick-results",
+            Map.of("workerId", "w4", "lines", List.of(line)));
+    assertThat(pr.status()).as(pr.body().toString()).isEqualTo(202);
+    // 해제는 됐고(재계수 대기·그 LOT·위치), 추가 할당은 불명 → 남음
+    inventory.verify(
+        postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases"))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("PICK_SHORTAGE")))
+            .withRequestBody(matchingJsonPath("$.recountHold", equalTo("true")))
+            .withRequestBody(matchingJsonPath("$.lines[0].locationCode", equalTo(x)))
+            .withRequestBody(matchingJsonPath("$.lines[0].qty", equalTo("3"))));
+    assertThat(readiness(trf).path("blockers").toString()).contains("SHORTAGE_REALLOCATING");
+
+    // 추가 할당이 되면 — 칸 y 에 2(1 은 못 찾음)
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(addPath))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"status\":\"APPLIED\",\"addedQty\":2,\"lines\":[{\"sku\":\"E-00000001\",\"requestedQty\":3,\"addedQty\":2,"
+                            + "\"lots\":[{\"lot\":\"L9\",\"locationCode\":\""
+                            + y
+                            + "\",\"qty\":2}]}]}")));
+    shortages.processOpen();
+    var adds = inventory.findAll(postRequestedFor(urlPathEqualTo(addPath)));
+    assertThat(adds.stream().map(r -> r.getHeader("Idempotency-Key")).distinct().toList())
+        .hasSize(1)
+        .allMatch(k -> k.startsWith("outbound-short-add-")); // 다시 불러도 같은 키
+    assertThat(readiness(trf).path("blockers").toString()).doesNotContain("SHORTAGE_REALLOCATING");
+    String ev =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'PickShortageResolved' AND aggregateid = ?",
+            String.class,
+            trf);
+    assertThat(ev).contains("\"reallocatedQty\": 2").contains("\"unresolvedQty\": 1");
+    JsonNode tasks = get(ops6, "/cdcs/" + c6 + "/tasks?waveId=" + waveId).body().path("items");
+    assertThat(tasks.size()).isEqualTo(2);
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trf).body().path("state").asString())
+        .isEqualTo("IN_WAVE"); // 다시 집을 작업이 생겼다
+    assertThat(get(ops6, "/waves/" + waveId).body().path("state").asString())
+        .isEqualTo("IN_PROGRESS");
+
+    // 새 작업(칸 y 2) 집기 → TRF PICKED, 실피킹 9 + 못 찾음 1 = 할당 10
+    Res n2 = post(w4, "/cdcs/" + c6 + "/workers/w4/next-tasks", Map.of());
+    String task2 = n2.body().path("taskId").asString();
+    assertThat(n2.body().path("lines").get(0).path("locationCode").asString()).isEqualTo(y);
+    post(w4, "/cdcs/" + c6 + "/tasks/" + task2 + "/starts", null);
+    Res pr2 =
+        post(
+            w4,
+            "/cdcs/" + c6 + "/tasks/" + task2 + "/pick-results",
+            Map.of(
+                "workerId",
+                "w4",
+                "lines",
+                List.of(
+                    Map.of("sku", "E-00000001", "lot", "L9", "locationCode", y, "pickedQty", 2))));
+    assertThat(pr2.status()).as(pr2.body().toString()).isEqualTo(202);
+    JsonNode intake = get(SERVICE, "/internal/transfer-intakes/" + trf).body();
+    assertThat(intake.path("state").asString()).isEqualTo("PICKED");
+    JsonNode p0 = intake.path("progress").get(0);
+    assertThat(p0.path("allocatedQty").asInt()).as(intake.toString()).isEqualTo(10); // 처음 할당 그대로
+    assertThat(p0.path("pickedQty").asInt()).isEqualTo(9);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT short_qty FROM transfer_line WHERE trf_id = ? AND sku = 'E-00000001'",
+                Integer.class,
+                trf))
+        .isEqualTo(1); // 못 찾음
+    assertThat(readiness(trf).path("readiness").asString()).isEqualTo("PICKED");
+  }
+
   JsonNode readiness(String trf) {
     Res r = get(SERVICE, "/internal/outbound-readiness?trfId=" + trf);
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
@@ -1355,7 +1487,11 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   }
 
   int releases() {
-    return inventory.findAll(postRequestedFor(urlPathEqualTo(ALLOC + "/ALC-1/releases"))).size();
+    return inventory
+        .findAll(
+            postRequestedFor(urlPathEqualTo(ALLOC + "/ALC-1/releases"))
+                .withRequestBody(matchingJsonPath("$.reason", equalTo("RESIDUAL_CLOSED"))))
+        .size(); // 부족 해제(PICK_SHORTAGE, 0.12.0)는 세지 않는다
   }
 
   String residual(String dep, String trf) {

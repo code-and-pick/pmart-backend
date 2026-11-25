@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.11.0
+  version: 0.12.0
   description: |
+    0.12.0(2026-11-25, 피킹 부족 재할당 — WMS CDC-F-018, 사용자 결정): 부족 보고 뒤 cdc-outbound 가 재고에 그 LOT·위치를 해제하며 재계수 대기로 두고(cdc-inventory 0.7.0),
+      같은 할당에 다른 적격 LOT 을 더 잡아 새 PICK 작업을 만든다. 못 잡은 만큼은 "못 찾음" — 집은 만큼만 출발(사용자 "48개만 보냄"). 결과 사건 PickShortageResolved.
+      출발 준비 blockers 에 SHORTAGE_REALLOCATING. TRF 줄 shortQty 는 재할당 뒤 남은(못 찾은) 부족이다.
     0.11.0(2026-11-25, DC 백오피스 1단계 — 사용자 "Dc 백오피스 만들어줘", 계획 docs/cdc/cdc-backoffice-plan.md): 직원 조회 3개(자기 센터 운영자 — 토큰 centers 에 cdcId).
       `GET /cdcs/{cdcId}/transfers`(TRF 목록 — 상태·MFC 거르기, 기한 순), `GET /cdcs/{cdcId}/transfers/{trfId}`(줄별 승인·할당·피킹·부족 수량),
       `GET /cdcs/{cdcId}/outbound-summary?date=`(그날(Asia/Seoul, TRF 기한 기준) 출고 집계 — TRF 상태별 수·수량 합·진행률, Wave 상태별 수, 작업 종류×상태별 수). 읽기만.
@@ -437,7 +440,10 @@ paths:
         (0.2.0) 담당(workerId = assigneeId)의 IN_PROGRESS 작업에만 — 아니면 409 NOT_ASSIGNEE / INVALID_STATE.
         (0.3.0) 줄은 Task 줄(SKU·LOT·위치)과 맞아야 한다(없으면 400). 한 번에 다 보내도, 나눠 보내도 된다 — 줄마다 pickedQty + shortQty ≤ 남은 계획(아니면 409 PICK_EXCEEDS_ALLOCATION).
         모든 줄이 끝나면(실피킹 + 부족 = 계획) Task DONE(부족이 있으면 PARTIAL), Wave 의 모든 Task 가 끝나면 Wave WORK_DONE. 부족은 PickShortageReported(cdc.outbound.v1)로 알린다.
-        부족분의 재고 해제·재할당은 아직 하지 않는다 — 예약은 출발 뒤 잔여 해제(RESIDUAL_CLOSED)로 풀린다.
+        (0.12.0) 부족분은 응답 뒤 서버가 처리한다(WMS CDC-F-018): ① cdc-inventory 해제(PICK_SHORTAGE, 그 LOT·위치, 재계수 대기 — 다시 셀 때까지 새 할당에서 뺌)
+        ② 같은 할당에 추가 할당(다른 적격 LOT·FEFO) ③ 잡힌 만큼 같은 Wave 에 새 PICK 작업(통로 방식대로 — TRF 가 PICKED 였으면 IN_WAVE, Wave WORK_DONE 이면 IN_PROGRESS 로).
+        못 잡은 만큼은 못 찾음 — TRF 는 집은 만큼만 출발한다. 결과는 PickShortageResolved(reallocatedQty·unresolvedQty·newTaskIds). 재고 응답이 불명이면 주기 작업이 같은 키로 다시 부른다.
+        작업자가 임의로 다른 LOT 을 담지 않는다 — 새 작업으로만 집는다.
         (0.9.0) 묶음 작업도 줄(SKU·LOT·위치) 합계로 보낸다. 실피킹은 **기한(dueAt) 이른 TRF 몫부터** 채우고 부족은 **기한 늦은 몫부터** 뺀다(같은 기한이면 trfId 순 — 사용자 결정 §7-2).
         나눈 몫이 TRF 줄 실피킹·부족이 되고, 부족은 TRF 마다 PickShortageReported 를 낸다. TRF 는 자기 몫이 든 작업이 모두 끝나면 PICKED.
       operationId: reportPickResult
@@ -839,6 +845,7 @@ paths:
         - earliestReadyAt: INSPECTED·LOADED·DEPARTED 일 때 마지막 BOX 합격 시각(화물 전체가 준비된 때), 그 밖에는 null.
         - blockers: NOT_ALLOCATED·ALLOCATION_FAILED·NOT_IN_WAVE·TASK_EXCEPTION·NOTHING_PICKED(전량 부족)·UNSORTED_QTY·NOT_INSPECTED·INSPECTION_FAILED,
           (0.7.0) CANCELLATION_PENDING(미출발 취소의 재고 해제 불명)·CANCELLATION_HOLD(재고가 해제를 거절 — 조사).
+          (0.12.0) SHORTAGE_REALLOCATING(피킹 부족의 재고 해제·추가 할당이 아직 끝나지 않음 — 다시 집을 작업이 생길 수 있다).
       operationId: getOutboundReadiness
       parameters:
         - { name: trfId, in: query, required: true, schema: { type: string } }

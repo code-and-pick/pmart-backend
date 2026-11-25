@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.pmart.local/events/PickShortageResolved.v1.json",
+  "title": "PickShortageResolved",
+  "description": "피킹 부족(TRF 몫 하나)의 처리 결과 — 다른 적격 LOT 으로 다시 잡은 양(새 작업)과 못 찾은 양(집은 만큼만 출발). WMS CDC-F-018, 사용자 2026-11-25. 발행 cdc-outbound. 구독 없음(replenishment 가 생기면 다음 공급 판단). 토픽 cdc.outbound.v1",
+  "allOf": [
+    {
+      "$ref": "_envelope.v1.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "eventType": {
+          "const": "PickShortageResolved"
+        },
+        "aggregateType": {
+          "const": "OutboundTransfer"
+        },
+        "payload": {
+          "type": "object",
+          "required": [
+            "trfId",
+            "sku",
+            "shortQty",
+            "reallocatedQty",
+            "unresolvedQty"
+          ],
+          "properties": {
+            "trfId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "allocationId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "waveId": {
+              "$ref": "_defs.v1.json#/$defs/Ref"
+            },
+            "pickTaskId": {
+              "$ref": "_defs.v1.json#/$defs/Ref",
+              "description": "부족이 난 작업"
+            },
+            "sku": {
+              "$ref": "_defs.v1.json#/$defs/Sku"
+            },
+            "lot": {
+              "type": "string"
+            },
+            "locCode": {
+              "type": "string",
+              "description": "부족 칸 — 재계수 대기"
+            },
+            "shortQty": {
+              "$ref": "_defs.v1.json#/$defs/PositiveQty"
+            },
+            "reallocatedQty": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unresolvedQty": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "못 찾음 — 이 TRF 는 집은 만큼만 출발"
+            },
+            "newTaskIds": {
+              "type": "array",
+              "items": {
+                "$ref": "_defs.v1.json#/$defs/Ref"
+              }
+            },
+            "reason": {
+              "type": "string",
+              "description": "재할당을 못 한 까닭(재고 거절·TRF 상태)"
+            },
+            "resolvedAt": {
+              "$ref": "_defs.v1.json#/$defs/DateTime"
+            }
+          },
+          "additionalProperties": true
+        }
+      }
+    }
+  ]
+}

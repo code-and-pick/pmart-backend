@@ -61,6 +61,8 @@ replenishment: 확보/편성 결과 수집 → READY | PARTIALLY_ALLOCATED | TRA
 ```
 cdc-outbound: Wave → 실피킹 → 분류/검품(BOX SEALED/PLT READY, LPN) → 출발 준비 적격(TMS 창·MFC 수령창 소비) → 가상 상차 LOADED (≠출발)
   · 불변식: 상차 ≤ 검품합격 ≤ 분류 ≤ 실피킹 ≤ 유효할당 ≤ 승인
+  · 피킹 부족(CDC-F-018, 2026-11-25): 부족 보고 → cdc-inventory 해제(PICK_SHORTAGE, 그 LOT·위치 재계수 대기 — 새 할당에서 뺌, 현물 그대로) → 추가 할당(다른 적격 LOT)
+    → 잡힌 만큼 새 PICK 작업 / 못 잡은 만큼은 못 찾음(PickShortageResolved) — 그 TRF 는 집은 만큼만 출발, 남은 승인은 위 잔량 정리. 보상: 해제·추가는 같은 키 재전송(불명이면 다시), 되돌리지 않음.
 transport-execution: 출발 전 실상차 대조(타 MFC 혼입·누락·봉인·구획) → 실제 발차 증빙 → TruckActuallyDeparted(departureId, source REAL/SIMULATED, trfCompositions)
 cdc-outbound: 대조 → TruckDepartureValidated → cdc-inventory.PostDeparture
 cdc-inventory: TOUT 1회 전기  CDC 현물 −q · 예약 −q · Transit +q  (한 거래) → TransferDeparted(trfId, departureId, lines)

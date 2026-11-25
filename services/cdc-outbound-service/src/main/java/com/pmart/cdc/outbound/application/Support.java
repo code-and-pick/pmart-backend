@@ -92,7 +92,9 @@ public class Support {
         TOPIC);
   }
 
+  /** 부족 후속 재시도(ShortageService.processOpen). */
   @Configuration(proxyBeanMethods = false)
+  @org.springframework.scheduling.annotation.EnableScheduling
   static class ClockConfig {
     /** UTC 저장(ADR-0010). */
     @Bean

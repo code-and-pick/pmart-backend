@@ -193,6 +193,18 @@ public class OutboundStore {
         sku);
   }
 
+  /**
+   * 부족 재할당(0.12.0): 다시 잡은 만큼 부족을 줄인다(새 작업이 집는다). 할당 수량은 처음 값 그대로 둔다 — 실피킹 + 부족(못 찾음) ≤ 할당. 재고 쪽 예약은
+   * 부족 해제·추가 할당으로 이미 바뀌었다(정본은 cdc-inventory).
+   */
+  public void reallocated(String trfId, String sku, int added) {
+    jdbc.update(
+        "UPDATE transfer_line SET short_qty = short_qty - ? WHERE trf_id = ? AND sku = ?",
+        added,
+        trfId,
+        sku);
+  }
+
   public void setTransferState(String trfId, String state, @Nullable String waveId, Instant at) {
     jdbc.update(
         "UPDATE transfer SET state = ?, wave_id = COALESCE(?, wave_id), row_version = row_version + 1,"

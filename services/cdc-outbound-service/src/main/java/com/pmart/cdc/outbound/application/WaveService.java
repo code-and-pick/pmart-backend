@@ -218,40 +218,7 @@ public class WaveService {
                       methods.get(x.locationCode())));
             }
           }
-          for (BatchPlan.Task p : BatchPlan.plan(items, props.batchMaxLines())) {
-            String taskId = Support.newId("TASK");
-            List<TaskLineRow> lines = new ArrayList<>();
-            List<ShareRow> shares = new ArrayList<>();
-            for (int i = 0; i < p.lines().size(); i++) {
-              var l = p.lines().get(i);
-              lines.add(
-                  new TaskLineRow(i, l.sku(), l.lot(), l.locationCode(), l.qty(), 0, 0, null));
-              for (BatchPlan.Share sh : l.shares()) {
-                shares.add(new ShareRow(i, sh.trfId(), sh.mfcId(), sh.dueAt(), sh.qty(), 0, 0));
-              }
-            }
-            store.insertTask(
-                new TaskRow(
-                    taskId,
-                    waveId,
-                    p.trfId(),
-                    w.cdcId(),
-                    "PICK",
-                    p.zone(),
-                    p.floor(),
-                    p.dueAt(),
-                    "CREATED",
-                    1,
-                    null,
-                    at,
-                    null,
-                    p.pickMode(),
-                    p.pickMethod(),
-                    p.regionCode(),
-                    p.aisle()),
-                lines,
-                shares);
-          }
+          createTasks(w.cdcId(), waveId, items, at);
           if (!store.setWaveState(waveId, "RELEASED", w.version(), at)) {
             throw PmartException.versionConflict("Wave 가 방금 바뀌었습니다.");
           }
@@ -264,6 +231,55 @@ public class WaveService {
               at);
           return new CommandResult("APPLIED", requestId, waveId, w.version() + 1, at);
         });
+  }
+
+  /** 계획대로 PICK 작업을 만든다(릴리스·부족 재할당 공통 — 트랜잭션 안). 만든 작업 ID. */
+  List<String> createTasks(String cdcId, String waveId, List<BatchPlan.Item> items, Instant at) {
+    List<String> ids = new ArrayList<>();
+    for (BatchPlan.Task p : BatchPlan.plan(items, props.batchMaxLines())) {
+      String taskId = Support.newId("TASK");
+      List<TaskLineRow> lines = new ArrayList<>();
+      List<ShareRow> shares = new ArrayList<>();
+      for (int i = 0; i < p.lines().size(); i++) {
+        var l = p.lines().get(i);
+        lines.add(new TaskLineRow(i, l.sku(), l.lot(), l.locationCode(), l.qty(), 0, 0, null));
+        for (BatchPlan.Share sh : l.shares()) {
+          shares.add(new ShareRow(i, sh.trfId(), sh.mfcId(), sh.dueAt(), sh.qty(), 0, 0));
+        }
+      }
+      store.insertTask(
+          new TaskRow(
+              taskId,
+              waveId,
+              p.trfId(),
+              cdcId,
+              "PICK",
+              p.zone(),
+              p.floor(),
+              p.dueAt(),
+              "CREATED",
+              1,
+              null,
+              at,
+              null,
+              p.pickMode(),
+              p.pickMethod(),
+              p.regionCode(),
+              p.aisle()),
+          lines,
+          shares);
+      ids.add(taskId);
+    }
+    return ids;
+  }
+
+  /** 지역표 MFC → 지역 코드. */
+  Map<String, String> regionOf(String cdcId) {
+    Map<String, String> out = new HashMap<>();
+    for (RegionRow r : store.regions(cdcId)) {
+      out.put(r.mfcId(), r.regionCode());
+    }
+    return out;
   }
 
   /** TRF 할당이 지금 잡은 LOT·위치(재고 서비스 정본). */

@@ -42,8 +42,14 @@ public class ReadinessService {
   private final OutboundStore store;
   private final LpnStore lpns;
   private final Support support;
+  private final com.pmart.cdc.outbound.infrastructure.ShortageStore shortages;
 
-  public ReadinessService(OutboundStore store, LpnStore lpns, Support support) {
+  public ReadinessService(
+      OutboundStore store,
+      LpnStore lpns,
+      Support support,
+      com.pmart.cdc.outbound.infrastructure.ShortageStore shortages) {
+    this.shortages = shortages;
     this.store = store;
     this.lpns = lpns;
     this.support = support;
@@ -109,6 +115,9 @@ public class ReadinessService {
         blockers.add("CANCELLATION_PENDING");
       } else if ("CANCEL_HOLD".equals(t.state())) {
         blockers.add("CANCELLATION_HOLD");
+      }
+      if (shortages.openOfTrf(trfId) > 0) {
+        blockers.add("SHORTAGE_REALLOCATING"); // 0.11.0 — 부족 재할당이 아직 끝나지 않음
       }
       if ("ALLOCATION_FAILED".equals(t.state())) {
         blockers.add("ALLOCATION_FAILED");

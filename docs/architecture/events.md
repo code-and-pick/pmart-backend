@@ -99,6 +99,7 @@
 | `DockReservationResult` | cdc-location | transport-planning | dockId, window, result | 도크 예약 | ② |
 | `WaveStateChanged` | cdc-outbound | backoffice-bff | waveId, state | Wave 전이 | ② |
 | `PickShortageReported` | cdc-outbound | replenishment, cdc-inventory | trfId, sku, lot, shortQty | 실피킹 부족 | ② |
+| `PickShortageResolved` | cdc-outbound | (없음 — replenishment 예정) | trfId, sku, shortQty, reallocatedQty, unresolvedQty, newTaskIds | 피킹 부족 재할당 결과(다시 잡음·못 찾음, CDC-F-018 — 2026-11-25) | ② |
 | `OutboundReadinessChanged` | cdc-outbound | transport-planning | trfId, readyAt(예상/확정), hold, cargo[{lpn, weight, volume, temp}] | 출고 준비 상태 | ② |
 | `TruckDepartureValidated` | cdc-outbound | cdc-inventory(전기 요청), transport-execution | departureId, trfId, validatedLines[], mismatches[] | TruckActuallyDeparted ↔ 실상차 대조 완료 | ② |
 | `TransferShipmentManifestIssued` | cdc-outbound | mfc-inbound(2026-11-20 구독 구현 — LPN 목록 `packages`), transport-execution | shipmentManifestId, trfId, departureId, lines[{sku, lot, lpn, qty, expiryDate}] | 출발 매니페스트 | ② |

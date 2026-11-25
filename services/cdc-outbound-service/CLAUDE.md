@@ -41,5 +41,9 @@
   지역표 `region_mfc`(`GET·POST /cdcs/{cdcId}/regions`, 칠곡 5곳·4지역 BUSAN·HONAM·CHUNGCHEONG·GANGWON 은 V7 시드 — 지역 코드 = PDA 지역 바코드 값). 묶음 크기 `pmart.outbound.batch-max-lines`(없으면 자르지 않음).
   착수 전 미출발 취소는 묶음 작업에서 그 TRF 몫만 뺀다(줄 계획 −몫, 빈 작업은 CANCELLED). 재고 MOV 없음(설계 §4).
   DPS 는 TRF × 구역 × 층 × **선반 통로**(0.10.0, Flyway V8 `task.aisle` — 시뮬레이터 R-20, 사용자 "제안대로"): 컨베이어 통로 작업자가 다음 작업 받기 `aisles` 로 자기 통로만 받는다(TRF 끼리는 묶지 않음).
+- 피킹 부족 재할당(0.12.0, Flyway V9 `pick_shortage_followup`, WMS CDC-F-018 — 사용자 2026-11-25 "부족 칸은 새 할당에서 뺀다"·"48개만 보냄"): 피킹 실적 트랜잭션에서 TRF 몫 부족마다 후속 행(PENDING) →
+  커밋 뒤(`ShortageService.processOpen`, 실적 응답 직후 + `@Scheduled` `pmart.outbound.shortage-retry-interval` 기본 PT30S) cdc-inventory 해제(PICK_SHORTAGE·LOT·위치·`recountHold`, 키 `outbound-short-rel-<id>`) → RELEASED →
+  추가 할당(`/additions`, 키 `outbound-short-add-<id>`) → 잡힌 LOT 으로 같은 Wave 에 새 PICK 작업(`WaveService.createTasks`, 통로 방식대로 — TRF PICKED 였으면 IN_WAVE·Wave WORK_DONE 이면 IN_PROGRESS) → DONE·`PickShortageResolved`(reallocatedQty·unresolvedQty·newTaskIds).
+  TRF 줄: 할당 그대로, 부족 −다시 잡은 양(남은 부족 = 못 찾음 — 실피킹 + 부족 ≤ 할당). 불명은 그 단계에 남아 같은 키로 다시, 재고 거절·TRF 출발/취소면 FAILED(전량 못 찾음). 출발 준비 blockers `SHORTAGE_REALLOCATING`.
 - 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 직원 조회(2026-11-25, 0.11.0 — 사용자 "Dc 백오피스 만들어줘", 계획 docs/cdc/cdc-backoffice-plan.md 1단계)**: `api/StaffViewsController` → `application/StaffViews` → `infrastructure/StaffViewStore`(읽기만, `Support.requireCenter`). `GET /cdcs/{cdcId}/transfers`(state·mfcId·page·size≤200, 기한 순, 줄 합)·`…/transfers/{trfId}`(줄별 승인·할당·피킹·부족)·`/outbound-summary?date=`(Asia/Seoul 그날 기한 TRF — 상태별 수·수량 합·진행률 피킹÷승인, Wave 상태별·작업 종류:상태별). 게이트웨이 라우트·허용 목록. 시험 `OutboundFlowIT.intakeWaveTasksPicking` 2-1.

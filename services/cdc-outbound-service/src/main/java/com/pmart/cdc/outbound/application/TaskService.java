@@ -70,9 +70,15 @@ public class TaskService {
   private final RequestIdempotency idempotency;
   private final Support support;
   private final WaveService waves;
+  private final ShortageService shortages;
 
   public TaskService(
-      OutboundStore store, RequestIdempotency idempotency, Support support, WaveService waves) {
+      OutboundStore store,
+      RequestIdempotency idempotency,
+      Support support,
+      WaveService waves,
+      ShortageService shortages) {
+    this.shortages = shortages;
     this.store = store;
     this.idempotency = idempotency;
     this.support = support;
@@ -206,130 +212,148 @@ public class TaskService {
     req.put("workerId", workerId);
     req.put("expectedVersion", String.valueOf(expectedVersion));
     req.put("lines", lines);
-    return idempotency.execute(
-        Support.key(sourceSystem, requestId, OP_PICK, workerId),
-        req,
-        CommandResult.class,
-        () -> {
-          Instant at = support.now();
-          TaskRow t = find(cdcId, taskId, true);
-          if (!workerId.equals(t.assigneeId())) {
-            throw notAssignee(taskId);
-          }
-          checkVersion(t, expectedVersion);
-          if (!"IN_PROGRESS".equals(t.state())) {
-            throw PmartException.invalidState("실적은 착수한(IN_PROGRESS) 작업에만 — 지금 " + t.state() + ".");
-          }
-          List<TaskLineRow> current = store.taskLines(taskId);
-          // 1) 전 줄 검증
-          List<PmartException.Detail> unknown = new ArrayList<>();
-          List<TaskLineRow> matched = new ArrayList<>();
-          Map<Integer, int[]> pending = new LinkedHashMap<>();
-          for (int i = 0; i < lines.size(); i++) {
-            PickLine l = lines.get(i);
-            TaskLineRow row =
-                current.stream()
-                    .filter(
-                        r ->
-                            r.sku().equals(l.sku())
-                                && r.lot().equals(l.lot())
-                                && r.locationCode().equals(l.locationCode()))
-                    .findFirst()
-                    .orElse(null);
-            if (row == null) {
-              unknown.add(new PmartException.Detail("lines[" + i + "]", "NOT_IN_TASK"));
-              continue;
-            }
-            int[] acc = pending.computeIfAbsent(row.lineNo(), k -> new int[2]);
-            acc[0] += l.pickedQty();
-            acc[1] += l.shortQty();
-            if (row.pickedQty() + row.shortQty() + acc[0] + acc[1] > row.plannedQty()) {
-              throw new PmartException(
-                  "PICK_EXCEEDS_ALLOCATION",
-                  HttpStatus.CONFLICT,
-                  "lines["
-                      + i
-                      + "] 실피킹 + 부족이 남은 계획("
-                      + (row.plannedQty() - row.pickedQty() - row.shortQty())
-                      + ")보다 많습니다.",
-                  false,
-                  List.of(
-                      new PmartException.Detail("lines[" + i + "]", "PICK_EXCEEDS_ALLOCATION")));
-            }
-            matched.add(row);
-          }
-          if (!unknown.isEmpty()) {
-            throw new PmartException(ErrorCode.VALIDATION_FAILED, "작업에 없는 줄이 있습니다.", unknown);
-          }
-          // 2) 반영 — 줄 실적을 TRF 몫에 나눈다(0.9.0: 실피킹은 기한 이른 몫부터, 부족은 기한 늦은 몫부터 — 사용자 결정 §7-2)
-          List<ShareRow> shares = store.shares(taskId);
-          Map<String, TransferRow> trfs = new LinkedHashMap<>();
-          for (String id : new TreeSet<>(shares.stream().map(ShareRow::trfId).toList())) {
-            trfs.put(id, store.transfer(id, true).orElseThrow()); // trfId 순으로 잠근다
-          }
-          for (int i = 0; i < lines.size(); i++) {
-            PickLine l = lines.get(i);
-            TaskLineRow row = matched.get(i);
-            store.addLineResult(taskId, row.lineNo(), l.pickedQty(), l.shortQty(), l.shortReason());
-            List<ShareState> states = new ArrayList<>();
-            for (ShareRow sh : store.shares(taskId)) {
-              if (sh.lineNo() == row.lineNo()) {
-                states.add(
-                    new ShareState(
-                        sh.trfId(), sh.dueAt(), sh.plannedQty(), sh.pickedQty(), sh.shortQty()));
+    Outcome<CommandResult> out =
+        idempotency.execute(
+            Support.key(sourceSystem, requestId, OP_PICK, workerId),
+            req,
+            CommandResult.class,
+            () -> {
+              Instant at = support.now();
+              TaskRow t = find(cdcId, taskId, true);
+              if (!workerId.equals(t.assigneeId())) {
+                throw notAssignee(taskId);
               }
-            }
-            for (Map.Entry<String, int[]> e :
-                BatchPlan.attribute(states, l.pickedQty(), l.shortQty()).entrySet()) {
-              String trfId = e.getKey();
-              int dp = e.getValue()[0];
-              int ds = e.getValue()[1];
-              store.addShareResult(taskId, row.lineNo(), trfId, dp, ds);
-              store.addLinePicked(trfId, l.sku(), dp, ds);
-              if (ds > 0) {
-                TransferRow trf = trfs.get(trfId);
-                Map<String, Object> p = new LinkedHashMap<>();
-                p.put("trfId", trfId);
-                if (trf.allocationId() != null) {
-                  p.put("allocationId", trf.allocationId());
+              checkVersion(t, expectedVersion);
+              if (!"IN_PROGRESS".equals(t.state())) {
+                throw PmartException.invalidState(
+                    "실적은 착수한(IN_PROGRESS) 작업에만 — 지금 " + t.state() + ".");
+              }
+              List<TaskLineRow> current = store.taskLines(taskId);
+              // 1) 전 줄 검증
+              List<PmartException.Detail> unknown = new ArrayList<>();
+              List<TaskLineRow> matched = new ArrayList<>();
+              Map<Integer, int[]> pending = new LinkedHashMap<>();
+              for (int i = 0; i < lines.size(); i++) {
+                PickLine l = lines.get(i);
+                TaskLineRow row =
+                    current.stream()
+                        .filter(
+                            r ->
+                                r.sku().equals(l.sku())
+                                    && r.lot().equals(l.lot())
+                                    && r.locationCode().equals(l.locationCode()))
+                        .findFirst()
+                        .orElse(null);
+                if (row == null) {
+                  unknown.add(new PmartException.Detail("lines[" + i + "]", "NOT_IN_TASK"));
+                  continue;
                 }
-                p.put("waveId", t.waveId());
-                p.put("pickTaskId", taskId);
-                p.put("sku", l.sku());
-                p.put("lot", l.lot());
-                p.put("locCode", l.locationCode());
-                p.put("shortQty", ds);
-                p.put("reason", l.shortReason() == null ? "OTHER" : l.shortReason());
-                p.put("reportedAt", at.toString());
-                support.publish(
-                    "PickShortageReported", "OutboundTransfer", trfId, trf.version(), workerId, p);
+                int[] acc = pending.computeIfAbsent(row.lineNo(), k -> new int[2]);
+                acc[0] += l.pickedQty();
+                acc[1] += l.shortQty();
+                if (row.pickedQty() + row.shortQty() + acc[0] + acc[1] > row.plannedQty()) {
+                  throw new PmartException(
+                      "PICK_EXCEEDS_ALLOCATION",
+                      HttpStatus.CONFLICT,
+                      "lines["
+                          + i
+                          + "] 실피킹 + 부족이 남은 계획("
+                          + (row.plannedQty() - row.pickedQty() - row.shortQty())
+                          + ")보다 많습니다.",
+                      false,
+                      List.of(
+                          new PmartException.Detail(
+                              "lines[" + i + "]", "PICK_EXCEEDS_ALLOCATION")));
+                }
+                matched.add(row);
               }
-            }
-          }
-          List<int[]> after = new ArrayList<>();
-          for (TaskLineRow r : store.taskLines(taskId)) {
-            after.add(new int[] {r.plannedQty(), r.pickedQty(), r.shortQty()});
-          }
-          String state = PickPlan.afterReport(t.state(), after);
-          int version = t.version();
-          if (!state.equals(t.state())) {
-            store.setTaskState(taskId, state, at);
-            version++;
-            for (String trfId : trfs.keySet()) {
-              if (store.openTasks("trf_id", trfId) == 0) {
-                store.setTransferState(trfId, "PICKED", null, at);
+              if (!unknown.isEmpty()) {
+                throw new PmartException(ErrorCode.VALIDATION_FAILED, "작업에 없는 줄이 있습니다.", unknown);
               }
-            }
-            if (store.openTasks("wave_id", t.waveId()) == 0) {
-              WaveRow w = store.wave(t.waveId(), true).orElseThrow();
-              if (store.setWaveState(w.waveId(), "WORK_DONE", w.version(), null)) {
-                waves.publishState(
-                    w, "WORK_DONE", trfIds(w.waveId()), workerId, w.version() + 1, at);
+              // 2) 반영 — 줄 실적을 TRF 몫에 나눈다(0.9.0: 실피킹은 기한 이른 몫부터, 부족은 기한 늦은 몫부터 — 사용자 결정 §7-2)
+              List<ShareRow> shares = store.shares(taskId);
+              Map<String, TransferRow> trfs = new LinkedHashMap<>();
+              for (String id : new TreeSet<>(shares.stream().map(ShareRow::trfId).toList())) {
+                trfs.put(id, store.transfer(id, true).orElseThrow()); // trfId 순으로 잠근다
               }
-            }
-          }
-          return new CommandResult("APPLIED", requestId, taskId, version, at);
-        });
+              for (int i = 0; i < lines.size(); i++) {
+                PickLine l = lines.get(i);
+                TaskLineRow row = matched.get(i);
+                store.addLineResult(
+                    taskId, row.lineNo(), l.pickedQty(), l.shortQty(), l.shortReason());
+                List<ShareState> states = new ArrayList<>();
+                for (ShareRow sh : store.shares(taskId)) {
+                  if (sh.lineNo() == row.lineNo()) {
+                    states.add(
+                        new ShareState(
+                            sh.trfId(),
+                            sh.dueAt(),
+                            sh.plannedQty(),
+                            sh.pickedQty(),
+                            sh.shortQty()));
+                  }
+                }
+                for (Map.Entry<String, int[]> e :
+                    BatchPlan.attribute(states, l.pickedQty(), l.shortQty()).entrySet()) {
+                  String trfId = e.getKey();
+                  int dp = e.getValue()[0];
+                  int ds = e.getValue()[1];
+                  store.addShareResult(taskId, row.lineNo(), trfId, dp, ds);
+                  store.addLinePicked(trfId, l.sku(), dp, ds);
+                  if (ds > 0) {
+                    // 부족 후속(0.11.0) — 커밋 뒤 재고 해제(재계수 대기) → 추가 할당 → 새 작업
+                    shortages.record(
+                        trfId, t.waveId(), taskId, l.sku(), l.lot(), l.locationCode(), ds, at);
+                    TransferRow trf = trfs.get(trfId);
+                    Map<String, Object> p = new LinkedHashMap<>();
+                    p.put("trfId", trfId);
+                    if (trf.allocationId() != null) {
+                      p.put("allocationId", trf.allocationId());
+                    }
+                    p.put("waveId", t.waveId());
+                    p.put("pickTaskId", taskId);
+                    p.put("sku", l.sku());
+                    p.put("lot", l.lot());
+                    p.put("locCode", l.locationCode());
+                    p.put("shortQty", ds);
+                    p.put("reason", l.shortReason() == null ? "OTHER" : l.shortReason());
+                    p.put("reportedAt", at.toString());
+                    support.publish(
+                        "PickShortageReported",
+                        "OutboundTransfer",
+                        trfId,
+                        trf.version(),
+                        workerId,
+                        p);
+                  }
+                }
+              }
+              List<int[]> after = new ArrayList<>();
+              for (TaskLineRow r : store.taskLines(taskId)) {
+                after.add(new int[] {r.plannedQty(), r.pickedQty(), r.shortQty()});
+              }
+              String state = PickPlan.afterReport(t.state(), after);
+              int version = t.version();
+              if (!state.equals(t.state())) {
+                store.setTaskState(taskId, state, at);
+                version++;
+                for (String trfId : trfs.keySet()) {
+                  if (store.openTasks("trf_id", trfId) == 0) {
+                    store.setTransferState(trfId, "PICKED", null, at);
+                  }
+                }
+                if (store.openTasks("wave_id", t.waveId()) == 0) {
+                  WaveRow w = store.wave(t.waveId(), true).orElseThrow();
+                  if (store.setWaveState(w.waveId(), "WORK_DONE", w.version(), null)) {
+                    waves.publishState(
+                        w, "WORK_DONE", trfIds(w.waveId()), workerId, w.version() + 1, at);
+                  }
+                }
+              }
+              return new CommandResult("APPLIED", requestId, taskId, version, at);
+            });
+    shortages.processOpen(); // 트랜잭션 밖(재고 호출) — 불명이면 주기 작업이 다시
+    return out;
   }
 
   private TaskView view(String taskId) {
