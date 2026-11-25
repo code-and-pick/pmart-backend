@@ -1,4 +1,4 @@
-{"centerId":"CDC01","source":"pmart-cdc-simulation docs/layout/chilgok-locations.json @ e65040a (R-22) — 화면 좌표 geometry 는 뺐다","copiedAt":"2026-11-26","note":"cdc-location LocationInput 을 줄인 표. R-22(사용자 2026-11-26, 기사 사진): 구역 글자 5F 상온 A·B·C·D, 7F 생활용품 E·F, 냉장 G(6F), 냉동 H(5F) — 옛 A→H·B→G·C→A·D→B·E→C·F→D·G→E·H→F. 팔레트 랙 1단 박스 피킹면 PICK_FACE(5F A·B, 7F E — 7F F 랙은 오토스토어 보충 보관만 RESERVE), 6F 야채 바닥 레인 G-6-93(PICK_FACE), 7F F 오토스토어 통로 61~62(단 1~16·칸 1~2). 도크 90 은 층마다 북쪽 벽(냉동 H-5 2·냉장 G-6 3·상온 E-7 4 — 지하 B1 없앰), 승강기 문 92 층마다 2. 피킹면 최소·목표량은 설정값 — 비움","counts":{"PICK_FACE":22202,"RESERVE":16608,"STAGING":96,"DOCK":9,"TOTAL":38915},"columns":["locationCode","temperatureZone","locationType","capacityUnit","maxQty","maxWeightG"],"rows":[
+{"centerId":"CDC01","source":"pmart-cdc-simulation docs/layout/chilgok-locations.json @ cbae2e9 (R-22 — 5F 출고대기 91 상온 A·냉동 H 각 14칸) — 화면 좌표 geometry 는 뺐다","copiedAt":"2026-11-26","note":"cdc-location LocationInput 을 줄인 표. R-22(사용자 2026-11-26, 기사 사진): 구역 글자 5F 상온 A·B·C·D, 7F 생활용품 E·F, 냉장 G(6F), 냉동 H(5F) — 옛 A→H·B→G·C→A·D→B·E→C·F→D·G→E·H→F. 팔레트 랙 1단 박스 피킹면 PICK_FACE(5F A·B, 7F E — 7F F 랙은 오토스토어 보충 보관만 RESERVE), 6F 야채 바닥 레인 G-6-93(PICK_FACE), 7F F 오토스토어 통로 61~62(단 1~16·칸 1~2). 도크 90 은 층마다 북쪽 벽(냉동 H-5 2·냉장 G-6 3·상온 E-7 4 — 지하 B1 없앰), 승강기 문 92 층마다 2, 5층 출고대기 91 은 상온 A·냉동 H 각 14칸(PPC-01~14 — 앞뒤 두 줄 7칸씩, 2026-11-26). 피킹면 최소·목표량은 설정값 — 비움","counts":{"PICK_FACE":22202,"RESERVE":16608,"STAGING":94,"DOCK":9,"TOTAL":38913},"columns":["locationCode","temperatureZone","locationType","capacityUnit","maxQty","maxWeightG"],"rows":[
 ["CDC01-A-5-01-01-1-1","AMBIENT","PICK_FACE","EACH",240,1000000],
 ["CDC01-A-5-01-01-1-2","AMBIENT","PICK_FACE","EACH",240,1000000],
 ["CDC01-A-5-01-01-2-1","AMBIENT","RESERVE","EACH",240,1000000],
@@ -12655,7 +12655,6 @@
 ["CDC01-A-5-91-12-0-1","AMBIENT","STAGING","BOX",null,null],
 ["CDC01-A-5-91-13-0-1","AMBIENT","STAGING","BOX",null,null],
 ["CDC01-A-5-91-14-0-1","AMBIENT","STAGING","BOX",null,null],
-["CDC01-A-5-91-15-0-1","AMBIENT","STAGING","BOX",null,null],
 ["CDC01-H-5-91-01-0-1","FROZEN","STAGING","BOX",null,null],
 ["CDC01-H-5-91-02-0-1","FROZEN","STAGING","BOX",null,null],
 ["CDC01-H-5-91-03-0-1","FROZEN","STAGING","BOX",null,null],
@@ -12670,7 +12669,6 @@
 ["CDC01-H-5-91-12-0-1","FROZEN","STAGING","BOX",null,null],
 ["CDC01-H-5-91-13-0-1","FROZEN","STAGING","BOX",null,null],
 ["CDC01-H-5-91-14-0-1","FROZEN","STAGING","BOX",null,null],
-["CDC01-H-5-91-15-0-1","FROZEN","STAGING","BOX",null,null],
 ["CDC01-A-5-92-01-0-1","AMBIENT","STAGING","BOX",null,null],
 ["CDC01-A-5-92-02-0-1","AMBIENT","STAGING","BOX",null,null],
 ["CDC01-G-6-01-01-1-1","CHILLED","RESERVE","EACH",150,1000000],

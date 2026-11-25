@@ -190,3 +190,4 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 통로 방식 시드: DPS H 선반 · BOX_PICK A·B·E 랙 1단 · DISTRIBUTION G-6-93 · LINE G·D·E 선반 · FC C 선반·F 오토스토어 — 80통로(DPS 26·BOX_PICK 16·DISTRIBUTION 1·LINE 31·FC 6, 수는 전과 같음). 재고 시드 온도대 구역도 H·G·A~F.
 - chilgok-dc.md CDC-4 를 새 글자 표로 바꾸고, 옛 글자로 적힌 앞 기록은 대응표(A→H·B→G·C→A·D→B·E→C·F→D·G→E·H→F)로 읽게 적음.
 - LAN 은 그대로(사용자가 최종 배치라고 할 때 위치 → 통로 방식 → 시작 재고 순으로). LAN 에 이미 있는 옛 글자 칸은 새 규칙으로 다시 검사되지 않는다 — 전환 때 정리 방법을 같이 정한다.
+- (같은 날 추가, cbae2e9) 5층 출고대기 91 상온 A·냉동 H 각 14칸 — 백엔드 사본 38,913칸(STAGING 94)으로 바꿈, `ChilgokLayoutIT` 통과. 칠곡 지역표 자리 01~05 는 그대로라 영향 없음.
