@@ -21,9 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class CountsController implements CountsApi {
 
   private final CountService counts;
+  private final com.pmart.cdc.inventory.infrastructure.ProductNames names;
 
-  public CountsController(CountService counts) {
+  public CountsController(
+      CountService counts, com.pmart.cdc.inventory.infrastructure.ProductNames names) {
     this.counts = counts;
+    this.names = names;
   }
 
   @Override
@@ -33,15 +36,21 @@ public class CountsController implements CountsApi {
         counts
             .start(idempotencyKey, xSourceSystem, cdcId, body.getLocationCodes(), body.getReason())
             .value();
-    return ResponseEntity.status(HttpStatus.CREATED).body(dto(v));
+    return ResponseEntity.status(HttpStatus.CREATED).body(one(dto(v)));
   }
 
   @Override
   public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.ListCountSessions200Response>
-      listCountSessions(String cdcId, @Nullable String state, Integer page, Integer size) {
-    var p = counts.list(cdcId, state, page == null ? 0 : page, size == null ? 50 : size);
+      listCountSessions(
+          String cdcId,
+          @Nullable String state,
+          @Nullable String number,
+          Integer page,
+          Integer size) {
+    var p = counts.list(cdcId, state, number, page == null ? 0 : page, size == null ? 50 : size);
     var out = new com.pmart.cdc.inventory.api.generated.model.ListCountSessions200Response();
-    out.setItems(new java.util.ArrayList<>(p.items().stream().map(CountsController::dto).toList()));
+    out.setItems(
+        new java.util.ArrayList<>(named(p.items().stream().map(CountsController::dto).toList())));
     out.setPage(p.page());
     out.setSize(p.size());
     out.setHasNext(p.hasNext());
@@ -50,7 +59,7 @@ public class CountsController implements CountsApi {
 
   @Override
   public ResponseEntity<CountSession> getCountSession(String cdcId, String sessionId) {
-    return ResponseEntity.ok(dto(counts.get(cdcId, sessionId)));
+    return ResponseEntity.ok(one(dto(counts.get(cdcId, sessionId))));
   }
 
   @Override
@@ -61,7 +70,11 @@ public class CountsController implements CountsApi {
       String xSourceSystem,
       CountLines body) {
     return ResponseEntity.ok(
-        dto(counts.first(idempotencyKey, xSourceSystem, cdcId, sessionId, lines(body)).value()));
+        one(
+            dto(
+                counts
+                    .first(idempotencyKey, xSourceSystem, cdcId, sessionId, lines(body))
+                    .value())));
   }
 
   @Override
@@ -72,7 +85,11 @@ public class CountsController implements CountsApi {
       String xSourceSystem,
       CountLines body) {
     return ResponseEntity.ok(
-        dto(counts.recount(idempotencyKey, xSourceSystem, cdcId, sessionId, lines(body)).value()));
+        one(
+            dto(
+                counts
+                    .recount(idempotencyKey, xSourceSystem, cdcId, sessionId, lines(body))
+                    .value())));
   }
 
   @Override
@@ -93,7 +110,35 @@ public class CountsController implements CountsApi {
                 body.getReason(),
                 body.getApprovalRef())
             .value();
-    return ResponseEntity.ok(dto(v));
+    return ResponseEntity.ok(one(dto(v)));
+  }
+
+  /** 0.17.0 CI-1: 계수표·줄에 상품 이름(product internalName — 모르면 null). */
+  private List<CountSession> named(List<CountSession> items) {
+    java.util.Set<String> skus = new java.util.TreeSet<>();
+    for (CountSession c : items) {
+      if (c.getSheet() != null) {
+        c.getSheet().forEach(x -> skus.add(x.getSku()));
+      }
+      if (c.getLines() != null) {
+        c.getLines().forEach(x -> skus.add(x.getSku()));
+      }
+    }
+    var n = names.of(skus);
+    for (CountSession c : items) {
+      if (c.getSheet() != null) {
+        c.getSheet().forEach(x -> x.setProductName(n.get(x.getSku())));
+      }
+      if (c.getLines() != null) {
+        c.getLines().forEach(x -> x.setProductName(n.get(x.getSku())));
+      }
+    }
+    return items;
+  }
+
+  private CountSession one(CountSession c) {
+    named(List.of(c));
+    return c;
   }
 
   private static List<CountLine> lines(CountLines body) {
@@ -106,6 +151,7 @@ public class CountsController implements CountsApi {
     var s = v.session();
     var out = new CountSession();
     out.setSessionId(s.sessionId());
+    out.setSessionNumber(s.sessionNumber());
     out.setCdcId(s.cdcId());
     out.setState(CountSession.StateEnum.fromValue(s.state()));
     out.setLocationCodes(v.locations());

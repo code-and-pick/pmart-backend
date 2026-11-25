@@ -156,6 +156,7 @@ public class CountService {
           SessionRow s =
               new SessionRow(
                   Ledger.newId("CNT"),
+                  null,
                   cdcId,
                   "COUNTING",
                   reason,
@@ -180,12 +181,18 @@ public class CountService {
   public record ViewPage(List<View> items, int page, int size, boolean hasNext) {}
 
   /** 실사 목록(0.12.0 CS-1) — 줄은 get 과 같은 내용. */
-  public ViewPage list(String cdcId, @Nullable String state, int page, int size) {
+  public ViewPage list(
+      String cdcId, @Nullable String state, @Nullable String number, int page, int size) {
     Operator.requireCenter(cdcId);
     int p = Math.max(0, page);
     int s = Math.min(200, Math.max(1, size));
     String st = state == null || state.isBlank() ? null : state.strip();
-    var ids = counts.sessionIds(cdcId, st, p, s);
+    // 화면 번호는 글자 있든 없든(C123456·123456)
+    String n = number == null || number.isBlank() ? null : number.strip().toUpperCase();
+    if (n != null && !n.startsWith("C")) {
+      n = "C" + n;
+    }
+    var ids = counts.sessionIds(cdcId, st, n, p, s);
     boolean next = ids.size() > s;
     return new ViewPage(
         (next ? ids.subList(0, s) : ids).stream().map(this::view).toList(), p, s, next);

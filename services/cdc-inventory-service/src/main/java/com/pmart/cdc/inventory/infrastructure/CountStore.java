@@ -22,6 +22,7 @@ public class CountStore {
 
   public record SessionRow(
       String sessionId,
+      @Nullable String sessionNumber, // 0.17.0 화면 번호 C+6(DB 열 기본값이 정함 — 넣을 때는 null)
       String cdcId,
       String state,
       @Nullable String reason,
@@ -39,7 +40,7 @@ public class CountStore {
   public record Key(String locationCode, String sku, String lot) {}
 
   private static final String COLS =
-      "session_id, cdc_id, state, reason, started_by, first_counter_id, recounter_id, decided_by,"
+      "session_id, session_number, cdc_id, state, reason, started_by, first_counter_id, recounter_id, decided_by,"
           + " decision_reason, approval_ref, commit_id, created_at, decided_at";
 
   private final JdbcTemplate jdbc;
@@ -136,12 +137,17 @@ public class CountStore {
   }
 
   /** 실사 ID(0.12.0 CS-1) — 만든 시각 최신 순, size + 1 개. */
-  public List<String> sessionIds(String cdcId, @Nullable String state, int page, int size) {
+  public List<String> sessionIds(
+      String cdcId, @Nullable String state, @Nullable String number, int page, int size) {
     StringBuilder sql = new StringBuilder("SELECT session_id FROM count_session WHERE cdc_id = ?");
     java.util.ArrayList<Object> args = new java.util.ArrayList<>(List.of(cdcId));
     if (state != null) {
       sql.append(" AND state = ?");
       args.add(state);
+    }
+    if (number != null) {
+      sql.append(" AND session_number = ?"); // 0.17.0 화면 번호로 찾기
+      args.add(number);
     }
     sql.append(" ORDER BY created_at DESC, session_id LIMIT ? OFFSET ?");
     args.add(size + 1);
@@ -198,6 +204,7 @@ public class CountStore {
     Timestamp d = rs.getTimestamp("decided_at");
     return new SessionRow(
         rs.getString("session_id"),
+        rs.getString("session_number"),
         rs.getString("cdc_id"),
         rs.getString("state"),
         rs.getString("reason"),

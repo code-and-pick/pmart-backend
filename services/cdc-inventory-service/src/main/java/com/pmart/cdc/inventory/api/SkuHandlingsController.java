@@ -25,9 +25,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SkuHandlingsController implements SkuHandlingsApi {
 
   private final SkuHandlingService service;
+  private final com.pmart.cdc.inventory.infrastructure.ProductNames names;
 
-  public SkuHandlingsController(SkuHandlingService service) {
+  public SkuHandlingsController(
+      SkuHandlingService service, com.pmart.cdc.inventory.infrastructure.ProductNames names) {
     this.service = service;
+    this.names = names;
   }
 
   @Override
@@ -36,7 +39,10 @@ public class SkuHandlingsController implements SkuHandlingsApi {
     var page = service.list(cdcId, enabled, cursor, size == null ? 50 : size);
     var out = new SkuHandlingPage();
     out.setCenterId(cdcId);
-    out.setItems(page.items().stream().map(SkuHandlingsController::dto).toList());
+    var items = page.items().stream().map(SkuHandlingsController::dto).toList();
+    var n = names.of(items.stream().map(SkuHandling::getSku).toList()); // 0.17.0 CI-1
+    items.forEach(x -> x.setProductName(n.get(x.getSku())));
+    out.setItems(items);
     var p = new ListTransits200ResponsePage();
     p.setNextCursor(page.nextCursor());
     p.setSize(page.items().size());
@@ -67,7 +73,9 @@ public class SkuHandlingsController implements SkuHandlingsApi {
     out.setRequestId(r.requestId());
     out.setChanged(r.changed());
     out.setOccurredAt(time(r.occurredAt()));
-    out.setHandling(dto(r.handling()));
+    var h = dto(r.handling());
+    h.setProductName(names.of(java.util.List.of(h.getSku())).get(h.getSku()));
+    out.setHandling(h);
     return ResponseEntity.ok(out);
   }
 

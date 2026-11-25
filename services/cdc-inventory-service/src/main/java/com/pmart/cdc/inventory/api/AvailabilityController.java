@@ -16,6 +16,7 @@ import com.pmart.cdc.inventory.application.InventoryQueries.AvailabilityView;
 import com.pmart.cdc.inventory.application.RecountHoldService;
 import com.pmart.cdc.inventory.infrastructure.RecountHoldStore.HoldRow;
 import com.pmart.common.web.PmartException;
+import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -26,17 +27,25 @@ public class AvailabilityController implements AvailabilityApi {
 
   private final InventoryQueries queries;
   private final RecountHoldService holds;
+  private final com.pmart.cdc.inventory.infrastructure.ProductNames names;
 
-  public AvailabilityController(InventoryQueries queries, RecountHoldService holds) {
+  public AvailabilityController(
+      InventoryQueries queries,
+      RecountHoldService holds,
+      com.pmart.cdc.inventory.infrastructure.ProductNames names) {
     this.queries = queries;
     this.holds = holds;
+    this.names = names;
   }
 
   @Override
   public ResponseEntity<ListRecountHolds200Response> listRecountHolds(
       String cdcId, @Nullable String state) {
     var out = new ListRecountHolds200Response();
-    out.setItems(holds.list(cdcId, state).stream().map(AvailabilityController::hold).toList());
+    var items = holds.list(cdcId, state).stream().map(AvailabilityController::hold).toList();
+    var n = names.of(items.stream().map(RecountHold::getSku).toList());
+    items.forEach(x -> x.setProductName(n.get(x.getSku())));
+    out.setItems(items);
     return ResponseEntity.ok(out);
   }
 
@@ -47,9 +56,10 @@ public class AvailabilityController implements AvailabilityApi {
       String idempotencyKey,
       String xSourceSystem,
       ReleaseRecountHoldRequest body) {
-    return ResponseEntity.ok(
-        hold(
-            holds.release(idempotencyKey, xSourceSystem, cdcId, holdId, body.getReason()).value()));
+    var x =
+        hold(holds.release(idempotencyKey, xSourceSystem, cdcId, holdId, body.getReason()).value());
+    x.setProductName(names.of(List.of(x.getSku())).get(x.getSku()));
+    return ResponseEntity.ok(x);
   }
 
   private static RecountHold hold(HoldRow h) {
@@ -100,7 +110,10 @@ public class AvailabilityController implements AvailabilityApi {
     out.setCdcId(snap.cdcId());
     out.setAsOf(Dto.asOf(snap.asOf()));
     boolean places = Boolean.TRUE.equals(withPlaces);
-    out.setItems(snap.items().stream().map(v -> dto(v, places)).toList());
+    var items = snap.items().stream().map(v -> dto(v, places)).toList();
+    var n = names.of(items.stream().map(Availability::getSku).toList()); // 0.17.0 CI-1
+    items.forEach(x -> x.setProductName(n.get(x.getSku())));
+    out.setItems(items);
     return ResponseEntity.ok(out);
   }
 
@@ -156,7 +169,17 @@ public class AvailabilityController implements AvailabilityApi {
     out.setCdcId(cdcId);
     out.setAsOf(Dto.asOf(snap.asOf()));
     out.setTruncated(cut);
-    out.setItems(new java.util.ArrayList<>(cut ? rows.subList(0, max) : rows));
+    var page = new java.util.ArrayList<>(cut ? rows.subList(0, max) : rows);
+    var n =
+        names.of(
+            page.stream()
+                .map(
+                    com.pmart.cdc.inventory.api.generated.model
+                            .ListCenterLocationStocks200ResponseItemsInner
+                        ::getSku)
+                .toList()); // 0.17.0 CI-1
+    page.forEach(x -> x.setProductName(n.get(x.getSku())));
+    out.setItems(page);
     return ResponseEntity.ok(out);
   }
 

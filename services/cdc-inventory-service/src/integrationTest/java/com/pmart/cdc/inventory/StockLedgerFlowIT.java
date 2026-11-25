@@ -63,7 +63,8 @@ import tools.jackson.databind.ObjectMapper;
       baseUrlProperties = "pmart.inventory.approval-ref.pricing-base-url"),
   @ConfigureWireMock(
       name = "approval",
-      baseUrlProperties = "pmart.inventory.approval-ref.approval-base-url")
+      baseUrlProperties = "pmart.inventory.approval-ref.approval-base-url"),
+  @ConfigureWireMock(name = "product", baseUrlProperties = "pmart.inventory.product-base-url")
 })
 class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
@@ -84,6 +85,9 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
   @InjectWireMock("approval")
   WireMockServer approval;
+
+  @InjectWireMock("product")
+  WireMockServer product;
 
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
@@ -753,6 +757,21 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     JsonNode list = get(OPERATOR, base + "?state=COUNTING&size=200").body();
     assertThat(list.path("items").findValuesAsString("sessionId")).contains(sid);
     assertThat(list.path("items").findValuesAsString("state")).containsOnly("COUNTING");
+    // 0.17.0 CI-1: 화면 번호 C+6, 글자 있든 없든 찾기
+    String num = st.body().path("sessionNumber").asString();
+    assertThat(num).matches("C[0-9]{6}");
+    assertThat(
+            get(OPERATOR, base + "?number=" + num)
+                .body()
+                .path("items")
+                .findValuesAsString("sessionId"))
+        .containsExactly(sid);
+    assertThat(
+            get(OPERATOR, base + "?number=" + num.substring(1))
+                .body()
+                .path("items")
+                .findValuesAsString("sessionId"))
+        .containsExactly(sid);
     assertThat(st.body().path("state").asString()).isEqualTo("COUNTING");
     assertThat(st.body().path("sheet").get(0).path("lot").asString()).isEqualTo("C1");
     assertThat(st.body().toString()).doesNotContain("bookQty");
@@ -1692,7 +1711,21 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(404);
 
     // 2-2) DC 백오피스 재고 현황(0.6.0, 2026-11-25) — 같은 내용, 자기 센터 운영자만, 기본은 위치 없이
+    // 0.17.0 CI-1: 상품 이름 = product 승인 스냅샷 internalName(SKU → productId·version → 스냅샷)
+    product.stubFor(
+        WireMock.get(WireMock.urlPathEqualTo("/api/v1/internal/skus"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"sku\":\""
+                        + sku
+                        + "\",\"productId\":\"P-"
+                        + sku
+                        + "\",\"version\":3}]}")));
+    product.stubFor(
+        WireMock.get(WireMock.urlPathEqualTo("/api/v1/internal/products/P-" + sku + "/versions/3"))
+            .willReturn(WireMock.okJson("{\"internalName\":\"시험 생수 2L\"}")));
     JsonNode staff = get(OPERATOR, "/cdcs/" + CENTER + "/stock-snapshot?sku=" + sku).body();
+    assertThat(staff.path("items").get(0).path("productName").asString()).isEqualTo("시험 생수 2L");
     assertThat(staff.path("items").get(0).path("onHand").asInt())
         .isEqualTo(item.path("onHand").asInt());
     assertThat(
