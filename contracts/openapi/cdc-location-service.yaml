@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.4.2
+  version: 0.5.0
   description: |
     CDC 시설 수용조건·7구간 LOC 마스터(센터-온도-구역-랙-베이-단-포지션)·상태·적치 후보·공간 용량 예약·도크 자원의 정본. (docs/architecture/service-map.md §4)
     수량은 cdc-inventory, 작업은 cdc-inbound/outbound가 정본. 공간 예약 불변식: 점유 + 미완료 예약 + 신규 ≤ 허용량.
@@ -9,6 +9,8 @@ info:
     점유(occupiedQty)는 cdc-inventory 사본을 아직 받지 않아 비운다(asOf.freshness UNAVAILABLE). 적치 후보·공간 예약·도크 예약은 아직 501.
     0.3.0(2026-11-25): 공개 경로를 `/cdcs/{cdcId}/locations…` 로 옮김 — 게이트웨이 `/api/v1/locations/**` 가 mfc-location 라우트라 겹침(PC1 R-16).
     목록의 centerId 조회 조건은 경로 cdcId 로, 등록 본문의 centerId 는 경로와 같아야 한다(400 CENTER_MISMATCH). 내부 경로는 그대로.
+    0.5.0(2026-11-25): 피킹 선반 통로별 피킹 방식 설정값 `pickMethod`(DPS·BOX_PICK·FC·DISTRIBUTION·LINE) — `GET·POST /cdcs/{cdcId}/aisle-pick-methods`,
+    위치 일괄 조회 응답 items[].pickMethod(설정 없으면 비움). 묶음 피킹 설계(docs/cdc/design/2026-11-25-batch-picking.md §7 결정 3 — 사용자 "선반 통로 설정값", 상품 분류 글자로 가르지 않음 WMS CDC-F-017).
     0.4.2(2026-11-25): 칠곡 팔레트 랙 베이 01~48(R-17 랙 묶음 — 통로 한쪽 12 × 2). 경로·모양 변화 없음.
     0.4.1(2026-11-25): 위치 일괄 조회도 POST 라 공통 헤더 검사(common-web)가 Idempotency-Key 를 요구한다 — 계약에 적음(LAN 에서 키 없는 호출이 400, #462 배포 확인).
     0.4.0(2026-11-25): 내부 위치 일괄 조회 `POST /internal/location-lookups` — cdc-inventory 가 할당 때 "같은 LOT 이면 피킹 선반 먼저"를 정하려고 위치 유형을 읽는다.
@@ -81,6 +83,84 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
+  /cdcs/{cdcId}/aisle-pick-methods:
+    get:
+      tags: [locations]
+      summary: 피킹 선반 통로별 피킹 방식 설정 목록 (0.5.0)
+      operationId: listAislePickMethods
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: area, in: query, schema: { type: string } }
+        - { name: floor, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: 설정된 통로만(구역·층·통로 순). 없는 통로 = 미설정.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/AislePickMethod' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [locations]
+      summary: 피킹 선반 통로별 피킹 방식 설정·해제 (0.5.0, 일괄)
+      description: |
+        통로 = (구역·층·통로) — 위치 코드 둘째·셋째·넷째 구간. 그 통로에 PICK_FACE 위치가 하나도 없으면 400(NOT_PICK_FACE_AISLE) — 선반을 먼저 등록한다.
+        pickMethod 를 비우면(null) 설정을 지운다(미설정). 전부 반영하거나 하나도 반영하지 않는다. 최대 500행, 같은 통로 두 번 400.
+        방식(chilgok-dc.md §2, 묶음 피킹 설계 §3.1): DPS = 냉동 DPS(TRF 하나씩), BOX_PICK = 무거운 상자 박스 피킹, FC = 상온·생활 FC,
+        DISTRIBUTION = 6층 야채 분배, LINE = 6층 라인(DAS). 상품 분류 글자로 정하지 않는다(WMS CDC-F-017).
+        바뀐 값은 다음 Wave 릴리스부터 쓰인다(이미 만든 작업은 그대로). 자기 센터 운영자만. 사건 없음.
+      operationId: setAislePickMethods
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                reason: { type: string, maxLength: 500 }
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [area, floor, aisle]
+                    properties:
+                      area: { type: string, maxLength: 4 }
+                      floor: { type: string, maxLength: 4 }
+                      aisle: { type: string, pattern: '^[0-9]{2}$' }
+                      pickMethod:
+                        description: 생략하거나 null 이면 그 통로 설정 해제
+                        $ref: '#/components/schemas/PickMethod'
+      responses:
+        '200':
+          description: 반영(같은 키·같은 본문이면 저장 결과 재생)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requestId: { type: string }
+                  setCount: { type: integer }
+                  clearedCount: { type: integer }
+                  occurredAt: { type: string, format: date-time }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
   /internal/location-lookups:
     post:
       tags: [internal]
@@ -88,6 +168,7 @@ paths:
       description: |
         코드가 많아 POST 로 받는 조회다(아무것도 바꾸지 않음). POST 라 공통 헤더 검사가 Idempotency-Key 를 요구한다 — 값은 아무 고유값이면 되고 결과를 저장·재생하지 않는다. 최대 2,000개. 없는 코드는 missing 에.
         cdc-inventory 할당은 같은 LOT·같은 기한 안에서 PICK_FACE 를 먼저 잡는 데 쓴다(WMS CDC-F-009 "동선 효율은 FEFO 뒤에만").
+        (0.5.0) cdc-outbound 는 Wave 릴리스 때 pickMethod 로 묶음 방식을 정한다.
       operationId: lookupLocations
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -119,6 +200,9 @@ paths:
                         locationType: { $ref: '#/components/schemas/LocationType' }
                         state: { $ref: '#/components/schemas/LocationState' }
                         temperatureZone: { $ref: '#/components/schemas/TemperatureZone' }
+                        pickMethod:
+                          description: '(0.5.0) 이 위치 통로(센터·구역·층·통로)의 피킹 방식 설정값. 설정이 없거나 피킹 선반이 아니면 비움 — 기본값으로 채우지 않는다.'
+                          $ref: '#/components/schemas/PickMethod'
                   missing: { type: array, items: { type: string } }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
@@ -445,6 +529,21 @@ components:
         PICK_FACE 피킹면(칠곡은 피킹 선반)·RESERVE 리저브(칠곡은 팔레트 랙)·QUARANTINE 격리·STAGING 출고대기(구역 글자가 온도대)·DOCK 접안·TEMPORARY 임시 보관.
         TEMPORARY 는 0.2.0(사용자 제공 CDC 구축 명세서 4장 위치 유형 — 칠곡 결정과 겹치지 않는 부분만 채택, 2026-11-25).
       enum: [RESERVE, PICK_FACE, STAGING, DOCK, QUARANTINE, TEMPORARY]
+    PickMethod:
+      type: string
+      description: |
+        (0.5.0) 피킹 선반 통로의 피킹 방식(chilgok-dc.md §2). DPS 냉동 DPS(TRF 하나씩, 피킹 = 분류)·BOX_PICK 박스 피킹(지역 묶음)·FC(지역 묶음)·
+        DISTRIBUTION 6층 야채 분배(지역 묶음 → 분배대에서 MFC 크레이트로)·LINE 6층 라인 DAS(SKU 묶음 → 라인 칸으로). 묶음 단위는 cdc-outbound 가 정한다.
+      enum: [DPS, BOX_PICK, FC, DISTRIBUTION, LINE]
+    AislePickMethod:
+      type: object
+      properties:
+        area: { type: string }
+        floor: { type: string }
+        aisle: { type: string }
+        pickMethod: { $ref: '#/components/schemas/PickMethod' }
+        updatedBy: { type: string }
+        updatedAt: { type: string, format: date-time }
     LocationInput:
       type: object
       required: [locationCode, centerId, temperatureZone, locationType, capacity]

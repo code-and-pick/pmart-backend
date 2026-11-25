@@ -8,9 +8,11 @@ import com.pmart.cdc.location.api.generated.model.LocationType;
 import com.pmart.cdc.location.api.generated.model.LookupLocations200Response;
 import com.pmart.cdc.location.api.generated.model.LookupLocations200ResponseItemsInner;
 import com.pmart.cdc.location.api.generated.model.LookupLocationsRequest;
+import com.pmart.cdc.location.api.generated.model.PickMethod;
 import com.pmart.cdc.location.api.generated.model.TemperatureZone;
 import com.pmart.cdc.location.application.LocationService;
 import com.pmart.cdc.location.application.LocationService.Batch;
+import com.pmart.cdc.location.application.PickMethodService;
 import com.pmart.cdc.location.infrastructure.LocationStore.LocationRow;
 import java.util.HashSet;
 import java.util.List;
@@ -19,14 +21,19 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 InternalApi — 위치 일괄 등록(0.2.0)·일괄 조회(0.4.0). 적치 후보·공간 예약·도크 예약은 아직 인터페이스 default(501). */
+/**
+ * 계약 InternalApi — 위치 일괄 등록(0.2.0)·일괄 조회(0.4.0, 0.5.0 부터 통로 피킹 방식 포함). 적치 후보·공간 예약·도크 예약은 아직 인터페이스
+ * default(501).
+ */
 @RestController
 public class InternalController implements InternalApi {
 
   private final LocationService service;
+  private final PickMethodService pickMethods;
 
-  public InternalController(LocationService service) {
+  public InternalController(LocationService service, PickMethodService pickMethods) {
     this.service = service;
+    this.pickMethods = pickMethods;
   }
 
   @Override
@@ -59,6 +66,7 @@ public class InternalController implements InternalApi {
   public ResponseEntity<LookupLocations200Response> lookupLocations(
       String idempotencyKey, String xSourceSystem, LookupLocationsRequest body) {
     List<LocationRow> rows = service.lookup(body.getCenterId(), body.getLocationCodes());
+    var methods = pickMethods.ofLocations(body.getCenterId(), body.getLocationCodes());
     Set<String> found = new HashSet<>();
     var out = new LookupLocations200Response();
     out.setItems(
@@ -71,6 +79,8 @@ public class InternalController implements InternalApi {
                   x.setLocationType(LocationType.fromValue(r.locationType()));
                   x.setState(LocationState.fromValue(r.state()));
                   x.setTemperatureZone(TemperatureZone.fromValue(r.temperatureZone()));
+                  String m = methods.get(r.locationCode());
+                  x.setPickMethod(m == null ? null : PickMethod.fromValue(m));
                   return x;
                 })
             .toList());

@@ -57,6 +57,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     jdbc.update("DELETE FROM location_state_history");
+    jdbc.update("DELETE FROM aisle_pick_method");
     jdbc.update("DELETE FROM location");
   }
 
@@ -142,6 +143,112 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
             Integer.class,
             code);
     return n == null ? 0 : n;
+  }
+
+  /**
+   * 통로별 피킹 방식(0.5.0, 묶음 피킹 설계 §7 결정 3): 6층 B 선반 61 = 분배·62 = 라인, 팔레트 랙 통로는 거절, 일괄 조회에 실리고 해제하면
+   * 비워진다(기본값으로 채우지 않음).
+   */
+  @Test
+  void aislePickMethodsReachLookup() {
+    List<Map<String, Object>> items = new ArrayList<>();
+    for (String c : List.of("CDC01-B-6-61-01-1-1", "CDC01-B-6-62-01-1-1")) {
+      Map<String, Object> m = loc(c, "CHILLED", "PICK_FACE");
+      m.put("capacity", Map.of("unit", "EACH"));
+      items.add(m);
+    }
+    items.add(loc("CDC01-B-6-01-01-1-1", "CHILLED", "RESERVE"));
+    assertThat(
+            post(
+                    SERVICE,
+                    "/internal/location-batches",
+                    key(),
+                    Map.of(
+                        "centerId",
+                        CENTER,
+                        "approvalRef",
+                        "BO-06-2",
+                        "activate",
+                        true,
+                        "items",
+                        items),
+                    null)
+                .status())
+        .isEqualTo(200);
+    String path = "/cdcs/CDC01/aisle-pick-methods";
+    Map<String, Object> set =
+        Map.of(
+            "reason",
+            "6층 야채 통로",
+            "items",
+            List.of(
+                Map.of("area", "B", "floor", "6", "aisle", "61", "pickMethod", "DISTRIBUTION"),
+                Map.of("area", "B", "floor", "6", "aisle", "62", "pickMethod", "LINE")));
+    String k = key();
+    Res ok = post(OPERATOR, path, k, set, null);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("setCount").asInt()).isEqualTo(2);
+    assertThat(post(OPERATOR, path, k, set, null).status()).isEqualTo(200); // 같은 키 재생
+    assertThat(post(OTHER, path, key(), set, null).status()).isEqualTo(403);
+    Res rack =
+        post(
+            OPERATOR,
+            path,
+            key(),
+            Map.of(
+                "items",
+                List.of(Map.of("area", "B", "floor", "6", "aisle", "01", "pickMethod", "FC"))),
+            null);
+    assertThat(rack.status()).isEqualTo(400);
+    assertThat(rack.body().toString()).contains("NOT_PICK_FACE_AISLE");
+    Res dup =
+        post(
+            OPERATOR,
+            path,
+            key(),
+            Map.of(
+                "items",
+                List.of(
+                    Map.of("area", "B", "floor", "6", "aisle", "61", "pickMethod", "FC"),
+                    Map.of("area", "B", "floor", "6", "aisle", "61", "pickMethod", "LINE"))),
+            null);
+    assertThat(dup.body().toString()).contains("DUPLICATE_AISLE");
+
+    Map<String, Object> lookup =
+        Map.of(
+            "centerId",
+            CENTER,
+            "locationCodes",
+            List.of("CDC01-B-6-61-01-1-1", "CDC01-B-6-62-01-1-1", "CDC01-B-6-01-01-1-1"));
+    JsonNode lk = post(SERVICE, "/internal/location-lookups", key(), lookup, null).body();
+    Map<String, String> methods = new LinkedHashMap<>();
+    for (JsonNode i : lk.path("items")) {
+      methods.put(
+          i.path("locationCode").asString(),
+          i.path("pickMethod").isMissingNode() || i.path("pickMethod").isNull()
+              ? null
+              : i.path("pickMethod").asString());
+    }
+    assertThat(methods)
+        .containsEntry("CDC01-B-6-61-01-1-1", "DISTRIBUTION")
+        .containsEntry("CDC01-B-6-62-01-1-1", "LINE")
+        .containsEntry("CDC01-B-6-01-01-1-1", null);
+
+    // 해제 → 조회에서 비워짐, 목록엔 61 만
+    Map<String, Object> clear = new LinkedHashMap<>();
+    clear.put("area", "B");
+    clear.put("floor", "6");
+    clear.put("aisle", "62");
+    clear.put("pickMethod", null);
+    Res cl = post(OPERATOR, path, key(), Map.of("items", List.of(clear)), null);
+    assertThat(cl.status()).as(cl.body().toString()).isEqualTo(200);
+    assertThat(cl.body().path("clearedCount").asInt()).isEqualTo(1);
+    JsonNode after = post(SERVICE, "/internal/location-lookups", key(), lookup, null).body();
+    assertThat(after.toString()).doesNotContain("LINE").contains("DISTRIBUTION");
+    JsonNode list = get(OPERATOR, path + "?floor=6").body();
+    assertThat(list.path("items").size()).isEqualTo(1);
+    assertThat(list.path("items").get(0).path("pickMethod").asString()).isEqualTo("DISTRIBUTION");
+    assertThat(list.path("items").get(0).path("updatedBy").asString()).isEqualTo("op-1");
   }
 
   @Test

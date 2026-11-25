@@ -1,9 +1,11 @@
 package com.pmart.cdc.location.api;
 
 import com.pmart.cdc.location.api.generated.LocationsApi;
+import com.pmart.cdc.location.api.generated.model.AislePickMethod;
 import com.pmart.cdc.location.api.generated.model.ChangeLocationStateRequest;
 import com.pmart.cdc.location.api.generated.model.ComputePutawayCandidates200ResponseAsOf;
 import com.pmart.cdc.location.api.generated.model.CreateLocationBatch200Response;
+import com.pmart.cdc.location.api.generated.model.ListAislePickMethods200Response;
 import com.pmart.cdc.location.api.generated.model.ListLocations200Response;
 import com.pmart.cdc.location.api.generated.model.ListLocations200ResponsePage;
 import com.pmart.cdc.location.api.generated.model.Location;
@@ -12,10 +14,16 @@ import com.pmart.cdc.location.api.generated.model.LocationInput;
 import com.pmart.cdc.location.api.generated.model.LocationInputCapacity;
 import com.pmart.cdc.location.api.generated.model.LocationState;
 import com.pmart.cdc.location.api.generated.model.LocationType;
+import com.pmart.cdc.location.api.generated.model.PickMethod;
+import com.pmart.cdc.location.api.generated.model.SetAislePickMethods200Response;
+import com.pmart.cdc.location.api.generated.model.SetAislePickMethodsRequest;
 import com.pmart.cdc.location.api.generated.model.TemperatureZone;
 import com.pmart.cdc.location.application.LocationService;
 import com.pmart.cdc.location.application.LocationService.Input;
 import com.pmart.cdc.location.application.LocationService.StateChange;
+import com.pmart.cdc.location.application.PickMethodService;
+import com.pmart.cdc.location.application.PickMethodService.Change;
+import com.pmart.cdc.location.application.PickMethodService.Item;
 import com.pmart.cdc.location.infrastructure.LocationStore.Filter;
 import com.pmart.cdc.location.infrastructure.LocationStore.LocationRow;
 import java.time.Instant;
@@ -32,9 +40,57 @@ import org.springframework.web.bind.annotation.RestController;
 public class LocationsController implements LocationsApi {
 
   private final LocationService service;
+  private final PickMethodService pickMethods;
 
-  public LocationsController(LocationService service) {
+  public LocationsController(LocationService service, PickMethodService pickMethods) {
     this.service = service;
+    this.pickMethods = pickMethods;
+  }
+
+  @Override
+  public ResponseEntity<ListAislePickMethods200Response> listAislePickMethods(
+      String cdcId, @Nullable String area, @Nullable String floor) {
+    var out = new ListAislePickMethods200Response();
+    out.setItems(
+        pickMethods.list(cdcId, area, floor).stream()
+            .map(
+                r -> {
+                  var x = new AislePickMethod();
+                  x.setArea(r.area());
+                  x.setFloor(r.floor());
+                  x.setAisle(r.aisle());
+                  x.setPickMethod(PickMethod.fromValue(r.pickMethod()));
+                  x.setUpdatedBy(r.updatedBy());
+                  x.setUpdatedAt(time(r.at()));
+                  return x;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<SetAislePickMethods200Response> setAislePickMethods(
+      String cdcId, String idempotencyKey, String xSourceSystem, SetAislePickMethodsRequest body) {
+    var items =
+        body.getItems().stream()
+            .map(
+                i ->
+                    new Item(
+                        i.getArea(),
+                        i.getFloor(),
+                        i.getAisle(),
+                        i.getPickMethod() == null ? null : i.getPickMethod().getValue()))
+            .toList();
+    var r =
+        pickMethods
+            .set(idempotencyKey, xSourceSystem, cdcId, new Change(body.getReason(), items))
+            .value();
+    var out = new SetAislePickMethods200Response();
+    out.setRequestId(r.requestId());
+    out.setSetCount(r.set());
+    out.setClearedCount(r.cleared());
+    out.setOccurredAt(time(r.at()));
+    return ResponseEntity.ok(out);
   }
 
   @Override

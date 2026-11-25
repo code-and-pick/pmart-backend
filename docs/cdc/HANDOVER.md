@@ -60,3 +60,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 위치 목록 사본을 시뮬레이터 6616cc1(R-17 2안 — 사용자 "팔레트 18,000칸 이상" 뒤 지게차 통로 3.0m·선반은 DT)로 — 31,880칸, 랙 베이 01~48(cdc-location 0.4.2), PR `cdc/chilgok-locations-v3`. **LAN 은 아직 옛 dd3d185 32,436칸 + 시작 재고** — 전환 방법은 사용자 결정 대기(옛 칸 6,760 사라짐, 그 랙 칸에 재고 480줄·84,480개, 새 칸 6,204, 용량 바뀌는 칸 16,320 — 용량 변경 API 없음).
 - 2026-11-25: 사용자 결정 — R-18 분배·라인·DPS 1단계를 시뮬레이터가 계약 그대로 만든다(백엔드 변경 없음, 2단계 묶음 피킹은 나중). LAN 위치 전환은 최종 랙 배치·설계가 정해진 뒤(그 전엔 시드 --apply 금지). PR `cdc/r18-decisions`.
 - 2026-11-25: 묶음 피킹(2단계) 설계 `docs/cdc/design/2026-11-25-batch-picking.md` — 사용자 결정 4개(묶음 범위·부족은 기한 이른 TRF 부터 채움·6층은 선반 통로 pickMethod·미설명 수량이면 출발 검증 막음). 다음: 계약 → 구현. PR `cdc/batch-picking-design`.
+- 2026-11-25: cdc-location 0.5.0 — 피킹 선반 통로별 피킹 방식 설정값(`/cdcs/{cdcId}/aisle-pick-methods`, DPS·BOX_PICK·FC·DISTRIBUTION·LINE, Flyway V3)·일괄 조회 `pickMethod`. PR `cdc/location-pick-method`. 남음: 칠곡 통로별 값(6층 B 어느 통로가 야채 분배인지 — 시뮬레이터 배치·사용자) 넣기, cdc-outbound 묶음 작업.
