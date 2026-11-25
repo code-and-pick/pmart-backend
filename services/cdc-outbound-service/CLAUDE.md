@@ -29,6 +29,6 @@
 - 0.4.0(2026-11-25): 분류·검품·상차·출발 검증·매니페스트(Flyway V3).
   - LPN 단위 BOX·PLT·**RT(롤테이너)** — 수량은 BOX 의 contents 만, RT·PLT 는 그릇(하위 BOX 는 parentLpn). 검품·상차·출발 대조는 BOX 로 펼친다(TMS D-07 적재 = R/T, 검증 = 박스).
   - 분류 ≤ 실피킹(SKU·LOT), 검품은 RT 면 안의 BOX 모두, 상차는 PASSED BOX 만·한 운행에만.
-  - 출발 검증: departureId 당 한 번(같은 본문 재전송 = 불명 TOUT 재시도, 다른 본문 409). BOX 대조(LPN_NOT_LOADED·LPN_NOT_IN_DEPARTURE·WRONG_TRF·WRONG_MFC·SEAL_MISMATCH) → 일치 TRF 만 TOUT(트랜잭션 밖, 키 `outbound-tout-<dep>-<trf>`, 줄 키 `DL-<sha>`), 이어서 잔여 해제(RESIDUAL_CLOSED, 409 는 끝난 것 — 불명이면 `residual_status` PENDING, 같은 출발 재전송이 다시 부름, Flyway V4), 매니페스트(BOX 줄 + LOT 소비기한) → TRF DEPARTED. **SIMULATED 도 TOUT**(재고 기록에 SIMULATED). 불일치 TRF 는 다시 출발 검증할 수 없다(같은 TRF 2회 출발 금지 — 조사 몫).
+  - 출발 검증: departureId 당 한 번(같은 본문 재전송 = 불명 TOUT 재시도, 다른 본문 409). BOX 대조(LPN_NOT_LOADED·LPN_NOT_IN_DEPARTURE·WRONG_TRF·WRONG_MFC·SEAL_MISMATCH) → 일치 TRF 만 TOUT(트랜잭션 밖, 키 `outbound-tout-<dep>-<trf>`, 줄 키 `DL-<sha>`), 이어서 잔여 해제(RESIDUAL_CLOSED, 409 INVALID_STATE 는 끝난 것 — 불명이면 `residual_status` PENDING, 그 밖의 거절은 FAILED·`residual_reason`(0.5.0, Flyway V5, 경고 로그), PENDING·FAILED 는 같은 출발 재전송이 다시 부름, 응답 `transfers[].residualStatus·residualReason`), 매니페스트(BOX 줄 + LOT 소비기한) → TRF DEPARTED. **SIMULATED 도 TOUT**(재고 기록에 SIMULATED). 불일치 TRF 는 다시 출발 검증할 수 없다(같은 TRF 2회 출발 금지 — 조사 몫).
   - 같은 작업자의 다음 작업 받기는 권고 잠금으로 줄 세움(다른 키 동시 두 번에도 한 작업).
 - 아직 501: 출발 준비(outbound-readiness), 미출발 취소. 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.

@@ -28,6 +28,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -41,6 +43,8 @@ import tools.jackson.databind.JsonNode;
  */
 @Service
 public class DepartureService {
+
+  private static final Logger log = LoggerFactory.getLogger(DepartureService.class);
 
   public record Composition(
       String trfId, @Nullable String mfcId, List<String> lpns, List<String> sealNos) {}
@@ -206,6 +210,7 @@ public class DepartureService {
               null,
               null,
               null,
+              null,
               null));
       mismatches.addAll(m);
       publishValidated(cmd, t, ok, m, declared, at);
@@ -307,14 +312,16 @@ public class DepartureService {
 
   /**
    * 출발 뒤 남은 할당 해제(RESIDUAL_CLOSED). 이미 다 나갔거나 풀렸으면 재고가 409 INVALID_STATE — 끝난 것으로 본다. 불명·미전달은
-   * PENDING 으로 남기고 같은 출발 재전송이 같은 키로 다시 부른다.
+   * PENDING, 그 밖의 거절(없는 할당·검증 실패 등)은 FAILED 와 사유(HTTP 상태·코드·설명)를 남긴다. PENDING·FAILED 는 같은 출발 재전송이
+   * 같은 키로 다시 부른다.
    */
   private void releaseResidual(Validate cmd, TransferRow t) {
     if (t.allocationId() == null) {
-      tx.executeWithoutResult(s -> lpns.setResidual(cmd.departureId(), t.trfId(), "DONE"));
+      tx.executeWithoutResult(s -> lpns.setResidual(cmd.departureId(), t.trfId(), "DONE", null));
       return;
     }
     String status;
+    String reason = null;
     try {
       inventory.release(
           t.allocationId(),
@@ -322,10 +329,29 @@ public class DepartureService {
           Map.of("reason", "RESIDUAL_CLOSED", "sourceRef", cmd.departureId()));
       status = "DONE";
     } catch (PmartException e) {
-      status = TransferService.unknown(e) ? "PENDING" : "DONE";
+      if (TransferService.unknown(e)) {
+        status = "PENDING";
+      } else if (e.status().value() == 409 && ErrorCode.INVALID_STATE.name().equals(e.code())) {
+        status = "DONE";
+      } else {
+        status = "FAILED";
+        reason = residualReason(e);
+        log.warn(
+            "잔여 할당 해제 거절 — departureId={} trfId={} allocationId={}: {}",
+            cmd.departureId(),
+            t.trfId(),
+            t.allocationId(),
+            reason);
+      }
     }
     String st = status;
-    tx.executeWithoutResult(s -> lpns.setResidual(cmd.departureId(), t.trfId(), st));
+    String why = reason;
+    tx.executeWithoutResult(s -> lpns.setResidual(cmd.departureId(), t.trfId(), st, why));
+  }
+
+  static String residualReason(PmartException e) {
+    String r = "HTTP " + e.status().value() + " " + e.code() + ": " + e.getMessage();
+    return r.length() > 300 ? r.substring(0, 300) : r;
   }
 
   /** 할당 LOT → 소비기한(매니페스트·사건용). 조회가 안 되면 비운다. */

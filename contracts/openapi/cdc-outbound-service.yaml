@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -497,6 +497,7 @@ paths:
           mfcId 가 TRF 목적지와 다름 → WRONG_MFC, sealNos 를 주면 실린 BOX 의 봉인이 그 안에 있어야(SEAL_MISMATCH). 불일치 TRF 는 TOUT 하지 않는다.
         - 일치 TRF: 출발 BOX 의 contents 를 SKU·LOT 로 합쳐 TOUT(줄 = departureLineId 고정값·lpns, departureSource = source — **SIMULATED 도 TOUT 하며 재고·Transit 기록에 SIMULATED 표시가 남는다**,
           칠곡 CDC-9 시뮬레이터 실서버 모드) → 남은 할당 해제(RESIDUAL_CLOSED) → TRF DEPARTED, 매니페스트 발행(TransferShipmentManifestIssued).
+        - 잔여 해제 결과는 transfers[].residualStatus·residualReason(0.5.0) — 재고가 거절하면 FAILED 와 사유를 남기고, 같은 본문 재전송이 다시 부른다.
         - 재고 응답이 불명이면 그 TRF 는 postingStatus UNKNOWN_RESULT — **같은 본문을 다시 보내면 같은 키로 다시 전기**한다(재고는 한 번만 반영). 같은 departureId·다른 본문은 409 DEPARTURE_ALREADY_VALIDATED.
         - 없는 TRF 나 이미 다른 출발로 나간 TRF 가 있으면 409 INVALID_STATE(아무것도 기록하지 않음).
       operationId: validateDeparture
@@ -808,6 +809,14 @@ components:
               postingStatus: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
               commitId: { type: string, description: cdc-inventory TOUT commitId }
               shipmentManifestId: { type: string }
+              residualStatus:
+                type: string
+                enum: [DONE, PENDING, FAILED]
+                description: |
+                  (0.5.0) 출발 뒤 남은 할당 해제(RESIDUAL_CLOSED). 비어 있으면 아직 부르지 않음(TOUT 전·불일치).
+                  DONE = 풀었거나 이미 닫힘(재고 409 INVALID_STATE), PENDING = 재고 응답 불명·미전달,
+                  FAILED = 재고가 그 밖의 이유로 거절(residualReason). PENDING·FAILED 는 같은 본문을 다시 보내면 같은 키로 다시 부른다.
+              residualReason: { type: string, description: '(0.5.0) FAILED 일 때 재고 응답 — HTTP 상태·코드·설명' }
         mismatches:
           type: array
           items:

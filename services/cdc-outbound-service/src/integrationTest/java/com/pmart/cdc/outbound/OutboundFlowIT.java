@@ -467,8 +467,25 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(outbox("TransferShipmentManifestIssued")).isEqualTo(1);
 
     assertThat(residual(dep, trf1)).isEqualTo("PENDING");
+    assertThat(t1v.path("residualStatus").asString()).isEqualTo("PENDING");
 
-    // 같은 본문 다시 → TOUT 은 다시 안 부르고 불명이던 잔여 해제만 다시(DONE), 다른 본문 → 409
+    // 같은 본문 다시 — 재고가 거절(404) 하면 FAILED 와 사유를 남긴다
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo(ALLOC + "/ALC-1/releases"))
+            .willReturn(
+                aResponse()
+                    .withStatus(404)
+                    .withHeader("Content-Type", "application/problem+json")
+                    .withBody("{\"code\":\"NOT_FOUND\",\"detail\":\"할당 ALC-1 이 없습니다.\"}")));
+    JsonNode failed =
+        post(SERVICE, "/internal/departure-validations", depBody).body().path("transfers").get(0);
+    assertThat(failed.path("residualStatus").asString()).isEqualTo("FAILED");
+    assertThat(failed.path("residualReason").asString()).contains("404").contains("NOT_FOUND");
+    assertThat(releases()).isEqualTo(releases + 1);
+    releases = releases();
+
+    // 같은 본문 다시 → TOUT 은 다시 안 부르고 끝나지 않은 잔여 해제만 다시(DONE, 사유 지움), 다른 본문 → 409
     inventory.stubFor(
         com.github.tomakehurst.wiremock.client.WireMock.post(
                 urlPathEqualTo(ALLOC + "/ALC-1/releases"))
@@ -481,7 +498,13 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     inventory.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings")));
     assertThat(releases()).isEqualTo(releases + 1);
     assertThat(residual(dep, trf1)).isEqualTo("DONE");
-    assertThat(post(SERVICE, "/internal/departure-validations", depBody).status()).isEqualTo(200);
+    JsonNode residualDone =
+        post(SERVICE, "/internal/departure-validations", depBody).body().path("transfers").get(0);
+    assertThat(residualDone.path("residualStatus").asString()).isEqualTo("DONE");
+    assertThat(
+            residualDone.path("residualReason").isMissingNode()
+                || residualDone.path("residualReason").isNull())
+        .isTrue();
     assertThat(releases()).isEqualTo(releases + 1);
     Map<String, Object> changed = new LinkedHashMap<>(depBody);
     changed.put("vehicleId", "VH-9");

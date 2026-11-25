@@ -159,6 +159,12 @@ public class InternalController implements InternalApi {
                   }
                   x.setCommitId(t.commitId());
                   x.setShipmentManifestId(t.manifestId());
+                  if (t.residualStatus() != null) {
+                    x.setResidualStatus(
+                        DepartureValidationTransfersInner.ResidualStatusEnum.fromValue(
+                            t.residualStatus()));
+                  }
+                  x.setResidualReason(t.residualReason());
                   return x;
                 })
             .toList());
