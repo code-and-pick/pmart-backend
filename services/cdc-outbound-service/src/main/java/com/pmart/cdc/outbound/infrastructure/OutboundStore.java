@@ -203,6 +203,9 @@ public class OutboundStore {
         added,
         trfId,
         sku);
+  }
+
+  /**
    * 새 승인 버전으로 대체(0.13.0): 버전·본문·기한·줄을 바꾸고 Wave 에서 빼며, 예전 할당은 superseded 로 옮긴다 → CHANGING. 줄은 새
    * 승인량·할당 0.
    */

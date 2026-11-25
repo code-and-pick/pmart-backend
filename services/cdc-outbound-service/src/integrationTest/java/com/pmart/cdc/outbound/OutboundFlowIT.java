@@ -1478,6 +1478,8 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                 trf))
         .isEqualTo(1); // 못 찾음
     assertThat(readiness(trf).path("readiness").asString()).isEqualTo("PICKED");
+  }
+
   void stubAllocateV(String trfId, int version, String body) {
     inventory.stubFor(
         com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(ALLOC))
