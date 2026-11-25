@@ -14,14 +14,96 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
-/** 계약 ReconciliationApi — Transit 조회(q·r·l·t). 일일 수불 대사는 아직 인터페이스 default(501). */
+/** 계약 ReconciliationApi — Transit 조회(q·r·l·t)·일일 대사(0.16.0, 조회할 때 계산). */
 @RestController
 public class ReconciliationController implements ReconciliationApi {
 
   private final InventoryQueries queries;
+  private final com.pmart.cdc.inventory.application.ReconciliationService reconciliation;
 
-  public ReconciliationController(InventoryQueries queries) {
+  public ReconciliationController(
+      InventoryQueries queries,
+      com.pmart.cdc.inventory.application.ReconciliationService reconciliation) {
     this.queries = queries;
+    this.reconciliation = reconciliation;
+  }
+
+  @Override
+  public ResponseEntity<
+          com.pmart.cdc.inventory.api.generated.model.GetDailyReconciliation200Response>
+      getDailyReconciliation(String cdcId, java.time.LocalDate date, @Nullable String sku) {
+    var r = reconciliation.daily(cdcId, date, sku);
+    var out = new com.pmart.cdc.inventory.api.generated.model.GetDailyReconciliation200Response();
+    out.setCdcId(r.cdcId());
+    out.setDate(r.date());
+    out.setState(
+        com.pmart.cdc.inventory.api.generated.model.GetDailyReconciliation200Response.StateEnum
+            .fromValue(r.state()));
+    out.setAsOf(Dto.asOf(r.asOf()));
+    out.setItems(
+        r.items().stream()
+            .map(
+                l -> {
+                  var x = new com.pmart.cdc.inventory.api.generated.model.DailyReconciliationLine();
+                  x.setSku(l.sku());
+                  x.setOpening(l.opening());
+                  x.setInitialBalance(l.initialBalance());
+                  x.setAdjustmentIn(l.adjustmentIn());
+                  x.setDeparted(l.departed());
+                  x.setDisposed(l.disposed());
+                  x.setAdjustmentOut(l.adjustmentOut());
+                  x.setMovedNet(l.movedNet());
+                  x.setClosing(l.closing());
+                  x.setComputedClosing(l.computedClosing());
+                  x.setDiscrepancy(l.discrepancy());
+                  return x;
+                })
+            .toList());
+    out.setReservationChecks(
+        r.reservationChecks().stream()
+            .map(
+                c -> {
+                  var x =
+                      new com.pmart.cdc.inventory.api.generated.model
+                          .GetDailyReconciliation200ResponseReservationChecksInner();
+                  x.setLocationCode(c.locationCode());
+                  x.setSku(c.sku());
+                  x.setLot(c.lot());
+                  x.setReserved(c.reserved());
+                  x.setAllocationRemaining(c.allocationRemaining());
+                  return x;
+                })
+            .toList());
+    out.setTransitChecks(
+        r.transitChecks().stream()
+            .map(
+                c -> {
+                  var x =
+                      new com.pmart.cdc.inventory.api.generated.model
+                          .GetDailyReconciliation200ResponseTransitChecksInner();
+                  x.setSku(c.sku());
+                  x.setLedgerTransit(c.ledgerTransit());
+                  x.setUnreconciled(c.unreconciled());
+                  return x;
+                })
+            .toList());
+    out.setOpenTransits(
+        r.openTransits().stream()
+            .map(
+                t -> {
+                  var x =
+                      new com.pmart.cdc.inventory.api.generated.model
+                          .GetDailyReconciliation200ResponseOpenTransitsInner();
+                  x.setTrfId(t.trfId());
+                  x.setDepartureId(t.departureId());
+                  x.setMfcId(t.mfcId());
+                  x.setState(TransitState.fromValue(t.state()));
+                  x.setDepartedAt(Dto.time(t.departedAt()));
+                  x.setUnreconciledQty(t.unreconciledQty());
+                  return x;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
   }
 
   @Override

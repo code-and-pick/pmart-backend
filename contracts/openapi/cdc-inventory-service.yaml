@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.15.0
+  version: 0.16.0
   description: |
+    0.16.0(2026-11-26, 일일 대사 — WMS CDC-F-034, 사용자 결정 "조회할 때 계산"·대조 "예약·운송 중"): `GET /internal/daily-reconciliations`(501 해제) — 그날(서울)
+      SKU 별 수불을 원장에서 계산(저장·배치·경보 없음, 원장을 고치지 않음)하고 지금 시점의 예약 대조·운송 중 대조를 함께 준다.
     0.15.0(2026-11-26, 품질 보류·해제·폐기 반영 — WMS CDC-F-028, 사용자 결정 "재고 쪽 먼저"·"나중 예약부터 풀고 출고에 알림"·"출고대기분은 MFC 처럼 건드리지 않음"):
       `POST /internal/quality-postings`(501 해제 — 판정·승인 흐름의 cdc-quality 는 다음). HOLD 는 상태 전환(현물 차감 아님), 걸린 예약은 그 칸에 늦게 잡힌 할당부터 풀고
       `AllocationShortfall`(QUALITY_HOLD) → cdc-outbound. RELEASE·DISPOSE 는 approvalRef 필수, DISPOSE 는 실제 실행 수량·증빙(evidenceRef)만 HELD −q.
@@ -899,6 +901,17 @@ paths:
     get:
       tags: [reconciliation]
       summary: 일일 수불 대사 조회 (시작 + 조정증가 − 출발 − 폐기 − 조정감소 = 종료)
+      description: |
+        (0.16.0 구현, WMS CDC-F-034 — 사용자 2026-11-26 "조회할 때 계산") 부를 때 원장(inventory_commit 의 ON_HAND 증감)으로 계산한다. 저장·새벽 배치·경보는 없다(배치 시각·경보는 승인 설정이 정해진 뒤).
+        차이가 있어도 원장을 고치지 않는다(차이를 일괄 ADJ 로 없애지 않음 — 원사건부터 복구).
+        - 날 = Asia/Seoul date 00:00 ~ 다음날 00:00. 그날이 아직 안 끝났으면 state IN_PROGRESS(지금까지).
+        - SKU 줄(그 센터에 원장 또는 현물이 있는 SKU, 모든 위치·품질 상태 합): opening = 그날 전 원장 합, 그날 증감을 원결과 종류로 나눔 — initialBalance(INITIAL_BALANCE — 개시 시점 한 번),
+          adjustmentIn/Out(CNT 실사 조정 등 증·감), departed(TOUT), disposed(DISPOSAL), movedNet(MOVE·PICK_MOVE·품질 전환 — 센터 합계에서 0 이어야 함).
+          computedClosing = opening + initialBalance + adjustmentIn − departed − disposed − adjustmentOut + movedNet. closing = 지금 장부 현물 − 그날 뒤 원장 증감.
+          discrepancy = closing − computedClosing(장부 현물과 원장 합이 어긋난 양 — 0 이어야 함).
+        - reservationChecks(지금 시점): 칸·SKU·LOT 의 장부 예약 ≠ 살아 있는 할당(ALLOCATED·PARTIAL)의 남은 예약 합인 줄만.
+        - transitChecks(지금 시점): SKU 별 원장 운송 중(TRANSIT 합) ≠ 출발 줄 미정산 합(q − 정상 − 격리 − 미판정 − 손실)인 줄만. openTransits: 아직 TRANSIT_RECONCILED 아닌 출발(오래된 것부터, 최대 200 — 미수령 조사).
+        - state: DISCREPANCY(SKU 차이·예약·운송 중 대조 줄이 하나라도 — 진행 중인 날이어도 먼저) / IN_PROGRESS(그날 진행 중) / BALANCED.
       operationId: getDailyReconciliation
       parameters:
         - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
@@ -917,6 +930,38 @@ paths:
                   state: { type: string, enum: [BALANCED, DISCREPANCY, IN_PROGRESS] }
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
                   items: { type: array, items: { $ref: '#/components/schemas/DailyReconciliationLine' } }
+                  reservationChecks:
+                    type: array
+                    description: (0.16.0) 장부 예약 ≠ 할당 남은 예약인 칸 줄만(지금 시점)
+                    items:
+                      type: object
+                      properties:
+                        locationCode: { type: string }
+                        sku: { type: string }
+                        lot: { type: string }
+                        reserved: { type: integer }
+                        allocationRemaining: { type: integer }
+                  transitChecks:
+                    type: array
+                    description: (0.16.0) 원장 운송 중 ≠ 출발 줄 미정산인 SKU 줄만(지금 시점)
+                    items:
+                      type: object
+                      properties:
+                        sku: { type: string }
+                        ledgerTransit: { type: integer }
+                        unreconciled: { type: integer }
+                  openTransits:
+                    type: array
+                    description: (0.16.0) 아직 정산되지 않은 출발 — 오래된 것부터, 최대 200
+                    items:
+                      type: object
+                      properties:
+                        trfId: { type: string }
+                        departureId: { type: string }
+                        mfcId: { type: [string, 'null'] }
+                        state: { $ref: '#/components/schemas/TransitState' }
+                        departedAt: { type: string, format: date-time }
+                        unreconciledQty: { type: integer }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /cdcs/{cdcId}/location-stocks:
@@ -1550,10 +1595,12 @@ components:
       properties:
         sku: { type: string }
         opening: { type: integer }
+        initialBalance: { type: integer, description: (0.16.0) 초기 개시(INITIAL_BALANCE) — 개시 시점에만 }
         adjustmentIn: { type: integer }
         departed: { type: integer }
         disposed: { type: integer }
         adjustmentOut: { type: integer }
+        movedNet: { type: integer, description: (0.16.0) 이동·품질 전환 순증감 — 센터 합계라 0 이어야 함 }
         closing: { type: integer }
         computedClosing: { type: integer }
         discrepancy: { type: integer, description: closing − computedClosing (0이어야 함) }

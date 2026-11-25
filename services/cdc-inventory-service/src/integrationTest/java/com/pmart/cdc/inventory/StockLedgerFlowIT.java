@@ -1465,6 +1465,95 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     return n == null ? 0 : n;
   }
 
+  /**
+   * 일일 대사(0.16.0, CDC-F-034): 개시 10 → 4 출발 → 오늘 줄 initial 10·departed 4·closing 6·차이 0, 미정산 출발 목록.
+   * 원장 밖 현물 +1·예약 +1 을 넣으면 DISCREPANCY(SKU 차이 1·예약 대조 줄) — 원장은 고치지 않는다.
+   */
+  @Test
+  void dailyReconciliationFromLedger() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String shelf = "CDC01-C-5-61-09-1-1";
+    post(
+        SERVICE,
+        "/internal/initial-balances",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-INIT-D",
+            "lines",
+            List.of(ib(sku, "D1", shelf, 10, today.plusDays(30), "VERIFIED", "RELEASED"))));
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-D",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    JsonNode a = allocate(sku, 4);
+    String trf = a.path("trfId").asString();
+    Map<String, Object> dep = new LinkedHashMap<>();
+    dep.put("cdcId", CENTER);
+    dep.put("departureId", "DEP-" + UUID.randomUUID());
+    dep.put("departureSource", "SIMULATED");
+    dep.put("toMfcId", "MFC-BJG-01");
+    dep.put("trfId", trf);
+    dep.put("trfVersion", 1);
+    dep.put("allocationId", a.path("allocationId").asString());
+    dep.put("departedAt", Instant.now().toString());
+    dep.put(
+        "lines", List.of(Map.of("departureLineId", trf + "-1", "sku", sku, "lot", "D1", "qty", 4)));
+    assertThat(post(SERVICE, "/internal/departure-postings", key(), dep).status()).isEqualTo(200);
+
+    String path =
+        "/internal/daily-reconciliations?cdcId=" + CENTER + "&date=" + today + "&sku=" + sku;
+    Res r = get(SERVICE, path);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("state").asString()).isEqualTo("IN_PROGRESS");
+    JsonNode line = r.body().path("items").get(0);
+    assertThat(line.path("opening").asInt()).isZero();
+    assertThat(line.path("initialBalance").asInt()).isEqualTo(10);
+    assertThat(line.path("departed").asInt()).isEqualTo(4);
+    assertThat(line.path("movedNet").asInt()).isZero();
+    assertThat(line.path("closing").asInt()).isEqualTo(6);
+    assertThat(line.path("computedClosing").asInt()).isEqualTo(6);
+    assertThat(line.path("discrepancy").asInt()).isZero();
+    assertThat(r.body().path("reservationChecks").size()).isZero();
+    assertThat(r.body().path("transitChecks").size()).isZero();
+    assertThat(r.body().path("openTransits").toString()).contains(trf);
+    // 어제: 이 SKU 는 아직 없음 → 0 줄 또는 모두 0
+    Res y = get(SERVICE, path.replace("date=" + today, "date=" + today.minusDays(1)));
+    assertThat(y.status()).isEqualTo(200);
+    assertThat(y.body().path("state").asString()).isEqualTo("BALANCED");
+
+    // 원장 밖 변경(시험만 — 장부를 직접 고침) → 차이로 보인다, 원장은 그대로
+    jdbc.update(
+        "UPDATE stock_balance SET on_hand = on_hand + 1, reserved = reserved + 1 WHERE cdc_id = ?"
+            + " AND sku = ? AND lot = 'D1' AND location_code = ? AND quality_state = 'RELEASED'",
+        CENTER,
+        sku,
+        shelf);
+    Res d = get(SERVICE, path);
+    assertThat(d.body().path("state").asString()).isEqualTo("DISCREPANCY");
+    assertThat(d.body().path("items").get(0).path("discrepancy").asInt()).isEqualTo(1);
+    JsonNode rc = d.body().path("reservationChecks").get(0);
+    assertThat(rc.path("locationCode").asString()).isEqualTo(shelf);
+    assertThat(rc.path("reserved").asInt()).isEqualTo(1);
+    assertThat(rc.path("allocationRemaining").asInt()).isZero();
+  }
+
   JsonNode allocate(String sku, int qty) {
     Res r =
         post(
