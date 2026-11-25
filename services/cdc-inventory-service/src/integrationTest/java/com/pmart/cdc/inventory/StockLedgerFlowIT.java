@@ -88,6 +88,9 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
+  @Autowired com.pmart.cdc.inventory.application.ReceiptService receipts;
+  @Autowired com.pmart.common.messaging.EventEnvelopeCodec codec;
+  @Autowired org.springframework.transaction.support.TransactionTemplate txTemplate;
 
   RestClient http;
 
@@ -973,6 +976,148 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
             a2);
     assertThat(ev2).contains("\"qty\": 3").contains("COUNT_LOSS").contains(sid);
     assertThat(outbox("AllocationShortfall", a1)).isEqualTo(1);
+  }
+
+  /**
+   * MFC 수령·운송 중 재고 대사(0.11.0, CDC-F-024): TOUT 보다 먼저 온 MfcReceiptPosted(4)는 기다렸다가 TOUT 때 처리 → Transit 10 중 4 →
+   * 복구용 API 로 6(정상 5·미판정 1 — 미판정도 받은 수량) → t = 0 RECONCILED·TransitReconciled. 같은 receiptId 같은 본문은 그대로, 다른 본문 409,
+   * 출발 줄에 없는 LOT 은 그 줄만 보류(차감 0).
+   */
+  @Test
+  void mfcReceiptReconcilesTransit() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String loc = "CDC01-C-5-01-41-1-1";
+    post(
+        SERVICE,
+        "/internal/initial-balances",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-INIT-R",
+            "lines",
+            List.of(ib(sku, "R1", loc, 10, today.plusDays(30), "VERIFIED", "RELEASED"))));
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-R",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    JsonNode a = allocate(sku, 10);
+    String trf = a.path("trfId").asString();
+    String alc = a.path("allocationId").asString();
+    String depId = "DEP-" + UUID.randomUUID();
+
+    // 1) TOUT 보다 먼저 온 수령 사건(4 = 정상 3·격리 1) — 기다린다
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("receiptId", "RCP-1-" + trf);
+    p.put("postingId", "PST-1");
+    p.put("commitId", "MFC-CMT-1");
+    p.put("trfId", trf);
+    p.put("departureId", depId);
+    p.put("mfcId", "MFC-BJG-01");
+    p.put(
+        "lines",
+        List.of(Map.of("sku", sku, "lot", "R1", "normalQty", 3, "quarantinedQty", 1, "pendingQty", 0)));
+    p.put("receivedQty", 4);
+    var env =
+        codec.create(
+            "mfc-inventory-service",
+            "MfcReceiptPosted",
+            1,
+            "Receipt",
+            "RCP-1-" + trf,
+            1,
+            null,
+            com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+            p);
+    txTemplate.executeWithoutResult(s -> receipts.fromEvent(env));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT state FROM transit_receipt WHERE receipt_id = ?", String.class, "RCP-1-" + trf))
+        .isEqualTo("PENDING_DEPARTURE");
+
+    // 2) TOUT 10 → 기다리던 4 반영
+    Map<String, Object> dep = new LinkedHashMap<>();
+    dep.put("cdcId", CENTER);
+    dep.put("departureId", depId);
+    dep.put("departureSource", "SIMULATED");
+    dep.put("toMfcId", "MFC-BJG-01");
+    dep.put("trfId", trf);
+    dep.put("trfVersion", 1);
+    dep.put("allocationId", alc);
+    dep.put("departedAt", Instant.now().toString());
+    dep.put(
+        "lines",
+        List.of(Map.of("departureLineId", trf + "-1", "sku", sku, "lot", "R1", "qty", 10)));
+    Res d = post(SERVICE, "/internal/departure-postings", key(), dep);
+    assertThat(d.status()).as(d.body().toString()).isEqualTo(200);
+    Map<String, Object> line =
+        jdbc.queryForMap(
+            "SELECT normal_qty, quarantined_qty, pending_qty FROM transit_line WHERE trf_id = ?", trf);
+    assertThat(line.get("normal_qty")).isEqualTo(3);
+    assertThat(line.get("quarantined_qty")).isEqualTo(1);
+
+    // 3) 복구용 API — 6(정상 5·미판정 1) → t = 0
+    Map<String, Object> ack = new LinkedHashMap<>();
+    ack.put("receiptId", "RCP-2-" + trf);
+    ack.put("trfId", trf);
+    ack.put("departureId", depId);
+    ack.put("mfcId", "MFC-BJG-01");
+    ack.put("mfcCommitId", "MFC-CMT-2");
+    ack.put(
+        "lines",
+        List.of(Map.of("sku", sku, "lot", "R1", "normalQty", 5, "quarantinedQty", 0, "pendingQty", 1)));
+    Res r2 = post(SERVICE, "/internal/receipt-acks", key(), ack);
+    assertThat(r2.status()).as(r2.body().toString()).isEqualTo(200);
+    assertThat(r2.body().path("appliedQty").asInt()).isEqualTo(6);
+    assertThat(r2.body().path("transitState").asString()).isEqualTo("TRANSIT_RECONCILED");
+    assertThat(r2.body().path("unreconciledQty").asInt()).isZero();
+    assertThat(post(SERVICE, "/internal/receipt-acks", key(), ack).body().path("appliedQty").asInt())
+        .isEqualTo(6); // 같은 receiptId 같은 본문 — 그대로(추가 차감 0)
+    Map<String, Object> changed = new LinkedHashMap<>(ack);
+    changed.put(
+        "lines",
+        List.of(Map.of("sku", sku, "lot", "R1", "normalQty", 6, "quarantinedQty", 0, "pendingQty", 0)));
+    assertThat(post(SERVICE, "/internal/receipt-acks", key(), changed).body().path("code").asString())
+        .isEqualTo("RECEIPT_CONFLICT");
+    String ev =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'TransitReconciled' AND aggregateid = ?"
+                + " AND payload::text LIKE '%RCP-2-%'",
+            String.class,
+            trf);
+    assertThat(ev).contains("\"state\": \"RECONCILED\"").contains("\"receivedQty\": 10");
+
+    // 4) 출발 줄에 없는 LOT — 그 줄만 보류
+    Map<String, Object> odd = new LinkedHashMap<>(ack);
+    odd.put("receiptId", "RCP-3-" + trf);
+    odd.put(
+        "lines",
+        List.of(Map.of("sku", sku, "lot", "ZZ", "normalQty", 1, "quarantinedQty", 0, "pendingQty", 0)));
+    Res r3 = post(SERVICE, "/internal/receipt-acks", key(), odd);
+    assertThat(r3.status()).as(r3.body().toString()).isEqualTo(200);
+    assertThat(r3.body().path("appliedQty").asInt()).isZero();
+    assertThat(r3.body().path("conflicts").get(0).path("lot").asString()).isEqualTo("ZZ");
+    // 출발 전이면 API 는 404
+    Map<String, Object> early = new LinkedHashMap<>(ack);
+    early.put("receiptId", "RCP-4");
+    early.put("trfId", "TRF-NONE");
+    assertThat(post(SERVICE, "/internal/receipt-acks", key(), early).body().path("code").asString())
+        .isEqualTo("DEPARTURE_NOT_POSTED");
   }
 
   JsonNode allocate(String sku, int qty) {

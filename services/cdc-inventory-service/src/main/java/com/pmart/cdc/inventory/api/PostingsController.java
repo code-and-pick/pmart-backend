@@ -32,12 +32,80 @@ public class PostingsController implements PostingsApi {
   private final StockSetupService setup;
   private final DepartureService departures;
   private final MoveService moves;
+  private final com.pmart.cdc.inventory.application.ReceiptService receipts;
 
   public PostingsController(
-      StockSetupService setup, DepartureService departures, MoveService moves) {
+      StockSetupService setup,
+      DepartureService departures,
+      MoveService moves,
+      com.pmart.cdc.inventory.application.ReceiptService receipts) {
+    this.receipts = receipts;
     this.setup = setup;
     this.departures = departures;
     this.moves = moves;
+  }
+
+  /** MFC 수령 확인(0.11.0) — 사건 유실 복구용. 같은 receiptId 한 번. */
+  @Override
+  public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceipt200Response>
+      acknowledgeReceipt(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceiptRequest body,
+          @Nullable String traceparent) {
+    if (body.getCorrectionId() != null) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.UNSUPPORTED_ACTION, "수령 정정(correctionId)은 아직입니다.");
+    }
+    var lines =
+        body.getLines().stream()
+            .map(
+                l ->
+                    new com.pmart.cdc.inventory.application.ReceiptService.ReceiptLine(
+                        l.getSku(),
+                        l.getLot(),
+                        l.getNormalQty(),
+                        l.getQuarantinedQty(),
+                        l.getPendingQty() == null ? 0 : l.getPendingQty()))
+            .toList();
+    var r =
+        receipts.acknowledge(
+            xSourceSystem,
+            new com.pmart.cdc.inventory.application.ReceiptService.Receipt(
+                body.getReceiptId(),
+                body.getTrfId(),
+                body.getDepartureId(),
+                body.getMfcId(),
+                body.getMfcCommitId(),
+                lines));
+    var out = new com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceipt200Response();
+    out.setStatus(
+        com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceipt200Response.StatusEnum
+            .APPLIED);
+    out.setRequestId(r.receiptId());
+    out.setResultId(r.commitId());
+    out.setAppliedQty(r.appliedQty());
+    out.setOccurredAt(Dto.time(r.at()));
+    if (r.transitState() != null) {
+      out.setTransitState(
+          com.pmart.cdc.inventory.api.generated.model.TransitState.fromValue(r.transitState()));
+    }
+    out.setUnreconciledQty(r.unreconciledQty());
+    out.setConflicts(
+        r.conflicts().stream()
+            .map(
+                c -> {
+                  var x =
+                      new com.pmart.cdc.inventory.api.generated.model
+                          .AcknowledgeReceipt200ResponseAllOfConflictsInner();
+                  x.setSku(c.sku());
+                  x.setLot(c.lot());
+                  x.setQty(c.qty());
+                  x.setReason(c.reason());
+                  return x;
+                })
+            .toList());
+    return ResponseEntity.ok(out);
   }
 
   @Override

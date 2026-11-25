@@ -68,6 +68,7 @@ public class DepartureService {
   private final Ledger ledger;
   private final EventPublisher events;
   private final EventEnvelopeCodec codec;
+  private final ReceiptService receipts;
 
   public DepartureService(
       StockStore stock,
@@ -76,7 +77,9 @@ public class DepartureService {
       RequestIdempotency idempotency,
       Ledger ledger,
       EventPublisher events,
-      EventEnvelopeCodec codec) {
+      EventEnvelopeCodec codec,
+      @org.springframework.context.annotation.Lazy ReceiptService receipts) {
+    this.receipts = receipts;
     this.stock = stock;
     this.allocations = allocations;
     this.ledgerStore = ledgerStore;
@@ -238,6 +241,7 @@ public class DepartureService {
                   null),
               transitLines);
           publish(cmd, commitId, eventLines, total, sourceSystem);
+          receipts.applyPending(cmd.trfId()); // 0.11.0 — TOUT 보다 먼저 온 MFC 수령
           return new CommandResult(requestId, commitId, total, a.version() + 1, at);
         });
   }

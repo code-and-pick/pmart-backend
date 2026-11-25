@@ -77,3 +77,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 위치 실사·CNT 조정 cdc-inventory 0.8.0(Flyway V6) — MFC 실사와 같은 흐름, 승인 관문 VERIFY/RECORD_ONLY(AP-4 전엔 RECORD_ONLY), 실물<예약 조정은 아직 409. PR `cdc/count-sessions`. 다음: 설계 §7-4(예약 부족 → cdc-outbound 첫 사건 구독).
 - 2026-11-25: MFC 수령·운송 중 재고 대사 설계 `docs/cdc/design/2026-11-25-receipt-transit.md`(사용자 결정: 미판정도 받은 수량, 사건 + 복구용 API). PC 3 요청 mfc-inventory IV-8(`MfcReceiptPosted` 발행). cdc-inventory 구독·대사는 다음 PR. PR `cdc/receipt-transit-design`.
 - 2026-11-25: 실사 부족 연결 — cdc-inventory 0.10.0(실물<예약이면 늦은 할당부터 예약 해제·`AllocationShortfall`)·cdc-outbound 0.17.0(첫 사건 구독 `inventoryEvents` → 작업 줄 부족 COUNT_LOSS → 재할당·못 찾음). PR `cdc/count-shortfall`. pmart-config 구독 바인딩 PC 1 요청.
+- 2026-11-25: MFC 수령·운송 중 재고 대사 cdc-inventory 0.11.0(Flyway V7) — `MfcReceiptPosted` 구독·복구용 receipt-acks·줄별 대사·TOUT 전 수령 대기. PR `cdc/receipt-transit`(#500 0.10.0 다음). MFC 발행(IV-8, PC 3)·구독 바인딩(PC 1) 대기.
