@@ -16,6 +16,16 @@ class MfcEventConsumers {
 
   @Bean
   PmartEventConsumer mfcEvents(EventConsumers consumers, ReceiptService receipts) {
-    return consumers.of(e -> "MfcReceiptPosted".equals(e.eventType()), receipts::fromEvent);
+    return consumers.of(
+        e ->
+            "MfcReceiptPosted".equals(e.eventType())
+                || "ReceiptCorrectionPosted".equals(e.eventType()),
+        e -> {
+          if ("ReceiptCorrectionPosted".equals(e.eventType())) {
+            receipts.correctionFromEvent(e); // 0.13.0 수령 정정
+          } else {
+            receipts.fromEvent(e);
+          }
+        });
   }
 }

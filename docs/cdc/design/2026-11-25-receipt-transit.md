@@ -1,7 +1,7 @@
 # 칠곡 CDC MFC 수령·운송 중 재고 대사 설계 — 초안
 
 - 작성: cdc 세션, 2026-11-25. 사용자 "그렇게 해"(다음 할 일 B — 출고 다음 단계의 빠진 고리).
-- 상태: **CDC 쪽 구현**(cdc-inventory 0.11.0, PR `cdc/receipt-transit`) — mfc-inventory 발행(PC 3, IV-8) 대기. 정정(correctionId)은 다음.
+- 상태: **CDC 쪽 구현**(cdc-inventory 0.11.0 수령·0.13.0 정정, PR `cdc/receipt-transit`·`cdc/receipt-correction`) — mfc-inventory 발행(PC 3, IV-8) 대기.
 - 대상: cdc-inventory(주). MFC 쪽 수령 사건 발행은 mfc-inventory(PC 3 — 요청 IV-8).
 - 근거: `docs/business/WMS-business-logic.md` CDC-F-024(MFC 실제 입고 확정 결과 인수·Transit 대사·복구), CDC-F-025(원출발·수령·손실·미출발 수량 종결 대사).
 

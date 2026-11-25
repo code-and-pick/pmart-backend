@@ -232,6 +232,7 @@ public class ReceiptService {
             dp,
             o[0]);
         deltas.add(new Delta(l.sku(), (String) o[2], null, "TRANSIT", -take));
+        addReceiptLine(r.receiptId(), l.sku(), (String) o[2], dn, dh, dp);
         o[3] = left - take;
         need -= take;
         applied += take;
@@ -258,9 +259,271 @@ public class ReceiptService {
         Timestamp.from(at),
         r.trfId());
     insert(r, body, hash, "APPLIED", commitId, applied, conflicts, at);
-    publish(t, r, commitId, state, unreconciled, conflicts, at);
+    publish(t, r.receiptId(), commitId, state, unreconciled, conflicts, at);
     return new Result(
         r.receiptId(), "APPLIED", commitId, applied, state, unreconciled, conflicts, at);
+  }
+
+  private void addReceiptLine(String receiptId, String sku, String lot, int n, int h, int p) {
+    jdbc.update(
+        "INSERT INTO transit_receipt_line (receipt_id, sku, lot, normal_qty, quarantined_qty, pending_qty)"
+            + " VALUES (?,?,?,?,?,?) ON CONFLICT (receipt_id, sku, lot) DO UPDATE SET"
+            + " normal_qty = transit_receipt_line.normal_qty + EXCLUDED.normal_qty,"
+            + " quarantined_qty = transit_receipt_line.quarantined_qty + EXCLUDED.quarantined_qty,"
+            + " pending_qty = transit_receipt_line.pending_qty + EXCLUDED.pending_qty",
+        receiptId,
+        sku,
+        lot,
+        n,
+        h,
+        p);
+  }
+
+  // ---------- 수령 정정(0.13.0) ----------
+
+  /** 정정 줄 — 증감(사건) 또는 누계와의 차이(API 가 바꿔 넣음). */
+  public record CorrectionLine(
+      String sku, String lot, int dNormal, int dQuarantined, int dPending) {
+    int delta() {
+      return dNormal + dQuarantined + dPending;
+    }
+  }
+
+  /**
+   * 복구용 API — lines 는 그 수령의 SKU·LOT 별 <b>정정 뒤 누계</b>(CDC-F-024 "δr = 정정 누계 − 기확인 누계"). 줄에 없는
+   * SKU·LOT 은 그대로.
+   */
+  public Result correctTotals(
+      String sourceSystem, String receiptId, String correctionId, List<ReceiptLine> totals) {
+    return tx.execute(
+        s -> {
+          List<CorrectionLine> deltas = new ArrayList<>();
+          for (ReceiptLine l : totals) {
+            if (l.lot() == null) {
+              throw new PmartException(ErrorCode.VALIDATION_FAILED, "정정 줄에는 LOT 이 필요합니다.");
+            }
+            int[] cur = receiptLine(receiptId, l.sku(), l.lot());
+            deltas.add(
+                new CorrectionLine(
+                    l.sku(),
+                    l.lot(),
+                    l.normal() - cur[0],
+                    l.quarantined() - cur[1],
+                    l.pending() - cur[2]));
+          }
+          return correct(
+              sourceSystem,
+              receiptId,
+              correctionId,
+              deltas,
+              sha(receiptId + "|totals|" + mapper.writeValueAsString(totals)));
+        });
+  }
+
+  /** 사건 ReceiptCorrectionPosted — inbox 와 같은 트랜잭션. 줄(증감)이 없으면 줄에 나눌 수 없어 거절(재시도 → DLT, 조사). */
+  public void correctionFromEvent(EventEnvelope e) {
+    JsonNode p = e.payload();
+    List<CorrectionLine> lines = new ArrayList<>();
+    for (JsonNode l : p.path("lines")) {
+      lines.add(
+          new CorrectionLine(
+              l.path("sku").asString(),
+              l.path("lot").asString(""),
+              l.path("deltaNormalQty").asInt(0),
+              l.path("deltaQuarantinedQty").asInt(0),
+              l.path("deltaPendingQty").asInt(0)));
+    }
+    if (lines.isEmpty()) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED,
+          "수령 정정 " + p.path("correctionId").asString() + " 에 줄(SKU·LOT 증감)이 없습니다.");
+    }
+    String receiptId = p.path("receiptId").asString();
+    correct(
+        e.sourceSystem(),
+        receiptId,
+        p.path("correctionId").asString(),
+        lines,
+        sha(receiptId + "|deltas|" + mapper.writeValueAsString(lines)));
+  }
+
+  private int[] receiptLine(String receiptId, String sku, String lot) {
+    List<int[]> r =
+        jdbc.query(
+            "SELECT normal_qty, quarantined_qty, pending_qty FROM transit_receipt_line"
+                + " WHERE receipt_id = ? AND sku = ? AND lot = ?",
+            (rs, i) -> new int[] {rs.getInt(1), rs.getInt(2), rs.getInt(3)},
+            receiptId,
+            sku,
+            lot);
+    return r.isEmpty() ? new int[3] : r.get(0);
+  }
+
+  /**
+   * 정정 한 번(correctionId): 줄마다 수령 누계 + 증감이 0 아래면 그 줄 보류, 출발 줄 남은 수량을 넘는 증가도 보류. 맞는 줄만 출발 줄에 더하고(감소는
+   * 뒤 줄부터) Transit −δr(δr 음수면 미정산을 다시 엶 — 실제 반송이 아니다).
+   */
+  private Result correct(
+      String sourceSystem,
+      String receiptId,
+      String correctionId,
+      List<CorrectionLine> lines,
+      String hash) {
+    Instant at = ledger.now();
+    List<Map<String, Object>> prior =
+        jdbc.queryForList(
+            "SELECT body_hash, delta_qty, commit_id, conflicts FROM transit_receipt_correction"
+                + " WHERE correction_id = ? FOR UPDATE",
+            correctionId);
+    List<Map<String, Object>> rc =
+        jdbc.queryForList(
+            "SELECT trf_id, state FROM transit_receipt WHERE receipt_id = ? FOR UPDATE", receiptId);
+    if (rc.isEmpty() || !"APPLIED".equals(rc.get(0).get("state"))) {
+      throw PmartException.notFound(
+          "RECEIPT_NOT_APPLIED", "수령 " + receiptId + " 가 아직 대사되지 않았습니다 — 원 수령 뒤 정정.");
+    }
+    String trfId = (String) rc.get(0).get("trf_id");
+    TransitRow t = ledgerStore.findTransit(trfId).orElseThrow();
+    if (!prior.isEmpty()) {
+      Map<String, Object> m = prior.get(0);
+      if (!hash.equals(m.get("body_hash"))) {
+        throw new PmartException(
+            "RECEIPT_CONFLICT",
+            HttpStatus.CONFLICT,
+            "같은 correctionId " + correctionId + " 에 다른 본문입니다.",
+            false,
+            List.of());
+      }
+      return new Result(
+          receiptId,
+          "APPLIED",
+          (String) m.get("commit_id"),
+          ((Number) m.get("delta_qty")).intValue(),
+          t.state(),
+          unreconciled(trfId),
+          readConflicts((String) m.get("conflicts")),
+          at);
+    }
+    jdbc.query("SELECT trf_id FROM transit WHERE trf_id = ? FOR UPDATE", rs -> {}, trfId);
+    List<Delta> deltas = new ArrayList<>();
+    List<Conflict> conflicts = new ArrayList<>();
+    int total = 0;
+    for (CorrectionLine c : lines) {
+      int[] cur = receiptLine(receiptId, c.sku(), c.lot());
+      if (cur[0] + c.dNormal() < 0 || cur[1] + c.dQuarantined() < 0 || cur[2] + c.dPending() < 0) {
+        conflicts.add(new Conflict(c.sku(), c.lot(), c.delta(), "정정 뒤 수령 누계가 0 보다 작음"));
+        continue;
+      }
+      // 출발 줄(그 SKU·LOT)에 증감 — 증가는 남은 수량 안, 감소는 그 칸 수량 안
+      List<Object[]> dl =
+          jdbc.query(
+              "SELECT departure_line_id, normal_qty, quarantined_qty, pending_qty,"
+                  + " q - normal_qty - quarantined_qty - pending_qty - loss_qty FROM transit_line"
+                  + " WHERE trf_id = ? AND sku = ? AND lot = ? ORDER BY line_no FOR UPDATE",
+              (rs, i) ->
+                  new Object[] {
+                    rs.getString(1), rs.getInt(2), rs.getInt(3), rs.getInt(4), rs.getInt(5)
+                  },
+              trfId,
+              c.sku(),
+              c.lot());
+      int room = dl.stream().mapToInt(o -> (Integer) o[4]).sum();
+      if (dl.isEmpty() || c.delta() > room) {
+        conflicts.add(
+            new Conflict(
+                c.sku(),
+                c.lot(),
+                c.delta(),
+                dl.isEmpty() ? "출발 줄에 없는 SKU·LOT" : "출발 남은 수량 " + room + " 초과"));
+        continue;
+      }
+      int[] want = {c.dNormal(), c.dQuarantined(), c.dPending()};
+      // 감소 먼저(뒤 줄부터), 증가는 앞 줄부터 남은 수량 안
+      for (int b = 0; b < 3; b++) {
+        if (want[b] < 0) {
+          for (int i = dl.size() - 1; i >= 0 && want[b] < 0; i--) {
+            Object[] o = dl.get(i);
+            int have = (Integer) o[1 + b];
+            int take = Math.min(have, -want[b]);
+            if (take > 0) {
+              bump((String) o[0], b, -take);
+              o[1 + b] = have - take;
+              o[4] = (Integer) o[4] + take;
+              want[b] += take;
+            }
+          }
+        }
+      }
+      for (int b = 0; b < 3; b++) {
+        for (int i = 0; i < dl.size() && want[b] > 0; i++) {
+          Object[] o = dl.get(i);
+          int roomHere = (Integer) o[4];
+          int add = Math.min(roomHere, want[b]);
+          if (add > 0) {
+            bump((String) o[0], b, add);
+            o[1 + b] = (Integer) o[1 + b] + add;
+            o[4] = roomHere - add;
+            want[b] -= add;
+          }
+        }
+      }
+      jdbc.update(
+          "INSERT INTO transit_receipt_line (receipt_id, sku, lot, normal_qty, quarantined_qty, pending_qty)"
+              + " VALUES (?,?,?,?,?,?) ON CONFLICT (receipt_id, sku, lot) DO UPDATE SET"
+              + " normal_qty = EXCLUDED.normal_qty, quarantined_qty = EXCLUDED.quarantined_qty,"
+              + " pending_qty = EXCLUDED.pending_qty",
+          receiptId,
+          c.sku(),
+          c.lot(),
+          cur[0] + c.dNormal(),
+          cur[1] + c.dQuarantined(),
+          cur[2] + c.dPending());
+      if (c.delta() != 0) {
+        deltas.add(new Delta(c.sku(), c.lot(), null, "TRANSIT", -c.delta()));
+      }
+      total += c.delta();
+    }
+    String commitId =
+        deltas.isEmpty()
+            ? null
+            : ledger.record(
+                "TINC-" + correctionId,
+                "TIN_CORRECTION",
+                sourceSystem,
+                correctionId,
+                t.cdcId(),
+                at,
+                deltas);
+    int unreconciled = unreconciled(trfId);
+    String state = unreconciled == 0 ? "TRANSIT_RECONCILED" : "RECEIPT_POSTED_AWAITING_ACK";
+    jdbc.update(
+        "UPDATE transit SET state = ?, reconciled_at = CASE WHEN ? = 'TRANSIT_RECONCILED' THEN CAST(? AS timestamptz) ELSE NULL END"
+            + " WHERE trf_id = ?",
+        state,
+        state,
+        Timestamp.from(at),
+        trfId);
+    jdbc.update(
+        "INSERT INTO transit_receipt_correction (correction_id, receipt_id, trf_id, body_hash, delta_qty,"
+            + " commit_id, conflicts, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        correctionId,
+        receiptId,
+        trfId,
+        hash,
+        total,
+        commitId,
+        conflicts.isEmpty() ? null : mapper.writeValueAsString(conflicts),
+        Timestamp.from(at));
+    publish(t, receiptId, commitId, state, unreconciled, conflicts, at);
+    return new Result(receiptId, "APPLIED", commitId, total, state, unreconciled, conflicts, at);
+  }
+
+  private void bump(String departureLineId, int bucket, int d) {
+    String col = bucket == 0 ? "normal_qty" : bucket == 1 ? "quarantined_qty" : "pending_qty";
+    jdbc.update(
+        "UPDATE transit_line SET " + col + " = " + col + " + ? WHERE departure_line_id = ?",
+        d,
+        departureLineId);
   }
 
   private int unreconciled(String trfId) {
@@ -320,7 +583,7 @@ public class ReceiptService {
 
   private void publish(
       TransitRow t,
-      Receipt r,
+      String receiptId,
       @Nullable String commitId,
       String state,
       int unreconciled,
@@ -344,7 +607,7 @@ public class ReceiptService {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("trfId", t.trfId());
     p.put("departureId", t.departureId());
-    p.put("receiptId", r.receiptId());
+    p.put("receiptId", receiptId);
     if (commitId != null) {
       p.put("commitId", commitId);
     }

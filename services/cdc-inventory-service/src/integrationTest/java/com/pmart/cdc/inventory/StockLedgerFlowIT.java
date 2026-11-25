@@ -1124,6 +1124,50 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(r3.status()).as(r3.body().toString()).isEqualTo(200);
     assertThat(r3.body().path("appliedQty").asInt()).isZero();
     assertThat(r3.body().path("conflicts").get(0).path("lot").asString()).isEqualTo("ZZ");
+    // 5) 수령 정정(0.13.0) — API: RCP-2 정정 뒤 누계 정상 3·미판정 1(전 5·1) → δr −2 → 미정산 2 다시 엶
+    Map<String, Object> fix = new LinkedHashMap<>(ack);
+    fix.put("correctionId", "COR-1-" + trf);
+    fix.put(
+        "lines",
+        List.of(
+            Map.of("sku", sku, "lot", "R1", "normalQty", 3, "quarantinedQty", 0, "pendingQty", 1)));
+    Res f1 = post(SERVICE, "/internal/receipt-acks", key(), fix);
+    assertThat(f1.status()).as(f1.body().toString()).isEqualTo(200);
+    assertThat(f1.body().path("appliedQty").asInt()).isEqualTo(-2);
+    assertThat(f1.body().path("transitState").asString()).isEqualTo("RECEIPT_POSTED_AWAITING_ACK");
+    assertThat(f1.body().path("unreconciledQty").asInt()).isEqualTo(2);
+    assertThat(
+            post(SERVICE, "/internal/receipt-acks", key(), fix).body().path("appliedQty").asInt())
+        .isEqualTo(-2); // 같은 정정 — 그대로
+    // 사건: RCP-1 정상 +2 → 다시 t = 0
+    Map<String, Object> cp = new LinkedHashMap<>();
+    cp.put("receiptId", "RCP-1-" + trf);
+    cp.put("correctionId", "COR-2-" + trf);
+    cp.put("deltaQty", 2);
+    cp.put("reason", "재계수");
+    cp.put("lines", List.of(Map.of("sku", sku, "lot", "R1", "deltaNormalQty", 2)));
+    var cenv =
+        codec.create(
+            "mfc-inventory-service",
+            "ReceiptCorrectionPosted",
+            1,
+            "Receipt",
+            "RCP-1-" + trf,
+            2,
+            null,
+            com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+            cp);
+    txTemplate.executeWithoutResult(s -> receipts.correctionFromEvent(cenv));
+    assertThat(jdbc.queryForObject("SELECT state FROM transit WHERE trf_id = ?", String.class, trf))
+        .isEqualTo("TRANSIT_RECONCILED");
+    // 누계를 0 아래로 만드는 정정은 그 줄만 보류
+    Map<String, Object> bad = new LinkedHashMap<>(fix);
+    bad.put("correctionId", "COR-3-" + trf);
+    bad.put("receiptId", "RCP-3-" + trf);
+    Res f3 = post(SERVICE, "/internal/receipt-acks", key(), bad);
+    assertThat(f3.status()).as(f3.body().toString()).isEqualTo(200);
+    assertThat(f3.body().path("conflicts").size()).isEqualTo(1);
+
     // 출발 전이면 API 는 404
     Map<String, Object> early = new LinkedHashMap<>(ack);
     early.put("receiptId", "RCP-4");

@@ -53,10 +53,6 @@ public class PostingsController implements PostingsApi {
           String xSourceSystem,
           com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceiptRequest body,
           @Nullable String traceparent) {
-    if (body.getCorrectionId() != null) {
-      throw new com.pmart.common.web.PmartException(
-          com.pmart.common.web.ErrorCode.UNSUPPORTED_ACTION, "수령 정정(correctionId)은 아직입니다.");
-    }
     var lines =
         body.getLines().stream()
             .map(
@@ -69,15 +65,21 @@ public class PostingsController implements PostingsApi {
                         l.getPendingQty() == null ? 0 : l.getPendingQty()))
             .toList();
     var r =
-        receipts.acknowledge(
-            xSourceSystem,
-            new com.pmart.cdc.inventory.application.ReceiptService.Receipt(
+        body.getCorrectionId() != null
+            ? receipts.correctTotals(
+                xSourceSystem,
                 body.getReceiptId(),
-                body.getTrfId(),
-                body.getDepartureId(),
-                body.getMfcId(),
-                body.getMfcCommitId(),
-                lines));
+                body.getCorrectionId(),
+                lines) // 0.13.0 — 정정 뒤 누계
+            : receipts.acknowledge(
+                xSourceSystem,
+                new com.pmart.cdc.inventory.application.ReceiptService.Receipt(
+                    body.getReceiptId(),
+                    body.getTrfId(),
+                    body.getDepartureId(),
+                    body.getMfcId(),
+                    body.getMfcCommitId(),
+                    lines));
     var out = new com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceipt200Response();
     out.setStatus(
         com.pmart.cdc.inventory.api.generated.model.AcknowledgeReceipt200Response.StatusEnum

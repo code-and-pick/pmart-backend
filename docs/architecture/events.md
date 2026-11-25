@@ -119,7 +119,7 @@
 | `ReservationBlocked` | mfc-inventory | **order(이행 확인 필요 표시, 2026-11-08 — 자동 처리 없음)**, order-orchestration(예정), replenishment(예정) | reservationId, orderId, sku, lot, blockedQty, reason | 품질 격리로 예약 BLOCKED(약속은 유지) | ① |
 | `ReservationBlockCleared` | mfc-inventory | order(확인 필요 자동 종결) | reservationId, orderId, sku, lot, resecuredQty, remainingBlockedQty | 피킹 시작 전 보류분 자동 재확보(2026-11-08 #5) | ① |
 | `MfcReceiptPosted` (TIN) | mfc-inventory | cdc-inventory, replenishment, mfc-inbound, transport-execution | receiptId, postingId, trfId, departureId, lines[{sku, lot, normalQty, quarantinedQty, pendingQty}], commitId | ConfirmReceipt COMMITTED 후 `H+r` | ② |
-| `ReceiptCorrectionPosted` | mfc-inventory | cdc-inventory | receiptId, δr, reason | 수령 정정 | ② |
+| `ReceiptCorrectionPosted` | mfc-inventory | cdc-inventory(2026-11-26 구독 구현 — 줄별 증감, correctionId 한 번) | receiptId, correctionId, δr, lines[{sku, lot, deltaNormal/Quarantined/PendingQty}], reason | 수령 정정 | ② |
 | `PackageHandedOverPosted` | mfc-inventory | mfc-fulfillment, mfc-inbound(인계 실적 일별 합 — 발주 수량 추천, MI-4 임시), BI | commitId, packageId, lines[{sku, qty}] | 인계 전기 `H−q, E−q, R−q` | ① |
 | `InventoryExecutionApplied` | mfc-inventory | **mfc-inbound(자동 보충 즉시 점검, 2026-11-08)**, mfc-fulfillment(예정), mfc-quality(예정) | requestId, commitId, executionType, appliedQty, result | 작업 실행 반영 결과 — 성공만 발행(2026-11-08), 거절은 동기 응답 | ① |
 | `StockAdjusted` | mfc-inventory | approval, audit, replenishment | adjId, lines[], approvalRef | 실사 ADJ, (2026-11-20 inventory 0.37.0) 수령장 분실 조사 보류 정리의 못 찾음(reason LOSS_WRITE_OFF) | ② |
