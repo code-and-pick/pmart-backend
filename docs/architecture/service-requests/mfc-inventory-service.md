@@ -100,3 +100,15 @@
   - d·정책의 정본은 mfc-inbound — `LowStockBasisPublisher` 가 1시간마다(기동 1분 뒤) 센터마다 `PUT /internal/mfcs/{mfcId}/low-stock-basis`(온도대별 safetyDays·historyDays·minHistoryDays·averageWindowDays + 판 SKU 의 d). inventory 가 A 와 비교해 센다. **곧 품절 판정에는 공급 정책 중 safetyDays 만** 쓴다(검토 주기·리드타임 등이 비어도 셈).
   - 목록 `GET /stock-summaries/{mfcId}/skus?kind=LOW_STOCK|SOLD_OUT|LOW_STOCK_UNKNOWN&size&cursor`.
   - PC 1: 게이트웨이 mfc-inventory 라우트 Path 에 `/api/v1/stock-summaries/*/skus`(시험 사본·허용 목록은 PR 에 있음).
+
+## IV-8. CDC 이관 수령 확정 뒤 `MfcReceiptPosted` 발행 (2026-11-25, 보낸 영역 cdc — D 클론 cdc 세션)
+
+- **요청한 곳**: cdc-inventory 운송 중 재고(Transit) 대사(설계 `docs/cdc/design/2026-11-25-receipt-transit.md`, WMS CDC-F-024·025).
+- **왜**: CDC 출발(TOUT)로 Transit +q 가 생기지만, MFC 가 받은 결과가 CDC 로 오지 않아 Transit 이 출발량 그대로 남는다. 이벤트 목록(`events.md`)에는 `MfcReceiptPosted` 발행 = mfc-inventory, 구독 = cdc-inventory 로 적혀 있으나 아직 발행이 없다(ReceiptService 주석 "TRF 경로 구현 때 발행").
+- **필요한 것**
+  1. CDC 이관(TRF) 입고 — mfc-inbound 가 `TransferDeparted` 로 만든 입고 예정의 수령·검수 → TIN 확정 — 뒤 `MfcReceiptPosted.v1`(토픽 `mfc.inventory.v1`) 발행. 계약 그대로: receiptId(한 번의 수령 확정 — exact-once 키)·postingId·commitId(TIN)·trfId·departureId·mfcId·fromCdc·lines[QualitySplit — sku·lot·normalQty·quarantinedQty·pendingQty]·receivedQty(= 정상 + 격리 + 미판정)·postedAt.
+  2. LOT 은 CDC 출발 LOT(매니페스트·`TransferDeparted` 의 lot) 그대로 — MFC 로컬 LOT 키가 따로 있으면 출발 LOT 을 함께 실어 주기(CDC 가 출발 줄과 맞춘다).
+  3. 수령 수량 승인 정정이 생기면 `ReceiptCorrectionPosted`(correctionId·원 receiptId·δr) — 품질 판정만 바뀐 것은 내지 않음(CDC 수령 누계 그대로).
+- **CDC 쪽**: cdc-inventory 가 구독해 줄별로 Transit −r 대사(같은 receiptId 한 번, 출발 줄 초과·없는 LOT 은 그 줄만 보류) → `TransitReconciled`. 유실 복구용 `/internal/receipt-acks`(같은 규칙). 미정산은 자동 손실로 지우지 않는다.
+- **사용자 결정(2026-11-25)**: 미판정도 받은 수량으로 본다(r 에 넣음), 전달은 사건 + 복구용 API.
+- **설정**: cdc-inventory 구독 바인딩(`mfc.inventory.v1`) — PC 1(pmart-config).
