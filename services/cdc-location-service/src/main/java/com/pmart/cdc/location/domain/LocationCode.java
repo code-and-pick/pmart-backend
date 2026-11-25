@@ -13,13 +13,15 @@ import org.jspecify.annotations.Nullable;
  * <p>칠곡(CDC01) 문법은 docs/simulator/cdc/chilgok-dc.md CDC-3~5(사용자 2026-11-24·25 결정):
  *
  * <ul>
- *   <li>구역 글자 A 냉동·B 냉장·C~H 상온 — temperatureZone 은 글자에서 나온다(CDC-4).
+ *   <li>구역 글자 H 냉동·G 냉장·A~F 상온 — temperatureZone 은 글자에서 나온다(CDC-4, 0.6.0 R-22 — 사용자 2026-11-26 기사
+ *       사진, 상온 랙 통로가 A 부터).
  *   <li>통로 01~60 = 팔레트 랙(입고·적치 보관): 층 5~7, 베이 01~48(R-17 랙 묶음 — 통로 한쪽 12 × 2), 단 1~4(R-12), 슬롯 1~2,
  *       RESERVE(R-13 — QUARANTINE·TEMPORARY 도 허용). **1단은 PICK_FACE 도 된다**(R-19 박스 피킹면 — 사용자
  *       2026-11-25).
- *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE. 단 **7층 H
- *       61~62 = 오토스토어**(R-19): 베이 = 격자, 단 1~16, 칸 1~2.
- *   <li>통로 90 = DOCK(층 B1), 91 = STAGING 출고대기, 92 = STAGING 층 승강기 문(층 5~7) — 단 0·슬롯 1(CDC-5).
+ *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE. 단 **7층 F
+ *       61~62 = 오토스토어**(R-19, 0.6.0 R-22 에서 H → F): 베이 = 격자, 단 1~16, 칸 1~2.
+ *   <li>통로 90 = DOCK(층마다 북쪽 벽 도크 — 0.6.0 R-22, 지하 B1 접안 없앰), 91 = STAGING 출고대기, 92 = STAGING 층 승강기
+ *       문 — 모두 층 5~7·단 0·슬롯 1(CDC-5).
  *   <li>통로 93 = 바닥 레인(R-19, 6층 야채 분배): 층 5~7, 베이 01~, 단 1, 칸 1~, PICK_FACE. 94~99 는 비워 둔다.
  * </ul>
  *
@@ -35,14 +37,14 @@ public final class LocationCode {
   /** 칠곡 구역 글자 → 온도대. */
   public static final Map<String, String> CHILGOK_ZONES =
       Map.of(
-          "A", "FROZEN",
-          "B", "CHILLED",
+          "A", "AMBIENT",
+          "B", "AMBIENT",
           "C", "AMBIENT",
           "D", "AMBIENT",
           "E", "AMBIENT",
           "F", "AMBIENT",
-          "G", "AMBIENT",
-          "H", "AMBIENT");
+          "G", "CHILLED",
+          "H", "FROZEN");
 
   /** 나눈 값. */
   public record Parts(
@@ -145,9 +147,9 @@ public final class LocationCode {
       if (bay < 1) {
         out.add(new Violation("locationCode", "SHELF_BAY"));
       }
-      boolean autostore = p.area().equals("H") && p.floor().equals("7") && aisle <= 62;
+      boolean autostore = p.area().equals("F") && p.floor().equals("7") && aisle <= 62;
       if (autostore) {
-        // 7층 H 61~62 = 오토스토어(R-19): 베이 = 격자, 16단, 칸 2
+        // 7층 F 61~62 = 오토스토어(R-19): 베이 = 격자, 16단, 칸 2
         if (p.level() < 1 || p.level() > 16) {
           out.add(new Violation("locationCode", "AUTOSTORE_LEVEL"));
         }
@@ -166,7 +168,8 @@ public final class LocationCode {
         out.add(new Violation("locationType", "SHELF_TYPE"));
       }
     } else if (aisle == 90) {
-      if (!p.floor().equals("B1")) {
+      // 0.6.0 R-22: 도크는 층마다 북쪽 벽(사진 도크 문 번호 "4-16" = 층-번호) — 지하 B1 접안 없앰
+      if (!upperFloor) {
         out.add(new Violation("locationCode", "DOCK_FLOOR"));
       }
       nonRack(p, locationType, "DOCK", out);

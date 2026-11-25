@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.5.1
+  version: 0.6.0
   description: |
     CDC 시설 수용조건·7구간 LOC 마스터(센터-온도-구역-랙-베이-단-포지션)·상태·적치 후보·공간 용량 예약·도크 자원의 정본. (docs/architecture/service-map.md §4)
     수량은 cdc-inventory, 작업은 cdc-inbound/outbound가 정본. 공간 예약 불변식: 점유 + 미완료 예약 + 신규 ≤ 허용량.
@@ -9,6 +9,8 @@ info:
     점유(occupiedQty)는 cdc-inventory 사본을 아직 받지 않아 비운다(asOf.freshness UNAVAILABLE). 적치 후보·공간 예약·도크 예약은 아직 501.
     0.3.0(2026-11-25): 공개 경로를 `/cdcs/{cdcId}/locations…` 로 옮김 — 게이트웨이 `/api/v1/locations/**` 가 mfc-location 라우트라 겹침(PC1 R-16).
     목록의 centerId 조회 조건은 경로 cdcId 로, 등록 본문의 centerId 는 경로와 같아야 한다(400 CENTER_MISMATCH). 내부 경로는 그대로.
+    0.6.0(2026-11-26): 칠곡 구역 글자·도크 바꿈(시뮬레이터 R-22, 사용자 2026-11-26 기사 사진 근거) — 상온 A~F·냉장 G·냉동 H(옛 A 냉동·B 냉장·C~H 상온),
+      7층 오토스토어 F 61~62(옛 H), 90 DOCK 은 층마다 북쪽 벽(층 5~7 — 지하 B1 접안 없앰, 층 B1 은 이제 400 DOCK_FLOOR). 경로·모양 변화 없음. 이미 등록된 칸은 다시 검사하지 않는다(LAN 위치 전환 때 새 목록으로).
     0.5.1(2026-11-25): 칠곡 문법 넓힘(R-19, 사용자 2026-11-25) — 팔레트 랙 1단 PICK_FACE(박스 피킹면)·통로 93 바닥 레인(단 1, PICK_FACE)·7층 H 61~62 오토스토어(단 1~16·칸 1~2). 경로·모양 변화 없음.
     0.5.0(2026-11-25): 피킹 선반 통로별 피킹 방식 설정값 `pickMethod`(DPS·BOX_PICK·FC·DISTRIBUTION·LINE) — `GET·POST /cdcs/{cdcId}/aisle-pick-methods`,
     위치 일괄 조회 응답 items[].pickMethod(설정 없으면 비움). 묶음 피킹 설계(docs/cdc/design/2026-11-25-batch-picking.md §7 결정 3 — 사용자 "선반 통로 설정값", 상품 분류 글자로 가르지 않음 WMS CDC-F-017).
@@ -34,7 +36,7 @@ paths:
         - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: temperatureZone, in: query, schema: { $ref: '#/components/schemas/TemperatureZone' } }
         - { name: area, in: query, description: 구역 글자(칠곡 A~H — 코드 둘째 구간), schema: { type: string } }
-        - { name: floor, in: query, description: '층(코드 셋째 구간 — 칠곡 5·6·7·B1) 0.2.0', schema: { type: string } }
+        - { name: floor, in: query, description: '층(코드 셋째 구간 — 칠곡 5·6·7, 0.6.0 부터 B1 없음) 0.2.0', schema: { type: string } }
         - { name: locationType, in: query, description: '0.2.0', schema: { $ref: '#/components/schemas/LocationType' } }
         - { name: state, in: query, schema: { $ref: '#/components/schemas/LocationState' } }
         - $ref: '_common.yaml#/components/parameters/PageSize'
@@ -53,11 +55,11 @@ paths:
       tags: [locations]
       summary: LOC 등록 (DRAFT 생성, 센터 기준정보 BO-06 승인 후 현장 설정)
       description: |
-        코드 첫 구간 = centerId. 칠곡(CDC01) 문법(chilgok-dc.md CDC-3~5): 구역 글자 A~H 와 temperatureZone 이 맞아야 한다(A FROZEN·B CHILLED·C~H AMBIENT).
+        코드 첫 구간 = centerId. 칠곡(CDC01) 문법(chilgok-dc.md CDC-3~5): 구역 글자 A~H 와 temperatureZone 이 맞아야 한다((0.6.0) A~F AMBIENT·G CHILLED·H FROZEN).
         통로 01~60 = 팔레트 랙 — 입고·적치 보관(층 5~7·베이 01~48 홀수 왼쪽·짝수 오른쪽·단 1~4·슬롯 1~2, RESERVE — QUARANTINE·TEMPORARY 도 됨, (0.5.1) 1단은 박스 피킹면 PICK_FACE 도 됨),
         61~89 = 피킹 선반 — MFC 선반 모양(층 5~7·베이 = 유닛 01~·단 1~5·칸 1~3, 칸 하나 = SKU 하나, PICK_FACE)(시뮬레이터 R-13, 사용자 2026-11-25),
-        (0.5.1) 7층 H 61~62 = 오토스토어(베이 = 격자·단 1~16·칸 1~2, PICK_FACE).
-        90 = DOCK(층 B1), 91·92 = STAGING(층 5~7) — 랙·선반이 아니면 단 0·슬롯 1. (0.5.1) 93 = 바닥 레인(층 5~7·단 1·칸 1~, PICK_FACE). 94~99 는 비워 둔다.
+        (0.5.1) 7층 오토스토어 61~62((0.6.0) 구역 F(베이 = 격자·단 1~16·칸 1~2, PICK_FACE).
+        90 = DOCK((0.6.0) 층마다 북쪽 벽 도크 — 층 5~7), 91·92 = STAGING(층 5~7) — 랙·선반이 아니면 단 0·슬롯 1. (0.5.1) 93 = 바닥 레인(층 5~7·단 1·칸 1~, PICK_FACE). 94~99 는 비워 둔다.
         어기면 400 VALIDATION_FAILED(details 에 규칙 이름). 자기 센터 운영자만(centers 클레임).
       operationId: createLocation
       x-pmart-user-types: [OPERATOR]
@@ -515,9 +517,9 @@ components:
       type: string
       description: |
         7구간 LOC 코드 센터-온도구역-세부구역-랙-베이-단-포지션.
-        칠곡 DC(CDC01)는 둘째 = 구역 글자(MFC 시뮬레이터 기준 A 냉동·B 냉장·C/D/E 상온·F 상온 인기·G/H 생활용품·기타 — 온도대를 함께 뜻함),
-        셋째 = 층(5~7, 지하 B1), 넷째 = 구역 안 통로로 읽는다 — 예 CDC01-C-5-02-24-3-1.
-        랙이 아닌 위치는 단 0·슬롯 1 — 통로 90 = DOCK(지하 접안 — 예 CDC01-B-B1-90-03-0-1)·91 = STAGING 출고대기·92 = STAGING 층 승강기 반출 문. (docs/simulator/cdc/chilgok-dc.md CDC-3~5)
+        칠곡 DC(CDC01)는 둘째 = 구역 글자((0.6.0, R-22 기사 사진) 5층 상온 A·B·C·D·7층 생활용품 E·F·냉장 G·냉동 H — 온도대를 함께 뜻함, MFC 글자와 다름),
+        셋째 = 층(5~7), 넷째 = 구역 안 통로로 읽는다 — 예 CDC01-A-5-02-24-3-1.
+        랙이 아닌 위치는 단 0·슬롯 1 — 통로 90 = DOCK(층 북쪽 벽 도크 — 예 CDC01-G-6-90-03-0-1, 구역 = 그 온도 출고대기 글자)·91 = STAGING 출고대기·92 = STAGING 층 승강기 반출 문. (docs/simulator/cdc/chilgok-dc.md CDC-3~5)
       pattern: '^[A-Z0-9]+-[A-Z]-[A-Z0-9]+-[0-9]{2}-[0-9]{2}-[0-9]+-[0-9]+$'
     LocationState:
       type: string

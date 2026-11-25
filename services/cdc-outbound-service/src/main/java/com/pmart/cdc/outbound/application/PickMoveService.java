@@ -53,8 +53,8 @@ public class PickMoveService {
   }
 
   /**
-   * 출고대기 자리 코드 — 구역 글자는 온도대(냉동 A·냉장 B 는 그대로), 칠곡 상온은 5층 C·7층 G(도면의 91 행, CDC-5). 위치 코드가 7구간이 아니면
-   * null.
+   * 출고대기 자리 코드 — 구역 글자는 온도대(냉동 H·냉장 G 는 그대로), 칠곡 상온은 5층 A·7층 E(도면의 91 행, CDC-5 — R-22 사용자
+   * 2026-11-26 구역 글자 바뀜). 위치 코드가 7구간이 아니면 null.
    */
   static @Nullable String stagingCode(String fromLocation, String bay) {
     String[] p = fromLocation.split("-");
@@ -63,11 +63,11 @@ public class PickMoveService {
     }
     String area = p[1];
     String floor = p[2];
-    if ("CDC01".equals(p[0]) && !"A".equals(area) && !"B".equals(area)) {
+    if ("CDC01".equals(p[0]) && !"H".equals(area) && !"G".equals(area)) {
       area =
           switch (floor) {
-            case "5" -> "C";
-            case "7" -> "G";
+            case "5" -> "A";
+            case "7" -> "E";
             default -> area;
           };
     }

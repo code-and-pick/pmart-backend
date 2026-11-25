@@ -7,8 +7,8 @@
   3. 안전량 0: `POST /internal/safety-stocks`(시뮬레이터와 같은 값 — 0 도 값이다, 미설정과 다름).
   4. 시작 재고: `POST /internal/initial-balances`(2,000줄씩, 센터·SKU·LOT 1회). 칸 배치 규칙(시뮬레이터 catalog 와 같음):
      - SKU 하나 = 피킹 선반 칸 하나(온도대 구역의 PICK_FACE, 코드 순) + 팔레트 랙 기둥 한 칸(같은 구역의 같은 통로·베이·슬롯 1~4단, 코드 순).
-       랙 기둥이 선반 칸보다 적은 구역(예 냉동 A 기둥 960 < 선반 2,400)은 기둥이 다 차면 선반에만 둔다.
-       구역: FROZEN → A, CHILLED → B, AMBIENT → C·D·E·F·G·H 차례(상품 분류 근거가 없어 SKU 번호 순으로 채움 — 구역별 상품 성격은 맞추지 않음).
+       랙 기둥이 선반 칸보다 적은 구역(예 냉동 H)은 기둥이 다 차면 선반에만 둔다.
+       구역(R-22 글자): FROZEN → H, CHILLED → G, AMBIENT → A·B·C·D·E·F 차례(상품 분류 근거가 없어 SKU 번호 순으로 채움 — 구역별 상품 성격은 맞추지 않음).
      - LOT: 선반·랙 1·2단 = 먼저 끝나는 LOT(`<sku>-A`), 랙 3·4단 = 다음 LOT(`<sku>-B`). 식별 VERIFIED·품질 RELEASED.
      - 수량 = 그 칸 maxQty(위치 사본 값). 소비기한은 아래 [시험값](업무 규칙 아님 — 실제 상품별 기한 자료가 없어서).
   위치 목록 = docs/simulator/cdc/layout/chilgok-locations.json(위치는 cdc_locations.py 로 먼저 넣는다).
@@ -36,7 +36,7 @@ from datetime import date, timedelta
 HERE = os.path.dirname(os.path.abspath(__file__))
 TABLE = os.path.join(HERE, "..", "..", "..", "docs", "simulator", "cdc", "layout", "chilgok-locations.json")
 CENTER = "CDC01"
-ZONES = {"FROZEN": ["A"], "CHILLED": ["B"], "AMBIENT": ["C", "D", "E", "F", "G", "H"]}
+ZONES = {"FROZEN": ["H"], "CHILLED": ["G"], "AMBIENT": ["A", "B", "C", "D", "E", "F"]}  # R-22 구역 글자
 # [시험값] 오늘부터 소비기한까지 일수(LOT A, LOT B) — 업무 규칙이 아니다
 SHELF_LIFE = {"FROZEN": (180, 270), "CHILLED": (14, 21), "AMBIENT": (180, 365)}
 HANDLING_BATCH, SAFETY_BATCH, STOCK_BATCH = 500, 2000, 2000

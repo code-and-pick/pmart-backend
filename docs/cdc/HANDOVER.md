@@ -79,3 +79,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 실사 부족 연결 — cdc-inventory 0.10.0(실물<예약이면 늦은 할당부터 예약 해제·`AllocationShortfall`)·cdc-outbound 0.17.0(첫 사건 구독 `inventoryEvents` → 작업 줄 부족 COUNT_LOSS → 재할당·못 찾음). PR `cdc/count-shortfall`. pmart-config 구독 바인딩 PC 1 요청.
 - 2026-11-25: MFC 수령·운송 중 재고 대사 cdc-inventory 0.11.0(Flyway V7) — `MfcReceiptPosted` 구독·복구용 receipt-acks·줄별 대사·TOUT 전 수령 대기. PR `cdc/receipt-transit`(#500 0.10.0 다음). MFC 발행(IV-8, PC 3)·구독 바인딩(PC 1) 대기.
 - 2026-11-26: 통로 피킹 방식 대응표 — 시뮬레이터 2657c94: 5F F·7F G 선반도 LINE(상온 DAS 존 — 1칸만 켜지는 비율 48% → 15%). `cdc_pick_methods.py` 80통로(LINE 31·FC 6). LAN 은 그대로(전환 때). PR `cdc/pick-method-line-ambient`.
+- 2026-11-26: R-22 구역 글자 바뀜(사용자, 기사 사진 — 옛 A→H·B→G·C→A·D→B·E→C·F→D·G→E·H→F)·층 도크 9·승강기 문 층마다 2 — cdc-location 0.6.0, cdc-outbound 출고대기 자리 계산(계약 그대로), 위치 사본 38,915칸·통로 방식·재고 시드. PR `cdc/layout-r22`. LAN 은 최종 배치 때.

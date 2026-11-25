@@ -14,75 +14,75 @@ class LocationCodeTest {
 
   @Test
   void parsesSevenParts() {
-    var p = LocationCode.parse("CDC01-C-5-02-24-3-1").orElseThrow();
-    assertThat(p.area()).isEqualTo("C");
+    var p = LocationCode.parse("CDC01-A-5-02-24-3-1").orElseThrow();
+    assertThat(p.area()).isEqualTo("A");
     assertThat(p.floor()).isEqualTo("5");
     assertThat(p.aisle()).isEqualTo("02");
     assertThat(p.bay()).isEqualTo("24");
     assertThat(p.level()).isEqualTo(3);
     assertThat(p.slot()).isEqualTo(1);
-    assertThat(LocationCode.parse("CDC01-C-5-2-24-3-1")).isEmpty();
+    assertThat(LocationCode.parse("CDC01-A-5-2-24-3-1")).isEmpty();
   }
 
   @Test
   void chilgokExamplesFromDecisionsPass() {
-    assertThat(rules("CDC01-C-5-02-24-3-1", "AMBIENT", "RESERVE")).isEmpty();
-    assertThat(rules("CDC01-A-5-05-10-1-2", "FROZEN", "RESERVE")).isEmpty();
-    assertThat(rules("CDC01-C-5-61-03-2-1", "AMBIENT", "PICK_FACE")).isEmpty(); // R-13 예
-    assertThat(rules("CDC01-B-6-63-27-5-3", "CHILLED", "PICK_FACE")).isEmpty();
-    assertThat(rules("CDC01-B-B1-90-03-0-1", "CHILLED", "DOCK")).isEmpty();
-    assertThat(rules("CDC01-B-6-91-02-0-1", "CHILLED", "STAGING")).isEmpty();
-    assertThat(rules("CDC01-G-7-92-01-0-1", "AMBIENT", "STAGING")).isEmpty();
-    assertThat(rules("CDC01-C-5-01-01-4-1", "AMBIENT", "QUARANTINE")).isEmpty();
-    assertThat(rules("CDC01-C-5-01-01-3-2", "AMBIENT", "TEMPORARY")).isEmpty();
+    assertThat(rules("CDC01-A-5-02-24-3-1", "AMBIENT", "RESERVE")).isEmpty();
+    assertThat(rules("CDC01-H-5-05-10-1-2", "FROZEN", "RESERVE")).isEmpty();
+    assertThat(rules("CDC01-A-5-61-03-2-1", "AMBIENT", "PICK_FACE")).isEmpty(); // R-13 예
+    assertThat(rules("CDC01-G-6-63-27-5-3", "CHILLED", "PICK_FACE")).isEmpty();
+    assertThat(rules("CDC01-G-6-90-03-0-1", "CHILLED", "DOCK")).isEmpty();
+    assertThat(rules("CDC01-G-6-91-02-0-1", "CHILLED", "STAGING")).isEmpty();
+    assertThat(rules("CDC01-E-7-92-01-0-1", "AMBIENT", "STAGING")).isEmpty();
+    assertThat(rules("CDC01-A-5-01-01-4-1", "AMBIENT", "QUARANTINE")).isEmpty();
+    assertThat(rules("CDC01-A-5-01-01-3-2", "AMBIENT", "TEMPORARY")).isEmpty();
   }
 
   @Test
   void zoneLetterDecidesTemperature() {
-    assertThat(rules("CDC01-A-5-01-01-3-1", "AMBIENT", "RESERVE"))
+    assertThat(rules("CDC01-H-5-01-01-3-1", "AMBIENT", "RESERVE"))
         .isEqualTo("TEMPERATURE_ZONE_MISMATCH");
     assertThat(rules("CDC01-Z-5-01-01-3-1", "AMBIENT", "RESERVE")).isEqualTo("UNKNOWN_AREA");
   }
 
   @Test
   void rackLimitsFourLevelsTwoSlotsFortyEightBays() {
-    assertThat(rules("CDC01-C-5-01-01-5-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_LEVEL");
-    assertThat(rules("CDC01-C-5-01-48-3-1", "AMBIENT", "RESERVE")).isEmpty();
-    assertThat(rules("CDC01-C-5-01-49-3-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_BAY");
-    assertThat(rules("CDC01-C-5-01-01-3-3", "AMBIENT", "RESERVE")).isEqualTo("RACK_SLOT");
+    assertThat(rules("CDC01-A-5-01-01-5-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_LEVEL");
+    assertThat(rules("CDC01-A-5-01-48-3-1", "AMBIENT", "RESERVE")).isEmpty();
+    assertThat(rules("CDC01-A-5-01-49-3-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_BAY");
+    assertThat(rules("CDC01-A-5-01-01-3-3", "AMBIENT", "RESERVE")).isEqualTo("RACK_SLOT");
     // R-19: 1단 박스 피킹면만 PICK_FACE(그 위 단은 보관)
-    assertThat(rules("CDC01-C-5-01-01-1-1", "AMBIENT", "PICK_FACE")).isEmpty();
-    assertThat(rules("CDC01-C-5-01-01-3-1", "AMBIENT", "PICK_FACE"))
+    assertThat(rules("CDC01-A-5-01-01-1-1", "AMBIENT", "PICK_FACE")).isEmpty();
+    assertThat(rules("CDC01-A-5-01-01-3-1", "AMBIENT", "PICK_FACE"))
         .isEqualTo("RACK_PICK_FACE_LEVEL");
-    assertThat(rules("CDC01-C-5-60-01-1-1", "AMBIENT", "RESERVE")).isEmpty();
-    assertThat(rules("CDC01-C-B1-01-01-3-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_FLOOR");
+    assertThat(rules("CDC01-A-5-60-01-1-1", "AMBIENT", "RESERVE")).isEmpty();
+    assertThat(rules("CDC01-A-B1-01-01-3-1", "AMBIENT", "RESERVE")).isEqualTo("RACK_FLOOR");
   }
 
   @Test
   void shelvesFromAisle61FiveLevelsThreeSlotsPickFace() {
-    assertThat(rules("CDC01-C-5-61-03-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
-    assertThat(rules("CDC01-C-5-61-03-2-4", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_SLOT");
-    assertThat(rules("CDC01-C-5-61-00-2-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_BAY");
-    assertThat(rules("CDC01-C-5-61-03-2-1", "AMBIENT", "RESERVE")).isEqualTo("SHELF_TYPE");
-    assertThat(rules("CDC01-C-B1-61-03-2-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_FLOOR");
+    assertThat(rules("CDC01-A-5-61-03-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
+    assertThat(rules("CDC01-A-5-61-03-2-4", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_SLOT");
+    assertThat(rules("CDC01-A-5-61-00-2-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_BAY");
+    assertThat(rules("CDC01-A-5-61-03-2-1", "AMBIENT", "RESERVE")).isEqualTo("SHELF_TYPE");
+    assertThat(rules("CDC01-A-B1-61-03-2-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_FLOOR");
   }
 
   @Test
   void nonRackAislesUseLevelZeroSlotOne() {
-    assertThat(rules("CDC01-B-6-91-02-1-1", "CHILLED", "STAGING")).isEqualTo("NON_RACK_LEVEL_SLOT");
-    assertThat(rules("CDC01-B-6-90-03-0-1", "CHILLED", "DOCK")).isEqualTo("DOCK_FLOOR");
-    assertThat(rules("CDC01-B-6-91-02-0-1", "CHILLED", "RESERVE")).isEqualTo("STAGING_TYPE");
-    assertThat(rules("CDC01-B-6-95-02-0-1", "CHILLED", "STAGING")).isEqualTo("RESERVED_AISLE");
+    assertThat(rules("CDC01-G-6-91-02-1-1", "CHILLED", "STAGING")).isEqualTo("NON_RACK_LEVEL_SLOT");
+    assertThat(rules("CDC01-G-B1-90-03-0-1", "CHILLED", "DOCK")).isEqualTo("DOCK_FLOOR");
+    assertThat(rules("CDC01-G-6-91-02-0-1", "CHILLED", "RESERVE")).isEqualTo("STAGING_TYPE");
+    assertThat(rules("CDC01-G-6-95-02-0-1", "CHILLED", "STAGING")).isEqualTo("RESERVED_AISLE");
   }
 
   @Test
   void pickFaceMinTargetOnlyOnPickFace() {
-    assertThat(LocationCode.check("CDC01-C-5-61-01-1-1", "CDC01", "AMBIENT", "PICK_FACE", 2, 6))
+    assertThat(LocationCode.check("CDC01-A-5-61-01-1-1", "CDC01", "AMBIENT", "PICK_FACE", 2, 6))
         .isEmpty();
-    assertThat(LocationCode.check("CDC01-C-5-61-01-1-1", "CDC01", "AMBIENT", "PICK_FACE", 6, 2))
+    assertThat(LocationCode.check("CDC01-A-5-61-01-1-1", "CDC01", "AMBIENT", "PICK_FACE", 6, 2))
         .extracting(Violation::rule)
         .containsExactly("TARGET_BELOW_MIN");
-    assertThat(LocationCode.check("CDC01-C-5-01-01-3-1", "CDC01", "AMBIENT", "RESERVE", 2, null))
+    assertThat(LocationCode.check("CDC01-A-5-01-01-3-1", "CDC01", "AMBIENT", "RESERVE", 2, null))
         .extracting(Violation::rule)
         .containsExactly("PICK_FACE_ONLY");
   }
@@ -111,20 +111,20 @@ class LocationCodeTest {
   @org.junit.jupiter.api.Test
   void r19RackFirstLevelPickFaceFloorLaneAndAutostore() {
     // 랙 1단 박스 피킹면만 PICK_FACE, 2단은 아님
-    assertThat(rules("CDC01-C-5-01-01-1-1", "AMBIENT", "PICK_FACE")).isEmpty();
-    assertThat(rules("CDC01-C-5-01-01-2-1", "AMBIENT", "PICK_FACE"))
+    assertThat(rules("CDC01-A-5-01-01-1-1", "AMBIENT", "PICK_FACE")).isEmpty();
+    assertThat(rules("CDC01-A-5-01-01-2-1", "AMBIENT", "PICK_FACE"))
         .isEqualTo("RACK_PICK_FACE_LEVEL");
-    assertThat(rules("CDC01-C-5-01-01-1-1", "AMBIENT", "STAGING")).isEqualTo("RACK_TYPE");
+    assertThat(rules("CDC01-A-5-01-01-1-1", "AMBIENT", "STAGING")).isEqualTo("RACK_TYPE");
     // 바닥 레인 93
-    assertThat(rules("CDC01-B-6-93-13-1-44", "CHILLED", "PICK_FACE")).isEmpty();
-    assertThat(rules("CDC01-B-6-93-01-2-1", "CHILLED", "PICK_FACE")).isEqualTo("LANE_LEVEL");
-    assertThat(rules("CDC01-B-6-93-01-1-1", "CHILLED", "RESERVE")).isEqualTo("LANE_TYPE");
-    assertThat(rules("CDC01-B-6-94-01-1-1", "CHILLED", "PICK_FACE")).isEqualTo("RESERVED_AISLE");
+    assertThat(rules("CDC01-G-6-93-13-1-44", "CHILLED", "PICK_FACE")).isEmpty();
+    assertThat(rules("CDC01-G-6-93-01-2-1", "CHILLED", "PICK_FACE")).isEqualTo("LANE_LEVEL");
+    assertThat(rules("CDC01-G-6-93-01-1-1", "CHILLED", "RESERVE")).isEqualTo("LANE_TYPE");
+    assertThat(rules("CDC01-G-6-94-01-1-1", "CHILLED", "PICK_FACE")).isEqualTo("RESERVED_AISLE");
     // 7층 H 61~62 오토스토어 16단 2칸, 다른 선반은 5단 3칸 그대로
-    assertThat(rules("CDC01-H-7-61-94-16-2", "AMBIENT", "PICK_FACE")).isEmpty();
-    assertThat(rules("CDC01-H-7-62-01-17-1", "AMBIENT", "PICK_FACE")).isEqualTo("AUTOSTORE_LEVEL");
-    assertThat(rules("CDC01-H-7-61-01-1-3", "AMBIENT", "PICK_FACE")).isEqualTo("AUTOSTORE_SLOT");
-    assertThat(rules("CDC01-H-7-63-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
-    assertThat(rules("CDC01-G-7-61-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
+    assertThat(rules("CDC01-F-7-61-94-16-2", "AMBIENT", "PICK_FACE")).isEmpty();
+    assertThat(rules("CDC01-F-7-62-01-17-1", "AMBIENT", "PICK_FACE")).isEqualTo("AUTOSTORE_LEVEL");
+    assertThat(rules("CDC01-F-7-61-01-1-3", "AMBIENT", "PICK_FACE")).isEqualTo("AUTOSTORE_SLOT");
+    assertThat(rules("CDC01-F-7-63-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
+    assertThat(rules("CDC01-E-7-61-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
   }
 }

@@ -1,15 +1,15 @@
 """칠곡 DC `CDC01` 통로별 피킹 방식(cdc-location 0.5.0 `POST /cdcs/CDC01/aisle-pick-methods`) — 묶음 피킹 설계 §7 결정 3.
 
-규칙(시뮬레이터 R-19 회신 2026-11-25 확정, 시뮬레이터 src/domain/pickMethod.ts 와 같음):
-  - DPS          : 5층 A(냉동) 선반 통로 61~89
-  - BOX_PICK     : 팔레트 랙 통로 01~60 중 PICK_FACE(1단 박스 피킹면)가 있는 통로 — 칠곡 5층 C·D, 7층 G(R-21 — 7층 H 랙은 오토스토어 보충 보관만)
-  - DISTRIBUTION : 바닥 레인 통로 93(6층 야채)
-  - LINE         : B(냉장)·F·G 선반 통로 61~89 — 6층 라인 DAS 와 상온 DAS 존(5층 F·7층 G, 시뮬레이터 2657c94 — "상온·냉장·냉동 모두 휠소터 DAS")
-  - FC           : 그 밖 선반 통로 61~89 전부(5층 E, 7층 H 오토스토어 61~62)
+규칙(시뮬레이터 R-19 회신 2026-11-25 확정, R-22 2026-11-26 구역 글자 바뀜 — 시뮬레이터 src/domain/pickMethod.ts 와 같음):
+  - DPS          : 5층 H(냉동) 선반 통로 61~89
+  - BOX_PICK     : 팔레트 랙 통로 01~60 중 PICK_FACE(1단 박스 피킹면)가 있는 통로 — 칠곡 5층 A·B, 7층 E(R-21 — 7층 F 랙은 오토스토어 보충 보관만)
+  - DISTRIBUTION : 바닥 레인 통로 93(6층 야채 G)
+  - LINE         : G(냉장)·D·E 선반 통로 61~89 — 6층 라인 DAS 와 상온 DAS 존(5층 D·7층 E, 시뮬레이터 2657c94 — "상온·냉장·냉동 모두 휠소터 DAS")
+  - FC           : 그 밖 선반 통로 61~89 전부(5층 C, 7층 F 오토스토어 61~62)
   - 방식 없음    : PICK_FACE 가 없는 통로(2단 이상만 있는 랙, 90·91·92) — 넣지 않는다(cdc-outbound 는 단건으로 만든다).
 통로 목록은 docs/simulator/cdc/layout/chilgok-locations.json 에서 PICK_FACE 가 있는 (구역·층·통로)로 뽑는다.
 cdc-location 은 PICK_FACE 가 하나도 없는 통로를 400 NOT_PICK_FACE_AISLE 로 거절한다 — **위치 목록을 LAN 에 먼저 넣은 뒤** 돌린다
-(사용자 2026-11-25: LAN 에는 위치 전환 때 같이 넣는다. 옛 목록 dd3d185 에는 랙 1단 피킹면·통로 93 이 없다).
+(사용자 2026-11-25: LAN 에는 위치 전환 때 같이 넣는다. 옛 목록 dd3d185 에는 랙 1단 피킹면·통로 93 이 없고, R-22 전 글자다).
 
   python -I deploy/lan/seed/cdc_pick_methods.py            # 계획만(방식별 통로 수·목록)
   python -I deploy/lan/seed/cdc_pick_methods.py --apply    # 게이트웨이로 넣기(운영자 claude-cdc-sup, 500행씩)
@@ -37,9 +37,9 @@ def method_of(area, floor, aisle):
     if aisle == 93:
         return "DISTRIBUTION"
     if 61 <= aisle <= 89:
-        if area == "A":
+        if area == "H":
             return "DPS"
-        if area in ("B", "F", "G"):
+        if area in ("G", "D", "E"):
             return "LINE"
         return "FC"
     return None
@@ -94,7 +94,7 @@ def main():
     for n in range(0, len(items), BATCH):
         chunk = items[n:n + BATCH]
         st, res = http("POST", f"{staff_auth.GW}/cdcs/{CENTER}/aisle-pick-methods",
-                       {"reason": "칠곡 통로 피킹 방식(R-19 회신)", "items": chunk},
+                       {"reason": "칠곡 통로 피킹 방식(R-19 회신·R-22 글자)", "items": chunk},
                        {"Authorization": "Bearer " + token, "X-Source-System": "pmart-seed",
                         "Idempotency-Key": f"cdc-pick-methods-{fp}-{n // BATCH:03d}"})
         if st != 200:
