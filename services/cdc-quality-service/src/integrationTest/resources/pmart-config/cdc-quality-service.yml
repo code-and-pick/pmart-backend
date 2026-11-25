@@ -1,0 +1,15 @@
+# cdc-quality-service 고유 설정(모든 프로필). 환경별 값은 cdc-quality-service-<프로필>.yml, 모든 서비스 공통은 application.yml. ADR-0029
+# 정본은 pmart-config 저장소 — 이 파일은 시험 사본. 2026-11-26 새 서비스: 정본에 같은 파일을 넣어야 한다(PC1 백엔드 요청).
+server:
+  port: 8604
+pmart:
+  messaging:
+    domain: cdc
+  quality:
+    cdc-inventory-base-url: http://localhost:8601 # LAN 은 cdc-quality-service-lan.yml 에서
+    approval-ref:
+      mode: RECORD_ONLY # 해제·폐기 본사 승인 번호: VERIFY(approval-service AP-4 뒤) / RECORD_ONLY(기준 이상이면 번호 필수·확인 없음)
+      hq-loss-krw: 100000 # 사용자 "MFC 와 같게" — 실사와 같은 본사 기준
+      hq-sku-qty: 20
+    retry-interval: PT30S # 재고 응답 불명 다시 보내기 주기
+# 이벤트 소비 없음(발행도 아직 없음 — 재고 사건 LotBlocked·LotReleased·InventoryAdjustmentPosted 가 사실을 알린다)

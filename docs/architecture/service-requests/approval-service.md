@@ -73,3 +73,4 @@
 - **함께 PC 1 몫**: pmart-config `cdc-inventory-service.yml` 에 `pmart.inventory.approval-ref.hq-loss-krw: 100000`·`hq-sku-qty: 20`(사용자 "MFC 와 같게"), lan 은 처음엔 `mode: RECORD_ONLY`.
 - **사용자 결정**: 기준값 — 받음(MFC 와 같게). 승인 역할 — MFC 와 같다고 가정(다르면 알려 주기).
 - **(2026-11-26 cdc 세션 덧붙임)** kind 가 하나 더 — 운송 손실 `TRANSPORT_LOSS`(cdc-inventory 0.14.0, 사용자 "실사 조정과 같은 본사 기준"): targetRef `<cdcId>:TRANSPORT_LOSS:<손실 ID TLOSS-…>`, useRef `cdc-inventory-service:TRANSPORT_LOSS:<손실 ID>`, allowedActions `POST_TRANSPORT_LOSS`. 종류는 같은 `CDC_STOCK_ADJUSTMENT`.
+- **(2026-11-26 cdc 세션 덧붙임 2)** 대상 서비스가 하나 더 — **cdc-quality-service**(새 서비스 0.2.0, 사용자 "MFC 품질과 같게"): 품질 해제 kind `QUALITY_RELEASE`(targetRef `<cdcId>:QUALITY_RELEASE:<releaseId>`)·폐기 kind `DISPOSAL`(`<cdcId>:DISPOSAL:<disposalId>`), useRef `cdc-quality-service:<kind>:<id>`, 종류는 같은 `CDC_STOCK_ADJUSTMENT`(targetService `cdc-quality-service` 도 받게). 그 전까지 LAN 은 RECORD_ONLY.

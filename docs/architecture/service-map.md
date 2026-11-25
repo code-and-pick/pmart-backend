@@ -182,6 +182,7 @@
 - **의존**: cdc-inventory(할당/해제/전기), cdc-location, auth.
 
 ### cdc-quality-service `[2단계]`
+- **구현 상태(2026-11-26, 0.2.0)**: 보류·해제 요청/결정·폐기 요청/결정/실행만(경로 `/cdcs/{cdcId}/quality-holds`·`/cdcs/{cdcId}/disposal-approvals` — MFC 품질 경로와 겹치지 않게). 수량은 cdc-inventory `quality-postings`. 사건 발행은 아직(재고 사건이 사실을 알림), 리콜·FEFO 예외·운영 제한·LOT 계보는 다음.
 - **소유**: 품질 보류·격리·해제·리콜 판단과 승인 기록(본사 품질 책임자), 폐기 승인(실행은 inventory), FEFO 예외 이중 승인, 온도 이탈 판정, LOT 계보 추적, CDC 운영 제한(CDC-F-031) `[제안]`.
 - **소유하지 않음**: 수량 변경(inventory), 상품 마스터(product).
 - **API**: 보류/격리/해제/폐기 승인 명령, 운영 제한 설정/재개(approval 승인 결과 참조).

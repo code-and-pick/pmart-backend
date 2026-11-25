@@ -52,6 +52,7 @@ val platformServices = listOf<String>(
 )
 
 val services = listOf<String>(
+    "cdc-quality-service",
     "cdc-inventory-service",
     "cdc-location-service",
     "cdc-outbound-service",

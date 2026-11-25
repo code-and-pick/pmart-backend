@@ -86,3 +86,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-26: 품질 보류·해제·폐기 cdc-inventory 0.15.0(#504 0.14.0 다음) — `/internal/quality-postings`, 보류로 걸린 예약은 늦은 할당부터 풀고 AllocationShortfall(QUALITY_HOLD), 출고대기 91 은 그대로, 해제·폐기 승인 번호 필수(기록만), 폐기는 증빙·실제 수량. cdc-outbound 는 부족 사유를 사건 그대로 적음(버전 그대로). PR `cdc/quality-hold`. 다음: 판정·승인 흐름의 cdc-quality(새 서비스), 일일 대사.
 - 2026-11-26: R-22 추가(시뮬레이터 cbae2e9) — 5층 출고대기 91 상온 A·냉동 H 각 14칸, 위치 사본 38,913칸. PR `cdc/layout-r22-staging14`.
 - 2026-11-26: 일일 대사 cdc-inventory 0.16.0(#506 0.15.0 다음) — 조회할 때 원장으로 계산, 예약·운송 중 대조. PR `cdc/daily-reconciliation`. 남은 것: 새벽 배치·경보(승인 설정 뒤), 운영자 화면 경로(DC 백오피스 요청 오면), 판정·승인의 cdc-quality.
+- 2026-11-26: **cdc-quality-service 새로 만듦**(0.2.0, 포트 8604, Flyway V2) — 보류·해제·폐기(사용자 "보류·해제·폐기만"·"MFC 품질과 같게"), 재고는 cdc-inventory quality-postings. PR `cdc/quality-service`. PC1: 설정 정본·LAN 배치·게이트웨이 라우트(pc1-todo). 다음: CI-1(cdc-inventory productName·실사 번호, PC5 요청), 리콜·운영 제한.

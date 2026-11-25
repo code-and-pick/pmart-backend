@@ -75,11 +75,15 @@ GET /api/v1/cdcs/{cdcId}/aisle-pick-methods OPERATOR
 GET /api/v1/cdcs/{cdcId}/count-sessions OPERATOR
 GET /api/v1/cdcs/{cdcId}/count-sessions/{sessionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/departures OPERATOR
+GET /api/v1/cdcs/{cdcId}/disposal-approvals OPERATOR
+GET /api/v1/cdcs/{cdcId}/disposal-approvals/{disposalApprovalId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/location-stocks OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/lpns OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
+GET /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
+GET /api/v1/cdcs/{cdcId}/quality-holds/{holdId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/recount-holds OPERATOR
 GET /api/v1/cdcs/{cdcId}/regions OPERATOR
 GET /api/v1/cdcs/{cdcId}/shortages OPERATOR
@@ -169,7 +173,6 @@ GET /api/v1/forecasts OPERATOR
 GET /api/v1/fulfillment-issues OPERATOR
 GET /api/v1/guest-delivery-addresses/{guestAddressId} PUBLIC
 GET /api/v1/help-requests/{intakeId} OPERATOR,RIDER
-GET /api/v1/holds/{holdId} OPERATOR
 GET /api/v1/hr/departments OPERATOR
 GET /api/v1/hr/employee-labels OPERATOR
 GET /api/v1/hr/employees OPERATOR
@@ -473,8 +476,14 @@ POST /api/v1/cdcs/{cdcId}/count-sessions OPERATOR
 POST /api/v1/cdcs/{cdcId}/count-sessions/{sessionId}/counts OPERATOR
 POST /api/v1/cdcs/{cdcId}/count-sessions/{sessionId}/decisions OPERATOR
 POST /api/v1/cdcs/{cdcId}/count-sessions/{sessionId}/recounts OPERATOR
+POST /api/v1/cdcs/{cdcId}/disposal-approvals OPERATOR
+POST /api/v1/cdcs/{cdcId}/disposal-approvals/{disposalApprovalId}/decisions OPERATOR
+POST /api/v1/cdcs/{cdcId}/disposal-approvals/{disposalApprovalId}/executions OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations/{locationCode}/state-changes OPERATOR
+POST /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
+POST /api/v1/cdcs/{cdcId}/quality-holds/{holdId}/release-requests OPERATOR
+POST /api/v1/cdcs/{cdcId}/quality-holds/{holdId}/release-requests/{releaseId}/decisions OPERATOR
 POST /api/v1/cdcs/{cdcId}/recount-holds/{holdId}/releases OPERATOR
 POST /api/v1/cdcs/{cdcId}/regions OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
@@ -548,8 +557,6 @@ POST /api/v1/forecast-runs OPERATOR
 POST /api/v1/fulfillment-issues/{issueId}/acknowledgements OPERATOR
 POST /api/v1/guest-delivery-addresses PUBLIC
 POST /api/v1/help-requests RIDER
-POST /api/v1/holds OPERATOR
-POST /api/v1/holds/{holdId}/releases OPERATOR
 POST /api/v1/hr/employees OPERATOR
 POST /api/v1/hr/employees/{operatorId}/affiliation-changes OPERATOR
 POST /api/v1/hr/employees/{operatorId}/departures OPERATOR
