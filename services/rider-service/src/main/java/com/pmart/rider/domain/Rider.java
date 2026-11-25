@@ -32,7 +32,9 @@ public record Rider(
     @Nullable String licenseMasked,
     @Nullable String riderNumber,
     /** 탈퇴 시각(2026-11-21 — 직원 탈퇴 라이더 보기). 탈퇴 안 했으면 null. */
-    @Nullable Instant withdrawnAt) {
+    @Nullable Instant withdrawnAt,
+    /** 휴대폰 번호 확인(OCTOMO)을 마쳤는가(2026-11-25 — 확인이 생기기 전 가입자에게 앱이 확인 팝업). */
+    boolean phoneVerified) {
 
   public enum OperatingStatus {
     OFF_DUTY,
@@ -97,7 +99,8 @@ public record Rider(
         deliveryAreas,
         licenseMasked,
         riderNumber,
-        withdrawnAt);
+        withdrawnAt,
+        phoneVerified);
   }
 
   /** 새 배차를 받을 수 있는 상태(운행 중·신규배차 ON·제한 없음). */

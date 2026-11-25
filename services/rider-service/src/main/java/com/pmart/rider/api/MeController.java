@@ -75,7 +75,9 @@ public class MeController implements MeApi {
                                     a.getMfcId(), a.getZoneId() == null ? "" : a.getZoneId()))
                         .distinct()
                         .toList(),
-                body.getLicenseNumber()));
+                body.getLicenseNumber(),
+                body.getPhone(),
+                body.getPhoneVerificationId()));
     return ResponseEntity.ok(RiderViews.profile(r));
   }
 

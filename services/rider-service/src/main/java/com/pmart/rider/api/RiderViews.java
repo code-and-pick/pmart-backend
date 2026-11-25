@@ -28,6 +28,7 @@ final class RiderViews {
         .version(r.version())
         .name(r.name())
         .phoneMasked(maskPhone(r.phone()))
+        .phoneVerified(r.phoneVerified())
         .licenseNumberMasked(r.licenseMasked())
         .vehicleType(VehicleType.fromValue(r.vehicleType()))
         .bankAccountMasked(maskAccount(r.bankCode(), r.bankAccountNumber()))

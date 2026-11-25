@@ -90,7 +90,10 @@ public class RiderService {
       @Nullable String residenceRoad,
       @Nullable String residenceDetail,
       @Nullable List<Area> areas,
-      @Nullable String licenseNumber) {}
+      @Nullable String licenseNumber,
+      /** 0.28.0 — 확인된 번호를 붙인다(phoneVerificationId 와 같이). */
+      @Nullable String phone,
+      @Nullable String phoneVerificationId) {}
 
   public record StateChange(String status, boolean newDispatchEnabled, @Nullable String mfcId) {}
 
@@ -377,6 +380,12 @@ public class RiderService {
     String riderId = requireRider();
     requireBankCode(c.bankCode());
     requireRealAddress(c.residenceRoad()); // 외부 호출 — 트랜잭션 밖
+    // 0.28.0(2026-11-25 사용자 "이미 가입했는데 전화번호 인증 안 한 계정은 인증하라고 팝업"): 번호와 확인 ID 는 같이
+    if ((c.phone() == null)
+        != (c.phoneVerificationId() == null || c.phoneVerificationId().isBlank())) {
+      throw new PmartException(
+          ErrorCode.VALIDATION_FAILED, "phone 과 phoneVerificationId 는 같이 보내 주세요.");
+    }
     boolean areasChange = c.areas() != null && !sameAreas(get(riderId).deliveryAreas(), c.areas());
     if (areasChange) {
       requireAreaChangeAllowed(riderId, c.areas()); // 외부 호출 — 트랜잭션 밖
@@ -387,6 +396,12 @@ public class RiderService {
         String.class,
         () -> {
           Rider r = locked(riderId, expectedVersion);
+          if (c.phone() != null) {
+            // 가입과 같은 검사: 다른 라이더 번호·탈퇴 번호 막힘 409, 확인 ID 가 VERIFIED·같은 주체·같은 번호·1시간 안 아니면 422
+            phones.getObject().requireJoinable(riderId, c.phone());
+            phones.getObject().requireForSignup(riderId, c.phone(), c.phoneVerificationId());
+            store.setVerifiedPhone(riderId, c.phone());
+          }
           if (c.vehicleType() != null
               && !c.vehicleType().equals(r.vehicleType())
               && r.operatingStatus() == Rider.OperatingStatus.ON_DUTY) {

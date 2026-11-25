@@ -143,6 +143,90 @@ class RiderPhoneVerificationIT extends PostgresKafkaContainerSupport {
     assertThat(dup.getBody()).contains("GOOGLE").contains("a***@g***").contains("joinedAt");
   }
 
+  /** 0.28.0(2026-11-25 사용자 "이미 가입했는데 전화번호 인증 안 한 계정은 인증하라고 팝업"): 가입 뒤 번호 확인 붙이기. */
+  @Test
+  void signedUpRiderAttachesPhoneVerification() throws Exception {
+    String rider = "RD-pva-" + UUID.randomUUID();
+    String phone = phone();
+    assertThat(signup(rider, phone, verified(rider, phone)).getStatusCode().value()).isEqualTo(201);
+    // 확인이 생기기 전 가입자처럼
+    jdbc.update("UPDATE rider SET phone_verified = false WHERE rider_id = ?", rider);
+    assertThat(json(me(rider)).path("phoneVerified").asBoolean()).isFalse();
+
+    // 번호만·확인 ID 만 → 400
+    assertThat(patch(rider, Map.of("phone", phone)).getStatusCode().value()).isEqualTo(400);
+    assertThat(patch(rider, Map.of("phoneVerificationId", "RPV-x")).getStatusCode().value())
+        .isEqualTo(400);
+    // 확인이 끝나지 않은 ID → 422
+    String pending =
+        json(call("/riders/me/phone-verifications", rider, Map.of("phone", phone)))
+            .path("verificationId")
+            .asString();
+    ResponseEntity<String> notYet =
+        patch(rider, Map.of("phone", phone, "phoneVerificationId", pending));
+    assertThat(notYet.getStatusCode().value()).isEqualTo(422);
+    assertThat(json(notYet).path("code").asString()).isEqualTo("PHONE_NOT_VERIFIED");
+
+    // 새 번호로 확인 → 붙이면 번호·확인 갱신
+    String phone2 = phone();
+    String id2 = verified(rider, phone2);
+    ResponseEntity<String> ok = patch(rider, Map.of("phone", phone2, "phoneVerificationId", id2));
+    assertThat(ok.getStatusCode().value()).as(ok.getBody()).isEqualTo(200);
+    JsonNode after = json(me(rider));
+    assertThat(after.path("phoneVerified").asBoolean()).isTrue();
+    assertThat(after.path("phoneMasked").asString()).endsWith(phone2.substring(7));
+
+    // 다른 라이더 번호는 붙일 수 없다(확인 ID 가 있어도)
+    String other = "RD-pvb-" + UUID.randomUUID();
+    String otherPhone = phone();
+    assertThat(signup(other, otherPhone, verified(other, otherPhone)).getStatusCode().value())
+        .isEqualTo(201);
+    ResponseEntity<String> taken =
+        patch(rider, Map.of("phone", otherPhone, "phoneVerificationId", id2));
+    assertThat(taken.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(taken).path("code").asString()).isEqualTo("IDENTITY_ALREADY_REGISTERED");
+  }
+
+  String verified(String rider, String phone) throws Exception {
+    octomo.resetAll();
+    octomo.stubFor(post(urlPathEqualTo(EXISTS)).willReturn(okJson(obj("exists", "true"))));
+    String id =
+        json(call("/riders/me/phone-verifications", rider, Map.of("phone", phone)))
+            .path("verificationId")
+            .asString();
+    assertThat(
+            json(call(
+                    "/riders/me/phone-verifications/" + id + "/confirmations",
+                    rider,
+                    Map.of("phone", phone)))
+                .path("state")
+                .asString())
+        .isEqualTo("VERIFIED");
+    return id;
+  }
+
+  ResponseEntity<String> me(String rider) {
+    return http.get()
+        .uri("/riders/me")
+        .headers(h -> h.setBearerAuth(TestJwt.rider(rider)))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
+  ResponseEntity<String> patch(String rider, Map<String, Object> body) {
+    return http.patch()
+        .uri("/riders/me")
+        .headers(
+            h -> {
+              h.setBearerAuth(TestJwt.rider(rider));
+              h.set("Idempotency-Key", UUID.randomUUID().toString());
+              h.set("X-Source-System", "rider-app");
+            })
+        .body(body)
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   static String obj(String k, String v) {
     return "{" + Q + k + Q + ":" + v + "}";
   }

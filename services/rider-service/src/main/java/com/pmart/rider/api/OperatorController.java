@@ -163,6 +163,7 @@ public class OperatorController implements OperatorApi {
                     .toList())
             .nameMasked(r.name() == null ? null : RiderViews.maskName(r.name()))
             .phoneMasked(r.phone() == null ? "" : RiderViews.maskPhone(r.phone()))
+            .phoneVerified(r.phoneVerified())
             .vehicleType(VehicleType.fromValue(r.vehicleType()))
             .deliveryAreas(
                 r.deliveryAreas().stream()

@@ -42,7 +42,7 @@ public class RiderStore {
           + " bank_account_number, bank_holder_name, residence_road, residence_detail,"
           + " operating_status, new_dispatch_enabled, operating_mfc_id, state_changed_at,"
           + " one_at_a_time, dispatch_mode, restriction, restriction_reason, restriction_until,"
-          + " last_heartbeat_at, joined_at, license_masked, rider_number, withdrawn_at";
+          + " last_heartbeat_at, joined_at, license_masked, rider_number, withdrawn_at, phone_verified";
 
   private final JdbcTemplate jdbc;
 
@@ -91,6 +91,12 @@ public class RiderStore {
 
   public void markPhoneVerified(String riderId) {
     jdbc.update("UPDATE rider SET phone_verified = true WHERE rider_id = ?", riderId);
+  }
+
+  /** 확인된 번호를 붙인다(0.28.0 — 가입 뒤 번호 확인). 행 버전은 호출자의 프로필 갱신이 올린다. */
+  public void setVerifiedPhone(String riderId, String phone) {
+    jdbc.update(
+        "UPDATE rider SET phone = ?, phone_verified = true WHERE rider_id = ?", phone, riderId);
   }
 
   public boolean phoneTaken(String phone) {
@@ -569,7 +575,8 @@ public class RiderStore {
               List.copyOf(areas.getOrDefault(x.riderId(), List.of())),
               x.licenseMasked(),
               x.riderNumber(),
-              x.withdrawnAt()));
+              x.withdrawnAt(),
+              x.phoneVerified()));
     }
     return out;
   }
@@ -602,7 +609,8 @@ public class RiderStore {
             List.of(),
             rs.getString("license_masked"),
             rs.getString("rider_number"),
-            instantOrNull(rs, "withdrawn_at")));
+            instantOrNull(rs, "withdrawn_at"),
+            rs.getBoolean("phone_verified")));
   }
 
   private static Instant instant(ResultSet rs, String col) throws SQLException {

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.27.0
+  version: 0.28.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -53,7 +53,7 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0) / MFC_NOT_AVAILABLE(0.23.0) / LICENSE_REQUIRED / OUTSIDE_DELIVERY_AREA — 지금 위치가 새 센터 배달 권역 밖(0.27.0)
+          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0) / LICENSE_REQUIRED / PHONE_NOT_VERIFIED(0.17.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -333,12 +333,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RiderProfile' }
         '409':
-          description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT / DUPLICATE_ACCOUNT(0.7.0) / DUPLICATE_LICENSE / LOCATION_UNKNOWN — 최근 위치 없음·오래됨(0.27.0)
+          description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT / DUPLICATE_ACCOUNT(0.7.0) / DUPLICATE_LICENSE / LOCATION_UNKNOWN — 최근 위치 없음·오래됨(0.27.0) / IDENTITY_ALREADY_REGISTERED·RIDER_REJOIN_BLOCKED — 번호 확인 붙이기(0.28.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0) / MFC_NOT_AVAILABLE(0.23.0) / LICENSE_REQUIRED / OUTSIDE_DELIVERY_AREA — 지금 위치가 새 센터 배달 권역 밖(0.27.0)
+          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0) / MFC_NOT_AVAILABLE(0.23.0) / LICENSE_REQUIRED / OUTSIDE_DELIVERY_AREA — 지금 위치가 새 센터 배달 권역 밖(0.27.0) / PHONE_NOT_VERIFIED — 번호 확인 붙이기(0.28.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -1224,6 +1224,15 @@ components:
     RiderProfileUpdate:
       type: object
       properties:
+        phone:
+          type: string
+          pattern: '^010[0-9]{8}$'
+          x-added-in: '2026-11-25'
+          description: '(0.28.0) 확인된 휴대폰 번호 — phoneVerificationId 와 **같이** 보낸다(하나만 오면 400). 이미 가입한 라이더가 번호 확인을 붙이거나 번호를 바꾸는 길(사용자 2026-11-25 "이미 가입했는데 전화번호 인증 안 한 계정은 인증하라고 팝업"). 가입과 같은 검사 — 확인 ID 가 VERIFIED·같은 주체·같은 번호·확인 뒤 1시간 안이 아니면 422 PHONE_NOT_VERIFIED, 그 번호로 가입한 다른 라이더 409 IDENTITY_ALREADY_REGISTERED, 탈퇴 번호 재가입 막힘 기간이면 409 RIDER_REJOIN_BLOCKED. 통과하면 phone 갱신·phoneVerified true(운행 중이어도 됨)'
+        phoneVerificationId:
+          type: string
+          x-added-in: '2026-11-25'
+          description: '(0.28.0) 확인된 번호 확인 ID(POST /riders/me/phone-verifications → …/confirmations VERIFIED) — phone 과 같이'
         licenseNumber:
           type: string
           pattern: '^[0-9]{2}-?[0-9]{2}-?[0-9]{6}-?[0-9]{2}$'
@@ -1271,6 +1280,7 @@ components:
         version: { type: integer }
         name: { type: string }
         phoneMasked: { type: string }
+        phoneVerified: { type: boolean, x-added-in: '2026-11-25', description: '(0.28.0) 휴대폰 번호 확인(OCTOMO)을 마쳤는가 — 확인이 생기기 전(2026-11-19) 가입했거나 확인 없이 가입한 라이더는 false. 앱은 false 면 확인 팝업(사용자 2026-11-25), 붙이는 길은 PATCH /riders/me phone + phoneVerificationId' }
         licenseNumberMasked: { type: string }
         vehicleType: { $ref: '#/components/schemas/VehicleType' }
         bankAccountMasked: { type: string }
@@ -1393,6 +1403,7 @@ components:
         version: { type: integer, description: '지금 라이더 행 버전 — 계정 제한 X-Expected-Version(BOD-6)' }
         nameMasked: { type: [string, 'null'] }
         phoneMasked: { type: string }
+        phoneVerified: { type: boolean, x-added-in: '2026-11-25', description: '(0.28.0) 휴대폰 번호 확인(OCTOMO)을 마쳤는가 — 확인이 생기기 전(2026-11-19) 가입했거나 확인 없이 가입한 라이더는 false. 앱은 false 면 확인 팝업(사용자 2026-11-25), 붙이는 길은 PATCH /riders/me phone + phoneVerificationId' }
         vehicleType: { $ref: '#/components/schemas/VehicleType' }
         deliveryAreas:
           type: array
