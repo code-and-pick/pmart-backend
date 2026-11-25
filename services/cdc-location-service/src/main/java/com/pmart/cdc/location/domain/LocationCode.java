@@ -15,10 +15,12 @@ import org.jspecify.annotations.Nullable;
  * <ul>
  *   <li>구역 글자 A 냉동·B 냉장·C~H 상온 — temperatureZone 은 글자에서 나온다(CDC-4).
  *   <li>통로 01~60 = 팔레트 랙(입고·적치 보관): 층 5~7, 베이 01~48(R-17 랙 묶음 — 통로 한쪽 12 × 2), 단 1~4(R-12), 슬롯 1~2,
- *       모두 RESERVE(R-13 — QUARANTINE·TEMPORARY 도 허용).
- *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE.
- *   <li>통로 90 = DOCK(층 B1), 91 = STAGING 출고대기, 92 = STAGING 층 승강기 문(층 5~7) — 단 0·슬롯 1(CDC-5). 93~99
- *       는 비워 둔다.
+ *       RESERVE(R-13 — QUARANTINE·TEMPORARY 도 허용). **1단은 PICK_FACE 도 된다**(R-19 박스 피킹면 — 사용자
+ *       2026-11-25).
+ *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE. 단 **7층 H
+ *       61~62 = 오토스토어**(R-19): 베이 = 격자, 단 1~16, 칸 1~2.
+ *   <li>통로 90 = DOCK(층 B1), 91 = STAGING 출고대기, 92 = STAGING 층 승강기 문(층 5~7) — 단 0·슬롯 1(CDC-5).
+ *   <li>통로 93 = 바닥 레인(R-19, 6층 야채 분배): 층 5~7, 베이 01~, 단 1, 칸 1~, PICK_FACE. 94~99 는 비워 둔다.
  * </ul>
  *
  * 층 배치(어느 층에 어느 구역)는 자주 바뀌는 도면 값이라 검사하지 않는다 — 데이터(일괄 등록)로 넣는다.
@@ -125,10 +127,15 @@ public final class LocationCode {
       if (p.slot() < 1 || p.slot() > 2) {
         out.add(new Violation("locationCode", "RACK_SLOT"));
       }
+      boolean boxPickFace = locationType.equals("PICK_FACE") && p.level() == 1; // R-19 1단 박스 피킹면
       if (!locationType.equals("RESERVE")
           && !locationType.equals("QUARANTINE")
-          && !locationType.equals("TEMPORARY")) {
-        out.add(new Violation("locationType", "RACK_TYPE"));
+          && !locationType.equals("TEMPORARY")
+          && !boxPickFace) {
+        out.add(
+            new Violation(
+                "locationType",
+                locationType.equals("PICK_FACE") ? "RACK_PICK_FACE_LEVEL" : "RACK_TYPE"));
       }
     } else if (aisle >= 61 && aisle <= 89) {
       // 피킹 선반(R-13, MFC 선반과 같은 모양): 베이 = 유닛, 5단 3칸, 칸 하나 = SKU 하나, PICK_FACE
@@ -138,11 +145,22 @@ public final class LocationCode {
       if (bay < 1) {
         out.add(new Violation("locationCode", "SHELF_BAY"));
       }
-      if (p.level() < 1 || p.level() > 5) {
-        out.add(new Violation("locationCode", "SHELF_LEVEL"));
-      }
-      if (p.slot() < 1 || p.slot() > 3) {
-        out.add(new Violation("locationCode", "SHELF_SLOT"));
+      boolean autostore = p.area().equals("H") && p.floor().equals("7") && aisle <= 62;
+      if (autostore) {
+        // 7층 H 61~62 = 오토스토어(R-19): 베이 = 격자, 16단, 칸 2
+        if (p.level() < 1 || p.level() > 16) {
+          out.add(new Violation("locationCode", "AUTOSTORE_LEVEL"));
+        }
+        if (p.slot() < 1 || p.slot() > 2) {
+          out.add(new Violation("locationCode", "AUTOSTORE_SLOT"));
+        }
+      } else {
+        if (p.level() < 1 || p.level() > 5) {
+          out.add(new Violation("locationCode", "SHELF_LEVEL"));
+        }
+        if (p.slot() < 1 || p.slot() > 3) {
+          out.add(new Violation("locationCode", "SHELF_SLOT"));
+        }
       }
       if (!locationType.equals("PICK_FACE")) {
         out.add(new Violation("locationType", "SHELF_TYPE"));
@@ -157,6 +175,23 @@ public final class LocationCode {
         out.add(new Violation("locationCode", "STAGING_FLOOR"));
       }
       nonRack(p, locationType, "STAGING", out);
+    } else if (aisle == 93) {
+      // 바닥 레인(R-19 — 6층 야채 분배): 베이 = 레인, 단 1, 칸 = 레인 자리
+      if (!upperFloor) {
+        out.add(new Violation("locationCode", "LANE_FLOOR"));
+      }
+      if (bay < 1) {
+        out.add(new Violation("locationCode", "LANE_BAY"));
+      }
+      if (p.level() != 1) {
+        out.add(new Violation("locationCode", "LANE_LEVEL"));
+      }
+      if (p.slot() < 1) {
+        out.add(new Violation("locationCode", "LANE_SLOT"));
+      }
+      if (!locationType.equals("PICK_FACE")) {
+        out.add(new Violation("locationType", "LANE_TYPE"));
+      }
     } else {
       out.add(new Violation("locationCode", "RESERVED_AISLE"));
     }

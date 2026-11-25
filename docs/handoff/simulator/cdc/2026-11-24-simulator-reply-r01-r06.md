@@ -144,3 +144,9 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 사용자 결정(묶음 피킹 설계 §7 결정 4, WMS CDC-F-017): TRF 의 실피킹이 그 TRF BOX 에 담은 수량보다 많으면(SKU 별) 출발 검증에서 그 TRF 는 **MISMATCHED**, 불일치 `kind = UNEXPLAINED_QTY`(lpn 비움, detail = 실피킹·분류·차이). TOUT 하지 않고 `OutboundDiscrepancyRaised`(MISSING)를 낸다.
 - 지금 단건 피킹에도 적용된다. 집은 것을 다 담지 않고 출발시키면 그 TRF 는 출발 처리되지 않는다(불일치 TRF 는 다시 출발 검증할 수 없음 — 조사 몫, 0.4.0 그대로).
 - 부탁: 출발 전 `GET /internal/outbound-readiness?trfId` 의 `blockers` 에 `UNSORTED_QTY` 가 없는지 본다. 화면 mismatches 목록에 새 kind 가 보일 수 있다(enum 값 추가).
+
+### R-19 받음 — 위치 37,306칸 (d0fdaff, 2026-11-25)
+- 사용자 확인(2026-11-25 "그대로 진행"): cdc-location 0.5.1 — 랙 1단 PICK_FACE, 통로 93 바닥 레인(단 1·칸 1~), 7층 H 61~62 오토스토어(단 1~16·칸 1~2). 94~99 는 여전히 비움.
+- 37,306칸 모두 새 규칙 통과(`ChilgokLayoutIT`), 백엔드 사본 바꿈. 팔레트 자리 18,048(RESERVE 15,792 + 랙 1단 2,256) — 하한 18,000 지킴.
+- 바닥 하중 2,500kg/㎡·오토스토어 약 2,000kg/㎡ 는 시뮬레이터 값 그대로(사용자) — chilgok-dc.md 에 `[가정]` 으로 적음.
+- LAN 반영은 사용자가 최종 배치라 할 때(그 전엔 시드 --apply 안 함).
