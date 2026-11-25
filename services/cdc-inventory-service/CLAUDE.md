@@ -52,7 +52,11 @@
   - MFC 입고 종결 `POST /internal/transit-closures`(TRF 한 번, 다른 본문 409 TRANSIT_CLOSURE_CONFLICT, TOUT 전 404) — 정 경로는 mfc-inbound(요청 MI-5), 지금은 복구용 겸.
   - 운영자 `POST /cdcs/{cdcId}/transit-losses`: 종결 전 409 MFC_RECEIPT_OPEN, SKU·LOT 미정산 초과 409 LOSS_EXCEEDS_UNRECONCILED(둘 다 관문 앞) → 승인 관문(실사와 같은 `ApprovalGate`, kind TRANSPORT_LOSS, ref = 손실 ID) → 출발 줄 loss_qty +l(뒤 줄부터), Transit −l(원결과 TRANSPORT_LOSS), t = 0 이면 TRANSIT_RECONCILED → `TransitReconciled`(receiptId 없음). 같은 요청 키는 앞 검사 없이 재생. `/internal/loss-postings` 는 그대로 501.
   - 손실로 해소한 양이 나중에 발견되면 수령으로 더하지 않는다 — 발견물 승인 정정은 아직.
-- 아직 501: 품질·조정(`/internal/adjustments` — 실사 밖 ADJ)·`/internal/loss-postings`·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
+- 품질 보류·해제·폐기(0.15.0, WMS CDC-F-028 — 사용자 2026-11-26 "재고 쪽 먼저"·"나중 예약부터 풀고 출고에 알림"·"출고대기분은 MFC 처럼 건드리지 않음", `QualityService`): `/internal/quality-postings`(501 해제, 판정·승인의 cdc-quality 는 다음).
+  - 줄 sku·lot, locationCode 비우면 그 LOT 의 모든 칸(출고대기 91 제외 — 91 을 직접 주면 400 STAGING_NOT_HELD), qty 는 칸과 함께만. 같은 키 = 같은 결과(RequestIdempotency).
+  - HOLD: RELEASED → HELD(총현물 그대로, 원결과 QUALITY_HOLD — HELD 칸 +). 남는 정상 현물 < 예약이면 그 칸에 늦게 잡힌 할당부터 예약을 풀고 `AllocationShortfall`(QUALITY_HOLD — cdc-outbound 가 작업 줄 부족·재할당). LOT 마다 `LotBlocked`.
+  - RELEASE: approvalRef 필수(422 APPROVAL_REQUIRED) HELD → RELEASED, `LotReleased`. DISPOSE: approvalRef·evidenceRef(422 EVIDENCE_REQUIRED)·칸·qty 필수, 실제 실행 수량만 HELD −q(원결과 DISPOSAL), `InventoryAdjustmentPosted`(reason DISPOSAL). 모자라면 422 INSUFFICIENT_STOCK. 승인 번호는 지금 기록만(확인은 cdc-quality·approval 뒤).
+- 아직 501: 조정(`/internal/adjustments` — 실사 밖 ADJ)·`/internal/loss-postings`·일일 대사. 품질 판정·승인 서비스(cdc-quality)는 없다. 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 재고 현황(2026-11-25, 0.6.0)**: `GET /cdcs/{cdcId}/stock-snapshot?sku=&withPlaces=`(`AvailabilityController.getCenterStockSnapshot`) — 내부 `/internal/snapshots` 와 같은 `InventoryQueries.snapshot`, 자기 센터 운영자만(`Operator.requireCenter`), withPlaces 기본 false(LOT·위치 빼고). 시험 `StockLedgerFlowIT` 2-2.
 - **칸별 재고(2026-11-25, 0.9.0 — DC 백오피스 M-6)**: `GET /cdcs/{cdcId}/location-stocks?locationPrefix=&sku=&limit=`(`AvailabilityController.listCenterLocationStocks`) — `InventoryQueries.snapshot` 을 칸 × SKU × LOT × 품질 상태 줄로 펼침, 칸 → SKU → LOT 순, limit 기본 500·최대 2000(넘으면 truncated). cdc-location occupiedQty 는 그대로 null. 시험 `StockLedgerFlowIT` 2-3.
 - **실사 목록(2026-11-26, 0.12.0 — DC 백오피스 CS-1)**: `GET /cdcs/{cdcId}/count-sessions?state=&page=&size=`(`CountStore.sessionIds` 최신 순 → 줄마다 `CountService.view` = 단건과 같은 모양, 결정 전 lines 없음). 시험 `StockLedgerFlowIT`(실사 시작 뒤 COUNTING 목록).

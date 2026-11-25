@@ -86,7 +86,7 @@
 |---|---|---|---|---|---|
 | `AllocationResult` | cdc-inventory | replenishment, cdc-outbound | trfId, trfVersion, allocationId, lines[{sku, lot, allocatedQty, shortQty}] | TRF 확보(FEFO 다LOT) | ② |
 | `TransferDeparted` (TOUT) | cdc-inventory | mfc-inbound(2026-11-20 구독 구현 — 출발 줄 = 입고 예정 수량, 같은 departureId 한 번), mfc-inventory(T 참조), replenishment, transport-execution, transport-planning | trfId, departureId, departureLineIds[], lines[{sku, lot, lpn, qty}], departedAt, source(REAL/SIMULATED) | 출발 검증 후 `현물−q·예약−q·Transit+q` 1회 전기 | ② |
-| `AllocationShortfall` | cdc-inventory | cdc-outbound(그 TRF 작업 줄 부족 → 재할당·못 찾음, 2026-11-25) | cdcId, trfId, allocationId, sku, lot, locationCode, qty, reason(COUNT_LOSS), sourceRef | 실사 조정으로 칸 현물 < 예약 → 늦게 잡힌 할당부터 예약 해제(설계 2026-11-25-count-adjustment §4) | ② |
+| `AllocationShortfall` | cdc-inventory | cdc-outbound(그 TRF 작업 줄 부족 → 재할당·못 찾음, 2026-11-25) | cdcId, trfId, allocationId, sku, lot, locationCode, qty, reason(COUNT_LOSS·QUALITY_HOLD — 품질 보류 2026-11-26), sourceRef | 실사 조정·품질 보류로 칸 정상 현물 < 예약 → 늦게 잡힌 할당부터 예약 해제(설계 2026-11-25-count-adjustment §4) | ② |
 | `TransitReconciled` | cdc-inventory | mfc-inbound, replenishment, backoffice-bff | trfId, departureId, q, r, l, t, state(RECONCILED/PENDING/CONFLICT) | `q = r + l + t` 대사 | ② |
 | `TransferAckStatus` | cdc-inventory | mfc-inventory, replenishment | receiptId, ackState(ACKED/PENDING/CONFLICT) | TIN 확인 처리 결과 | ② |
 | `QuantityPostingResult` | cdc-inventory | cdc-inbound, cdc-outbound, cdc-quality | requestId, commitId, postingType, appliedQty, result | 수량 반영 요청 결과 | ② |

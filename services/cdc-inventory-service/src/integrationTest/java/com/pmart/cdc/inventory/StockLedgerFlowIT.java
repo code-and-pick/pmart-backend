@@ -1321,6 +1321,150 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(none.body().path("code").asString()).isEqualTo("LOSS_EXCEEDS_UNRECONCILED");
   }
 
+  /**
+   * 품질 보류·해제·폐기(0.15.0, CDC-F-028): 10 중 8 예약 → LOT 보류 = 10 HELD·예약 8 풀고
+   * AllocationShortfall(QUALITY_HOLD), 출고대기 91 은 그대로 → 해제 승인 없으면 422 → 4 해제 → 증빙 없는 폐기 422 → 실제 3
+   * 폐기(현물 −3).
+   */
+  @Test
+  void qualityHoldReleaseDispose() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String shelf = "CDC01-C-5-61-07-1-1";
+    String staging = "CDC01-C-5-91-07-0-1";
+    post(
+        SERVICE,
+        "/internal/initial-balances",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-INIT-Q",
+            "lines",
+            List.of(
+                ib(sku, "Q1", shelf, 10, today.plusDays(30), "VERIFIED", "RELEASED"),
+                ib(sku, "Q2", staging, 2, today.plusDays(40), "VERIFIED", "RELEASED"))));
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-Q",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    JsonNode a = allocate(sku, 8);
+    String alc = a.path("allocationId").asString();
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT reserved FROM stock_balance WHERE cdc_id = ? AND sku = ? AND lot = 'Q1'"
+                    + " AND quality_state = 'RELEASED'",
+                Integer.class,
+                CENTER,
+                sku))
+        .isEqualTo(8);
+
+    // 1) LOT 보류(칸 없음) — Q1 10 HELD, 예약 8 풀림 + AllocationShortfall
+    Map<String, Object> hold = new LinkedHashMap<>();
+    hold.put("cdcId", CENTER);
+    hold.put("action", "HOLD");
+    hold.put("sourceRef", "QH-" + sku);
+    hold.put("reason", "온도 이탈 의심");
+    hold.put("lines", List.of(Map.of("sku", sku, "lot", "Q1")));
+    String hk = key();
+    Res h = post(SERVICE, "/internal/quality-postings", hk, hold);
+    assertThat(h.status()).as(h.body().toString()).isEqualTo(200);
+    assertThat(h.body().path("appliedQty").asInt()).isEqualTo(10);
+    assertThat(
+            post(SERVICE, "/internal/quality-postings", hk, hold)
+                .body()
+                .path("resultId")
+                .asString())
+        .isEqualTo(h.body().path("resultId").asString()); // 같은 키 — 같은 결과
+    assertThat(qty(sku, "Q1", shelf, "HELD")).isEqualTo(10);
+    assertThat(qty(sku, "Q1", shelf, "RELEASED")).isZero();
+    assertThat(outbox("AllocationShortfall", alc)).isEqualTo(1);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'AllocationShortfall' AND aggregateid = ?",
+                String.class,
+                alc))
+        .contains("QUALITY_HOLD")
+        .contains("\"qty\": 8");
+    assertThat(outbox("LotBlocked", CENTER + ":" + sku + ":Q1")).isEqualTo(1);
+
+    // 2) 출고대기 91 은 건드리지 않음 — LOT 범위면 0, 칸으로 주면 400
+    Map<String, Object> h2 = new LinkedHashMap<>(hold);
+    h2.put("lines", List.of(Map.of("sku", sku, "lot", "Q2")));
+    Res z = post(SERVICE, "/internal/quality-postings", key(), h2);
+    assertThat(z.status()).as(z.body().toString()).isEqualTo(200);
+    assertThat(z.body().path("appliedQty").asInt()).isZero();
+    assertThat(qty(sku, "Q2", staging, "RELEASED")).isEqualTo(2);
+    h2.put("lines", List.of(Map.of("sku", sku, "lot", "Q2", "locationCode", staging)));
+    assertThat(post(SERVICE, "/internal/quality-postings", key(), h2).status()).isEqualTo(400);
+
+    // 3) 해제 — 승인 없으면 422, 4 해제
+    Map<String, Object> rel = new LinkedHashMap<>();
+    rel.put("cdcId", CENTER);
+    rel.put("action", "RELEASE");
+    rel.put("sourceRef", "QR-" + sku);
+    rel.put("lines", List.of(Map.of("sku", sku, "lot", "Q1", "locationCode", shelf, "qty", 4)));
+    Res r0 = post(SERVICE, "/internal/quality-postings", key(), rel);
+    assertThat(r0.status()).isEqualTo(422);
+    assertThat(r0.body().path("code").asString()).isEqualTo("APPROVAL_REQUIRED");
+    rel.put("approvalRef", "APV-QREL-1");
+    Res r1 = post(SERVICE, "/internal/quality-postings", key(), rel);
+    assertThat(r1.status()).as(r1.body().toString()).isEqualTo(200);
+    assertThat(qty(sku, "Q1", shelf, "HELD")).isEqualTo(6);
+    assertThat(qty(sku, "Q1", shelf, "RELEASED")).isEqualTo(4);
+    assertThat(outbox("LotReleased", CENTER + ":" + sku + ":Q1")).isEqualTo(1);
+
+    // 4) 폐기 — 증빙 없으면 422, 보류보다 많으면 422, 실제 3 폐기
+    Map<String, Object> dis = new LinkedHashMap<>();
+    dis.put("cdcId", CENTER);
+    dis.put("action", "DISPOSE");
+    dis.put("sourceRef", "QD-" + sku);
+    dis.put("approvalRef", "APV-QDIS-1");
+    dis.put("lines", List.of(Map.of("sku", sku, "lot", "Q1", "locationCode", shelf, "qty", 3)));
+    Res d0 = post(SERVICE, "/internal/quality-postings", key(), dis);
+    assertThat(d0.status()).isEqualTo(422);
+    assertThat(d0.body().path("code").asString()).isEqualTo("EVIDENCE_REQUIRED");
+    dis.put("evidenceRef", "EVD-PHOTO-1");
+    Map<String, Object> over = new LinkedHashMap<>(dis);
+    over.put("lines", List.of(Map.of("sku", sku, "lot", "Q1", "locationCode", shelf, "qty", 9)));
+    Res d1 = post(SERVICE, "/internal/quality-postings", key(), over);
+    assertThat(d1.status()).isEqualTo(422);
+    assertThat(d1.body().path("code").asString()).isEqualTo("INSUFFICIENT_STOCK");
+    Res d2 = post(SERVICE, "/internal/quality-postings", key(), dis);
+    assertThat(d2.status()).as(d2.body().toString()).isEqualTo(200);
+    assertThat(qty(sku, "Q1", shelf, "HELD")).isEqualTo(3);
+    assertThat(qty(sku, "Q1", shelf, "RELEASED")).isEqualTo(4);
+    assertThat(outbox("InventoryAdjustmentPosted", "QD-" + sku)).isEqualTo(1);
+  }
+
+  int qty(String sku, String lot, String loc, String quality) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(on_hand), 0) FROM stock_balance WHERE cdc_id = ? AND sku = ? AND lot = ?"
+                + " AND location_code = ? AND quality_state = ?",
+            Integer.class,
+            CENTER,
+            sku,
+            lot,
+            loc,
+            quality);
+    return n == null ? 0 : n;
+  }
+
   JsonNode allocate(String sku, int qty) {
     Res r =
         post(

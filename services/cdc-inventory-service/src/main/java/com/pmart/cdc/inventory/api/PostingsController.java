@@ -23,8 +23,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 계약 PostingsApi — 초기 보유·안전량·TOUT(0.2.0)·내부 이동(0.3.0) 구현. 수령 확인·품질·손실·조정은 아직 인터페이스 default(501). 업무
- * 규칙은 application/domain 에 있다.
+ * 계약 PostingsApi — 초기 보유·안전량·TOUT(0.2.0)·내부 이동(0.3.0) 구현. 수령 확인(0.11.0)·운송 손실(0.14.0)·품질(0.15.0)
+ * 구현, 조정·loss-postings 는 아직 인터페이스 default(501). 업무 규칙은 application/domain 에 있다.
  */
 @RestController
 public class PostingsController implements PostingsApi {
@@ -34,18 +34,45 @@ public class PostingsController implements PostingsApi {
   private final MoveService moves;
   private final com.pmart.cdc.inventory.application.ReceiptService receipts;
   private final com.pmart.cdc.inventory.application.TransitLossService losses;
+  private final com.pmart.cdc.inventory.application.QualityService quality;
 
   public PostingsController(
       StockSetupService setup,
       DepartureService departures,
       MoveService moves,
       com.pmart.cdc.inventory.application.ReceiptService receipts,
-      com.pmart.cdc.inventory.application.TransitLossService losses) {
+      com.pmart.cdc.inventory.application.TransitLossService losses,
+      com.pmart.cdc.inventory.application.QualityService quality) {
     this.receipts = receipts;
     this.losses = losses;
+    this.quality = quality;
     this.setup = setup;
     this.departures = departures;
     this.moves = moves;
+  }
+
+  /** 품질 보류·해제·폐기 반영(0.15.0, WMS CDC-F-028). */
+  @Override
+  public ResponseEntity<ReleaseAllocation200Response> postQualityChange(
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.cdc.inventory.api.generated.model.PostQualityChangeRequest body,
+      @Nullable String traceparent) {
+    var cmd =
+        new com.pmart.cdc.inventory.application.QualityService.Cmd(
+            body.getCdcId(),
+            body.getAction().getValue(),
+            body.getSourceRef(),
+            body.getApprovalRef(),
+            body.getEvidenceRef(),
+            body.getReason(),
+            body.getLines().stream()
+                .map(
+                    l ->
+                        new com.pmart.cdc.inventory.application.QualityService.Line(
+                            l.getSku(), l.getLot(), l.getLocationCode(), l.getQty()))
+                .toList());
+    return ResponseEntity.ok(Dto.command(quality.post(idempotencyKey, xSourceSystem, cmd)));
   }
 
   /** MFC 입고 종결 기록(0.14.0) — 운송 손실의 전제. */

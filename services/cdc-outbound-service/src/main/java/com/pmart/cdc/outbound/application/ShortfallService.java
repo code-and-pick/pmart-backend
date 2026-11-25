@@ -59,6 +59,8 @@ public class ShortfallService {
     String lot = p.path("lot").asString();
     String loc = p.path("locationCode").asString();
     int qty = p.path("qty").asInt(0);
+    // 사유 그대로(COUNT_LOSS 실사·QUALITY_HOLD 품질 보류 — cdc-inventory 0.15.0)
+    String reason = p.path("reason").asString("COUNT_LOSS");
     if (qty <= 0) {
       return;
     }
@@ -93,7 +95,7 @@ public class ShortfallService {
       String taskId = (String) o[0];
       int lineNo = (Integer) o[1];
       int take = Math.min(left, (Integer) o[2]);
-      store.addLineResult(taskId, lineNo, 0, take, "COUNT_LOSS");
+      store.addLineResult(taskId, lineNo, 0, take, reason);
       store.addShareResult(taskId, lineNo, trfId, 0, take);
       if (firstTask == null) {
         firstTask = taskId;
