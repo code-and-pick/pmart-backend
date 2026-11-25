@@ -215,6 +215,10 @@ public class CancellationSagaService {
   /** 멈춘 사가 재개·판정 재조회. */
   @Scheduled(fixedDelayString = "${pmart.orchestration.sweep-interval:PT10S}")
   public void sweep() {
+    // 슬롯 기록이 없어 멈춘 사가(2026-11-25 고침 전)는 다시 진행 — 운영자가 처리 완료로 표시한 것은 그대로
+    for (String sagaId : store.reopenSlotHoldMissing()) {
+      log.info("취소 사가 {} 슬롯 기록 없음으로 멈췄던 것을 다시 진행", sagaId);
+    }
     for (String sagaId : store.due(clock.instant().minus(props.stuckAfter()))) {
       try {
         advance(sagaId);
@@ -375,7 +379,8 @@ public class CancellationSagaService {
     boolean all = true;
     for (JsonNode n : resources) {
       ObjectNode r = (ObjectNode) n;
-      if ("RELEASED".equals(r.path("state").asString())) {
+      String done = r.path("state").asString();
+      if ("RELEASED".equals(done) || "ABSENT".equals(done)) {
         continue;
       }
       String type = r.path("resourceType").asString();
@@ -391,6 +396,12 @@ public class CancellationSagaService {
       String state = participants.resourceState(type, id);
       if (CancellationRules.released(state)) {
         r.put("state", "RELEASED");
+        continue;
+      }
+      if (res instanceof Rejected gone && CancellationRules.absent(type, gone.code())) {
+        // 정본에 점유 기록이 없다 — 차지한 정원도 없어 풀 것이 없다(2026-11-25, 11-10 슬롯 기록 유실)
+        r.put("state", "ABSENT");
+        log.warn("취소 사가 {} {} {} 정본에 없음 — 풀 것 없이 다음으로", s.sagaId(), type, id);
         continue;
       }
       all = false;

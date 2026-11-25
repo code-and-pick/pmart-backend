@@ -77,6 +77,18 @@ public final class CancellationRules {
     return "RELEASED".equals(state) || "EXPIRED".equals(state);
   }
 
+  /** 해제 거절 중 "그 점유가 정본에 아예 없음" — 풀 것이 없으므로 해제된 것으로 본다. */
+  public static final String SLOT_HOLD_NOT_FOUND = "SLOT_HOLD_NOT_FOUND";
+
+  /**
+   * 해제 거절 코드가 "정본에 점유 기록 없음"인가(2026-11-25). 슬롯 정원은 delivery-capacity 의 slot_hold 행을 세므로 행이 없으면 차지한
+   * 정원도 없다. 2026-11-10 PC 3 → PC 5 이전 때 옛 slot_hold 가 지워져 그 전 주문의 취소가 여기서 ESCALATED 로 멈췄다. 재고 예약·작업
+   * 여력은 그대로 거절이면 상신(정본 유실이 확인된 것은 슬롯뿐).
+   */
+  public static boolean absent(String resourceType, String rejectCode) {
+    return "SLOT_HOLD".equals(resourceType) && SLOT_HOLD_NOT_FOUND.equals(rejectCode);
+  }
+
   public static @Nullable String next(String step) {
     int i = STEPS.indexOf(step);
     return i < 0 || i + 1 >= STEPS.size() ? null : STEPS.get(i + 1);

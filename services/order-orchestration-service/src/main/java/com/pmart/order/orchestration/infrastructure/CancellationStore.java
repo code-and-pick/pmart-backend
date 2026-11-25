@@ -118,6 +118,22 @@ public class CancellationStore {
         sagaId);
   }
 
+  /**
+   * RELEASE_RESOURCES 에서 슬롯 점유가 정본에 없어(SLOT_HOLD_NOT_FOUND) 상신된 사가를 RUNNING 으로 되돌린다(2026-11-25). 이제
+   * 그 거절은 "풀 것 없음"이라 같은 단계를 다시 돌면 지나간다. 운영자가 처리 완료(saga_manual_resolution)로 표시한 사가는 건드리지 않는다.
+   * updated_at 을 옛 시각으로 두어 이번 sweep 의 due 가 바로 집는다.
+   */
+  public List<String> reopenSlotHoldMissing() {
+    return jdbc.queryForList(
+        "UPDATE cancellation_saga c SET state = 'RUNNING', last_error_step = NULL,"
+            + " last_error_code = NULL, last_error_message = NULL, version = version + 1,"
+            + " updated_at = ? WHERE c.state = 'ESCALATED' AND c.current_step = 'RELEASE_RESOURCES'"
+            + " AND c.last_error_code = 'SLOT_HOLD_NOT_FOUND' AND NOT EXISTS (SELECT 1 FROM"
+            + " saga_manual_resolution m WHERE m.saga_id = c.saga_id) RETURNING c.saga_id",
+        String.class,
+        ts(Instant.EPOCH));
+  }
+
   /** 진행 표시만 갱신(멈춤 감시 기준 시각). */
   public void touch(String sagaId, Instant now) {
     jdbc.update("UPDATE cancellation_saga SET updated_at = ? WHERE saga_id = ?", ts(now), sagaId);

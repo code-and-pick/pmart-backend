@@ -395,6 +395,90 @@ class CancellationSagaIT extends PostgresKafkaContainerSupport {
             urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/line-quantity-changes")));
   }
 
+  /** 슬롯 점유가 정본에 없음(404 SLOT_HOLD_NOT_FOUND) — 2026-11-10 PC 이전 때 지워진 옛 점유. */
+  void slotHoldMissing(String orderId) {
+    String base = "/api/v1/internal/slot-holds/SH-" + orderId;
+    Map<String, Object> problem =
+        Map.of(
+            "type", "about:blank",
+            "title", "Not Found",
+            "status", 404,
+            "code", "SLOT_HOLD_NOT_FOUND",
+            "detail", "슬롯 점유가 없습니다: SH-" + orderId);
+    parts.stubFor(
+        WireMock.post(urlPathEqualTo(base + "/releases"))
+            .willReturn(json(404, problem).withHeader("Content-Type", "application/problem+json")));
+    parts.stubFor(
+        WireMock.get(urlPathEqualTo(base))
+            .willReturn(json(404, problem).withHeader("Content-Type", "application/problem+json")));
+  }
+
+  /** 2026-11-25: 슬롯 점유 기록이 없으면 풀 것이 없다 — 나머지를 풀고 주문 취소까지 간다(전에는 ESCALATED 로 멈춤). */
+  @Test
+  void missingSlotHoldCountsAsNothingToRelease() throws Exception {
+    String orderId = "ORD-" + UUID.randomUUID();
+    String stopId = "STOP-" + UUID.randomUUID();
+    completedCheckout(orderId);
+    stop(stopId, orderId, stopResult(stopId, orderId, "RESOLVED", List.of()));
+    releasable(orderId, "RELEASED");
+    slotHoldMissing(orderId);
+    orderChange(orderId);
+
+    assertThat(start(UUID.randomUUID().toString(), "CLM-SH", stopId, orderId)).isEqualTo(202);
+    CancellationRow s = awaitState(stopId, "COMPLETED");
+    assertThat(s.state()).isEqualTo("COMPLETED");
+    Map<String, String> states = new LinkedHashMap<>();
+    s.resources()
+        .forEach(r -> states.put(r.path("resourceType").asString(), r.path("state").asString()));
+    assertThat(states)
+        .containsEntry("SLOT_HOLD", "ABSENT")
+        .containsEntry("CAPACITY_HOLD", "RELEASED")
+        .containsEntry("INVENTORY_RESERVATION", "RELEASED");
+    parts.verify(
+        1,
+        postRequestedFor(
+            urlPathEqualTo("/api/v1/internal/orders/" + orderId + "/line-quantity-changes")));
+  }
+
+  /** 고침 전에 슬롯 기록 없음으로 상신된 사가는 sweep 이 다시 진행한다. 운영자가 처리 완료로 표시한 것은 그대로. */
+  @Test
+  void sweepReopensSagaEscalatedForMissingSlotHold() throws Exception {
+    String[] orderIds = {"ORD-" + UUID.randomUUID(), "ORD-" + UUID.randomUUID()};
+    String[] stopIds = {"STOP-" + UUID.randomUUID(), "STOP-" + UUID.randomUUID()};
+    for (int i = 0; i < 2; i++) {
+      completedCheckout(orderIds[i]);
+      stop(stopIds[i], orderIds[i], stopResult(stopIds[i], orderIds[i], "RESOLVED", List.of()));
+      releasable(orderIds[i], "CONFIRMED"); // 해제 확인 전에 멈춰 둔다
+      orderChange(orderIds[i]);
+      assertThat(start(UUID.randomUUID().toString(), "CLM-R" + i, stopIds[i], orderIds[i]))
+          .isEqualTo(202);
+      for (int k = 0; k < 50 && saga(stopIds[i]).resources() == null; k++) {
+        Thread.sleep(100);
+      }
+      // 고침 전 모습: 슬롯 해제 거절로 상신
+      jdbc.update(
+          "UPDATE cancellation_saga SET state = 'ESCALATED', last_error_step = 'RELEASE_RESOURCES',"
+              + " last_error_code = 'SLOT_HOLD_NOT_FOUND', last_error_message = 'x' WHERE saga_id = ?",
+          saga(stopIds[i]).sagaId());
+      releasable(orderIds[i], "RELEASED");
+      slotHoldMissing(orderIds[i]);
+    }
+    String resolved = saga(stopIds[1]).sagaId();
+    jdbc.update(
+        "INSERT INTO saga_manual_resolution (saga_id, resolved_by, reason, resolved_at, request_id)"
+            + " VALUES (?, 'OP-1', '밖에서 처리', now(), 'r-1')",
+        resolved);
+
+    sagas.sweep();
+
+    CancellationRow reopened = awaitState(stopIds[0], "COMPLETED");
+    assertThat(reopened.state()).isEqualTo("COMPLETED");
+    assertThat(reopened.lastErrorCode()).isNull();
+    CancellationRow kept = saga(stopIds[1]);
+    assertThat(kept.state()).isEqualTo("ESCALATED");
+    assertThat(kept.lastErrorCode()).isEqualTo("SLOT_HOLD_NOT_FOUND");
+  }
+
   @Test
   void releaseUnconfirmedWaitsThenRetriesWithSameKeys() throws Exception {
     String orderId = "ORD-" + UUID.randomUUID();
