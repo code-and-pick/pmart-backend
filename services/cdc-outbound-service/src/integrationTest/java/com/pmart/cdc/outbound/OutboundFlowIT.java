@@ -18,7 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -50,6 +52,7 @@ import tools.jackson.databind.ObjectMapper;
     @ConfigureWireMock(
         name = "inventory",
         baseUrlProperties = "pmart.outbound.cdc-inventory-base-url"))
+@TestMethodOrder(MethodOrderer.MethodName.class) // 주 흐름의 outbox 수 세기가 취소 시나리오(CDC02) 사건과 섞이지 않게 먼저
 class OutboundFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
@@ -350,6 +353,13 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
       picked += p.path("pickedQty").asInt();
     }
     assertThat(picked).isEqualTo(7); // 5 + (3 − 1)
+    Res pickedCancel =
+        postKey(
+            OPS,
+            "/cdcs/CDC01/transfers/" + trf1 + "/pre-departure-cancellations",
+            UUID.randomUUID().toString(),
+            Map.of("reason", "TRANSFER_CANCELLED", "scope", "FULL"));
+    assertThat(pickedCancel.body().path("code").asString()).isEqualTo("PICKING_STARTED");
     JsonNode rdPicked = readiness(trf1);
     assertThat(rdPicked.path("readiness").asString()).isEqualTo("PICKED");
     assertThat(rdPicked.path("blockers").toString()).contains("UNSORTED_QTY");
@@ -550,6 +560,237 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     JsonNode rdDep = readiness(trf1);
     assertThat(rdDep.path("readiness").asString()).isEqualTo("DEPARTED");
     assertThat(rdDep.path("readyQty").asInt()).isEqualTo(7);
+  }
+
+  Res postKey(String token, String path, String key, Object body) {
+    var e =
+        http.post()
+            .uri(path)
+            .headers(
+                h -> {
+                  h.setBearerAuth(token);
+                  h.set("Idempotency-Key", key);
+                  h.set("X-Source-System", "it");
+                })
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .toEntity(String.class);
+    return new Res(e.getStatusCode().value(), read(e.getBody()));
+  }
+
+  void stubRelease(String allocationId, int status, String body) {
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo(ALLOC + "/" + allocationId + "/releases"))
+            .willReturn(
+                aResponse()
+                    .withStatus(status)
+                    .withHeader(
+                        "Content-Type",
+                        status >= 400 ? "application/problem+json" : "application/json")
+                    .withBody(body)));
+  }
+
+  /**
+   * 미출발 취소(0.7.0, 피킹 전): 미할당 FULL 바로 반영 → 릴리스 전 PARTIAL(할당 일부 해제) → 검증 거절 → Wave 릴리스 뒤 PARTIAL 거절 →
+   * FULL(작업 막기 → 해제 불명 → CANCELLING, 출발 검증 거절 → 같은 본문 재전송으로 반영 → TRF·Wave CANCELLED). 다른 시험의 작업
+   * 대기열과 섞이지 않게 CDC02.
+   */
+  @Test
+  void preDepartureCancellationBeforePicking() {
+    String c2 = "CDC02";
+    String ops2 = TestJwt.operator("ops-2", List.of("CDC_MANAGER"), List.of(c2));
+    String w9 = TestJwt.operator("w9", List.of("CDC_WORKER"), List.of(c2));
+    String trfA = "TRF-" + UUID.randomUUID();
+    String trfB = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    stubAllocate(
+        trfA,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":6},{\"sku\":\"E-00000002\",\"allocatedQty\":4}]}");
+    stubAllocate(trfB, 422, "{\"code\":\"SKU_NOT_HANDLED\",\"detail\":\"취급 OFF\"}");
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(urlPathEqualTo(ALLOC + "/" + alc))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"allocationId\":\""
+                            + alc
+                            + "\",\"state\":\"ALLOCATED\",\"lines\":["
+                            + "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\"CDC02-C-5-61-01-1-1\",\"qty\":4}]},"
+                            + "{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\"CDC02-C-5-61-02-1-1\",\"qty\":4}]}]}")));
+    Map<String, Object> a = new LinkedHashMap<>(trf(trfA, 6, 4));
+    a.put("cdcId", c2);
+    Map<String, Object> b = new LinkedHashMap<>(trf(trfB, 1, 1));
+    b.put("cdcId", c2);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", a).status()).isEqualTo(202);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", b).status()).isEqualTo(202);
+    String pdc = "/pre-departure-cancellations";
+    String base = "/cdcs/" + c2 + "/transfers/";
+    Map<String, Object> full = Map.of("reason", "TRANSPORT_UNAVAILABLE", "scope", "FULL");
+
+    // 다른 센터 운영자 403
+    assertThat(postKey(OPS, base + trfA + pdc, UUID.randomUUID().toString(), full).status())
+        .isEqualTo(403);
+
+    // 1) 미할당(ALLOCATION_FAILED) FULL — 재고 호출 없이 바로 CANCELLED
+    String kb = UUID.randomUUID().toString();
+    Res cb = postKey(ops2, base + trfB + pdc, kb, full);
+    assertThat(cb.status()).as(cb.body().toString()).isEqualTo(202);
+    assertThat(cb.body().path("status").asString()).isEqualTo("APPLIED");
+    JsonNode rb = get(ops2, base + trfB + pdc + "/" + kb).body();
+    assertThat(rb.path("state").asString()).isEqualTo("APPLIED");
+    assertThat(rb.path("releasedQty").asInt()).isZero();
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trfB).body().path("state").asString())
+        .isEqualTo("CANCELLED");
+
+    // 2) 릴리스 전 PARTIAL — SKU1 2개 축소 → 재고 2 해제(사유 TRANSFER_CHANGED)
+    stubRelease(
+        alc,
+        200,
+        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-P1\",\"appliedQty\":2}");
+    Map<String, Object> partial =
+        Map.of(
+            "reason",
+            "TRANSFER_CHANGED",
+            "scope",
+            "PARTIAL",
+            "lines",
+            List.of(Map.of("sku", "E-00000001", "reduceQty", 2)));
+    String kp = UUID.randomUUID().toString();
+    Res pa = postKey(ops2, base + trfA + pdc, kp, partial);
+    assertThat(pa.status()).as(pa.body().toString()).isEqualTo(202);
+    assertThat(pa.body().path("status").asString()).isEqualTo("APPLIED");
+    inventory.verify(
+        1,
+        postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases"))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("TRANSFER_CHANGED")))
+            .withRequestBody(matchingJsonPath("$.lines[0].sku", equalTo("E-00000001")))
+            .withRequestBody(matchingJsonPath("$.lines[0].qty", equalTo("2"))));
+    JsonNode ia = get(SERVICE, "/internal/transfer-intakes/" + trfA).body();
+    assertThat(ia.path("state").asString()).isEqualTo("ALLOCATED");
+    assertThat(ia.path("progress").get(0).path("allocatedQty").asInt()).isEqualTo(4);
+    JsonNode rp = get(ops2, base + trfA + pdc + "/" + kp).body();
+    assertThat(rp.path("releasedQty").asInt()).isEqualTo(2);
+    assertThat(rp.path("releaseCommitId").asString()).isEqualTo("CMT-P1");
+    // 같은 키·같은 본문 → 다시 부르지 않음, 승인량 넘는 축소·없는 SKU → 400
+    assertThat(postKey(ops2, base + trfA + pdc, kp, partial).body().path("status").asString())
+        .isEqualTo("APPLIED");
+    inventory.verify(1, postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases")));
+    Res over =
+        postKey(
+            ops2,
+            base + trfA + pdc,
+            UUID.randomUUID().toString(),
+            Map.of(
+                "reason",
+                "OTHER",
+                "scope",
+                "PARTIAL",
+                "lines",
+                List.of(Map.of("sku", "E-00000001", "reduceQty", 5))));
+    assertThat(over.status()).isEqualTo(400);
+    assertThat(over.body().toString()).contains("REDUCE_EXCEEDS_APPROVED");
+    assertThat(
+            postKey(
+                    ops2,
+                    base + trfA + pdc,
+                    UUID.randomUUID().toString(),
+                    Map.of(
+                        "reason",
+                        "OTHER",
+                        "scope",
+                        "FULL",
+                        "lines",
+                        List.of(Map.of("sku", "E-00000001", "reduceQty", 1))))
+                .status())
+        .isEqualTo(400);
+
+    // 3) Wave 릴리스 → 작업자가 하나 받음(ACCEPTED) → PARTIAL 거절
+    Res wave = post(ops2, "/waves", Map.of("cdcId", c2, "trfIds", List.of(trfA)));
+    assertThat(wave.status()).as(wave.body().toString()).isEqualTo(201);
+    String waveId = wave.body().path("waveId").asString();
+    assertThat(post(ops2, "/waves/" + waveId + "/releases", null).status()).isEqualTo(202);
+    Res n = post(w9, "/cdcs/" + c2 + "/workers/w9/next-tasks", Map.of());
+    assertThat(n.status()).as(n.body().toString()).isEqualTo(201);
+    String held = n.body().path("taskId").asString();
+    Res late = postKey(ops2, base + trfA + pdc, UUID.randomUUID().toString(), partial);
+    assertThat(late.body().path("code").asString()).isEqualTo("PARTIAL_AFTER_RELEASE");
+
+    // 4) FULL — 작업 막기 → 해제 불명(503) → UNKNOWN·CANCELLING
+    stubRelease(alc, 503, "{}");
+    String kf = UUID.randomUUID().toString();
+    Res f1 = postKey(ops2, base + trfA + pdc, kf, full);
+    assertThat(f1.status()).as(f1.body().toString()).isEqualTo(202);
+    assertThat(f1.body().path("status").asString()).isEqualTo("ACCEPTED");
+    assertThat(get(ops2, base + trfA + pdc + "/" + kf).body().path("state").asString())
+        .isEqualTo("UNKNOWN");
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trfA).body().path("state").asString())
+        .isEqualTo("CANCELLING");
+    assertThat(get(ops2, "/cdcs/" + c2 + "/tasks/" + held).body().path("state").asString())
+        .isEqualTo("CANCELLED");
+    assertThat(post(w9, "/cdcs/" + c2 + "/tasks/" + held + "/starts", null).status())
+        .isGreaterThanOrEqualTo(400);
+    assertThat(
+            post(w9, "/cdcs/" + c2 + "/workers/w9/next-tasks", Map.of())
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_TASK_AVAILABLE");
+    assertThat(readiness(trfA).path("blockers").toString()).contains("CANCELLATION_PENDING");
+    assertThat(
+            postKey(ops2, base + trfA + pdc, UUID.randomUUID().toString(), full)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("INVALID_STATE");
+    Map<String, Object> dep = new LinkedHashMap<>();
+    dep.put("departureId", "DEP-" + UUID.randomUUID());
+    dep.put("tripId", "TRIP-C2");
+    dep.put("vehicleId", "VH-C2");
+    dep.put("departedAt", Instant.now().toString());
+    dep.put("source", "SIMULATED");
+    dep.put("trfCompositions", List.of(Map.of("trfId", trfA, "lpns", List.of())));
+    assertThat(post(SERVICE, "/internal/departure-validations", dep).body().path("code").asString())
+        .isEqualTo("INVALID_STATE");
+
+    // 5) 같은 본문 재전송 → 같은 키로 다시 해제 → APPLIED, TRF·Wave CANCELLED
+    stubRelease(
+        alc,
+        200,
+        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-F1\",\"appliedQty\":8}");
+    Res f2 = postKey(ops2, base + trfA + pdc, kf, full);
+    assertThat(f2.body().path("status").asString()).as(f2.body().toString()).isEqualTo("APPLIED");
+    var fullCalls =
+        inventory.findAll(
+            postRequestedFor(urlPathEqualTo(ALLOC + "/" + alc + "/releases"))
+                .withRequestBody(matchingJsonPath("$.reason", equalTo("PRE_DEPARTURE_CANCEL"))));
+    assertThat(fullCalls).hasSizeGreaterThanOrEqualTo(2); // 503 은 Downstream 이 한 번 더 시도
+    assertThat(fullCalls.stream().map(r -> r.getHeader("Idempotency-Key")).distinct().toList())
+        .hasSize(1)
+        .allMatch(k -> k.startsWith("outbound-cancel-"));
+    assertThat(fullCalls.get(0).getBodyAsString()).doesNotContain("\"lines\"");
+    JsonNode rf = get(ops2, base + trfA + pdc + "/" + kf).body();
+    assertThat(rf.path("state").asString()).isEqualTo("APPLIED");
+    assertThat(rf.path("releasedQty").asInt()).isEqualTo(8);
+    assertThat(rf.path("releaseCommitId").asString()).isEqualTo("CMT-F1");
+    JsonNode fa = get(SERVICE, "/internal/transfer-intakes/" + trfA).body();
+    assertThat(fa.path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(fa.path("progress").get(0).path("allocatedQty").asInt()).isZero();
+    assertThat(get(ops2, "/waves/" + waveId).body().path("state").asString())
+        .isEqualTo("CANCELLED");
+    assertThat(readiness(trfA).path("readiness").asString()).isEqualTo("CANCELLED");
+    assertThat(
+            postKey(ops2, base + trfA + pdc, kf, Map.of("reason", "OTHER", "scope", "FULL"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("IDEMPOTENCY_CONFLICT");
+    assertThat(get(ops2, base + trfA + pdc + "/NOPE").status()).isEqualTo(404);
   }
 
   JsonNode readiness(String trf) {

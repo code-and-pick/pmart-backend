@@ -49,16 +49,19 @@ public class WaveService {
   public record WaveView(WaveRow wave, List<String> trfIds, int total, int done, int exception) {}
 
   private final OutboundStore store;
+  private final com.pmart.cdc.outbound.infrastructure.CancellationStore cancels;
   private final InventoryClient inventory;
   private final RequestIdempotency idempotency;
   private final Support support;
 
   public WaveService(
       OutboundStore store,
+      com.pmart.cdc.outbound.infrastructure.CancellationStore cancels,
       InventoryClient inventory,
       RequestIdempotency idempotency,
       Support support) {
     this.store = store;
+    this.cancels = cancels;
     this.inventory = inventory;
     this.idempotency = idempotency;
     this.support = support;
@@ -97,6 +100,14 @@ public class WaveService {
             if (!ALLOCATED.contains(t.state())) {
               throw PmartException.invalidState(
                   "TRF " + trfId + " 는 아직 확보되지 않았습니다(" + t.state() + ").");
+            }
+            if (cancels.inProgress(trfId)) {
+              throw new PmartException(
+                  "CANCELLATION_IN_PROGRESS",
+                  HttpStatus.CONFLICT,
+                  "TRF " + trfId + " 의 미출발 취소·축소가 아직 끝나지 않았습니다.",
+                  false,
+                  List.of());
             }
             store.setTransferState(trfId, "IN_WAVE", waveId, at);
           }
@@ -144,7 +155,9 @@ public class WaveService {
     Map<String, List<Held>> held = new HashMap<>();
     if ("PLANNED".equals(before.state())) {
       for (TransferRow t : store.transfersOfWave(waveId)) {
-        held.put(t.trfId(), held(t));
+        if (!CancellationService.CANCEL_STATES.contains(t.state())) {
+          held.put(t.trfId(), held(t));
+        }
       }
     }
     return idempotency.execute(
@@ -163,6 +176,9 @@ public class WaveService {
           }
           List<TransferRow> trfs = store.transfersOfWave(waveId);
           for (TransferRow t : trfs) {
+            if (CancellationService.CANCEL_STATES.contains(t.state())) {
+              continue; // 미출발 취소(0.7.0) — 작업을 만들지 않는다
+            }
             List<Held> h = held.get(t.trfId());
             if (h == null) {
               throw PmartException.versionConflict("Wave 의 TRF 가 방금 바뀌었습니다. 다시 릴리스하세요.");

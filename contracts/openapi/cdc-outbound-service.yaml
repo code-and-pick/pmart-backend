@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -578,17 +578,26 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  /transfers/{trfId}/pre-departure-cancellations:
+  /cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations:
     post:
       tags: [transfers]
-      summary: 미출발 취소·축소 (실물 하차·복귀, cdc-inventory 할당 해제, TMS 배정 대사)
+      summary: 미출발 취소·축소 — 0.7.0 은 피킹 시작 전까지 (작업 중지 → cdc-inventory 할당 해제)
       description: |
-        TransferCancelled/Changed 수신 또는 현장 결정으로 호출. 실제 출발 후에는 불가(INVALID_STATE).
-        상차된 LPN은 하차 결과(UNLOADED) 등록 후 해제가 완료된다. 출발 경합·불명은 결과 조회로 해소한다.
+        (0.7.0, WMS CDC-F-026) 경로를 `/cdcs/{cdcId}/transfers/…` 로 옮겼다 — 게이트웨이 `/api/v1/transfers/**` 는 replenishment-service.
+        TransferCancelled/Changed 수신 또는 현장 결정으로 자기 센터 운영자가 부른다. 요청 결과는 `requestId`(= Idempotency-Key)로 조회한다.
+        **0.7.0 범위 = 피킹 시작 전**(사용자 2026-11-25):
+        - 승인·미할당(RECEIVED·ALLOCATION_FAILED): FULL 만 — 바로 CANCELLED(현물 변화 0, 재고 호출 없음).
+        - 할당·미피킹: FULL = 남은 PICK 작업(CREATED·ASSIGNED·ACCEPTED)을 CANCELLED 로 막은 뒤 할당 전량 해제 → TRF CANCELLED(Wave 에 남은 작업이 없으면 Wave 도 닫음).
+          PARTIAL = Wave 릴리스 **전**에만 — SKU 별 reduceQty 중 할당된 만큼 해제(늦은 LOT 부터, cdc-inventory 규칙), TRF 는 그대로 남는다.
+        - 피킹이 시작됐거나(실피킹·착수·LPN) 분류·상차된 TRF 는 409 PICKING_STARTED — 실제 복귀·하차 결과를 받는 흐름이 아직 없다(CDC-F-021·F-026, 다음 범위).
+        - 출발했거나 출발 검증된 TRF 는 409 INVALID_STATE(출발 후 취소 없음). 할당 결과가 불명(ALLOCATING)이면 409 ALLOCATION_IN_PROGRESS(인수 재전송으로 먼저 확정).
+        - 재고 해제 응답이 불명이면 결과 UNKNOWN·TRF CANCELLING — 같은 본문을 다시 보내면 같은 키로 다시 해제한다(재고는 한 번만 반영). 그동안 Wave 편성·출발 검증은 막힌다.
+          재고가 거절하면 REJECTED(사유) — FULL 은 TRF CANCEL_HOLD(작업은 이미 막힘, 조사 몫).
+        - 재고 해제 사유: TRANSFER_CANCELLED·TRANSFER_CHANGED·PICK_SHORTAGE·QUALITY_BLOCKED 는 그대로, 그 밖은 PRE_DEPARTURE_CANCEL.
       operationId: cancelBeforeDeparture
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
@@ -606,7 +615,7 @@ paths:
                 sourceRef: { type: string, description: replenishment 요청 ID }
                 lines:
                   type: array
-                  description: PARTIAL일 때 축소 수량
+                  description: PARTIAL 일 때만(SKU 한 번씩). reduceQty 합은 승인량 − 이미 줄인 양을 넘지 못한다(400 REDUCE_EXCEEDS_APPROVED).
                   items:
                     type: object
                     required: [sku, reduceQty]
@@ -615,20 +624,24 @@ paths:
                       reduceQty: { $ref: '_common.yaml#/components/schemas/Quantity' }
       responses:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: INVALID_STATE (실제 출발 후) / VERSION_CONFLICT / DEPARTURE_IN_PROGRESS (결과 조회로 해소)
+          description: INVALID_STATE (출발 후·이미 취소) / VERSION_CONFLICT / PICKING_STARTED / PARTIAL_AFTER_RELEASE / ALLOCATION_IN_PROGRESS / CANCELLATION_IN_PROGRESS / IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  /transfers/{trfId}/pre-departure-cancellations/{requestId}:
+  /cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations/{requestId}:
     get:
       tags: [transfers]
       summary: 미출발 취소 요청 결과 조회 (PENDING/APPLIED/REJECTED/UNKNOWN)
+      description: requestId = 취소 요청의 Idempotency-Key. unloadedLpns 는 0.7.0 에서 늘 비어 있다(피킹 전 취소만).
       operationId: getPreDepartureCancellation
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - { name: trfId, in: path, required: true, schema: { type: string } }
         - { name: requestId, in: path, required: true, schema: { type: string } }
       responses:
@@ -640,11 +653,14 @@ paths:
                 type: object
                 properties:
                   requestId: { type: string }
+                  cancellationId: { type: string }
+                  scope: { type: string, enum: [FULL, PARTIAL] }
                   state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
                   releasedQty: { type: integer }
                   unloadedLpns: { type: array, items: { type: string } }
                   releaseCommitId: { type: string }
-                  reason: { type: string }
+                  reason: { type: string, description: 요청 사유 }
+                  rejectReason: { type: string, description: REJECTED 일 때 재고 응답(HTTP 상태·코드·설명) }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
   /internal/outbound-readiness:
@@ -658,7 +674,8 @@ paths:
           → PICKED(피킹 끝·분류 BOX 없음) → SORTED(BOX 수량 < 실피킹, 또는 합격 아닌 BOX) → INSPECTED(모든 BOX 합격·수량 일치) → LOADED(그 BOX 모두 상차).
         - readyLpnCount·readyQty·totalWeightG·temperatureZones: 검품 합격 BOX(DEPARTED 면 출발한 BOX) 기준. RT·PLT 는 세지 않는다(수량은 BOX 에만).
         - earliestReadyAt: INSPECTED·LOADED·DEPARTED 일 때 마지막 BOX 합격 시각(화물 전체가 준비된 때), 그 밖에는 null.
-        - blockers: NOT_ALLOCATED·ALLOCATION_FAILED·NOT_IN_WAVE·TASK_EXCEPTION·NOTHING_PICKED(전량 부족)·UNSORTED_QTY·NOT_INSPECTED·INSPECTION_FAILED.
+        - blockers: NOT_ALLOCATED·ALLOCATION_FAILED·NOT_IN_WAVE·TASK_EXCEPTION·NOTHING_PICKED(전량 부족)·UNSORTED_QTY·NOT_INSPECTED·INSPECTION_FAILED,
+          (0.7.0) CANCELLATION_PENDING(미출발 취소의 재고 해제 불명)·CANCELLATION_HOLD(재고가 해제를 거절 — 조사).
       operationId: getOutboundReadiness
       parameters:
         - { name: trfId, in: query, required: true, schema: { type: string } }
@@ -715,7 +732,7 @@ components:
         - { $ref: '#/components/schemas/TransferIntakeInput' }
         - type: object
           properties:
-            state: { type: string, enum: [RECEIVED, ALLOCATING, ALLOCATED, PARTIALLY_ALLOCATED, ALLOCATION_FAILED, IN_WAVE, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED] }
+            state: { type: string, enum: [RECEIVED, ALLOCATING, ALLOCATED, PARTIALLY_ALLOCATED, ALLOCATION_FAILED, IN_WAVE, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED, CANCELLING, CANCEL_HOLD], description: '(0.7.0) CANCELLING = 미출발 취소의 재고 해제 불명(같은 본문 재전송으로 확정), CANCEL_HOLD = 재고가 해제를 거절(작업은 막힘, 조사)' }
             version: { $ref: '_common.yaml#/components/schemas/Version' }
             allocationId: { type: string }
             waveId: { type: string }

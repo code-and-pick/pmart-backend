@@ -20,6 +20,8 @@
 
 `RECEIVED → ALLOCATED(부분 PARTIALLY_ALLOCATED) → PICKED → LOADED → DEPARTED / TOUT_POSTED`. 취소 축: `접수 → 중지/확인대기 → 실물·권리정리 → 해제`.
 
+구현(cdc-outbound 0.7.0, 피킹 시작 전): 미할당 `RECEIVED·ALLOCATION_FAILED → CANCELLED`(재고 호출 없음), 할당·미피킹 FULL `→ CANCELLING`(남은 PICK Task CANCELLED, 재고 해제 불명이면 여기 머묾) `→ CANCELLED` | `CANCEL_HOLD`(재고가 해제 거절 — 조사). PARTIAL 은 TRF 상태를 바꾸지 않고 줄의 `cancelled_qty`·할당만 줄인다(Wave 릴리스 전만). 취소 요청 결과 `PENDING → APPLIED | REJECTED | UNKNOWN`.
+
 ## Departure (출발 사실, cdc-inventory 전기 축)
 
 `NOT_DEPARTED → DEPARTURE_PENDING_CONFIRMATION → DEPARTURE_POSTED` | `FACT_UNKNOWN` | `STOP_PENDING`. 같은 departureLineId는 1회만 전기.

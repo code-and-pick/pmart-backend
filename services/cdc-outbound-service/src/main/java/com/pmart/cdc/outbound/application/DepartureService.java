@@ -138,6 +138,10 @@ public class DepartureService {
       if (lpns.departureIdOfTrf(t.trfId()).isPresent() || "DEPARTED".equals(t.state())) {
         throw PmartException.invalidState("TRF " + t.trfId() + " 는 이미 다른 출발로 나갔습니다.");
       }
+      if (CancellationService.CANCEL_STATES.contains(t.state())) {
+        throw PmartException.invalidState(
+            "TRF " + t.trfId() + " 는 미출발 취소됐거나 취소 중입니다(" + t.state() + ").");
+      }
       Map<String, LpnRow> mine = ResultService.byLpn(lpns.lockOfTrf(t.trfId()));
       List<MismatchRow> m = new ArrayList<>();
       if (c.mfcId() != null && !c.mfcId().equals(t.mfcId())) {

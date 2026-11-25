@@ -105,6 +105,11 @@ public class ReadinessService {
     } else if ("CANCELLED".equals(t.state())) {
       stage = "CANCELLED";
     } else {
+      if ("CANCELLING".equals(t.state())) {
+        blockers.add("CANCELLATION_PENDING");
+      } else if ("CANCEL_HOLD".equals(t.state())) {
+        blockers.add("CANCELLATION_HOLD");
+      }
       if ("ALLOCATION_FAILED".equals(t.state())) {
         blockers.add("ALLOCATION_FAILED");
       } else if (t.allocationId() == null) {
