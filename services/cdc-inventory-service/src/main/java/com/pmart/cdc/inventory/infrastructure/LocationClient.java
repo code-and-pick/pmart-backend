@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -51,6 +52,8 @@ public class LocationClient {
         String raw =
             http.post()
                 .uri("/api/v1/internal/location-lookups")
+                // POST 라 공통 헤더 검사가 키를 요구한다(조회라 저장·재생 없음 — 호출마다 새 값, cdc-location 0.4.1)
+                .header("Idempotency-Key", "cdc-inventory-location-lookup-" + UUID.randomUUID())
                 .header("X-Source-System", "cdc-inventory-service")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("centerId", centerId, "locationCodes", chunk))

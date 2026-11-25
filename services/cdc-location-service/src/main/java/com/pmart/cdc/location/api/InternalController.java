@@ -57,7 +57,7 @@ public class InternalController implements InternalApi {
 
   @Override
   public ResponseEntity<LookupLocations200Response> lookupLocations(
-      String xSourceSystem, LookupLocationsRequest body) {
+      String idempotencyKey, String xSourceSystem, LookupLocationsRequest body) {
     List<LocationRow> rows = service.lookup(body.getCenterId(), body.getLocationCodes());
     Set<String> found = new HashSet<>();
     var out = new LookupLocations200Response();

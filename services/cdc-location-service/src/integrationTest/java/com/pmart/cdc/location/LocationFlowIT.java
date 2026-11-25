@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,14 +62,16 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
 
   record Res(int status, JsonNode body) {}
 
-  Res post(String token, String path, String key, Object body, Integer expectedVersion) {
+  Res post(String token, String path, @Nullable String key, Object body, Integer expectedVersion) {
     var e =
         http.post()
             .uri(path)
             .headers(
                 h -> {
                   h.setBearerAuth(token);
-                  h.set("Idempotency-Key", key);
+                  if (key != null) {
+                    h.set("Idempotency-Key", key);
+                  }
                   h.set("X-Source-System", "backoffice-web");
                   if (expectedVersion != null) {
                     h.set("X-Expected-Version", String.valueOf(expectedVersion));
@@ -189,6 +192,16 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(lk.body().path("items").size()).isEqualTo(2);
     assertThat(lk.body().toString()).contains("STAGING").contains("RESERVE");
     assertThat(lk.body().path("missing").get(0).asString()).isEqualTo("CDC01-C-5-99-01-0-1");
+    // POST 라 공통 헤더 검사가 키를 요구한다(0.4.1 계약 — LAN #462 배포에서 확인된 것)
+    assertThat(
+            post(
+                    SERVICE,
+                    "/internal/location-lookups",
+                    null,
+                    Map.of("centerId", CENTER, "locationCodes", List.of("CDC01-C-5-01-01-1-1")),
+                    null)
+                .status())
+        .isEqualTo(400);
 
     // 3) 운영자 단건 등록(DRAFT), 다른 센터 운영자 403
     Res one = post(OPERATOR, "/cdcs/CDC01/locations", key(), shelf("CDC01-G-7-61-01-3-1"), null);

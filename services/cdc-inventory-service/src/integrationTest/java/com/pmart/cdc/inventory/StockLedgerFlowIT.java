@@ -528,6 +528,7 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     location.verify(
         WireMock.postRequestedFor(WireMock.urlPathEqualTo("/api/v1/internal/location-lookups"))
             .withHeader("X-Source-System", WireMock.equalTo("cdc-inventory-service"))
+            .withHeader("Idempotency-Key", WireMock.matching("cdc-inventory-location-lookup-.+"))
             .withRequestBody(WireMock.matchingJsonPath("$.centerId", WireMock.equalTo(CENTER))));
 
     // 위치 서비스 장애 — 할당은 막지 않고 위치 코드 순(랙 01 이 선반 61 보다 앞)

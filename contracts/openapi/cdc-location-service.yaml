@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.4.0
+  version: 0.4.1
   description: |
     CDC 시설 수용조건·7구간 LOC 마스터(센터-온도-구역-랙-베이-단-포지션)·상태·적치 후보·공간 용량 예약·도크 자원의 정본. (docs/architecture/service-map.md §4)
     수량은 cdc-inventory, 작업은 cdc-inbound/outbound가 정본. 공간 예약 불변식: 점유 + 미완료 예약 + 신규 ≤ 허용량.
@@ -9,6 +9,7 @@ info:
     점유(occupiedQty)는 cdc-inventory 사본을 아직 받지 않아 비운다(asOf.freshness UNAVAILABLE). 적치 후보·공간 예약·도크 예약은 아직 501.
     0.3.0(2026-11-25): 공개 경로를 `/cdcs/{cdcId}/locations…` 로 옮김 — 게이트웨이 `/api/v1/locations/**` 가 mfc-location 라우트라 겹침(PC1 R-16).
     목록의 centerId 조회 조건은 경로 cdcId 로, 등록 본문의 centerId 는 경로와 같아야 한다(400 CENTER_MISMATCH). 내부 경로는 그대로.
+    0.4.1(2026-11-25): 위치 일괄 조회도 POST 라 공통 헤더 검사(common-web)가 Idempotency-Key 를 요구한다 — 계약에 적음(LAN 에서 키 없는 호출이 400, #462 배포 확인).
     0.4.0(2026-11-25): 내부 위치 일괄 조회 `POST /internal/location-lookups` — cdc-inventory 가 할당 때 "같은 LOT 이면 피킹 선반 먼저"를 정하려고 위치 유형을 읽는다.
 servers:
   - url: /api/v1
@@ -84,10 +85,11 @@ paths:
       tags: [internal]
       summary: '[cdc-inventory→cdc-location] 위치 일괄 조회 — 유형·상태·온도대 (0.4.0, 조회만)'
       description: |
-        코드가 많아 POST 로 받는 조회다(아무것도 바꾸지 않음 — 멱등 키 불필요). 최대 2,000개. 없는 코드는 missing 에.
+        코드가 많아 POST 로 받는 조회다(아무것도 바꾸지 않음). POST 라 공통 헤더 검사가 Idempotency-Key 를 요구한다 — 값은 아무 고유값이면 되고 결과를 저장·재생하지 않는다. 최대 2,000개. 없는 코드는 missing 에.
         cdc-inventory 할당은 같은 LOT·같은 기한 안에서 PICK_FACE 를 먼저 잡는 데 쓴다(WMS CDC-F-009 "동선 효율은 FEFO 뒤에만").
       operationId: lookupLocations
       parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
         required: true
