@@ -979,9 +979,9 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
   }
 
   /**
-   * MFC 수령·운송 중 재고 대사(0.11.0, CDC-F-024): TOUT 보다 먼저 온 MfcReceiptPosted(4)는 기다렸다가 TOUT 때 처리 → Transit 10 중 4 →
-   * 복구용 API 로 6(정상 5·미판정 1 — 미판정도 받은 수량) → t = 0 RECONCILED·TransitReconciled. 같은 receiptId 같은 본문은 그대로, 다른 본문 409,
-   * 출발 줄에 없는 LOT 은 그 줄만 보류(차감 0).
+   * MFC 수령·운송 중 재고 대사(0.11.0, CDC-F-024): TOUT 보다 먼저 온 MfcReceiptPosted(4)는 기다렸다가 TOUT 때 처리 →
+   * Transit 10 중 4 → 복구용 API 로 6(정상 5·미판정 1 — 미판정도 받은 수량) → t = 0 RECONCILED·TransitReconciled. 같은
+   * receiptId 같은 본문은 그대로, 다른 본문 409, 출발 줄에 없는 LOT 은 그 줄만 보류(차감 0).
    */
   @Test
   void mfcReceiptReconcilesTransit() throws Exception {
@@ -1031,7 +1031,8 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     p.put("mfcId", "MFC-BJG-01");
     p.put(
         "lines",
-        List.of(Map.of("sku", sku, "lot", "R1", "normalQty", 3, "quarantinedQty", 1, "pendingQty", 0)));
+        List.of(
+            Map.of("sku", sku, "lot", "R1", "normalQty", 3, "quarantinedQty", 1, "pendingQty", 0)));
     p.put("receivedQty", 4);
     var env =
         codec.create(
@@ -1047,7 +1048,9 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     txTemplate.executeWithoutResult(s -> receipts.fromEvent(env));
     assertThat(
             jdbc.queryForObject(
-                "SELECT state FROM transit_receipt WHERE receipt_id = ?", String.class, "RCP-1-" + trf))
+                "SELECT state FROM transit_receipt WHERE receipt_id = ?",
+                String.class,
+                "RCP-1-" + trf))
         .isEqualTo("PENDING_DEPARTURE");
 
     // 2) TOUT 10 → 기다리던 4 반영
@@ -1067,7 +1070,8 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(d.status()).as(d.body().toString()).isEqualTo(200);
     Map<String, Object> line =
         jdbc.queryForMap(
-            "SELECT normal_qty, quarantined_qty, pending_qty FROM transit_line WHERE trf_id = ?", trf);
+            "SELECT normal_qty, quarantined_qty, pending_qty FROM transit_line WHERE trf_id = ?",
+            trf);
     assertThat(line.get("normal_qty")).isEqualTo(3);
     assertThat(line.get("quarantined_qty")).isEqualTo(1);
 
@@ -1080,26 +1084,29 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     ack.put("mfcCommitId", "MFC-CMT-2");
     ack.put(
         "lines",
-        List.of(Map.of("sku", sku, "lot", "R1", "normalQty", 5, "quarantinedQty", 0, "pendingQty", 1)));
+        List.of(
+            Map.of("sku", sku, "lot", "R1", "normalQty", 5, "quarantinedQty", 0, "pendingQty", 1)));
     Res r2 = post(SERVICE, "/internal/receipt-acks", key(), ack);
     assertThat(r2.status()).as(r2.body().toString()).isEqualTo(200);
     assertThat(r2.body().path("appliedQty").asInt()).isEqualTo(6);
     assertThat(r2.body().path("transitState").asString()).isEqualTo("TRANSIT_RECONCILED");
     assertThat(r2.body().path("unreconciledQty").asInt()).isZero();
-    assertThat(post(SERVICE, "/internal/receipt-acks", key(), ack).body().path("appliedQty").asInt())
+    assertThat(
+            post(SERVICE, "/internal/receipt-acks", key(), ack).body().path("appliedQty").asInt())
         .isEqualTo(6); // 같은 receiptId 같은 본문 — 그대로(추가 차감 0)
     Map<String, Object> changed = new LinkedHashMap<>(ack);
     changed.put(
         "lines",
-        List.of(Map.of("sku", sku, "lot", "R1", "normalQty", 6, "quarantinedQty", 0, "pendingQty", 0)));
-    assertThat(post(SERVICE, "/internal/receipt-acks", key(), changed).body().path("code").asString())
+        List.of(
+            Map.of("sku", sku, "lot", "R1", "normalQty", 6, "quarantinedQty", 0, "pendingQty", 0)));
+    assertThat(
+            post(SERVICE, "/internal/receipt-acks", key(), changed).body().path("code").asString())
         .isEqualTo("RECEIPT_CONFLICT");
     String ev =
         jdbc.queryForObject(
             "SELECT payload::text FROM outbox_event WHERE type = 'TransitReconciled' AND aggregateid = ?"
                 + " AND payload::text LIKE '%RCP-2-%'",
-            String.class,
-            trf);
+            String.class, trf);
     assertThat(ev).contains("\"state\": \"RECONCILED\"").contains("\"receivedQty\": 10");
 
     // 4) 출발 줄에 없는 LOT — 그 줄만 보류
@@ -1107,7 +1114,8 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     odd.put("receiptId", "RCP-3-" + trf);
     odd.put(
         "lines",
-        List.of(Map.of("sku", sku, "lot", "ZZ", "normalQty", 1, "quarantinedQty", 0, "pendingQty", 0)));
+        List.of(
+            Map.of("sku", sku, "lot", "ZZ", "normalQty", 1, "quarantinedQty", 0, "pendingQty", 0)));
     Res r3 = post(SERVICE, "/internal/receipt-acks", key(), odd);
     assertThat(r3.status()).as(r3.body().toString()).isEqualTo(200);
     assertThat(r3.body().path("appliedQty").asInt()).isZero();
