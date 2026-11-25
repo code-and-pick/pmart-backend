@@ -166,3 +166,8 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 
 ### R-19 ⑥ 받음 — 용차 없음 (2026-11-25)
 - 사용자 결정: 용차를 쓰지 않고 모두 정규차(시뮬레이터 865f522). chilgok-dc.md CDC-8 에 적음. CDC 백엔드(cdc-outbound) 변경 없음 — 한 TRF 를 여러 출발로 나누지 않는 규칙 그대로. 용차용 fleet 등록 요청은 시뮬레이터 쪽에서 없앰(이 저장소 service-requests 에는 해당 요청 없음).
+
+### R-21 받음 — 위치 38,926칸 (f3248e5, 2026-11-25)
+- 38,926칸 모두 cdc-location 0.5.1 규칙 통과(`ChilgokLayoutIT`), 백엔드 사본 바꿈. 팔레트 자리 18,048(RESERVE 16,608 + 랙 1단 1,440).
+- 통로 방식 시드 `cdc_pick_methods.py` 는 사본의 PICK_FACE 통로에서 뽑으므로 7층 H 랙 BOX_PICK 이 저절로 빠진다 — 80통로(DPS 26·BOX_PICK 16·DISTRIBUTION 1·LINE 8·FC 29). 코드 변경 없음.
+- LAN 은 그대로(최종 배치 때).

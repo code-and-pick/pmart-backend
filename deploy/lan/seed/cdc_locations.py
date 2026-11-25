@@ -1,6 +1,6 @@
 """칠곡 DC `CDC01` 위치(랙·피킹 선반·출고대기·승강기 문·지하 접안)를 cdc-location 에 넣는다(2026-11-25 cdc 세션).
 
-위치 목록 = docs/simulator/cdc/layout/chilgok-locations.json(시뮬레이터 배치 내보내기 사본, 37,306칸 — R-19 d0fdaff, 오토스토어 H-7-61 포함).
+위치 목록 = docs/simulator/cdc/layout/chilgok-locations.json(시뮬레이터 배치 내보내기 사본, 38,926칸 — R-21 f3248e5, 오토스토어 H-7-61 포함).
 cdc-location 0.2.0 `POST /internal/location-batches` 로 2,000행씩, ACTIVE 로. 묶음마다 멱등 키가 정해져 있어
 (`cdc-loc-<사본 출처 커밋>-<묶음 번호>`) 중간에 멈춰도 다시 돌리면 이미 들어간 묶음은 재생되고 나머지만 들어간다.
 배치가 바뀌어 사본을 다시 받으면 출처 커밋이 바뀌므로 새 키가 된다 — 이미 있는 코드는 409 LOCATION_CODE_EXISTS 로 멈춘다(바뀐 칸 정리는 따로).

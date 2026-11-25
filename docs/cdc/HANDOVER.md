@@ -68,3 +68,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 칠곡 통로 → pickMethod 확정(시뮬레이터 R-19 회신) — 시드 `deploy/lan/seed/cdc_pick_methods.py`(89통로, 기본 계획만). 사용자: **LAN 에는 위치 전환 때 같이 넣는다**(옛 목록엔 랙 1단 피킹면·통로 93 이 없음). 전환 순서: `cdc_locations.py --apply` → `cdc_pick_methods.py --apply` → 시작 재고. PR `cdc/pick-method-seed`.
 - 2026-11-25: R-20 DPS 통로 작업 — cdc-outbound 0.10.0(Flyway V8 `task.aisle`): DPS 는 TRF × 선반 통로, 다음 작업 받기 `aisles` 거르기(사용자 "제안대로"). PR `cdc/dps-aisle-tasks`.
 - 2026-11-25: 피킹 부족 재할당 1단계 — cdc-inventory 0.7.0(Flyway V5): 해제 위치·재계수 대기(부족 칸은 새 할당에서 뺌 — 사용자), 추가 할당 `/internal/allocations/{id}/additions`, 운영자 대기 목록·풀기. PR `cdc/shortage-reallocation-inventory`. 다음: cdc-outbound 가 부족 보고 뒤 해제(재계수 대기) → 추가 할당 → 새 작업, 못 잡은 건 "못 찾음" 기록·알림(사용자 "48개만 보냄").
+- 2026-11-25: R-21 위치 사본 38,926칸(f3248e5, 사용자 요청 — 7층 H 랙 1단도 RESERVE, 오토스토어 4,800칸). 규칙 변경 없음(R-19 그대로). 통로 방식 시드는 사본에서 뽑으므로 H 랙 BOX_PICK 이 자동으로 빠짐(80통로). LAN 은 그대로.
