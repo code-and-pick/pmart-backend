@@ -15,6 +15,7 @@ PC 1 이 아닌 PC(사람·Claude)가 **지금 해야 할 일**만 모은 목록
 
 ## PC 3 — mfc 영역 (GitHub YOO196)
 - [ ] **IV-8 CDC 이관 수령 확정 뒤 `MfcReceiptPosted` 발행**(2026-11-25 cdc 세션 — 요청서 `docs/architecture/service-requests/mfc-inventory-service.md` IV-8): TRF 입고(입고 예정 수령·검수 → TIN) 뒤 계약 그대로 발행(receiptId 한 번·출발 LOT·정상/격리/미판정). CDC 운송 중 재고 대사가 이것을 기다린다. 수량 승인 정정은 `ReceiptCorrectionPosted`.
+- [ ] **MI-5 CDC 이관 입고 종결 알리기**(2026-11-26 cdc 세션 — 요청서 `docs/architecture/service-requests/mfc-inbound-service.md` MI-5): TRF 입고를 "더 받을 것 없음"으로 끝낼 때 cdc-inventory `POST /internal/transit-closures` 호출 또는 사건 발행(PC 3 가 정함). CDC 운송 손실 승인이 이것을 기다린다.
 - [ ] **IV-7 재고 변동 실시간 스트림 — 전체 센터 한 연결**(2026-11-24 PC 2 — PC 1 사용자 "실시간 재고 … 바로바로 백오피스에 반영"(SSE), PC 2 사용자 "재고 서버가 전체 스트림을 직접 주는 1번으로", 요청서 `mfc-inventory-service.md` IV-7): mfc-inventory SSE 하나 — mfcId 주면 그 센터, 비우면 볼 수 있는 모든 센터(권한은 `/stock-summaries` 와 같음), 최소 이벤트 `{eventId, mfcId, occurredAt}`, heartbeat 5초 안팎. bff 중계 없음. 경로가 정해지면 PC 1 이 게이트웨이 라우트·시간 제한
 - [ ] **MI-4 센터 발주·승인·입고 예정 + 발주 수량 추천**(2026-11-24 PC 1 — MFC 시뮬레이터 R-48, 사용자 "B", 요청서 `mfc-inbound-service.md` MI-4): 여러 줄 발주, 센터 관리자 승인 → EXPECTED, 추천 조회(근거·사유 포함, R·L·SS 값 없으면 추천 안 함)
 - [x] **MQ-3 회수품 검수 담당 어긋남 + 문서 정리**(2026-11-20 PC 1, 요청서 `mfc-quality-service.md` MQ-3): capacity 는 품질검사 작업자에게 회수품 검수를 주는데 quality 는 센터 관리자만 받음 — 하나로 맞추기. 그리고 `mfc-fulfillment-service/CLAUDE.md`(인계 번호 6자리 → 4자리), `mfc-inventory-service/CLAUDE.md`(깨진 줄 UTF-8) 직접 고치기 — **끝**(2026-11-20 main d94fdeff: quality 0.11.0 검수자 MFC_WORKER 도, fulfillment 문서 4자리)

@@ -48,7 +48,11 @@
   - receiptId 한 번(같은 본문 = 그대로, 다른 본문 409 RECEIPT_CONFLICT). 줄별 SKU·LOT 출발 줄에 앞 줄부터 정상·격리·미판정 + Transit −r(원결과 TIN_ACK), 넘거나 없는 줄은 그 줄만 보류(conflicts). t = 0 → TRANSIT_RECONCILED, 남으면 RECEIPT_POSTED_AWAITING_ACK(자동 손실 없음) → `TransitReconciled`.
   - TOUT 보다 먼저 온 사건은 PENDING_DEPARTURE → TOUT 트랜잭션 끝에서 `applyPending`. API 는 TOUT 이 없으면 404 DEPARTURE_NOT_POSTED.
   - 수령 정정(0.13.0, Flyway V8 `transit_receipt_line`·`transit_receipt_correction`): `ReceiptCorrectionPosted`(줄별 증감) 구독·receipt-acks correctionId(줄 = 정정 뒤 누계 → 차이). correctionId 한 번(요청 지문), δr 만큼 Transit −δr(음수면 미정산을 다시 엶), 누계 0 아래·출발 남은 수량 초과 줄은 그 줄만 보류, 원 수령 대사 전 404 RECEIPT_NOT_APPLIED. 원결과 TIN_CORRECTION.
-- 아직 501: 품질·손실·조정(`/internal/adjustments` — 실사 밖 ADJ)·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
+- 운송 손실 승인(0.14.0, Flyway V9 `transit_closure`·`transit_loss`, WMS CDC-F-027 — 사용자 2026-11-26 "MFC 입고 종결 확인을 받은 뒤에만"·"실사 조정과 같은 본사 기준", `TransitLossService`):
+  - MFC 입고 종결 `POST /internal/transit-closures`(TRF 한 번, 다른 본문 409 TRANSIT_CLOSURE_CONFLICT, TOUT 전 404) — 정 경로는 mfc-inbound(요청 MI-5), 지금은 복구용 겸.
+  - 운영자 `POST /cdcs/{cdcId}/transit-losses`: 종결 전 409 MFC_RECEIPT_OPEN, SKU·LOT 미정산 초과 409 LOSS_EXCEEDS_UNRECONCILED(둘 다 관문 앞) → 승인 관문(실사와 같은 `ApprovalGate`, kind TRANSPORT_LOSS, ref = 손실 ID) → 출발 줄 loss_qty +l(뒤 줄부터), Transit −l(원결과 TRANSPORT_LOSS), t = 0 이면 TRANSIT_RECONCILED → `TransitReconciled`(receiptId 없음). 같은 요청 키는 앞 검사 없이 재생. `/internal/loss-postings` 는 그대로 501.
+  - 손실로 해소한 양이 나중에 발견되면 수령으로 더하지 않는다 — 발견물 승인 정정은 아직.
+- 아직 501: 품질·조정(`/internal/adjustments` — 실사 밖 ADJ)·`/internal/loss-postings`·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 재고 현황(2026-11-25, 0.6.0)**: `GET /cdcs/{cdcId}/stock-snapshot?sku=&withPlaces=`(`AvailabilityController.getCenterStockSnapshot`) — 내부 `/internal/snapshots` 와 같은 `InventoryQueries.snapshot`, 자기 센터 운영자만(`Operator.requireCenter`), withPlaces 기본 false(LOT·위치 빼고). 시험 `StockLedgerFlowIT` 2-2.
 - **칸별 재고(2026-11-25, 0.9.0 — DC 백오피스 M-6)**: `GET /cdcs/{cdcId}/location-stocks?locationPrefix=&sku=&limit=`(`AvailabilityController.listCenterLocationStocks`) — `InventoryQueries.snapshot` 을 칸 × SKU × LOT × 품질 상태 줄로 펼침, 칸 → SKU → LOT 순, limit 기본 500·최대 2000(넘으면 truncated). cdc-location occupiedQty 는 그대로 null. 시험 `StockLedgerFlowIT` 2-3.
 - **실사 목록(2026-11-26, 0.12.0 — DC 백오피스 CS-1)**: `GET /cdcs/{cdcId}/count-sessions?state=&page=&size=`(`CountStore.sessionIds` 최신 순 → 줄마다 `CountService.view` = 단건과 같은 모양, 결정 전 lines 없음). 시험 `StockLedgerFlowIT`(실사 시작 뒤 COUNTING 목록).

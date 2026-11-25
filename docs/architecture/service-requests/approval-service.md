@@ -72,3 +72,4 @@
 - **지금(임시)**: cdc-inventory 는 `pmart.inventory.approval-ref.mode: RECORD_ONLY`(번호 필수, 확인 없음)로만 돈다. VERIFY 는 이 요청이 끝난 뒤.
 - **함께 PC 1 몫**: pmart-config `cdc-inventory-service.yml` 에 `pmart.inventory.approval-ref.hq-loss-krw: 100000`·`hq-sku-qty: 20`(사용자 "MFC 와 같게"), lan 은 처음엔 `mode: RECORD_ONLY`.
 - **사용자 결정**: 기준값 — 받음(MFC 와 같게). 승인 역할 — MFC 와 같다고 가정(다르면 알려 주기).
+- **(2026-11-26 cdc 세션 덧붙임)** kind 가 하나 더 — 운송 손실 `TRANSPORT_LOSS`(cdc-inventory 0.14.0, 사용자 "실사 조정과 같은 본사 기준"): targetRef `<cdcId>:TRANSPORT_LOSS:<손실 ID TLOSS-…>`, useRef `cdc-inventory-service:TRANSPORT_LOSS:<손실 ID>`, allowedActions `POST_TRANSPORT_LOSS`. 종류는 같은 `CDC_STOCK_ADJUSTMENT`.

@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-26, 운송 손실 승인 — WMS CDC-F-027, 사용자 결정 "실사 조정과 같은 본사 기준"·"MFC 입고 종결 확인을 받은 뒤에만"): MFC 입고 종결 기록
+      `POST /internal/transit-closures`(mfc-inbound 또는 복구 — 요청 MI-5) · 운영자 운송 손실 `POST /cdcs/{cdcId}/transit-losses` — 종결 전이면 409 MFC_RECEIPT_OPEN,
+      미정산 초과 409 LOSS_EXCEEDS_UNRECONCILED, 승인 관문(실사와 같음) 뒤 Transit −l(loss_qty) → TransitReconciled. 자동 손실 없음.
     0.13.0(2026-11-26, 수령 정정 — WMS CDC-F-024 "확정 수령의 후속 정정"): `ReceiptCorrectionPosted`(줄별 증감) 구독과 receipt-acks 의 correctionId(줄 = 정정 뒤 누계).
       correctionId 한 번, δr 만큼 Transit −δr(음수면 미정산을 다시 엶 — 실제 반송 아님), 누계가 0 아래·출발 남은 수량 초과 줄은 그 줄만 보류. 원 수령이 대사 전이면 404 RECEIPT_NOT_APPLIED.
     0.12.0(2026-11-26, DC 백오피스 CS-1 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-26-backend-count-session-list.md, 사용자 "응 진행해"): `GET /cdcs/{cdcId}/count-sessions?state=&page=&size=`
@@ -513,7 +516,9 @@ paths:
     post:
       tags: [postings]
       summary: '[replenishment/backoffice→cdc-inventory] 승인 운송 손실 l 반영 (Transit −l) → q = r + l + t 종결'
-      description: 자동 손실 전기 금지. 본사 손실 승인(approvalRef)이 있어야 한다. 손실은 MFC 재고가 아니며 CDC로 복원하지 않는다.
+      description: |
+        자동 손실 전기 금지. 본사 손실 승인(approvalRef)이 있어야 한다. 손실은 MFC 재고가 아니며 CDC로 복원하지 않는다.
+        (0.14.0) 아직 501 — 운영자 경로 `POST /cdcs/{cdcId}/transit-losses` 를 쓴다(승인 관문·MFC 입고 종결 확인).
       operationId: postTransportLoss
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -551,6 +556,115 @@ paths:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
           description: APPROVAL_REQUIRED
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/transit-closures:
+    post:
+      tags: [postings]
+      summary: '[mfc-inbound→cdc-inventory] MFC 이관 입고 종결 기록 — 더 받을 것 없음 (0.14.0, 운송 손실 전제)'
+      description: |
+        MFC 가 그 이관(TRF·출발) 입고를 "더 받을 것 없음"으로 종결한 사실(WMS CDC-F-027 "손실 확정 전 양측 확인" — 사용자 2026-11-26 "MFC 입고 종결 확인을 받은 뒤에만").
+        TRF 하나에 한 번(같은 본문 = 그대로, 다른 본문 409). TOUT 전이면 404 DEPARTURE_NOT_POSTED. 종결 뒤 들어온 수령(MfcReceiptPosted)도 그대로 대사한다(종결은 손실 허용 조건일 뿐).
+        정 경로는 mfc-inbound(요청 MI-5) — 사건이 정해지면 구독으로 바꾸고 이 API 는 복구용으로 남긴다.
+      operationId: recordTransitClosure
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trfId, departureId, mfcId, closedAt]
+              properties:
+                trfId: { type: string }
+                departureId: { type: string }
+                mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                closedAt: { type: string, format: date-time }
+                sourceRef: { type: string, description: MFC 입고 예정·수령 참조 }
+      responses:
+        '200':
+          description: 기록(또는 같은 본문 그대로)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trfId: { type: string }
+                  closedAt: { type: string, format: date-time }
+                  unreconciledQty: { type: integer, description: 지금 미정산 t — 손실 후보 }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: TRANSIT_CLOSURE_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /cdcs/{cdcId}/transit-losses:
+    post:
+      tags: [postings]
+      summary: '[운영자] 운송 손실 승인 반영 — 미정산 t 를 손실 l 로 (0.14.0, WMS CDC-F-027)'
+      description: |
+        MFC 입고 종결이 기록된 TRF 만(아니면 409 MFC_RECEIPT_OPEN — 아직 받는 중일 수 있는 잔량을 손실로 종결하지 않는다). 줄마다 SKU·LOT 미정산 이하(아니면 409 LOSS_EXCEEDS_UNRECONCILED).
+        승인 관문은 실사와 같다(사용자 2026-11-26 "실사 조정과 같은 본사 기준"): `pmart.inventory.approval-ref.mode` VERIFY — 손실(수량 × 판매 기준가) ≥ hq-loss-krw 또는 한 SKU ≥ hq-sku-qty 면 본사 승인 번호(approval-service 한 번 사용, 종류 CDC_STOCK_ADJUSTMENT·kind TRANSPORT_LOSS),
+        아래면 센터 관리자 결정만 / RECORD_ONLY 번호 필수 / 그 밖 CONFIG_REQUIRED. 반영: 출발 줄 loss_qty +l, Transit −l(원결과 TRANSPORT_LOSS), t = 0 이면 TRANSIT_RECONCILED → TransitReconciled.
+        한 TRF·같은 요청 키는 한 번. 손실로 해소한 양이 나중에 발견되면 수령으로 더하지 않고 승인 정정(아직).
+      operationId: postTransitLoss
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trfId, departureId, reason, lines]
+              properties:
+                trfId: { type: string }
+                departureId: { type: string }
+                reason: { type: string, maxLength: 300 }
+                incidentRef: { type: string, description: TransportIncidentRaised·조사 참조 }
+                approvalRef: { type: string, maxLength: 128 }
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [sku, lot, lossQty]
+                    properties:
+                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+                      lot: { type: string }
+                      lossQty: { type: integer, minimum: 1 }
+                      lossReason: { type: string, enum: [DAMAGE, MISSING, TEMPERATURE, OTHER] }
+      responses:
+        '200':
+          description: 반영
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trfId: { type: string }
+                  commitId: { type: string }
+                  lossQty: { type: integer }
+                  unreconciledQty: { type: integer }
+                  transitState: { $ref: '#/components/schemas/TransitState' }
+                  approvalRef: { type: [string, 'null'] }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409':
+          description: MFC_RECEIPT_OPEN / LOSS_EXCEEDS_UNRECONCILED / IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: APPROVAL_REQUIRED / CONFIG_REQUIRED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }

@@ -1176,6 +1176,151 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo("DEPARTURE_NOT_POSTED");
   }
 
+  /** 운송 손실(0.14.0, CDC-F-027): MFC 입고 종결 전 409, 미정산 초과 409, 본사 기준 아래면 센터 결정만 → t = 0. */
+  @Test
+  void transitLossNeedsMfcClosure() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    post(
+        SERVICE,
+        "/internal/initial-balances",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-INIT-L",
+            "lines",
+            List.of(
+                ib(
+                    sku,
+                    "L1",
+                    "CDC01-C-5-01-42-1-1",
+                    10,
+                    today.plusDays(30),
+                    "VERIFIED",
+                    "RELEASED"))));
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-L",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    JsonNode a = allocate(sku, 10);
+    String trf = a.path("trfId").asString();
+    String depId = "DEP-" + UUID.randomUUID();
+    Map<String, Object> dep = new LinkedHashMap<>();
+    dep.put("cdcId", CENTER);
+    dep.put("departureId", depId);
+    dep.put("departureSource", "SIMULATED");
+    dep.put("toMfcId", "MFC-BJG-01");
+    dep.put("trfId", trf);
+    dep.put("trfVersion", 1);
+    dep.put("allocationId", a.path("allocationId").asString());
+    dep.put("departedAt", Instant.now().toString());
+    dep.put(
+        "lines",
+        List.of(Map.of("departureLineId", trf + "-1", "sku", sku, "lot", "L1", "qty", 10)));
+    assertThat(post(SERVICE, "/internal/departure-postings", key(), dep).status()).isEqualTo(200);
+    Map<String, Object> ack = new LinkedHashMap<>();
+    ack.put("receiptId", "RCP-L-" + trf);
+    ack.put("trfId", trf);
+    ack.put("departureId", depId);
+    ack.put("mfcId", "MFC-BJG-01");
+    ack.put("mfcCommitId", "MFC-CMT-L");
+    ack.put(
+        "lines",
+        List.of(
+            Map.of("sku", sku, "lot", "L1", "normalQty", 6, "quarantinedQty", 0, "pendingQty", 0)));
+    assertThat(
+            post(SERVICE, "/internal/receipt-acks", key(), ack)
+                .body()
+                .path("unreconciledQty")
+                .asInt())
+        .isEqualTo(4);
+
+    String base = "/cdcs/" + CENTER + "/transit-losses";
+    Map<String, Object> loss = new LinkedHashMap<>();
+    loss.put("trfId", trf);
+    loss.put("departureId", depId);
+    loss.put("reason", "운송 중 파손 확인");
+    loss.put(
+        "lines", List.of(Map.of("sku", sku, "lot", "L1", "lossQty", 4, "lossReason", "DAMAGE")));
+    // 1) MFC 입고 종결 전 — 409
+    Res open = post(OPERATOR, base, key(), loss);
+    assertThat(open.status()).as(open.body().toString()).isEqualTo(409);
+    assertThat(open.body().path("code").asString()).isEqualTo("MFC_RECEIPT_OPEN");
+    // 2) 종결 기록(같은 본문 다시 = 그대로)
+    Map<String, Object> close =
+        Map.of(
+            "trfId",
+            trf,
+            "departureId",
+            depId,
+            "mfcId",
+            "MFC-BJG-01",
+            "closedAt",
+            Instant.now().toString());
+    Res c1 = post(SERVICE, "/internal/transit-closures", key(), close);
+    assertThat(c1.status()).as(c1.body().toString()).isEqualTo(200);
+    assertThat(c1.body().path("unreconciledQty").asInt()).isEqualTo(4);
+    assertThat(post(SERVICE, "/internal/transit-closures", key(), close).status()).isEqualTo(200);
+    // 3) 미정산 초과 — 409
+    Map<String, Object> over = new LinkedHashMap<>(loss);
+    over.put("lines", List.of(Map.of("sku", sku, "lot", "L1", "lossQty", 5)));
+    Res o = post(OPERATOR, base, key(), over);
+    assertThat(o.status()).as(o.body().toString()).isEqualTo(409);
+    assertThat(o.body().path("code").asString()).isEqualTo("LOSS_EXCEEDS_UNRECONCILED");
+    // 4) 본사 기준 아래(4 × 1000원) — 센터 결정만 → t = 0
+    pricing.stubFor(
+        WireMock.get(WireMock.urlPathEqualTo("/api/v1/internal/prices"))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"items\":[{\"sku\":\""
+                        + sku
+                        + "\",\"basePrice\":1000,\"priceVersion\":1}]}")));
+    String k = key();
+    Res ok = post(OPERATOR, base, k, loss);
+    assertThat(ok.status()).as(ok.body().toString()).isEqualTo(200);
+    assertThat(ok.body().path("lossQty").asInt()).isEqualTo(4);
+    assertThat(ok.body().path("unreconciledQty").asInt()).isZero();
+    assertThat(ok.body().path("transitState").asString()).isEqualTo("TRANSIT_RECONCILED");
+    Res again = post(OPERATOR, base, k, loss);
+    assertThat(again.body().path("commitId").asString())
+        .isEqualTo(ok.body().path("commitId").asString());
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT loss_qty FROM transit_line WHERE trf_id = ?", Integer.class, trf))
+        .isEqualTo(4);
+    // 5) 남은 미정산이 없으니 더 손실 불가
+    Res none =
+        post(
+            OPERATOR,
+            base,
+            key(),
+            Map.of(
+                "trfId",
+                trf,
+                "departureId",
+                depId,
+                "reason",
+                "또",
+                "lines",
+                List.of(Map.of("sku", sku, "lot", "L1", "lossQty", 1))));
+    assertThat(none.body().path("code").asString()).isEqualTo("LOSS_EXCEEDS_UNRECONCILED");
+  }
+
   JsonNode allocate(String sku, int qty) {
     Res r =
         post(

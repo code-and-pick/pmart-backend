@@ -526,7 +526,7 @@ public class ReceiptService {
         departureLineId);
   }
 
-  private int unreconciled(String trfId) {
+  int unreconciled(String trfId) {
     Integer t =
         jdbc.queryForObject(
             "SELECT COALESCE(SUM(q - normal_qty - quarantined_qty - pending_qty - loss_qty), 0)"
@@ -581,9 +581,9 @@ public class ReceiptService {
     return out;
   }
 
-  private void publish(
+  void publish(
       TransitRow t,
-      String receiptId,
+      @Nullable String receiptId,
       @Nullable String commitId,
       String state,
       int unreconciled,
@@ -607,7 +607,9 @@ public class ReceiptService {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("trfId", t.trfId());
     p.put("departureId", t.departureId());
-    p.put("receiptId", receiptId);
+    if (receiptId != null) {
+      p.put("receiptId", receiptId);
+    }
     if (commitId != null) {
       p.put("commitId", commitId);
     }

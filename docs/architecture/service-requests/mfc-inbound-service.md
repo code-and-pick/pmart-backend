@@ -58,3 +58,10 @@
   3. 추천: `GET /supply-recommendations?mfcId=&storageType=&sku=…`(그 센터 운영자, SKU 1~100) → `recommendedQty` + 근거(forecastDailyQty·historyDays·availableQty·expectedQty·pendingRequestedQty·inventoryPosition·safetyStockQty·targetQty·shortfallQty·R·L·SS일·배수·최소·policySource·calculatedAt·salesThrough), 추천 못 하면 null + `reason`(POLICY_MISSING·STORAGE_TYPE_UNKNOWN·INSUFFICIENT_HISTORY·AVAILABILITY_UNKNOWN·SKU_NOT_HANDLED). d = 인계 실적(`PackageHandedOverPosted`) 이동평균, **품절 날은 빼지 않는다**(임시).
   4. 시작값(사용자 확인 2026-11-24, 승인 전 시험값): 전 센터 기본 R 1일·L 1일·SS 1일치·발주 배수 1(박스 상품은 박스 SKU 라 1)·최소 1·이동평균 28일·최소 이력 7일 — 표 `supply_policy`(센터 줄이 기본보다 우선). 바꾸는 API 는 아직 없다.
   5. 주의: 인계 실적은 이 버전이 배포된 뒤부터 쌓인다 — LAN 에서 7일이 지나기 전에는 모든 SKU 가 INSUFFICIENT_HISTORY. 데모 #411 의 센터 ID 는 `MFC-BJG-01` 로 바꿨다.
+
+## MI-5. CDC 이관 입고 종결 알리기 — "이 TRF 는 더 받을 것 없음" (2026-11-26, 보낸 영역 cdc — D 클론 cdc 세션, 받는 쪽 mfc PC 3)
+- **계기**: WMS CDC-F-027 "손실 확정 전 양측 확인 — 아직 수령될 가능성이 있는 동일 잔량을 MFC 가 수령 처리하는 중에 WMS 가 손실로 종결하지 않는다". 사용자 결정(2026-11-26) "MFC 입고 종결 확인을 받은 뒤에만" 운송 손실을 받는다.
+- **CDC 쪽(구현, cdc-inventory 0.14.0)**: `POST /internal/transit-closures` `{trfId, departureId, mfcId, closedAt, sourceRef?}`(Idempotency-Key·X-Source-System, TRF 하나에 한 번 — 같은 본문 그대로, 다른 본문 409 TRANSIT_CLOSURE_CONFLICT, CDC 출발 전 404 DEPARTURE_NOT_POSTED). 이 기록이 있어야 운영자가 `POST /cdcs/{cdcId}/transit-losses` 로 남은 미정산을 승인 손실로 닫는다. 종결 뒤 늦게 온 수령도 그대로 대사한다.
+- **필요한 것**: mfc-inbound 가 CDC 이관(TRF) 입고 예정을 "더 받을 것 없음"으로 끝낼 때(전량 수령·검수 끝, 또는 관리자가 나머지 미도착을 종결) 위 API 를 부르거나, 사건(예 `TransferReceivingClosed` — 이름·발행 방식은 PC 3 가 정해 적기, 사건이면 CDC 가 구독으로 바꾸고 API 는 복구용)을 낸다. 아직 처리 중인 수령(미판정 포함)이 남아 있으면 종결하지 않는다.
+- **받는 쪽**: cdc-inventory(운송 손실), 뒤에 DC 백오피스(손실 화면).
+- **상태**: 요청(2026-11-26). MFC 쪽 결정 전까지 CDC 운영자는 복구용으로 같은 API 를 직접 부를 수 있다(시험·LAN).

@@ -481,6 +481,7 @@ POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/pick-results OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/starts OPERATOR
 POST /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations OPERATOR
+POST /api/v1/cdcs/{cdcId}/transit-losses OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/location-scans OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/next-tasks OPERATOR
 POST /api/v1/change-requests OPERATOR

@@ -33,16 +33,81 @@ public class PostingsController implements PostingsApi {
   private final DepartureService departures;
   private final MoveService moves;
   private final com.pmart.cdc.inventory.application.ReceiptService receipts;
+  private final com.pmart.cdc.inventory.application.TransitLossService losses;
 
   public PostingsController(
       StockSetupService setup,
       DepartureService departures,
       MoveService moves,
-      com.pmart.cdc.inventory.application.ReceiptService receipts) {
+      com.pmart.cdc.inventory.application.ReceiptService receipts,
+      com.pmart.cdc.inventory.application.TransitLossService losses) {
     this.receipts = receipts;
+    this.losses = losses;
     this.setup = setup;
     this.departures = departures;
     this.moves = moves;
+  }
+
+  /** MFC 입고 종결 기록(0.14.0) — 운송 손실의 전제. */
+  @Override
+  public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.RecordTransitClosure200Response>
+      recordTransitClosure(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.inventory.api.generated.model.RecordTransitClosureRequest body) {
+    var c =
+        losses.close(
+            xSourceSystem,
+            body.getTrfId(),
+            body.getDepartureId(),
+            body.getMfcId(),
+            body.getClosedAt().toInstant(),
+            body.getSourceRef());
+    var out = new com.pmart.cdc.inventory.api.generated.model.RecordTransitClosure200Response();
+    out.setTrfId(c.trfId());
+    out.setClosedAt(Dto.time(c.closedAt()));
+    out.setUnreconciledQty(c.unreconciledQty());
+    return ResponseEntity.ok(out);
+  }
+
+  /** 운영자 운송 손실 승인 반영(0.14.0, WMS CDC-F-027). */
+  @Override
+  public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.PostTransitLoss200Response>
+      postTransitLoss(
+          String cdcId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.inventory.api.generated.model.PostTransitLossRequest body) {
+    var r =
+        losses
+            .post(
+                idempotencyKey,
+                xSourceSystem,
+                cdcId,
+                body.getTrfId(),
+                body.getDepartureId(),
+                body.getReason(),
+                body.getIncidentRef(),
+                body.getApprovalRef(),
+                body.getLines().stream()
+                    .map(
+                        l ->
+                            new com.pmart.cdc.inventory.application.TransitLossService.LossLine(
+                                l.getSku(),
+                                l.getLot(),
+                                l.getLossQty(),
+                                l.getLossReason() == null ? null : l.getLossReason().getValue()))
+                    .toList())
+            .value();
+    var out = new com.pmart.cdc.inventory.api.generated.model.PostTransitLoss200Response();
+    out.setTrfId(r.trfId());
+    out.setCommitId(r.commitId());
+    out.setLossQty(r.lossQty());
+    out.setUnreconciledQty(r.unreconciledQty());
+    out.setTransitState(
+        com.pmart.cdc.inventory.api.generated.model.TransitState.fromValue(r.transitState()));
+    out.setApprovalRef(r.approvalRef());
+    return ResponseEntity.ok(out);
   }
 
   /** MFC 수령 확인(0.11.0) — 사건 유실 복구용. 같은 receiptId 한 번. */
