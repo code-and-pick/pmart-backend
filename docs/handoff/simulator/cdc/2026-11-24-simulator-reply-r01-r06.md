@@ -139,3 +139,8 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 팔레트 19,584(하한 18,000 이상)·선반 12,180·STAGING 102·DOCK 14, 31,880칸 모두 cdc-location 규칙 통과(중복 0, 온도대·유형 맞음), 용량 합 460만.
 - 랙 베이 41~48(3,264칸)을 위해 규칙을 01~48 로 넓혔다(cdc-location 0.4.2). 백엔드 사본·`ChilgokLayoutIT`·시드 안내를 바꿨다.
 - LAN 은 아직 dd3d185 — 옛 칸 6,760 이 사라지고(그 랙 칸에 시작 재고 480줄) 남는 칸 16,320 의 용량이 바뀐다. 전환 방법은 사용자 결정 뒤 알린다.
+
+### 알림 — 출발 검증 미설명 수량 막기 (cdc-outbound 0.8.0, 2026-11-25)
+- 사용자 결정(묶음 피킹 설계 §7 결정 4, WMS CDC-F-017): TRF 의 실피킹이 그 TRF BOX 에 담은 수량보다 많으면(SKU 별) 출발 검증에서 그 TRF 는 **MISMATCHED**, 불일치 `kind = UNEXPLAINED_QTY`(lpn 비움, detail = 실피킹·분류·차이). TOUT 하지 않고 `OutboundDiscrepancyRaised`(MISSING)를 낸다.
+- 지금 단건 피킹에도 적용된다. 집은 것을 다 담지 않고 출발시키면 그 TRF 는 출발 처리되지 않는다(불일치 TRF 는 다시 출발 검증할 수 없음 — 조사 몫, 0.4.0 그대로).
+- 부탁: 출발 전 `GET /internal/outbound-readiness?trfId` 의 `blockers` 에 `UNSORTED_QTY` 가 없는지 본다. 화면 mismatches 목록에 새 kind 가 보일 수 있다(enum 값 추가).

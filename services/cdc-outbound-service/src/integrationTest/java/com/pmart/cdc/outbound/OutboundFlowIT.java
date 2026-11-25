@@ -793,6 +793,138 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get(ops2, base + trfA + pdc + "/NOPE").status()).isEqualTo(404);
   }
 
+  /**
+   * 미설명 수량(0.8.0, WMS CDC-F-017): 3 을 집고 2 만 BOX 에 담은 TRF 는 실은 BOX 가 출발 구성과 맞아도 출발 검증이 막힌다 —
+   * UNEXPLAINED_QTY·MISMATCHED, TOUT 없음, OutboundDiscrepancyRaised(MISSING, 기대 3·실제 2). 대기열이 섞이지 않게
+   * CDC03.
+   */
+  @Test
+  void unexplainedQtyBlocksDeparture() {
+    String c3 = "CDC03";
+    String ops3 = TestJwt.operator("ops-3", List.of("CDC_MANAGER"), List.of(c3));
+    String w8 = TestJwt.operator("w8", List.of("CDC_WORKER"), List.of(c3));
+    String trf = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    stubAllocate(
+        trf,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":3},{\"sku\":\"E-00000002\",\"allocatedQty\":1}]}");
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(urlPathEqualTo(ALLOC + "/" + alc))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"allocationId\":\""
+                            + alc
+                            + "\",\"state\":\"ALLOCATED\",\"lines\":["
+                            + "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\"CDC03-C-5-61-01-1-1\",\"qty\":3}]},"
+                            + "{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\"CDC03-C-5-61-02-1-1\",\"qty\":1}]}]}")));
+    Map<String, Object> body = new LinkedHashMap<>(trf(trf, 3, 1));
+    body.put("cdcId", c3);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", body).status()).isEqualTo(202);
+    String waveId =
+        post(ops3, "/waves", Map.of("cdcId", c3, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops3, "/waves/" + waveId + "/releases", null).status()).isEqualTo(202);
+
+    // 다 집는다(3 + 1)
+    String task =
+        post(w8, "/cdcs/" + c3 + "/workers/w8/next-tasks", Map.of())
+            .body()
+            .path("taskId")
+            .asString();
+    JsonNode lines =
+        post(w8, "/cdcs/" + c3 + "/tasks/" + task + "/starts", null).body().path("lines");
+    List<Map<String, Object>> picks = new java.util.ArrayList<>();
+    for (JsonNode l : lines) {
+      picks.add(
+          Map.of(
+              "sku", l.path("sku").asString(),
+              "lot", l.path("lot").asString(),
+              "locationCode", l.path("locationCode").asString(),
+              "pickedQty", l.path("plannedQty").asInt()));
+    }
+    assertThat(picks).hasSize(2);
+    Res pr =
+        post(
+            w8,
+            "/cdcs/" + c3 + "/tasks/" + task + "/pick-results",
+            Map.of("workerId", "w8", "lines", picks));
+    assertThat(pr.status()).as(pr.body().toString()).isEqualTo(202);
+
+    // SKU1 은 2 만 담는다 — 1 미설명
+    String b1 = "BOX-" + UUID.randomUUID().toString().substring(0, 8);
+    String b2 = "BOX-" + UUID.randomUUID().toString().substring(0, 8);
+    Map<String, Object> sort = new LinkedHashMap<>();
+    sort.put("waveId", waveId);
+    sort.put("trfId", trf);
+    sort.put("workerId", "w8");
+    sort.put(
+        "lpns",
+        List.of(box(b1, null, "E-00000001", "L1", 2), box(b2, null, "E-00000002", "L2", 1)));
+    Res sr = post(ops3, "/sorting-results", sort);
+    assertThat(sr.status()).as(sr.body().toString()).isEqualTo(202);
+    Map<String, Object> insp = new LinkedHashMap<>();
+    insp.put("trfId", trf);
+    insp.put("inspectorId", "q3");
+    insp.put(
+        "items",
+        List.of(Map.of("lpn", b1, "result", "PASSED"), Map.of("lpn", b2, "result", "PASSED")));
+    assertThat(post(ops3, "/inspection-results", insp).status()).isEqualTo(202);
+    Map<String, Object> load = new LinkedHashMap<>();
+    load.put("trfId", trf);
+    load.put("tripId", "TRIP-C3");
+    load.put("vehicleId", "VH-C3");
+    load.put("workerId", "w8");
+    load.put("action", "LOADED");
+    load.put(
+        "lpns",
+        List.of(
+            Map.of("lpn", b1, "compartment", "AMBIENT"),
+            Map.of("lpn", b2, "compartment", "AMBIENT")));
+    Res lr = post(ops3, "/loading-results", load);
+    assertThat(lr.status()).as(lr.body().toString()).isEqualTo(202);
+    assertThat(readiness(trf).path("blockers").toString()).contains("UNSORTED_QTY");
+
+    // 출발 검증 — 실린 BOX 와 구성은 맞지만 미설명 1 → 막힘
+    String dep = "DEP-" + UUID.randomUUID();
+    Map<String, Object> depBody = new LinkedHashMap<>();
+    depBody.put("departureId", dep);
+    depBody.put("tripId", "TRIP-C3");
+    depBody.put("vehicleId", "VH-C3");
+    depBody.put("departedAt", Instant.now().truncatedTo(ChronoUnit.SECONDS).toString());
+    depBody.put("source", "SIMULATED");
+    depBody.put("trfCompositions", List.of(Map.of("trfId", trf, "lpns", List.of(b1, b2))));
+    Res v = post(SERVICE, "/internal/departure-validations", depBody);
+    assertThat(v.status()).as(v.body().toString()).isEqualTo(200);
+    assertThat(v.body().path("overallResult").asString()).isEqualTo("MISMATCHED");
+    assertThat(v.body().path("transfers").get(0).path("result").asString()).isEqualTo("MISMATCHED");
+    JsonNode mm = v.body().path("mismatches");
+    assertThat(mm.size()).as(mm.toString()).isEqualTo(1);
+    assertThat(mm.get(0).path("kind").asString()).isEqualTo("UNEXPLAINED_QTY");
+    assertThat(mm.get(0).path("detail").asString()).contains("E-00000001").contains("= 1");
+    inventory.verify(
+        0,
+        postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings"))
+            .withHeader("Idempotency-Key", equalTo("outbound-tout-" + dep + "-" + trf)));
+    String ev =
+        jdbc.queryForObject(
+            "SELECT payload::text FROM outbox_event WHERE type = 'OutboundDiscrepancyRaised' AND aggregateid = ?",
+            String.class,
+            trf);
+    assertThat(ev)
+        .contains("\"MISSING\"")
+        .contains("\"expectedQty\": 3")
+        .contains("\"actualQty\": 2");
+    assertThat(get(SERVICE, "/internal/transfer-intakes/" + trf).body().path("state").asString())
+        .isNotEqualTo("DEPARTED");
+  }
+
   JsonNode readiness(String trf) {
     Res r = get(SERVICE, "/internal/outbound-readiness?trfId=" + trf);
     assertThat(r.status()).as(r.body().toString()).isEqualTo(200);

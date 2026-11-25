@@ -58,6 +58,9 @@ public class DepartureService {
       @Nullable String evidenceRef,
       List<Composition> compositions) {}
 
+  /** 미설명 수량 한 SKU — 실피킹·분류. */
+  record Gap(String sku, int picked, int sorted) {}
+
   public record View(
       DepartureRow departure, List<DepartureTransferRow> transfers, List<MismatchRow> mismatches) {}
 
@@ -191,6 +194,23 @@ public class DepartureService {
           }
         }
       }
+      List<Gap> gaps = unexplained(t.trfId(), mine);
+      for (Gap g : gaps) {
+        m.add(
+            new MismatchRow(
+                "UNEXPLAINED_QTY",
+                null,
+                t.trfId(),
+                "SKU "
+                    + g.sku()
+                    + " 실피킹 "
+                    + g.picked()
+                    + " − 분류 "
+                    + g.sorted()
+                    + " = "
+                    + (g.picked() - g.sorted())
+                    + " 미설명"));
+      }
       if (declared.isEmpty() && m.isEmpty()) {
         m.add(new MismatchRow("LPN_NOT_LOADED", null, t.trfId(), "출발 구성에 BOX 가 없음"));
       }
@@ -219,7 +239,7 @@ public class DepartureService {
       mismatches.addAll(m);
       publishValidated(cmd, t, ok, m, declared, at);
       if (!ok) {
-        publishDiscrepancy(cmd, t, m, at);
+        publishDiscrepancy(cmd, t, m, gaps, at);
       }
     }
     long matched = rows.stream().filter(r -> "MATCHED".equals(r.result())).count();
@@ -238,6 +258,34 @@ public class DepartureService {
             at),
         rows,
         mismatches);
+  }
+
+  /**
+   * 미설명 수량(0.8.0, WMS CDC-F-017): TRF 줄의 실피킹이 그 TRF 의 모든 BOX 분류보다 많은 SKU 마다 UNEXPLAINED_QTY. 60 을
+   * 집고 56 만 담았으면 4 는 미설명 — 출발 수량으로 덮지 않고 그 TRF 출발 검증을 막는다(사용자 결정 2026-11-25).
+   */
+  private List<Gap> unexplained(String trfId, Map<String, LpnRow> mine) {
+    Map<String, Integer> sorted = new HashMap<>();
+    for (LpnRow b : mine.values()) {
+      if ("BOX".equals(b.unitType())) {
+        for (Content c : lpns.contents(b.lpn())) {
+          sorted.merge(c.sku(), c.qty(), Integer::sum);
+        }
+      }
+    }
+    Map<String, Integer> picked = new LinkedHashMap<>();
+    for (OutboundStore.TransferLineRow l : store.transferLines(trfId)) {
+      picked.merge(l.sku(), l.pickedQty(), Integer::sum);
+    }
+    List<Gap> out = new ArrayList<>();
+    picked.forEach(
+        (sku, p) -> {
+          int s = sorted.getOrDefault(sku, 0);
+          if (p > s) {
+            out.add(new Gap(sku, p, s));
+          }
+        });
+    return out;
   }
 
   /** 일치 TRF 하나의 TOUT → 잔여 해제 → 매니페스트. */
@@ -449,7 +497,8 @@ public class DepartureService {
     support.publish("TruckDepartureValidated", "Departure", cmd.departureId(), 1, "transport", p);
   }
 
-  private void publishDiscrepancy(Validate cmd, TransferRow t, List<MismatchRow> m, Instant at) {
+  private void publishDiscrepancy(
+      Validate cmd, TransferRow t, List<MismatchRow> m, List<Gap> gaps, Instant at) {
     Map<String, Object> p = new LinkedHashMap<>();
     p.put("discrepancyId", "DSC-" + sha(cmd.departureId() + "|" + t.trfId()).substring(0, 24));
     p.put("trfId", t.trfId());
@@ -458,13 +507,16 @@ public class DepartureService {
     p.put(
         "details",
         String.join(
-            "; ", m.stream().map(x -> x.kind() + " " + (x.lpn() == null ? "" : x.lpn())).toList()));
-    p.put(
-        "lines",
-        m.stream()
-            .filter(x -> x.lpn() != null)
-            .map(x -> Map.<String, Object>of("lpn", x.lpn()))
-            .toList());
+            "; ",
+            m.stream()
+                .map(x -> x.kind() + " " + (x.lpn() == null ? x.detail() : x.lpn()))
+                .toList()));
+    List<Map<String, Object>> lines = new ArrayList<>();
+    m.stream().filter(x -> x.lpn() != null).forEach(x -> lines.add(Map.of("lpn", x.lpn())));
+    // 미설명 수량: 기대 = 실피킹, 실제 = 분류(WMS CDC-F-017)
+    gaps.forEach(
+        g -> lines.add(Map.of("sku", g.sku(), "expectedQty", g.picked(), "actualQty", g.sorted())));
+    p.put("lines", lines);
     p.put("raisedAt", at.toString());
     support.publish(
         "OutboundDiscrepancyRaised", "OutboundTransfer", t.trfId(), t.version(), "transport", p);
@@ -506,7 +558,7 @@ public class DepartureService {
   static String eventType(String kind) {
     return switch (kind) {
       case "WRONG_TRF", "WRONG_MFC" -> "MIXED";
-      case "LPN_NOT_IN_DEPARTURE" -> "MISSING";
+      case "LPN_NOT_IN_DEPARTURE", "UNEXPLAINED_QTY" -> "MISSING";
       case "SEAL_MISMATCH", "COMPARTMENT_MISMATCH" -> "SEAL";
       default -> "EXCESS";
     };

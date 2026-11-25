@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.7.1
+  version: 0.8.0
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -14,6 +14,8 @@ info:
     0.4.0(2026-11-25): 분류·검품·상차 결과, 출발 검증 → cdc-inventory TOUT(+ 잔여 해제), 출발 매니페스트 구현. LPN 단위에 RT(롤테이너) 추가 —
     TMS 정본 D-07 "적재 용량 = 롤테이너, 수량 검증 = 박스"(칠곡 CDC-8). 수량은 BOX 만 가진다(RT·PLT 는 담는 그릇 — contents 비움, 하위 BOX 는 parentLpn).
     출발 준비·미출발 취소는 아직 501.
+    0.8.0(2026-11-25): 출발 검증 불일치 UNEXPLAINED_QTY 추가 — TRF 의 실피킹이 그 TRF BOX 분류보다 많으면(SKU 별) 그 TRF 는 MISMATCHED·TOUT 하지 않음
+    (WMS CDC-F-017 "미설명 수량은 영향 출발 보류", 사용자 결정 2026-11-25 — 묶음 피킹 설계 §7 결정 4, 단건 피킹에도 적용). 경로·모양 변화 없음(enum 값 추가).
 servers:
   - url: /api/v1
 security:
@@ -495,6 +497,8 @@ paths:
         - TruckActuallyDeparted 에서 옮기는 값: departureId·tripId·vehicleId·departedAt·source·evidenceRef, trfCompositions[].trfId, toMfc → mfcId, lines[].lpn → lpns(중복 없이), sealIds → sealNos.
         - 대조는 BOX 단위(RT·PLT 는 안의 BOX 로 펼침): 출발에만 있음 → LPN_NOT_LOADED(다른 TRF 의 BOX 면 WRONG_TRF), 이 운행에 실렸는데 출발에 없음 → LPN_NOT_IN_DEPARTURE,
           mfcId 가 TRF 목적지와 다름 → WRONG_MFC, sealNos 를 주면 실린 BOX 의 봉인이 그 안에 있어야(SEAL_MISMATCH). 불일치 TRF 는 TOUT 하지 않는다.
+        - (0.8.0) 미설명 수량: TRF 줄의 실피킹이 그 TRF 의 모든 BOX 분류(contents)보다 SKU 별로 많으면 UNEXPLAINED_QTY(SKU 마다 하나, detail = 실피킹·분류·차이) —
+          그 TRF 는 MISMATCHED, OutboundDiscrepancyRaised 유형 MISSING(WMS CDC-F-017 — 60 을 56 으로 덮거나 4 를 손실로 지우지 않는다). 출발 준비 조회의 UNSORTED_QTY 와 같은 사실이다.
         - 일치 TRF: 출발 BOX 의 contents 를 SKU·LOT 로 합쳐 TOUT(줄 = departureLineId 고정값·lpns, departureSource = source — **SIMULATED 도 TOUT 하며 재고·Transit 기록에 SIMULATED 표시가 남는다**,
           칠곡 CDC-9 시뮬레이터 실서버 모드) → 남은 할당 해제(RESIDUAL_CLOSED) → TRF DEPARTED, 매니페스트 발행(TransferShipmentManifestIssued).
         - 잔여 해제 결과는 transfers[].residualStatus·residualReason(0.5.0) — 재고가 거절하면 FAILED 와 사유를 남기고, 같은 본문 재전송이 다시 부른다.
@@ -847,7 +851,7 @@ components:
           items:
             type: object
             properties:
-              kind: { type: string, enum: [LPN_NOT_LOADED, LPN_NOT_IN_DEPARTURE, WRONG_TRF, WRONG_MFC, SEAL_MISMATCH, COMPARTMENT_MISMATCH] }
+              kind: { type: string, enum: [LPN_NOT_LOADED, LPN_NOT_IN_DEPARTURE, WRONG_TRF, WRONG_MFC, SEAL_MISMATCH, COMPARTMENT_MISMATCH, UNEXPLAINED_QTY] }
               lpn: { type: string }
               trfId: { type: string }
               detail: { type: string }
