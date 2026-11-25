@@ -183,6 +183,10 @@ public class CancellationService {
     if (cancels.inProgress(t.trfId())) {
       throw conflict("CANCELLATION_IN_PROGRESS", "이 TRF 의 다른 취소 요청이 아직 끝나지 않았습니다. 그 결과를 먼저 확인하세요.");
     }
+    if (TransferService.CHANGE_STATES.contains(t.state())) {
+      throw conflict(
+          "VERSION_CHANGE_IN_PROGRESS", "새 버전 대체가 아직 끝나지 않았습니다. 같은 본문을 다시 보내 대체를 끝낸 뒤 취소하세요.");
+    }
     if ("ALLOCATING".equals(t.state())) {
       throw conflict("ALLOCATION_IN_PROGRESS", "할당 결과가 아직 불명입니다. TRF 인수를 다시 보내 할당을 확정한 뒤 취소하세요.");
     }

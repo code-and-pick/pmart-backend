@@ -203,6 +203,65 @@ public class OutboundStore {
         added,
         trfId,
         sku);
+   * 새 승인 버전으로 대체(0.13.0): 버전·본문·기한·줄을 바꾸고 Wave 에서 빼며, 예전 할당은 superseded 로 옮긴다 → CHANGING. 줄은 새
+   * 승인량·할당 0.
+   */
+  public void replaceVersion(TransferRow next, List<TransferLineRow> lines, Instant at) {
+    jdbc.update(
+        "UPDATE transfer SET trf_version = ?, mfc_id = ?, approval_ref = ?, deadline_meaning = ?,"
+            + " due_at = ?, body_hash = ?, state = 'CHANGING',"
+            + " superseded_allocation_id = COALESCE(allocation_id, superseded_allocation_id),"
+            + " allocation_id = NULL, allocation_error = NULL, wave_id = NULL,"
+            + " row_version = row_version + 1, updated_at = ? WHERE trf_id = ?",
+        next.trfVersion(),
+        next.mfcId(),
+        next.approvalRef(),
+        next.deadlineMeaning(),
+        Timestamp.from(next.dueAt()),
+        next.bodyHash(),
+        Timestamp.from(at),
+        next.trfId());
+    jdbc.update("DELETE FROM transfer_line WHERE trf_id = ?", next.trfId());
+    for (TransferLineRow l : lines) {
+      jdbc.update(
+          "INSERT INTO transfer_line (trf_id, line_no, sku, approved_qty) VALUES (?,?,?,?)",
+          next.trfId(),
+          l.lineNo(),
+          l.sku(),
+          l.approvedQty());
+    }
+  }
+
+  /** 대체 중인 예전 버전 할당(없으면 null). */
+  public @Nullable String supersededAllocation(String trfId) {
+    return jdbc
+        .query(
+            "SELECT superseded_allocation_id FROM transfer WHERE trf_id = ?",
+            (rs, i) -> rs.getString(1),
+            trfId)
+        .stream()
+        .filter(java.util.Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+  }
+
+  /** 예전 할당 해제가 끝남 → ALLOCATING(새 버전 할당 전). */
+  public void supersededReleased(String trfId, Instant at) {
+    jdbc.update(
+        "UPDATE transfer SET superseded_allocation_id = NULL, state = 'ALLOCATING', allocation_error = NULL,"
+            + " row_version = row_version + 1, updated_at = ? WHERE trf_id = ?",
+        Timestamp.from(at),
+        trfId);
+  }
+
+  /** 예전 할당 해제를 재고가 거절 → CHANGE_HOLD(사유). */
+  public void changeHold(String trfId, String reason, Instant at) {
+    jdbc.update(
+        "UPDATE transfer SET state = 'CHANGE_HOLD', allocation_error = ?, row_version = row_version + 1,"
+            + " updated_at = ? WHERE trf_id = ?",
+        reason.length() > 500 ? reason.substring(0, 500) : reason,
+        Timestamp.from(at),
+        trfId);
   }
 
   public void setTransferState(String trfId, String state, @Nullable String waveId, Instant at) {

@@ -171,3 +171,7 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 38,926칸 모두 cdc-location 0.5.1 규칙 통과(`ChilgokLayoutIT`), 백엔드 사본 바꿈. 팔레트 자리 18,048(RESERVE 16,608 + 랙 1단 1,440).
 - 통로 방식 시드 `cdc_pick_methods.py` 는 사본의 PICK_FACE 통로에서 뽑으므로 7층 H 랙 BOX_PICK 이 저절로 빠진다 — 80통로(DPS 26·BOX_PICK 16·DISTRIBUTION 1·LINE 8·FC 29). 코드 변경 없음.
 - LAN 은 그대로(최종 배치 때).
+### 알림 — TRF 새 승인 버전 대체 (cdc-outbound 0.13.0, 2026-11-25)
+- 같은 TRF 의 더 높은 trfVersion 을 `/internal/transfer-intakes` 로 보내면 **피킹 시작 전까지** 대체한다(사용자). 지금까지의 409 TRANSFER_CHANGE_NOT_SUPPORTED 는 없어졌다.
+- 안 끝난 작업에서 그 TRF 몫이 빠지고(빈 작업은 CANCELLED) Wave 에서도 빠진다 → 예전 할당 해제 → 새 버전 할당 → TRF 는 ALLOCATED 등으로 돌아오고 **다시 Wave 에 넣어야 한다**.
+- 재고 응답 불명이면 state CHANGING(같은 본문 재전송으로 이어서), 거절이면 CHANGE_HOLD. 피킹·분류가 시작됐으면 409 PICKING_STARTED. 시뮬레이터 목의 "Wave 편성 전까지만" 보다 넓다(릴리스 뒤라도 아무도 안 집었으면 받음).

@@ -22,7 +22,7 @@
 
 ## 상태
 - 2026-11-25 새로 만듦(계약 0.3.0):
-  - TRF 인수 `/internal/transfer-intakes`: trfId·버전 하나. 인수 기록 → (트랜잭션 밖) cdc-inventory 할당(멱등 키 `outbound-alloc-<trfId>-v<버전>`) → 결과 기록. 재고 4xx 는 ALLOCATION_FAILED(사유), 불명·미전달은 ALLOCATING — 같은 본문 재전송이 같은 키로 다시 부른다. 같은 버전 다른 본문 409 TRANSFER_INTAKE_CONFLICT, 새 버전 대체는 아직(409 TRANSFER_CHANGE_NOT_SUPPORTED).
+  - TRF 인수 `/internal/transfer-intakes`: trfId·버전 하나. 인수 기록 → (트랜잭션 밖) cdc-inventory 할당(멱등 키 `outbound-alloc-<trfId>-v<버전>`) → 결과 기록. 재고 4xx 는 ALLOCATION_FAILED(사유), 불명·미전달은 ALLOCATING — 같은 본문 재전송이 같은 키로 다시 부른다. 같은 버전 다른 본문 409 TRANSFER_INTAKE_CONFLICT, 새 버전 대체는 0.13.0(아래).
   - Wave: 생성(운영자, 확보된 TRF 만, PLANNED) → 릴리스 때 재고 서비스에서 할당의 **지금** LOT·위치를 읽어 TRF × 구역 × 층 PICK Task(`domain/PickPlan`).
   - Task: 경로 `/cdcs/{cdcId}/tasks…`(게이트웨이 `/api/v1/tasks/**` 는 mfc-fulfillment). PDA 다음 작업 받기(작업자 본인 토큰, 들고 있으면 그것, 없으면 TRF 기한 → 만든 순으로 하나 — `FOR UPDATE SKIP LOCKED` 로 한 작업 한 사람, 받기 = ACCEPTED) → 착수(담당만, 첫 착수 때 Wave IN_PROGRESS) → 피킹 실적(나눠 보내도 됨, 줄마다 실피킹 + 부족 ≤ 남은 계획, 끝나면 DONE/PARTIAL, Wave WORK_DONE, TRF PICKED).
   - 부족은 `PickShortageReported` 만 — 재고 해제·재할당은 아직(예약은 출발 뒤 RESIDUAL_CLOSED 로 풀린다 — 0.4.0 출발 검증이 자동으로 부른다).
@@ -45,5 +45,8 @@
   커밋 뒤(`ShortageService.processOpen`, 실적 응답 직후 + `@Scheduled` `pmart.outbound.shortage-retry-interval` 기본 PT30S) cdc-inventory 해제(PICK_SHORTAGE·LOT·위치·`recountHold`, 키 `outbound-short-rel-<id>`) → RELEASED →
   추가 할당(`/additions`, 키 `outbound-short-add-<id>`) → 잡힌 LOT 으로 같은 Wave 에 새 PICK 작업(`WaveService.createTasks`, 통로 방식대로 — TRF PICKED 였으면 IN_WAVE·Wave WORK_DONE 이면 IN_PROGRESS) → DONE·`PickShortageResolved`(reallocatedQty·unresolvedQty·newTaskIds).
   TRF 줄: 할당 그대로, 부족 −다시 잡은 양(남은 부족 = 못 찾음 — 실피킹 + 부족 ≤ 할당). 불명은 그 단계에 남아 같은 키로 다시, 재고 거절·TRF 출발/취소면 FAILED(전량 못 찾음). 출발 준비 blockers `SHORTAGE_REALLOCATING`.
+- TRF 새 승인 버전 대체(0.13.0, Flyway V10 `transfer.superseded_allocation_id`, WMS CWC-03 — 사용자 2026-11-25 "피킹 시작 전까지"): 더 높은 trfVersion 인수 → (트랜잭션) 피킹·분류 시작 검사(PICKING_STARTED)·출발/취소 INVALID_STATE·예전 할당 불명 ALLOCATION_IN_PROGRESS·대체 중 VERSION_CHANGE_IN_PROGRESS·취소 중 CANCELLATION_IN_PROGRESS →
+  안 끝난 작업에서 몫 빼기(`cancelOpenTasks`)·새 버전 줄로 바꾸기·Wave 에서 빼기(남은 TRF 없으면 Wave CANCELLED, 릴리스 뒤 남은 작업 없으면 WORK_DONE) → CHANGING → (밖) 예전 할당 해제 TRANSFER_CHANGED(키 `outbound-change-<trf>-v<n>`, 409 INVALID_STATE 는 끝난 것) → ALLOCATING → 새 버전 할당.
+  해제 불명은 CHANGING, 거절은 CHANGE_HOLD — 둘 다 같은 본문 재전송이 이어서. 미출발 취소는 대체 중 409. readiness VERSION_CHANGE_PENDING·VERSION_CHANGE_HOLD. 운영자가 다시 Wave 에 넣는다.
 - 근무·업무 자격·온도대 출입 검사 없음(CDC 작업자 정본 없음). 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 직원 조회(2026-11-25, 0.11.0 — 사용자 "Dc 백오피스 만들어줘", 계획 docs/cdc/cdc-backoffice-plan.md 1단계)**: `api/StaffViewsController` → `application/StaffViews` → `infrastructure/StaffViewStore`(읽기만, `Support.requireCenter`). `GET /cdcs/{cdcId}/transfers`(state·mfcId·page·size≤200, 기한 순, 줄 합)·`…/transfers/{trfId}`(줄별 승인·할당·피킹·부족)·`/outbound-summary?date=`(Asia/Seoul 그날 기한 TRF — 상태별 수·수량 합·진행률 피킹÷승인, Wave 상태별·작업 종류:상태별). 게이트웨이 라우트·허용 목록. 시험 `OutboundFlowIT.intakeWaveTasksPicking` 2-1.

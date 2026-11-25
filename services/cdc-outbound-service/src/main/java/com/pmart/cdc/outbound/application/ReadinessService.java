@@ -115,6 +115,10 @@ public class ReadinessService {
         blockers.add("CANCELLATION_PENDING");
       } else if ("CANCEL_HOLD".equals(t.state())) {
         blockers.add("CANCELLATION_HOLD");
+      } else if ("CHANGING".equals(t.state())) {
+        blockers.add("VERSION_CHANGE_PENDING"); // 0.13.0
+      } else if ("CHANGE_HOLD".equals(t.state())) {
+        blockers.add("VERSION_CHANGE_HOLD");
       }
       if (shortages.openOfTrf(trfId) > 0) {
         blockers.add("SHORTAGE_REALLOCATING"); // 0.11.0 — 부족 재할당이 아직 끝나지 않음

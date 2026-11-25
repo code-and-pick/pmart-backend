@@ -71,3 +71,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-25: 피킹 부족 재할당 2단계 — cdc-outbound 0.12.0(Flyway V9): 부족 후속(해제·재계수 대기 → 추가 할당 → 새 작업, 못 찾음은 집은 만큼만 출발·PickShortageResolved), 주기 재시도, readiness SHORTAGE_REALLOCATING. PR `cdc/shortage-reallocation-outbound`(cdc-inventory #491 먼저 배포).
 - 2026-11-25: R-21 위치 사본 38,926칸(f3248e5, 사용자 요청 — 7층 H 랙 1단도 RESERVE, 오토스토어 4,800칸). 규칙 변경 없음(R-19 그대로). 통로 방식 시드는 사본에서 뽑으므로 H 랙 BOX_PICK 이 자동으로 빠짐(80통로). LAN 은 그대로.
 - 2026-11-25: LAN 실제 확인 스크립트 `deploy/lan/checks/cdc_outbound_e2e.py`(선반 먼저 할당·Wave 릴리스·미출발 취소 정리) — 이 클론엔 `.secrets` 가 없어 PC 1 실행 요청(pc1-todo). 계획만 실행은 LAN 읽기로 확인(SKU B-00000006 LOT A 가 선반·랙 모두). PR `cdc/lan-outbound-check`.
+- 2026-11-25: TRF 새 승인 버전 대체 — cdc-outbound 0.13.0(Flyway V10), 피킹 시작 전까지(사용자): 몫 빼기·Wave 에서 빼기 → 예전 할당 해제 → 새 버전 할당, CHANGING·CHANGE_HOLD. PR `cdc/transfer-version-change`(#492 0.12.0·V9 다음).

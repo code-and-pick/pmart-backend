@@ -1478,6 +1478,120 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                 trf))
         .isEqualTo(1); // 못 찾음
     assertThat(readiness(trf).path("readiness").asString()).isEqualTo("PICKED");
+  void stubAllocateV(String trfId, int version, String body) {
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(ALLOC))
+            .withHeader("Idempotency-Key", equalTo("outbound-alloc-" + trfId + "-v" + version))
+            .willReturn(aResponse().withHeader("Content-Type", "application/json").withBody(body)));
+  }
+
+  /**
+   * TRF 새 승인 버전 대체(0.13.0, 사용자 "피킹 시작 전까지"): Wave 릴리스 뒤(아무도 안 집음) v2 → 작업 CANCELLED·Wave 에서 빠짐 → 예전
+   * 할당 해제(TRANSFER_CHANGED) → v2 할당. 해제 불명이면 CHANGING(VERSION_CHANGE_PENDING) — 같은 본문 재전송으로 끝남. 피킹
+   * 시작 뒤 v3 는 409 PICKING_STARTED. CDC07.
+   */
+  @Test
+  void transferNewVersionReplacesBeforePicking() {
+    String c7 = "CDC07";
+    String ops7 = TestJwt.operator("ops-7", List.of("CDC_MANAGER"), List.of(c7));
+    String w3 = TestJwt.operator("w3b", List.of("CDC_WORKER"), List.of(c7));
+    String trf = "TRF-" + UUID.randomUUID();
+    String a1 = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String a2 = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    stubAllocateV(
+        trf,
+        1,
+        "{\"allocationId\":\""
+            + a1
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":6},{\"sku\":\"E-00000002\",\"allocatedQty\":4}]}");
+    stubAllocationLots(
+        a1,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\"CDC07-C-5-61-01-1-1\",\"qty\":6}]},{\"sku\":\"E-00000002\",\"lots\":[{\"lot\":\"L2\",\"locationCode\":\"CDC07-C-5-61-02-1-1\",\"qty\":4}]}");
+    Map<String, Object> v1 = trfAt(trf, c7, "MFC-BJG-01", DUE, 6, 4);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", v1).status()).isEqualTo(202);
+    String wave =
+        post(ops7, "/waves", Map.of("cdcId", c7, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops7, "/waves/" + wave + "/releases", null).status()).isEqualTo(202);
+    String task =
+        get(ops7, "/cdcs/" + c7 + "/tasks?waveId=" + wave)
+            .body()
+            .path("items")
+            .get(0)
+            .path("taskId")
+            .asString();
+
+    // v2(6 → 3) — 해제 불명이면 CHANGING
+    stubRelease(a1, 503, "{}");
+    Map<String, Object> v2 = new LinkedHashMap<>(trfAt(trf, c7, "MFC-BJG-01", DUE, 3, 4));
+    v2.put("trfVersion", 2);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", v2).status()).isEqualTo(202);
+    JsonNode i1 = get(SERVICE, "/internal/transfer-intakes/" + trf).body();
+    assertThat(i1.path("state").asString()).as(i1.toString()).isEqualTo("CHANGING");
+    assertThat(i1.path("trfVersion").asInt()).isEqualTo(2);
+    assertThat(readiness(trf).path("blockers").toString()).contains("VERSION_CHANGE_PENDING");
+    assertThat(get(ops7, "/cdcs/" + c7 + "/tasks/" + task).body().path("state").asString())
+        .isEqualTo("CANCELLED");
+    assertThat(get(ops7, "/waves/" + wave).body().path("state").asString()).isEqualTo("CANCELLED");
+    assertThat(
+            postKey(
+                    ops7,
+                    "/cdcs/" + c7 + "/transfers/" + trf + "/pre-departure-cancellations",
+                    UUID.randomUUID().toString(),
+                    Map.of("reason", "TRANSFER_CANCELLED", "scope", "FULL"))
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("VERSION_CHANGE_IN_PROGRESS");
+
+    // 같은 본문 재전송 → 같은 키로 해제 → v2 할당
+    stubRelease(
+        a1,
+        200,
+        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-CH\",\"appliedQty\":10}");
+    stubAllocateV(
+        trf,
+        2,
+        "{\"allocationId\":\""
+            + a2
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":3},{\"sku\":\"E-00000002\",\"allocatedQty\":4}]}");
+    assertThat(post(SERVICE, "/internal/transfer-intakes", v2).status()).isEqualTo(202);
+    JsonNode i2 = get(SERVICE, "/internal/transfer-intakes/" + trf).body();
+    assertThat(i2.path("state").asString()).as(i2.toString()).isEqualTo("ALLOCATED");
+    assertThat(i2.path("allocationId").asString()).isEqualTo(a2);
+    assertThat(i2.path("progress").get(0).path("approvedQty").asInt()).isEqualTo(3);
+    var rels =
+        inventory.findAll(
+            postRequestedFor(urlPathEqualTo(ALLOC + "/" + a1 + "/releases"))
+                .withRequestBody(matchingJsonPath("$.reason", equalTo("TRANSFER_CHANGED"))));
+    assertThat(rels.stream().map(r -> r.getHeader("Idempotency-Key")).distinct().toList())
+        .containsExactly("outbound-change-" + trf + "-v2");
+    // 낮은 버전 409
+    assertThat(post(SERVICE, "/internal/transfer-intakes", v1).body().path("code").asString())
+        .isEqualTo("INVALID_STATE");
+
+    // 다시 Wave → 작업 받고 착수(피킹 시작) → v3 는 409 PICKING_STARTED
+    stubAllocationLots(
+        a2,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\"CDC07-C-5-61-01-1-1\",\"qty\":3}]}");
+    String wave2 =
+        post(ops7, "/waves", Map.of("cdcId", c7, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops7, "/waves/" + wave2 + "/releases", null).status()).isEqualTo(202);
+    String t2 =
+        post(w3, "/cdcs/" + c7 + "/workers/w3b/next-tasks", Map.of())
+            .body()
+            .path("taskId")
+            .asString();
+    assertThat(post(w3, "/cdcs/" + c7 + "/tasks/" + t2 + "/starts", null).status()).isEqualTo(200);
+    Map<String, Object> v3 = new LinkedHashMap<>(trfAt(trf, c7, "MFC-BJG-01", DUE, 2, 4));
+    v3.put("trfVersion", 3);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", v3).body().path("code").asString())
+        .isEqualTo("PICKING_STARTED");
   }
 
   JsonNode readiness(String trf) {

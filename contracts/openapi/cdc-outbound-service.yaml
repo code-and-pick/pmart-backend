@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.12.0
+  version: 0.13.0
   description: |
+    0.13.0(2026-11-25, TRF 새 승인 버전 대체 — WMS CWC-03 TransferChanged, 사용자 "피킹 시작 전까지"): 같은 TRF 의 더 높은 trfVersion 을 transfer-intakes 로 받으면
+      피킹 시작 전에 한해 대체한다 — 안 끝난 작업에서 그 TRF 몫을 빼고 Wave 에서 뺀 뒤(CHANGING), 예전 할당을 해제(TRANSFER_CHANGED)하고 새 버전으로 다시 할당한다.
+      운영자가 다시 Wave 에 넣는다. 피킹이 시작됐으면 409 PICKING_STARTED. (0.12.0 은 피킹 부족 재할당 PR #492.)
     0.12.0(2026-11-25, 피킹 부족 재할당 — WMS CDC-F-018, 사용자 결정): 부족 보고 뒤 cdc-outbound 가 재고에 그 LOT·위치를 해제하며 재계수 대기로 두고(cdc-inventory 0.7.0),
       같은 할당에 다른 적격 LOT 을 더 잡아 새 PICK 작업을 만든다. 못 잡은 만큼은 "못 찾음" — 집은 만큼만 출발(사용자 "48개만 보냄"). 결과 사건 PickShortageResolved.
       출발 준비 blockers 에 SHORTAGE_REALLOCATING. TRF 줄 shortQty 는 재할당 뒤 남은(못 찾은) 부족이다.
@@ -48,7 +51,11 @@ paths:
         인수(ACCEPTED)는 확보가 아니다. 확보 결과는 GET /internal/transfer-intakes/{trfId}.
         (0.3.0) 인수 뒤 같은 요청 안에서 cdc-inventory `POST /internal/allocations` 를 부른다(멱등 키 = trfId·버전 고정). 결과에 따라 상태
         ALLOCATED / PARTIALLY_ALLOCATED / ALLOCATION_FAILED(재고 쪽 4xx — 사유를 남김). 응답 불명·미전달이면 ALLOCATING 으로 남고, **같은 본문을 다시 보내면 같은 키로 다시 부른다**(재고는 한 번만 반영).
-        응답 status 는 ACCEPTED(resultId = trfId) — 결과는 조회로. 새 버전으로 대체하는 것(할당 해제·재할당)은 아직 없다 — 409 TRANSFER_CHANGE_NOT_SUPPORTED. 더 낮은 버전은 409 INVALID_STATE.
+        응답 status 는 ACCEPTED(resultId = trfId) — 결과는 조회로. 더 낮은 버전은 409 INVALID_STATE.
+        (0.13.0) 더 높은 버전 = 대체(피킹 시작 전만 — 사용자 2026-11-25): 한 트랜잭션에서 TRF 를 새 버전(줄·승인량·기한)으로 바꾸고 안 끝난 PICK 작업에서 그 TRF 몫을 빼며
+        (묶음 작업이면 몫만, 빈 작업은 CANCELLED) Wave 에서 뺀다 → state CHANGING. 이어서 트랜잭션 밖에서 예전 할당 해제(TRANSFER_CHANGED, 키 `outbound-change-<trfId>-v<새 버전>`) → 새 버전 할당(키 `outbound-alloc-<trfId>-v<새 버전>`).
+        해제 응답이 불명이면 CHANGING 으로 남는다 — 같은 본문을 다시 보내면 같은 키로 이어서 한다. 재고가 해제를 거절하면 CHANGE_HOLD(사유 allocationError, 같은 본문 재전송이 다시 시도).
+        막는 경우: 피킹·분류가 시작됨 409 PICKING_STARTED, 출발·취소된 TRF 409 INVALID_STATE, 예전 버전 할당 결과 불명 409 ALLOCATION_IN_PROGRESS, 다른 대체 진행 중 409 VERSION_CHANGE_IN_PROGRESS, 미출발 취소 진행 중 409 CANCELLATION_IN_PROGRESS.
       operationId: intakeTransfer
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
@@ -62,7 +69,7 @@ paths:
       responses:
         '202': { $ref: '_common.yaml#/components/responses/Accepted' }
         '409':
-          description: TRANSFER_INTAKE_CONFLICT (같은 버전 다른 본문) / IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발·낮은 버전) / TRANSFER_CHANGE_NOT_SUPPORTED (0.3.0)
+          description: TRANSFER_INTAKE_CONFLICT (같은 버전 다른 본문) / IDEMPOTENCY_CONFLICT / INVALID_STATE (이미 출발·취소·낮은 버전) / PICKING_STARTED·ALLOCATION_IN_PROGRESS·VERSION_CHANGE_IN_PROGRESS·CANCELLATION_IN_PROGRESS (0.13.0 새 버전 대체)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -846,6 +853,7 @@ paths:
         - blockers: NOT_ALLOCATED·ALLOCATION_FAILED·NOT_IN_WAVE·TASK_EXCEPTION·NOTHING_PICKED(전량 부족)·UNSORTED_QTY·NOT_INSPECTED·INSPECTION_FAILED,
           (0.7.0) CANCELLATION_PENDING(미출발 취소의 재고 해제 불명)·CANCELLATION_HOLD(재고가 해제를 거절 — 조사).
           (0.12.0) SHORTAGE_REALLOCATING(피킹 부족의 재고 해제·추가 할당이 아직 끝나지 않음 — 다시 집을 작업이 생길 수 있다).
+          (0.13.0) VERSION_CHANGE_PENDING(새 버전 대체 중)·VERSION_CHANGE_HOLD(예전 할당 해제 거절).
       operationId: getOutboundReadiness
       parameters:
         - { name: trfId, in: query, required: true, schema: { type: string } }
@@ -962,7 +970,7 @@ components:
         - { $ref: '#/components/schemas/TransferIntakeInput' }
         - type: object
           properties:
-            state: { type: string, enum: [RECEIVED, ALLOCATING, ALLOCATED, PARTIALLY_ALLOCATED, ALLOCATION_FAILED, IN_WAVE, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED, CANCELLING, CANCEL_HOLD], description: '(0.7.0) CANCELLING = 미출발 취소의 재고 해제 불명(같은 본문 재전송으로 확정), CANCEL_HOLD = 재고가 해제를 거절(작업은 막힘, 조사)' }
+            state: { type: string, enum: [RECEIVED, ALLOCATING, ALLOCATED, PARTIALLY_ALLOCATED, ALLOCATION_FAILED, IN_WAVE, PICKED, SORTED, INSPECTED, LOADED, DEPARTED, CANCELLED, CANCELLING, CANCEL_HOLD, CHANGING, CHANGE_HOLD], description: '(0.7.0) CANCELLING = 미출발 취소의 재고 해제 불명(같은 본문 재전송으로 확정), CANCEL_HOLD = 재고가 해제를 거절(작업은 막힘, 조사). (0.13.0) CHANGING = 새 버전 대체 중(예전 할당 해제·새 할당 전), CHANGE_HOLD = 재고가 예전 할당 해제를 거절' }
             version: { $ref: '_common.yaml#/components/schemas/Version' }
             allocationId: { type: string }
             waveId: { type: string }
