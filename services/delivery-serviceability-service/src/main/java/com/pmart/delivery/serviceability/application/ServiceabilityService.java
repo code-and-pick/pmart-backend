@@ -24,6 +24,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
@@ -188,6 +189,23 @@ public class ServiceabilityService {
       throw PmartException.notFound("MFC_NOT_SERVED", "발효 권역 매핑에 없는 MFC 입니다: " + mfcId);
     }
     return v.version();
+  }
+
+  /** 좌표가 들어가는 발효 권역(2026-11-25 — rider 배달 지역 바꾸기). 발효 버전이 없으면 version null·빈 목록. 저장·로그 없음. */
+  public record ZoneLookup(
+      @Nullable Integer version, @Nullable String servingMfcId, List<ZoneMatcher.Zone> zones) {}
+
+  public ZoneLookup lookupZones(double lat, double lng) {
+    Optional<VersionRow> v = store.active();
+    if (v.isEmpty()) {
+      return new ZoneLookup(null, null, List.of());
+    }
+    List<ZoneMatcher.Zone> zones = toZones(store.zones(v.get().version()));
+    ZoneMatcher.Match m = ZoneMatcher.match(zones, lat, lng);
+    return new ZoneLookup(
+        v.get().version(),
+        m.zone() == null ? null : m.zone().mfcId(),
+        ZoneMatcher.containing(zones, lat, lng));
   }
 
   public List<ZoneRow> zones(int version) {

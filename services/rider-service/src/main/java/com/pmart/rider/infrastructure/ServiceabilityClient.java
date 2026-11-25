@@ -50,4 +50,36 @@ public class ServiceabilityClient {
     }
     return names;
   }
+
+  /** 좌표가 들어가는 발효 권역(2026-11-25 배달 지역 바꾸기). servingMfcId 는 판정 규칙으로 고른 하나(없으면 null). */
+  public record ZonesAt(
+      @org.jspecify.annotations.Nullable String servingMfcId, java.util.Set<String> mfcIds) {}
+
+  /**
+   * {@code POST /internal/zone-lookups} — 좌표는 본문으로만(URL·로그에 남기지 않음). 못 부르면 {@link Downstream} 예외.
+   */
+  public ZonesAt zonesAt(double lat, double lng) {
+    String raw =
+        Downstream.call(
+            "serviceability zone lookup",
+            () ->
+                client
+                    .post()
+                    .uri("/api/v1/internal/zone-lookups")
+                    .header("Idempotency-Key", java.util.UUID.randomUUID().toString())
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(Map.of("lat", lat, "lng", lng))
+                    .retrieve()
+                    .body(String.class));
+    JsonNode n = mapper.readTree(raw == null ? "{}" : raw);
+    java.util.Set<String> ids = new java.util.LinkedHashSet<>();
+    for (JsonNode z : n.path("zones")) {
+      String m = z.path("mfcId").asString("");
+      if (!m.isBlank()) {
+        ids.add(m);
+      }
+    }
+    String serving = n.path("servingMfcId").isString() ? n.path("servingMfcId").asString() : null;
+    return new ZonesAt(serving, ids);
+  }
 }

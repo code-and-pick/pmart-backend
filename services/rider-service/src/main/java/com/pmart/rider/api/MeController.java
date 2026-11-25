@@ -32,6 +32,20 @@ public class MeController implements MeApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.RiderLocationArea> getMyLocationArea() {
+    var a = riders.myLocationArea();
+    return ResponseEntity.ok(
+        new com.pmart.rider.api.generated.model.RiderLocationArea()
+            .locationState(
+                com.pmart.rider.api.generated.model.RiderLocationArea.LocationStateEnum.fromValue(
+                    a.state().name()))
+            .locatedAt(
+                a.locatedAt() == null ? null : a.locatedAt().atOffset(java.time.ZoneOffset.UTC))
+            .mfcId(a.servingMfcId())
+            .mfcIds(java.util.List.copyOf(a.mfcIds())));
+  }
+
+  @Override
   public ResponseEntity<RiderProfile> updateMyRider(
       String idempotencyKey,
       String xSourceSystem,

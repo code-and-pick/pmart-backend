@@ -37,3 +37,4 @@
 - 구현 시작 전: `docs/architecture/service-requests/delivery-kickoff-from-mfc.md`(MFC 와의 약속 한 장, 2026-11-10)와 이 서비스의 요청 파일을 읽는다. LAN 은 PC 5.
 - 배차용 주소 → 좌표(2026-11-13, 계약 0.1.1): `GET /internal/address-geocodes`(내부 호출) — 판정과 같은 정확 일치 변환(`ServiceabilityService.geocodeExact`). delivery-dispatch 가 주문 배송지 좌표를 얻는다. 저장·로그 없음.
 - **승인 반영 회신(RC-1, 2026-11-17 — ADR-0039)**: `applyApproval` 이 승인(APPROVED·PARTIALLY_APPROVED)을 처리한 같은 트랜잭션에서 `ApplicationReceiptRecorded`(토픽 `platform.approval-receipt.v1`) — 발효 APPLIED(domainRef `mapping-version:<v>`), 발효 안 함 REJECTED(사유 = IGNORED·APPROVAL_SCOPE_MISMATCH·TEST_ADDRESS_MISMATCH). 반려(REJECTED 결정)는 회신 없음(pricing 과 같게).
+- **좌표 → 들어가는 권역(2026-11-25, 계약 0.2.0 — rider 배달 지역 바꾸기)**: `POST /internal/zone-lookups {lat,lng}`(토큰 없는 내부 호출, 좌표는 본문) → 발효 버전·`servingMfcId`(판정 규칙)·`zones[]`(들어가는 권역 모두 — `ZoneMatcher.containing`). 발효 버전이 없으면 version null·빈 목록. 저장·로그 없음.

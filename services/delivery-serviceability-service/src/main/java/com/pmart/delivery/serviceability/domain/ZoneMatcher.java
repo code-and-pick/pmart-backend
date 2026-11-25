@@ -55,6 +55,17 @@ public final class ZoneMatcher {
     return new Match("OVERLAP", null, hits);
   }
 
+  /** 좌표가 들어가는 권역 모두(겹침 포함 — 2026-11-25 라이더 배달 지역 바꾸기 검사). */
+  public static List<Zone> containing(List<Zone> zones, double lat, double lng) {
+    List<Zone> hits = new ArrayList<>();
+    for (Zone z : zones) {
+      if (contains(z, lng, lat)) {
+        hits.add(z);
+      }
+    }
+    return hits;
+  }
+
   static boolean contains(Zone z, double x, double y) {
     for (List<List<double[]>> polygon : z.polygons()) {
       if (polygon.isEmpty() || !inRing(polygon.get(0), x, y)) {

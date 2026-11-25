@@ -167,6 +167,20 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
         "geometry", Map.of("type", "Polygon", "coordinates", List.of(box(x0, y0, x1, y1))));
   }
 
+  JsonNode zoneLookup(double lat, double lng) throws Exception {
+    var r =
+        http.post()
+            .uri("/internal/zone-lookups")
+            .header("Idempotency-Key", UUID.randomUUID().toString())
+            .header("X-Source-System", "rider-service")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(Map.of("lat", lat, "lng", lng))
+            .retrieve()
+            .toEntity(String.class);
+    assertThat(r.getStatusCode().value()).isEqualTo(200);
+    return mapper.readTree(r.getBody());
+  }
+
   void decide(JsonNode approvalRequest, String decision, String hashOverride) {
     String approvalId = "AP-" + UUID.randomUUID();
     Map<String, Object> attrs = new LinkedHashMap<>();
@@ -414,6 +428,15 @@ class MappingVersionFlowIT extends PostgresKafkaContainerSupport {
                 .path("result")
                 .asString())
         .isEqualTo("SERVICEABLE");
+
+    // 좌표 → 들어가는 발효 권역(2026-11-25 rider 배달 지역 바꾸기): 토큰 없는 내부 호출, 좌표는 본문
+    JsonNode in = zoneLookup(37.50, 127.02);
+    assertThat(in.path("version").asInt()).isEqualTo(version);
+    assertThat(in.path("servingMfcId").asString()).isEqualTo("MFC-BSN-01");
+    assertThat(in.path("zones").path(0).path("mfcId").asString()).isEqualTo("MFC-BSN-01");
+    JsonNode out = zoneLookup(37.60, 127.02);
+    assertThat(out.path("zones").size()).isZero();
+    assertThat(out.path("servingMfcId").isNull()).isTrue();
 
     // 시험 주소 기대와 다르면 발효하지 않는다(기존 발효 버전 유지)
     Map<String, Object> wrong =

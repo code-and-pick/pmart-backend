@@ -120,6 +120,7 @@ public class RiderService {
   private final com.pmart.rider.infrastructure.CenterClient centers;
   private final com.pmart.rider.infrastructure.ExecutionClient executions;
   private final com.pmart.rider.infrastructure.DispatchClient dispatch;
+  private final LocationAreas locationAreas;
 
   public RiderService(
       RiderStore store,
@@ -132,7 +133,9 @@ public class RiderService {
       org.springframework.beans.factory.ObjectProvider<PhoneVerificationService> phones,
       com.pmart.rider.infrastructure.CenterClient centers,
       com.pmart.rider.infrastructure.ExecutionClient executions,
-      com.pmart.rider.infrastructure.DispatchClient dispatch) {
+      com.pmart.rider.infrastructure.DispatchClient dispatch,
+      LocationAreas locationAreas) {
+    this.locationAreas = locationAreas;
     this.dispatch = dispatch;
     this.phones = phones;
     this.centers = centers;
@@ -309,6 +312,19 @@ public class RiderService {
     if (executions.withdrawalBlockers(riderId).contains("ACTIVE_DELIVERY")) {
       throw PmartException.invalidState("진행 중인 배송이 있어 배달 지역을 바꿀 수 없습니다. 배송을 마친 뒤 바꾸세요.");
     }
+    // 위치 검사(0.27.0) 전에 운행 중을 먼저 — 운행 중이면 위치와 무관하게 409 INVALID_STATE(아래 트랜잭션에서 다시 본다)
+    Rider now = get(riderId);
+    if (now.operatingStatus() == Rider.OperatingStatus.ON_DUTY) {
+      throw PmartException.invalidState("운행 중에는 배달 지역을 바꿀 수 없습니다. 운행을 종료한 뒤 바꾸세요.");
+    }
+    // 2026-11-25 사용자 "배달 가능 지역 내부에 있을 때만 해당 지역으로 권역 변경하게 해줘" — 새로 넣는 센터만
+    java.util.Set<String> before =
+        now.deliveryAreas().stream()
+            .map(Rider.Area::mfcId)
+            .collect(java.util.stream.Collectors.toSet());
+    locationAreas.requireInside(
+        riderId,
+        areas.stream().map(Rider.Area::mfcId).filter(m -> !before.contains(m)).distinct().toList());
   }
 
   private void requireRealAddress(@Nullable String roadAddress) {
@@ -346,6 +362,13 @@ public class RiderService {
 
   public Rider me() {
     return get(requireRider());
+  }
+
+  /** 지금 위치가 속한 배달 권역(0.27.0 — 배달 지역 바꾸기 안내용, 정본 검사는 updateProfile). 탈퇴·없는 라이더 404. */
+  public LocationAreas.Area myLocationArea() {
+    String riderId = requireRider();
+    get(riderId);
+    return locationAreas.current(riderId);
   }
 
   @Transactional

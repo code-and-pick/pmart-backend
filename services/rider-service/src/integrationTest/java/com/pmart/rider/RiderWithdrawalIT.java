@@ -9,6 +9,8 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import com.pmart.common.test.PostgresKafkaContainerSupport;
 import com.pmart.common.test.TestJwt;
 import com.pmart.common.test.TestJwtConfiguration;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -49,7 +51,13 @@ import tools.jackson.databind.ObjectMapper;
       baseUrlProperties = {"pmart.rider.center-master-base-url"}),
   @ConfigureWireMock(
       name = "dispatch",
-      baseUrlProperties = {"pmart.rider.dispatch-base-url"})
+      baseUrlProperties = {"pmart.rider.dispatch-base-url"}),
+  @ConfigureWireMock(
+      name = "tracking",
+      baseUrlProperties = {"pmart.rider.tracking-base-url"}),
+  @ConfigureWireMock(
+      name = "serviceability",
+      baseUrlProperties = {"pmart.rider.serviceability-base-url"})
 })
 class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
 
@@ -69,6 +77,12 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("dispatch")
   WireMockServer dispatch;
 
+  @InjectWireMock("tracking")
+  WireMockServer tracking;
+
+  @InjectWireMock("serviceability")
+  WireMockServer serviceability;
+
   RestClient http;
 
   @BeforeEach
@@ -81,6 +95,8 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     execution.resetAll();
     center.resetAll();
     dispatch.resetAll();
+    tracking.resetAll();
+    serviceability.resetAll();
   }
 
   /** 직원 목록 "진행 중 n"(0.24.0): dispatch 수를 붙이고, 못 읽으면 null(목록은 그대로). */
@@ -113,6 +129,8 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
         .isEqualTo(2);
 
     dispatch.resetAll();
+    tracking.resetAll();
+    serviceability.resetAll();
     dispatch.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/riders/active-delivery-counts"))
             .willReturn(aResponse().withStatus(503)));
@@ -157,6 +175,50 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
     centerIs("MFC-MOKPO-01", "MFC", "ACTIVE");
     assertThat(areas(rider, "MFC-MOKPO-01", "a-4").getStatusCode().value()).isEqualTo(409);
 
+    // 2026-11-25 사용자 "배달 가능 지역 내부에 있을 때만 해당 지역으로 권역 변경하게 해줘"
+    // 위치 없음(tracking 404)·오래됨(5분 넘음) → 409 LOCATION_UNKNOWN
+    blockers(rider, "[]");
+    centerIs("MFC-MOKPO-01", "MFC", "ACTIVE");
+    ResponseEntity<String> noLoc = areas(rider, "MFC-MOKPO-01", "a-6");
+    assertThat(noLoc.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(noLoc).path("code").asString()).isEqualTo("LOCATION_UNKNOWN");
+    assertThat(json(get(rider, "/riders/me/location-area")).path("locationState").asString())
+        .isEqualTo("UNKNOWN");
+    locationAt(rider, Instant.now().minus(Duration.ofMinutes(10)));
+    assertThat(json(areas(rider, "MFC-MOKPO-01", "a-7")).path("code").asString())
+        .isEqualTo("LOCATION_UNKNOWN");
+    JsonNode stale = json(get(rider, "/riders/me/location-area"));
+    assertThat(stale.path("locationState").asString()).isEqualTo("STALE");
+    assertThat(stale.path("mfcIds").size()).isZero();
+    serviceability.verify(0, WireMock.postRequestedFor(urlPathEqualTo(ZONES)));
+
+    // 최근 위치가 다른 센터 권역 → 422 OUTSIDE_DELIVERY_AREA(지금 위치 담당 센터를 details 로)
+    locationAt(rider, Instant.now());
+    zonesAt("\"MFC-OTHER\"", "[{\"zoneId\":\"Z-O\",\"mfcId\":\"MFC-OTHER\"}]");
+    ResponseEntity<String> outside = areas(rider, "MFC-MOKPO-01", "a-8");
+    assertThat(outside.getStatusCode().value()).isEqualTo(422);
+    assertThat(json(outside).path("code").asString()).isEqualTo("OUTSIDE_DELIVERY_AREA");
+    assertThat(json(outside).path("details").get(0).path("field").asString())
+        .isEqualTo("currentMfcId");
+    assertThat(json(outside).path("details").get(0).path("reason").asString())
+        .isEqualTo("MFC-OTHER");
+    // 좌표는 본문으로만
+    serviceability.verify(
+        WireMock.postRequestedFor(urlPathEqualTo(ZONES))
+            .withRequestBody(WireMock.matchingJsonPath("$.lat"))
+            .withHeader("Idempotency-Key", WireMock.matching(".+")));
+
+    // 권역이 겹쳐 담당이 다른 센터여도 그 센터 권역 안이면 바꿀 수 있다
+    zonesAt(
+        "\"MFC-OTHER\"",
+        "[{\"zoneId\":\"Z-O\",\"mfcId\":\"MFC-OTHER\"},{\"zoneId\":\"Z-M\",\"mfcId\":\"MFC-MOKPO-01\"}]");
+    JsonNode here = json(get(rider, "/riders/me/location-area"));
+    assertThat(here.path("locationState").asString()).isEqualTo("FRESH");
+    assertThat(here.path("mfcId").asString()).isEqualTo("MFC-OTHER");
+    assertThat(here.path("mfcIds").toString()).contains("MFC-MOKPO-01");
+    assertThat(here.path("locatedAt").asString()).isNotEmpty();
+    assertThat(here.has("lat")).isFalse();
+
     // 쉬는 중·배송 없음 → 바로 반영, 남은 운행 센터도 새 지점으로
     blockers(rider, "[\"UNCONFIRMED_EARNING\"]");
     centerIs("MFC-MOKPO-01", "MFC", "ACTIVE");
@@ -167,6 +229,10 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
             jdbc.queryForObject(
                 "SELECT operating_mfc_id FROM rider WHERE rider_id = ?", String.class, rider))
         .isIn("MFC-MOKPO-01", null);
+
+    // 같은 목록 다시 보내기는 위치 검사 없이 그대로(위치를 몰라도)
+    tracking.resetAll();
+    assertThat(areas(rider, "MFC-MOKPO-01", "a-9").getStatusCode().value()).isEqualTo(200);
   }
 
   @Test
@@ -335,6 +401,42 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
             .header("Authorization", "Bearer " + ops)
             .retrieve()
             .toEntity(String.class));
+  }
+
+  static final String ZONES = "/api/v1/internal/zone-lookups";
+
+  private void locationAt(String rider, Instant receivedAt) {
+    tracking.resetAll();
+    tracking.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/riders/" + rider + "/location"))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"riderId\":\""
+                            + rider
+                            + "\",\"lat\":34.81,\"lng\":126.39,\"quality\":\"GOOD\",\"recordedAt\":\""
+                            + receivedAt
+                            + "\",\"receivedAt\":\""
+                            + receivedAt
+                            + "\"}")));
+  }
+
+  private void zonesAt(String serving, String zones) {
+    serviceability.resetAll();
+    serviceability.stubFor(
+        WireMock.post(urlPathEqualTo(ZONES))
+            .willReturn(
+                aResponse()
+                    .withStatus(200)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"version\":3,\"servingMfcId\":"
+                            + serving
+                            + ",\"zones\":"
+                            + zones
+                            + "}")));
   }
 
   private void centerIs(String id, String type, String state) {

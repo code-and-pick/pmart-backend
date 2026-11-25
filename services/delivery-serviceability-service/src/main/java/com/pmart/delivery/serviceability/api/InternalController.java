@@ -40,4 +40,28 @@ public class InternalController implements InternalApi {
               body) {
     return ResponseEntity.ok(GeocodingController.view(service.geocodeExact(body.getQuery())));
   }
+
+  /** 좌표 → 들어가는 발효 권역(2026-11-25 rider 배달 지역 바꾸기). 좌표는 본문으로만, 로그 없음. */
+  @Override
+  public ResponseEntity<
+          com.pmart.delivery.serviceability.api.generated.model.LookupZonesInternal200Response>
+      lookupZonesInternal(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.delivery.serviceability.api.generated.model.LookupZonesInternalRequest body) {
+    var r = service.lookupZones(body.getLat().doubleValue(), body.getLng().doubleValue());
+    return ResponseEntity.ok(
+        new com.pmart.delivery.serviceability.api.generated.model.LookupZonesInternal200Response()
+            .version(r.version())
+            .servingMfcId(r.servingMfcId())
+            .zones(
+                r.zones().stream()
+                    .map(
+                        z ->
+                            new com.pmart.delivery.serviceability.api.generated.model
+                                    .LookupZonesInternal200ResponseZonesInner()
+                                .zoneId(z.zoneId())
+                                .mfcId(z.mfcId()))
+                    .toList()));
+  }
 }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.26.0
+  version: 0.27.0
   description: |
     라이더 프로필(전화번호 고유성·계좌·거주지·배달지역·수단), 운행 상태, 하나씩 배달하기, 배차 모드, 계정 제한(증빙 기반), 마지막 통신 시각, 탈퇴의 정본. (docs/architecture/service-map.md §7)
     특정 배송의 배정 권리(dispatch), 수행·정산(execution), 인증 토큰(auth), 간선기사(fleet)는 소유하지 않는다.
@@ -53,7 +53,7 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0)
+          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0) / MFC_NOT_AVAILABLE(0.23.0) / LICENSE_REQUIRED / OUTSIDE_DELIVERY_AREA — 지금 위치가 새 센터 배달 권역 밖(0.27.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -314,6 +314,7 @@ paths:
         수단(vehicleType) 변경은 진행 중 배송이 있으면 409 INVALID_STATE. 오토바이·자동차·킥보드로 바꾸면서 등록된 면허가 없으면 licenseNumber 필수(422 LICENSE_REQUIRED — 2026-11-16 사용자 결정).
         0.7.0(2026-11-17): 거주지 주소 확인(422 INVALID_ADDRESS)·은행 코드(400)·같은 계좌 409 DUPLICATE_ACCOUNT — 가입과 같다.
         0.23.0(2026-11-23, 라이더 앱 배달 지역 바꾸기 — 사용자 "운행을 쉴 때만, 한 곳만, 바로 반영"): deliveryAreas 를 바꾸면 운행 중(ON_DUTY)이거나 진행 중 배송이 있으면 409 INVALID_STATE, 운영 중인 MFC 가 아니면(없는 센터·다른 종류·ACTIVE 아님 — center-master) 422 MFC_NOT_AVAILABLE, center-master·execution 을 못 부르면 503. 바꾸면 쉬는 동안 남은 운행 센터(state.mfcId)가 새 지역 밖일 때 새 지역 첫 센터로 맞춘다. 같은 센터 목록을 다시 보내면 확인 없이 그대로.
+        0.27.0(2026-11-25, 라이더 앱 요청 — 사용자 "배달 가능 지역 내부에 있을 때만 해당 지역으로 권역 변경하게 해줘"): 위 검사에 더해 **새로 넣는 센터마다** 라이더 마지막 위치(delivery-tracking 이 받은 위치, 받은 지 `pmart.rider.area-change.location-max-age` 기본 5분 안)가 그 센터의 발효 배달 권역(serviceability — 권역이 겹치면 겹친 권역 모두 안으로 본다) 안이어야 한다. 위치가 없거나 오래됐으면 409 `LOCATION_UNKNOWN`, 권역 밖이면 422 `OUTSIDE_DELIVERY_AREA`(details `{field: "currentMfcId", reason: <지금 위치가 속한 담당 MFC>}` — 어느 권역에도 없으면 details 없음). 검사 순서: MFC_NOT_AVAILABLE → 진행 중 배송 → 운행 중(INVALID_STATE) → 위치. tracking·serviceability 를 못 부르면 503. 원래 있던 센터는 다시 검사하지 않는다(같은 목록 재전송도 그대로).
       operationId: updateMyRider
       x-pmart-user-types: [RIDER]
       parameters:
@@ -332,15 +333,35 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RiderProfile' }
         '409':
-          description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT / DUPLICATE_ACCOUNT(0.7.0) / DUPLICATE_LICENSE
+          description: INVALID_STATE (배송 중 수단 변경) / VERSION_CONFLICT / DUPLICATE_ACCOUNT(0.7.0) / DUPLICATE_LICENSE / LOCATION_UNKNOWN — 최근 위치 없음·오래됨(0.27.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
         '422':
-          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0)
+          description: INVALID_ADDRESS — 거주지 도로명주소를 주소 검색(serviceability 정확 일치)에서 찾을 수 없음(0.7.0) / MFC_NOT_AVAILABLE(0.23.0) / LICENSE_REQUIRED / OUTSIDE_DELIVERY_AREA — 지금 위치가 새 센터 배달 권역 밖(0.27.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /riders/me/location-area:
+    get:
+      tags: [me]
+      summary: 지금 위치가 속한 배달 권역 (배달 지역 바꾸기 안내용)
+      description: |
+        0.27.0(2026-11-25, 라이더 앱 요청 A-2): 배달 지역 바꾸기 화면이 고를 수 없는 센터를 미리 흐리게 하는 안내용. 정본 검사는 `PATCH /riders/me` 다(이 응답과 그 사이 위치가 바뀔 수 있다).
+        마지막 위치 = delivery-tracking 이 받은 위치. 받은 지 `pmart.rider.area-change.location-max-age`(기본 5분) 안이면 FRESH — 그 좌표가 들어가는 발효 권역의 센터(`mfcIds`, 겹치면 여럿)와 판정 규칙으로 고른 담당 센터(`mfcId`). STALE·UNKNOWN 이면 mfcId null·mfcIds 빈 목록(바꾸기는 409 LOCATION_UNKNOWN). 좌표는 돌려주지 않는다.
+        tracking·serviceability 를 못 부르면 503 — "권역 밖"으로 보이지 말 것.
+      x-added-in: '2026-11-25'
+      operationId: getMyLocationArea
+      x-pmart-user-types: [RIDER]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RiderLocationArea' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /riders/me/state:
@@ -1227,6 +1248,21 @@ components:
             properties:
               mfcId: { type: string }
               zoneId: { type: string }
+    RiderLocationArea:
+      type: object
+      x-added-in: '2026-11-25'
+      required: [locationState, mfcIds]
+      properties:
+        locationState:
+          type: string
+          enum: [FRESH, STALE, UNKNOWN]
+          description: FRESH 최근 위치 있음 / STALE 마지막 위치가 기준보다 오래됨 / UNKNOWN 받은 위치 없음
+        locatedAt: { type: [string, 'null'], format: date-time, description: 마지막 위치를 받은 시각(UNKNOWN 이면 null) }
+        mfcId: { type: [string, 'null'], description: 지금 위치의 담당 센터(판정 규칙 — 권역 밖·풀리지 않는 겹침·FRESH 아님이면 null) }
+        mfcIds:
+          type: array
+          items: { type: string }
+          description: 지금 위치가 들어가는 권역의 센터 모두 — 이 센터로만 배달 지역을 바꿀 수 있다(FRESH 아니면 빈 목록)
     RiderProfile:
       type: object
       properties:
