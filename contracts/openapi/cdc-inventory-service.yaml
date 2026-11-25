@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.16.0
+  version: 0.16.1
   description: |
+    0.16.1(2026-11-26, 고침): `GET /internal/transits` 줄의 r 에 미판정(pendingQty, 0.11.0)도 넣고 t = q − r − l 로 — 전에는 미판정을 빼지 않아 t 가 크게 보였다. 줄에 pendingQty 추가.
     0.16.0(2026-11-26, 일일 대사 — WMS CDC-F-034, 사용자 결정 "조회할 때 계산"·대조 "예약·운송 중"): `GET /internal/daily-reconciliations`(501 해제) — 그날(서울)
       SKU 별 수불을 원장에서 계산(저장·배치·경보 없음, 원장을 고치지 않음)하고 지금 시점의 예약 대조·운송 중 대조를 함께 준다.
     0.15.0(2026-11-26, 품질 보류·해제·폐기 반영 — WMS CDC-F-028, 사용자 결정 "재고 쪽 먼저"·"나중 예약부터 풀고 출고에 알림"·"출고대기분은 MFC 처럼 건드리지 않음"):
@@ -1563,9 +1564,10 @@ components:
               sku: { type: string }
               lot: { type: string }
               q: { type: integer, description: 출발 수량 }
-              r: { type: integer, description: 확정 수령 (정상 + 격리) }
+              r: { type: integer, description: 받은 수량 (정상 + 격리 + 미판정 — 0.16.1 부터 미판정 포함) }
               normalQty: { type: integer }
               quarantinedQty: { type: integer }
+              pendingQty: { type: integer, description: (0.16.1) 품질 미판정으로 받은 수량 }
               l: { type: integer, description: 승인 손실 }
               t: { type: integer, description: 미정산 }
     Commit:

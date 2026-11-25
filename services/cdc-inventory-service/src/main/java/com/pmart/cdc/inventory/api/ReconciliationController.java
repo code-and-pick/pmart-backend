@@ -145,13 +145,15 @@ public class ReconciliationController implements ReconciliationApi {
             .map(
                 l -> {
                   var x = new TransitLinesInner();
-                  int r = l.normalQty() + l.quarantinedQty();
+                  // 0.16.1: 미판정(0.11.0 pending)도 받은 수량 — 미정산 t 에서 뺀다
+                  int r = l.normalQty() + l.quarantinedQty() + l.pendingQty();
                   x.setSku(l.sku());
                   x.setLot(l.lot());
                   x.setQ(l.q());
                   x.setR(r);
                   x.setNormalQty(l.normalQty());
                   x.setQuarantinedQty(l.quarantinedQty());
+                  x.setPendingQty(l.pendingQty());
                   x.setL(l.lossQty());
                   x.setT(l.q() - r - l.lossQty());
                   return x;

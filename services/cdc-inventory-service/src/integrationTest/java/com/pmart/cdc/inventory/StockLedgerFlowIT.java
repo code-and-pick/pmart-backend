@@ -1095,6 +1095,17 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(r2.body().path("appliedQty").asInt()).isEqualTo(6);
     assertThat(r2.body().path("transitState").asString()).isEqualTo("TRANSIT_RECONCILED");
     assertThat(r2.body().path("unreconciledQty").asInt()).isZero();
+    // 0.16.1: Transit 조회의 r 에 미판정 1 도 들어가 t = 0
+    JsonNode tl =
+        get(SERVICE, "/internal/transits?trfId=" + trf)
+            .body()
+            .path("items")
+            .get(0)
+            .path("lines")
+            .get(0);
+    assertThat(tl.path("pendingQty").asInt()).isEqualTo(1);
+    assertThat(tl.path("r").asInt()).isEqualTo(10);
+    assertThat(tl.path("t").asInt()).isZero();
     assertThat(
             post(SERVICE, "/internal/receipt-acks", key(), ack).body().path("appliedQty").asInt())
         .isEqualTo(6); // 같은 receiptId 같은 본문 — 그대로(추가 차감 0)

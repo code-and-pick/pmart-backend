@@ -203,6 +203,7 @@ public class DepartureService {
                     0,
                     0,
                     0,
+                    0,
                     dl.lpns().isEmpty() ? null : String.join(",", dl.lpns())));
             Map<String, Object> el = new LinkedHashMap<>();
             el.put("sku", dl.sku());

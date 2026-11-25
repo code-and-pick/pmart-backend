@@ -52,6 +52,7 @@ public class LedgerStore {
       int q,
       int normalQty,
       int quarantinedQty,
+      int pendingQty,
       int lossQty,
       @Nullable String lpns) {}
 
@@ -178,7 +179,7 @@ public class LedgerStore {
   public List<TransitLineRow> transitLines(String trfId) {
     return jdbc.query(
         "SELECT departure_line_id, trf_id, line_no, sku, lot, location_code, q, normal_qty,"
-            + " quarantined_qty, loss_qty, lpns FROM transit_line WHERE trf_id = ? ORDER BY line_no",
+            + " quarantined_qty, pending_qty, loss_qty, lpns FROM transit_line WHERE trf_id = ? ORDER BY line_no",
         (rs, i) ->
             new TransitLineRow(
                 rs.getString("departure_line_id"),
@@ -190,6 +191,7 @@ public class LedgerStore {
                 rs.getInt("q"),
                 rs.getInt("normal_qty"),
                 rs.getInt("quarantined_qty"),
+                rs.getInt("pending_qty"),
                 rs.getInt("loss_qty"),
                 rs.getString("lpns")),
         trfId);
