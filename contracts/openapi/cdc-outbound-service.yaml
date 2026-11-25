@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.13.0
+  version: 0.14.0
   description: |
+    0.14.0(2026-11-25, 피킹 재고는 출고대기 자리로 옮겨 적기 — 사용자 결정, 설계 docs/cdc/design/2026-11-25-count-adjustment.md §5): 피킹 실적의 실피킹(TRF 몫마다)을
+      cdc-inventory move-postings(PICK_MOVE, allocationId)로 그 칸 → 그 층 출고대기(통로 91)의 목적 MFC 자리로 옮겨 적는다(총현물·예약 그대로 — 칸 장부에 실제 칸 물건만 남아 실사가 맞는다).
+      지역표에 MFC 출고대기 자리 stagingBay(칠곡 01 BJG·02 BNG·03 MOKPO·04 SEJ·05 CHC — CDC-5). 출발 준비 blockers PICK_MOVE_PENDING.
     0.13.0(2026-11-25, TRF 새 승인 버전 대체 — WMS CWC-03 TransferChanged, 사용자 "피킹 시작 전까지"): 같은 TRF 의 더 높은 trfVersion 을 transfer-intakes 로 받으면
       피킹 시작 전에 한해 대체한다 — 안 끝난 작업에서 그 TRF 몫을 빼고 Wave 에서 뺀 뒤(CHANGING), 예전 할당을 해제(TRANSFER_CHANGED)하고 새 버전으로 다시 할당한다.
       운영자가 다시 Wave 에 넣는다. 피킹이 시작됐으면 409 PICKING_STARTED. (0.12.0 은 피킹 부족 재할당 PR #492.)
@@ -322,6 +325,7 @@ paths:
                       mfcId: { type: string, maxLength: 64 }
                       regionCode: { type: string, pattern: '^[A-Z][A-Z0-9_]{1,15}$' }
                       regionName: { type: string, maxLength: 64 }
+                      stagingBay: { type: string, pattern: '^[0-9]{2}$', description: '(0.14.0) 출고대기 자리 — 비우면 그대로 둔다' }
       responses:
         '200':
           description: 반영 뒤 대응표
@@ -447,6 +451,7 @@ paths:
         (0.2.0) 담당(workerId = assigneeId)의 IN_PROGRESS 작업에만 — 아니면 409 NOT_ASSIGNEE / INVALID_STATE.
         (0.3.0) 줄은 Task 줄(SKU·LOT·위치)과 맞아야 한다(없으면 400). 한 번에 다 보내도, 나눠 보내도 된다 — 줄마다 pickedQty + shortQty ≤ 남은 계획(아니면 409 PICK_EXCEEDS_ALLOCATION).
         모든 줄이 끝나면(실피킹 + 부족 = 계획) Task DONE(부족이 있으면 PARTIAL), Wave 의 모든 Task 가 끝나면 Wave WORK_DONE. 부족은 PickShortageReported(cdc.outbound.v1)로 알린다.
+        (0.14.0) 실피킹은 응답 뒤 출고대기 자리로 옮겨 적는다(PICK_MOVE — 불명이면 주기 재시도, 거절·자리 없음이면 원위치에 남기고 경고).
         (0.12.0) 부족분은 응답 뒤 서버가 처리한다(WMS CDC-F-018): ① cdc-inventory 해제(PICK_SHORTAGE, 그 LOT·위치, 재계수 대기 — 다시 셀 때까지 새 할당에서 뺌)
         ② 같은 할당에 추가 할당(다른 적격 LOT·FEFO) ③ 잡힌 만큼 같은 Wave 에 새 PICK 작업(통로 방식대로 — TRF 가 PICKED 였으면 IN_WAVE, Wave WORK_DONE 이면 IN_PROGRESS 로).
         못 잡은 만큼은 못 찾음 — TRF 는 집은 만큼만 출발한다. 결과는 PickShortageResolved(reallocatedQty·unresolvedQty·newTaskIds). 재고 응답이 불명이면 주기 작업이 같은 키로 다시 부른다.
@@ -854,6 +859,7 @@ paths:
           (0.7.0) CANCELLATION_PENDING(미출발 취소의 재고 해제 불명)·CANCELLATION_HOLD(재고가 해제를 거절 — 조사).
           (0.12.0) SHORTAGE_REALLOCATING(피킹 부족의 재고 해제·추가 할당이 아직 끝나지 않음 — 다시 집을 작업이 생길 수 있다).
           (0.13.0) VERSION_CHANGE_PENDING(새 버전 대체 중)·VERSION_CHANGE_HOLD(예전 할당 해제 거절).
+          (0.14.0) PICK_MOVE_PENDING(피킹 재고를 출고대기 자리로 옮겨 적기가 아직 끝나지 않음).
       operationId: getOutboundReadiness
       parameters:
         - { name: trfId, in: query, required: true, schema: { type: string } }
@@ -1016,6 +1022,10 @@ components:
         regionCode: { type: string, description: 지역 코드 = PDA 지역 바코드 값 }
         regionName: { type: string }
         mfcIds: { type: array, items: { type: string } }
+        stagingBays:
+          type: object
+          additionalProperties: { type: string }
+          description: (0.14.0) MFC → 출고대기(통로 91) 자리 번호 두 자리. 없는 MFC 는 피킹 재고를 옮겨 적지 않는다(원위치에 남음).
     Task:
       type: object
       properties:

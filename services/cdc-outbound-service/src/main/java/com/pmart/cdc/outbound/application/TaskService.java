@@ -71,14 +71,17 @@ public class TaskService {
   private final Support support;
   private final WaveService waves;
   private final ShortageService shortages;
+  private final PickMoveService pickMoves;
 
   public TaskService(
       OutboundStore store,
       RequestIdempotency idempotency,
       Support support,
       WaveService waves,
-      ShortageService shortages) {
+      ShortageService shortages,
+      PickMoveService pickMoves) {
     this.shortages = shortages;
+    this.pickMoves = pickMoves;
     this.store = store;
     this.idempotency = idempotency;
     this.support = support;
@@ -272,6 +275,15 @@ public class TaskService {
               }
               // 2) 반영 — 줄 실적을 TRF 몫에 나눈다(0.9.0: 실피킹은 기한 이른 몫부터, 부족은 기한 늦은 몫부터 — 사용자 결정 §7-2)
               List<ShareRow> shares = store.shares(taskId);
+              Map<String, String> bays = new LinkedHashMap<>();
+              store
+                  .regions(cdcId)
+                  .forEach(
+                      rr -> {
+                        if (rr.stagingBay() != null) {
+                          bays.put(rr.mfcId(), rr.stagingBay());
+                        }
+                      });
               Map<String, TransferRow> trfs = new LinkedHashMap<>();
               for (String id : new TreeSet<>(shares.stream().map(ShareRow::trfId).toList())) {
                 trfs.put(id, store.transfer(id, true).orElseThrow()); // trfId 순으로 잠근다
@@ -300,6 +312,21 @@ public class TaskService {
                   int ds = e.getValue()[1];
                   store.addShareResult(taskId, row.lineNo(), trfId, dp, ds);
                   store.addLinePicked(trfId, l.sku(), dp, ds);
+                  if (dp > 0) {
+                    // 피킹 재고는 출고대기 자리로 옮겨 적는다(0.14.0) — 커밋 뒤 재고 이동
+                    TransferRow tr = trfs.get(trfId);
+                    pickMoves.record(
+                        cdcId,
+                        trfId,
+                        taskId,
+                        tr.allocationId(),
+                        l.sku(),
+                        l.lot(),
+                        l.locationCode(),
+                        bays.get(tr.mfcId()),
+                        dp,
+                        at);
+                  }
                   if (ds > 0) {
                     // 부족 후속(0.11.0) — 커밋 뒤 재고 해제(재계수 대기) → 추가 할당 → 새 작업
                     shortages.record(
@@ -352,7 +379,8 @@ public class TaskService {
               }
               return new CommandResult("APPLIED", requestId, taskId, version, at);
             });
-    shortages.processOpen(); // 트랜잭션 밖(재고 호출) — 불명이면 주기 작업이 다시
+    pickMoves.processOpen(); // 트랜잭션 밖(재고 호출) — 불명이면 주기 작업이 다시
+    shortages.processOpen();
     return out;
   }
 

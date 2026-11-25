@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
+    0.7.1(2026-11-25): 이동 종류 PICK_MOVE — 피킹한 재고를 예약과 함께 출고대기 자리(91)로 옮겨 적기(cdc-outbound, 설계 docs/cdc/design/2026-11-25-count-adjustment.md §5 — 사용자 결정). 경로·모양 변화 없음(enum 값 추가).
     0.7.0(2026-11-25, 피킹 부족 재할당 — WMS CDC-F-018, 사용자 결정): 해제 줄에 locationCode·`recountHold`(부족 칸의 그 LOT 을 재계수 대기로 — 새 할당에서 뺌, 현물은 그대로),
       추가 할당 `POST /internal/allocations/{allocationId}/additions`(같은 TRF 할당에 모자란 만큼 FEFO 로 더 잡기 — 재계수 대기 칸 제외),
       운영자 재계수 대기 목록·풀기 `GET /cdcs/{cdcId}/recount-holds`·`POST /cdcs/{cdcId}/recount-holds/{holdId}/releases`. 재계수 결과 반영(조정)은 아직.
@@ -407,7 +408,7 @@ paths:
               required: [cdcId, moveKind, sourceRef, lines]
               properties:
                 cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-                moveKind: { type: string, enum: [PUTAWAY, REPLENISHMENT_MOVE, RELOCATION] }
+                moveKind: { type: string, enum: [PUTAWAY, REPLENISHMENT_MOVE, RELOCATION, PICK_MOVE], description: '(0.7.1) PICK_MOVE = 피킹 재고를 출고대기 자리로(allocationId 와 함께 — 예약도 옮김, 총현물 그대로)' }
                 sourceRef: { type: string, description: putawayTaskId / moveId }
                 spaceReservationId: { type: string }
                 lines:

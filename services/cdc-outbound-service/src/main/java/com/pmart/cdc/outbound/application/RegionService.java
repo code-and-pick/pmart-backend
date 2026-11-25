@@ -26,7 +26,9 @@ public class RegionService {
   static final String OP_SET = "cdcOutbound:regions";
   public static final int MAX_ITEMS = 200;
 
-  public record Region(String regionCode, String regionName, List<String> mfcIds) {}
+  /** stagingBays(0.14.0) = MFC → 출고대기 자리. */
+  public record Region(
+      String regionCode, String regionName, List<String> mfcIds, Map<String, String> stagingBays) {}
 
   public record Regions(List<Region> items) {}
 
@@ -75,12 +77,20 @@ public class RegionService {
   private static Regions group(List<RegionRow> rows) {
     Map<String, String> names = new LinkedHashMap<>();
     Map<String, List<String>> mfcs = new LinkedHashMap<>();
+    Map<String, Map<String, String>> bays = new LinkedHashMap<>();
     for (RegionRow r : rows) {
       names.putIfAbsent(r.regionCode(), r.regionName());
       mfcs.computeIfAbsent(r.regionCode(), k -> new ArrayList<>()).add(r.mfcId());
+      Map<String, String> b = bays.computeIfAbsent(r.regionCode(), k -> new LinkedHashMap<>());
+      if (r.stagingBay() != null) {
+        b.put(r.mfcId(), r.stagingBay());
+      }
     }
     List<Region> out = new ArrayList<>();
-    names.forEach((code, name) -> out.add(new Region(code, name, List.copyOf(mfcs.get(code)))));
+    names.forEach(
+        (code, name) ->
+            out.add(
+                new Region(code, name, List.copyOf(mfcs.get(code)), Map.copyOf(bays.get(code)))));
     return new Regions(out);
   }
 }

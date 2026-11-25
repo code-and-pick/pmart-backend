@@ -64,6 +64,11 @@ public class InventoryClient {
     return post("/api/v1/internal/departure-postings", key, body);
   }
 
+  /** POST /internal/move-postings(PICK_MOVE — 피킹 재고를 출고대기 자리로, cdc-inventory 0.7.1). */
+  public JsonNode move(String key, Map<String, Object> body) {
+    return post("/api/v1/internal/move-postings", key, body);
+  }
+
   /** POST /internal/allocations/{id}/additions(cdc-inventory 0.7.0 — 피킹 부족 재할당). */
   public JsonNode add(String allocationId, String key, Map<String, Object> body) {
     return post("/api/v1/internal/allocations/" + allocationId + "/additions", key, body);

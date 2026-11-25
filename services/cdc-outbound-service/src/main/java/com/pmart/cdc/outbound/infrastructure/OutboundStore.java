@@ -78,7 +78,9 @@ public class OutboundStore {
       int shortQty) {}
 
   /** 지역 ↔ MFC(0.9.0). */
-  public record RegionRow(String mfcId, String regionCode, String regionName) {}
+  /** stagingBay(0.14.0) = 출고대기(통로 91) 자리 — 없으면 null. */
+  public record RegionRow(
+      String mfcId, String regionCode, String regionName, @Nullable String stagingBay) {}
 
   public record TaskLineRow(
       int lineNo,
@@ -460,24 +462,29 @@ public class OutboundStore {
 
   public List<RegionRow> regions(String cdcId) {
     return jdbc.query(
-        "SELECT mfc_id, region_code, region_name FROM region_mfc WHERE cdc_id = ?"
+        "SELECT mfc_id, region_code, region_name, staging_bay FROM region_mfc WHERE cdc_id = ?"
             + " ORDER BY region_code, mfc_id",
         (rs, i) ->
             new RegionRow(
-                rs.getString("mfc_id"), rs.getString("region_code"), rs.getString("region_name")),
+                rs.getString("mfc_id"),
+                rs.getString("region_code"),
+                rs.getString("region_name"),
+                rs.getString("staging_bay")),
         cdcId);
   }
 
   public void upsertRegion(String cdcId, RegionRow r, String by, Instant at) {
     jdbc.update(
-        "INSERT INTO region_mfc (cdc_id, mfc_id, region_code, region_name, updated_by, updated_at)"
-            + " VALUES (?,?,?,?,?,?) ON CONFLICT (cdc_id, mfc_id) DO UPDATE SET"
+        "INSERT INTO region_mfc (cdc_id, mfc_id, region_code, region_name, staging_bay, updated_by,"
+            + " updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT (cdc_id, mfc_id) DO UPDATE SET"
             + " region_code = EXCLUDED.region_code, region_name = EXCLUDED.region_name,"
+            + " staging_bay = COALESCE(EXCLUDED.staging_bay, region_mfc.staging_bay),"
             + " updated_by = EXCLUDED.updated_by, updated_at = EXCLUDED.updated_at",
         cdcId,
         r.mfcId(),
         r.regionCode(),
         r.regionName(),
+        r.stagingBay(),
         by,
         Timestamp.from(at));
   }

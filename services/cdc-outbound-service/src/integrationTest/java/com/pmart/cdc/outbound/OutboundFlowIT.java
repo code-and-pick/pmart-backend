@@ -71,6 +71,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired com.pmart.cdc.outbound.application.ShortageService shortages;
+  @Autowired com.pmart.cdc.outbound.application.PickMoveService pickMoves;
 
   @InjectWireMock("inventory")
   WireMockServer inventory;
@@ -1594,6 +1595,109 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     v3.put("trfVersion", 3);
     assertThat(post(SERVICE, "/internal/transfer-intakes", v3).body().path("code").asString())
         .isEqualTo("PICKING_STARTED");
+  }
+
+  /**
+   * 피킹 재고 출고대기 자리로 옮겨 적기(0.14.0): 지역표 stagingBay 01 → 3 집으면 move-postings(PICK_MOVE, allocationId,
+   * 칸 → CDC08-C-5-91-01-0-1). 불명이면 PICK_MOVE_PENDING, 다시 부르면 같은 키로 끝남. CDC08.
+   */
+  @Test
+  void pickedStockMovesToStagingSlot() {
+    String c8 = "CDC08";
+    String ops8 = TestJwt.operator("ops-8", List.of("CDC_MANAGER"), List.of(c8));
+    String w8b = TestJwt.operator("w8b", List.of("CDC_WORKER"), List.of(c8));
+    Res reg =
+        post(
+            ops8,
+            "/cdcs/" + c8 + "/regions",
+            Map.of(
+                "items",
+                List.of(
+                    Map.of(
+                        "mfcId",
+                        "MFC-BJG-01",
+                        "regionCode",
+                        "BUSAN",
+                        "regionName",
+                        "부산권",
+                        "stagingBay",
+                        "01"))));
+    assertThat(reg.status()).as(reg.body().toString()).isEqualTo(200);
+    assertThat(reg.body().path("items").get(0).path("stagingBays").path("MFC-BJG-01").asString())
+        .isEqualTo("01");
+    String trf = "TRF-" + UUID.randomUUID();
+    String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
+    String loc = "CDC08-C-5-61-01-1-1";
+    stubAllocate(
+        trf,
+        200,
+        "{\"allocationId\":\""
+            + alc
+            + "\",\"state\":\"ALLOCATED\",\"lines\":[{\"sku\":\"E-00000001\",\"allocatedQty\":3},{\"sku\":\"E-00000002\",\"allocatedQty\":0}]}");
+    stubAllocationLots(
+        alc,
+        "{\"sku\":\"E-00000001\",\"lots\":[{\"lot\":\"L1\",\"locationCode\":\""
+            + loc
+            + "\",\"qty\":3}]}");
+    String movePath = "/api/v1/internal/move-postings";
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(movePath))
+            .withRequestBody(matchingJsonPath("$.cdcId", equalTo(c8)))
+            .willReturn(aResponse().withStatus(503).withBody("{}")));
+    assertThat(
+            post(SERVICE, "/internal/transfer-intakes", trfAt(trf, c8, "MFC-BJG-01", DUE, 3, 1))
+                .status())
+        .isEqualTo(202);
+    String wave =
+        post(ops8, "/waves", Map.of("cdcId", c8, "trfIds", List.of(trf)))
+            .body()
+            .path("waveId")
+            .asString();
+    assertThat(post(ops8, "/waves/" + wave + "/releases", null).status()).isEqualTo(202);
+    String task =
+        post(w8b, "/cdcs/" + c8 + "/workers/w8b/next-tasks", Map.of())
+            .body()
+            .path("taskId")
+            .asString();
+    post(w8b, "/cdcs/" + c8 + "/tasks/" + task + "/starts", null);
+    Res pr =
+        post(
+            w8b,
+            "/cdcs/" + c8 + "/tasks/" + task + "/pick-results",
+            Map.of(
+                "workerId",
+                "w8b",
+                "lines",
+                List.of(
+                    Map.of(
+                        "sku", "E-00000001", "lot", "L1", "locationCode", loc, "pickedQty", 3))));
+    assertThat(pr.status()).as(pr.body().toString()).isEqualTo(202);
+    assertThat(readiness(trf).path("blockers").toString()).contains("PICK_MOVE_PENDING");
+
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(urlPathEqualTo(movePath))
+            .withRequestBody(matchingJsonPath("$.cdcId", equalTo(c8)))
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"status\":\"APPLIED\",\"requestId\":\"k\",\"resultId\":\"CMT-M\",\"appliedQty\":3}")));
+    pickMoves.processOpen();
+    assertThat(readiness(trf).path("blockers").toString()).doesNotContain("PICK_MOVE_PENDING");
+    var moves =
+        inventory.findAll(
+            postRequestedFor(urlPathEqualTo(movePath))
+                .withRequestBody(matchingJsonPath("$.cdcId", equalTo(c8)))
+                .withRequestBody(matchingJsonPath("$.moveKind", equalTo("PICK_MOVE")))
+                .withRequestBody(matchingJsonPath("$.lines[0].fromLocationCode", equalTo(loc)))
+                .withRequestBody(
+                    matchingJsonPath("$.lines[0].toLocationCode", equalTo("CDC08-C-5-91-01-0-1")))
+                .withRequestBody(matchingJsonPath("$.lines[0].allocationId", equalTo(alc)))
+                .withRequestBody(matchingJsonPath("$.lines[0].qty", equalTo("3"))));
+    assertThat(moves).hasSizeGreaterThanOrEqualTo(2);
+    assertThat(moves.stream().map(r -> r.getHeader("Idempotency-Key")).distinct().toList())
+        .hasSize(1)
+        .allMatch(k -> k.startsWith("outbound-pickmove-"));
   }
 
   JsonNode readiness(String trf) {

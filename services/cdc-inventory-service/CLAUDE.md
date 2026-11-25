@@ -38,5 +38,6 @@
   - 해제 줄 `locationCode`(그 위치만)·`recountHold`(PICK_SHORTAGE 에서 줄마다 LOT·위치 필수 → 그 SKU·LOT·위치 재계수 대기, 이미 대기면 부족 수만 더함). 대기 칸은 새 할당·추가 할당 후보와 한도 E'·R' 에서 빠진다(현물·걸린 예약은 그대로, 손실 차감 없음).
   - 추가 할당 `POST /internal/allocations/{id}/additions`(PICK_SHORTAGE_REALLOCATION): 같은 할당에 FEFO 로 더 잡기(부분·0 허용, 같은 LOT·위치 행은 allocated 에 더함, RELEASED 였으면 PARTIAL), 원결과 ALLOCATION_ADD.
   - 운영자 `GET /cdcs/{cdcId}/recount-holds`·`POST …/{holdId}/releases`(다시 후보로). 센 결과 반영(조정)은 아직 — 4번 조정 때 잇는다.
+- 이동 종류 PICK_MOVE(0.7.1): cdc-outbound 가 피킹 재고를 예약과 함께 출고대기 자리(91)로 옮겨 적는다(move-postings 그대로 — 총현물·예약 수 그대로).
 - 아직 501: 수령 확인·품질·손실·조정·일일 대사. 게이트웨이·LAN 배치·Helm 미등록.
 - **DC 백오피스 재고 현황(2026-11-25, 0.6.0)**: `GET /cdcs/{cdcId}/stock-snapshot?sku=&withPlaces=`(`AvailabilityController.getCenterStockSnapshot`) — 내부 `/internal/snapshots` 와 같은 `InventoryQueries.snapshot`, 자기 센터 운영자만(`Operator.requireCenter`), withPlaces 기본 false(LOT·위치 빼고). 시험 `StockLedgerFlowIT` 2-2.

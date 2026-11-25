@@ -43,7 +43,10 @@ public class WavesController implements WavesApi {
       String cdcId, String idempotencyKey, String xSourceSystem, SetRegionsRequest body) {
     var items =
         body.getItems().stream()
-            .map(i -> new RegionRow(i.getMfcId(), i.getRegionCode(), i.getRegionName()))
+            .map(
+                i ->
+                    new RegionRow(
+                        i.getMfcId(), i.getRegionCode(), i.getRegionName(), i.getStagingBay()))
             .toList();
     return ResponseEntity.ok(
         regions(regions.set(idempotencyKey, xSourceSystem, cdcId, items).value()));
@@ -59,6 +62,7 @@ public class WavesController implements WavesApi {
                   y.setRegionCode(x.regionCode());
                   y.setRegionName(x.regionName());
                   y.setMfcIds(x.mfcIds());
+                  y.setStagingBays(x.stagingBays());
                   return y;
                 })
             .toList());

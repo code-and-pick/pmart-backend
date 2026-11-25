@@ -175,3 +175,7 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - 같은 TRF 의 더 높은 trfVersion 을 `/internal/transfer-intakes` 로 보내면 **피킹 시작 전까지** 대체한다(사용자). 지금까지의 409 TRANSFER_CHANGE_NOT_SUPPORTED 는 없어졌다.
 - 안 끝난 작업에서 그 TRF 몫이 빠지고(빈 작업은 CANCELLED) Wave 에서도 빠진다 → 예전 할당 해제 → 새 버전 할당 → TRF 는 ALLOCATED 등으로 돌아오고 **다시 Wave 에 넣어야 한다**.
 - 재고 응답 불명이면 state CHANGING(같은 본문 재전송으로 이어서), 거절이면 CHANGE_HOLD. 피킹·분류가 시작됐으면 409 PICKING_STARTED. 시뮬레이터 목의 "Wave 편성 전까지만" 보다 넓다(릴리스 뒤라도 아무도 안 집었으면 받음).
+
+### 알림 — 피킹 재고는 출고대기 자리로 옮겨 적는다 (cdc-outbound 0.14.0, 2026-11-25)
+- 사용자 결정: pick-results 의 실피킹이 응답 뒤 cdc-inventory 에서 예약과 함께 **그 칸 → 그 층 출고대기(통로 91) 목적 MFC 자리**로 옮겨 적힌다(PICK_MOVE). 총현물은 그대로. 칠곡 자리 01 BJG·02 BNG·03 MOKPO·04 SEJ·05 CHC(지역표 `stagingBays`), 상온은 5층 C·7층 G 의 91 행.
+- 그래서 스냅샷에서 집은 수량이 원래 칸이 아니라 출고대기 자리에 보인다 — 시뮬레이터 목의 "피킹 = 출고대기 91 로 MOVE" 와 같아졌다. 출발 TOUT 은 그 자리에서.
