@@ -4,8 +4,8 @@
   - DPS          : 5층 A(냉동) 선반 통로 61~89
   - BOX_PICK     : 팔레트 랙 통로 01~60 중 PICK_FACE(1단 박스 피킹면)가 있는 통로 — 칠곡 5층 C·D, 7층 G(R-21 — 7층 H 랙은 오토스토어 보충 보관만)
   - DISTRIBUTION : 바닥 레인 통로 93(6층 야채)
-  - LINE         : B(냉장) 선반 통로 61~89(6층 라인 DAS)
-  - FC           : 그 밖 선반 통로 61~89 전부(5층 E·F, 7층 G, 7층 H 오토스토어 61~62 포함)
+  - LINE         : B(냉장)·F·G 선반 통로 61~89 — 6층 라인 DAS 와 상온 DAS 존(5층 F·7층 G, 시뮬레이터 2657c94 — "상온·냉장·냉동 모두 휠소터 DAS")
+  - FC           : 그 밖 선반 통로 61~89 전부(5층 E, 7층 H 오토스토어 61~62)
   - 방식 없음    : PICK_FACE 가 없는 통로(2단 이상만 있는 랙, 90·91·92) — 넣지 않는다(cdc-outbound 는 단건으로 만든다).
 통로 목록은 docs/simulator/cdc/layout/chilgok-locations.json 에서 PICK_FACE 가 있는 (구역·층·통로)로 뽑는다.
 cdc-location 은 PICK_FACE 가 하나도 없는 통로를 400 NOT_PICK_FACE_AISLE 로 거절한다 — **위치 목록을 LAN 에 먼저 넣은 뒤** 돌린다
@@ -39,7 +39,7 @@ def method_of(area, floor, aisle):
     if 61 <= aisle <= 89:
         if area == "A":
             return "DPS"
-        if area == "B":
+        if area in ("B", "F", "G"):
             return "LINE"
         return "FC"
     return None
