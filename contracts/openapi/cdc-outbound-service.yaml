@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
     승인 TRF 인수(1요청·1이관·1출발)·Wave·Task·실피킹·부족 보고·분류/검품(BOX SEALED / PLT READY)·LPN 구성·계보·
     가상 상차 LOADED(≠출발)·출발 사실 검증·출발 매니페스트·미출발 취소의 정본. (docs/architecture/service-map.md §4)
@@ -584,12 +584,12 @@ paths:
       summary: 미출발 취소·축소 — 0.7.0 은 피킹 시작 전까지 (작업 중지 → cdc-inventory 할당 해제)
       description: |
         (0.7.0, WMS CDC-F-026) 경로를 `/cdcs/{cdcId}/transfers/…` 로 옮겼다 — 게이트웨이 `/api/v1/transfers/**` 는 replenishment-service.
-        TransferCancelled/Changed 수신 또는 현장 결정으로 자기 센터 운영자가 부른다. 요청 결과는 `requestId`(= Idempotency-Key)로 조회한다.
-        **0.7.0 범위 = 피킹 시작 전**(사용자 2026-11-25):
+        현장 결정으로 자기 센터 운영자가 부른다(공급 쪽 TransferCancelled/Changed 사건은 받지 않는다 — 사용자 2026-11-25 "공급쪽은 안 해"). 요청 결과는 `requestId`(= Idempotency-Key)로 조회한다.
+        **취소는 피킹 시작 전에만**(사용자 2026-11-25 "피킹 전에만 취소가 가능함" — 확정, 0.7.1):
         - 승인·미할당(RECEIVED·ALLOCATION_FAILED): FULL 만 — 바로 CANCELLED(현물 변화 0, 재고 호출 없음).
         - 할당·미피킹: FULL = 남은 PICK 작업(CREATED·ASSIGNED·ACCEPTED)을 CANCELLED 로 막은 뒤 할당 전량 해제 → TRF CANCELLED(Wave 에 남은 작업이 없으면 Wave 도 닫음).
           PARTIAL = Wave 릴리스 **전**에만 — SKU 별 reduceQty 중 할당된 만큼 해제(늦은 LOT 부터, cdc-inventory 규칙), TRF 는 그대로 남는다.
-        - 피킹이 시작됐거나(실피킹·착수·LPN) 분류·상차된 TRF 는 409 PICKING_STARTED — 실제 복귀·하차 결과를 받는 흐름이 아직 없다(CDC-F-021·F-026, 다음 범위).
+        - 피킹이 시작됐거나(실피킹·착수·LPN) 분류·상차된 TRF 는 409 PICKING_STARTED — 취소할 수 없다. 남은 물량은 출발 뒤 잔여 해제(RESIDUAL_CLOSED)로 정리된다.
         - 출발했거나 출발 검증된 TRF 는 409 INVALID_STATE(출발 후 취소 없음). 할당 결과가 불명(ALLOCATING)이면 409 ALLOCATION_IN_PROGRESS(인수 재전송으로 먼저 확정).
         - 재고 해제 응답이 불명이면 결과 UNKNOWN·TRF CANCELLING — 같은 본문을 다시 보내면 같은 키로 다시 해제한다(재고는 한 번만 반영). 그동안 Wave 편성·출발 검증은 막힌다.
           재고가 거절하면 REJECTED(사유) — FULL 은 TRF CANCEL_HOLD(작업은 이미 막힘, 조사 몫).

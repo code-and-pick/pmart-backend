@@ -98,7 +98,7 @@ replenishment: 공급 계보 갱신(I에서 수령분 제거, 격리 2는 H/I �
 | 미승인 | 요청 새 버전·철회 | 원요청 이력 유지 |
 | 승인·미확보 | 승인 변경/취소 심사 → TransferChanged/Cancelled | WMS/TMS 실제 미실행 확인 |
 | 확보·작업 중 | 중지·잔량 정리 후 변경 | SCM이 예약 직접 해제·실물 삭제 금지 |
-| (구현 2026-11-25) 확보·피킹 전 | cdc-outbound 미출발 취소 FULL·PARTIAL(PARTIAL 은 Wave 릴리스 전) → 작업 막기 → cdc-inventory 할당 해제 | 해제 불명이면 CANCELLING·같은 키 재시도, 피킹 시작 뒤는 409 PICKING_STARTED(복귀·하차 결과 흐름 아직 없음) |
+| (구현 2026-11-25) 확보·피킹 전 | cdc-outbound 미출발 취소 FULL·PARTIAL(PARTIAL 은 Wave 릴리스 전) → 작업 막기 → cdc-inventory 할당 해제 | 해제 불명이면 CANCELLING·같은 키 재시도, 피킹 시작 뒤는 409 PICKING_STARTED(사용자 확정 2026-11-25: 취소는 피킹 전에만 — 남은 물량은 출발 뒤 잔여 해제) |
 | 상차·미출발 | WMS 하차/복귀·TMS 배정 대사 | 출발 경합·불명은 결과 조회 |
 | 실제 출발 후 | 사실 보존·기한/공급 영향·미결 관리 | 미출발 취소·목적지 전환·CDC 반송 금지 |
 | 수령·준비 후 | 실제 결과·차이·품질/과잉 대응 | 원수령 취소로 CDC 복원 금지 |

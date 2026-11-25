@@ -193,8 +193,7 @@ public class CancellationService {
             || lines.stream().anyMatch(l -> l.pickedQty() > 0 || l.shortQty() > 0)
             || !lpns.lockOfTrf(t.trfId()).isEmpty();
     if (started) {
-      throw conflict(
-          "PICKING_STARTED", "피킹이 시작된 TRF 의 취소는 실제 복귀·하차 결과가 필요해 아직 받지 않습니다(0.7.0 은 피킹 전까지).");
+      throw conflict("PICKING_STARTED", "피킹이 시작된 TRF 는 취소할 수 없습니다(취소는 피킹 시작 전에만).");
     }
     Map<String, Integer> reduce = new TreeMap<>();
     Map<String, Integer> release = new TreeMap<>();
