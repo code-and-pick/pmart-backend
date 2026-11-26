@@ -77,13 +77,16 @@ public class DepartureService {
   private final InventoryClient inventory;
   private final TransactionTemplate tx;
   private final Support support;
+  private final com.pmart.cdc.outbound.infrastructure.RestrictionClient restrictions;
 
   public DepartureService(
       OutboundStore store,
       LpnStore lpns,
       InventoryClient inventory,
       TransactionTemplate tx,
-      Support support) {
+      Support support,
+      com.pmart.cdc.outbound.infrastructure.RestrictionClient restrictions) {
+    this.restrictions = restrictions;
     this.store = store;
     this.lpns = lpns;
     this.inventory = inventory;
@@ -332,6 +335,39 @@ public class DepartureService {
     body.put("shipmentManifestId", manifestId);
     body.put("departedAt", cmd.departedAt().toString());
     body.put("lines", lines);
+    // 0.24.0 운영 제한(WMS CDC-F-031) — TOUT 직전, 트랜잭션 밖. 막히면 REJECTED, 확인이 안 되면 UNKNOWN_RESULT(같은 출발
+    // 재전송이 다시)
+    try {
+      String zone =
+          t.waveId() == null
+              ? null
+              : store
+                  .wave(t.waveId(), false)
+                  .map(OutboundStore.WaveRow::temperatureZone)
+                  .orElse(null);
+      restrictions.requireAllowed(
+          t.cdcId(),
+          "DEPARTURE",
+          lines.stream()
+              .map(
+                  l ->
+                      new com.pmart.cdc.outbound.infrastructure.RestrictionClient.Item(
+                          (String) l.get("sku"), zone))
+              .distinct()
+              .toList());
+    } catch (PmartException e) {
+      String status = "OPERATION_RESTRICTED".equals(e.code()) ? "REJECTED" : "UNKNOWN_RESULT";
+      tx.executeWithoutResult(
+          s ->
+              lpns.setPosting(
+                  cmd.departureId(),
+                  t.trfId(),
+                  status,
+                  null,
+                  e.code() + ": " + e.getMessage(),
+                  null));
+      return;
+    }
     JsonNode res;
     try {
       res = inventory.depart("outbound-tout-" + cmd.departureId() + "-" + t.trfId(), body);

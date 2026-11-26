@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.23.0
+  version: 0.24.0
   description: |
+    0.24.0(2026-11-26, 운영 제한 지키기 — WMS CDC-F-031, 사용자 "새 할당과 출발"): 출발 검증의 일치 TRF 마다 TOUT 직전 cdc-quality 운영 제한 확인(활동 DEPARTURE, 출발 줄 SKU·Wave 온도대)
+      — 막히면 그 TRF postingStatus REJECTED(OPERATION_RESTRICTED), 확인이 안 되면 UNKNOWN_RESULT(같은 출발 재전송이 다시 확인). 주소 `pmart.outbound.cdc-quality-base-url` 기본 http://cdc-quality-service:8604.
     0.23.0(2026-11-26, 리콜 — WMS CDC-F-028·정책 16.13, 사용자 "리콜은 출고대기분도 막음"): cdc-inventory 0.18.0 의 AllocationShortfall reason RECALL 이 출고대기 91 칸이면
       재할당하지 않고 막는다(Flyway V16 `recall_hold`) — 출발 준비 blockers RECALL_HOLD, 그 TRF 출발 전기는 재고가 거절(보류 현물). 91 밖 칸의 RECALL 은 품질 보류와 같게(작업 줄 부족·재할당).
     0.22.0(2026-11-26, DC 백오피스 Wave 조작 — 사용자 "큰 순서 전부 고치고" 4번, WMS CDC-F-017, Flyway V15): `POST /waves/{waveId}/holds {reason}`(PLANNED·RELEASED·IN_PROGRESS —

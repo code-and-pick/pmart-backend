@@ -53,7 +53,8 @@ import tools.jackson.databind.ObjectMapper;
       name = "inventory",
       baseUrlProperties = "pmart.outbound.cdc-inventory-base-url"),
   @ConfigureWireMock(name = "location", baseUrlProperties = "pmart.outbound.cdc-location-base-url"),
-  @ConfigureWireMock(name = "product", baseUrlProperties = "pmart.outbound.product-base-url")
+  @ConfigureWireMock(name = "product", baseUrlProperties = "pmart.outbound.product-base-url"),
+  @ConfigureWireMock(name = "quality", baseUrlProperties = "pmart.outbound.cdc-quality-base-url")
 })
 @TestMethodOrder(MethodOrderer.MethodName.class) // 주 흐름의 outbox 수 세기가 취소 시나리오(CDC02) 사건과 섞이지 않게 먼저
 class OutboundFlowIT extends PostgresKafkaContainerSupport {
@@ -86,6 +87,9 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("product")
   WireMockServer product;
 
+  @InjectWireMock("quality")
+  WireMockServer quality;
+
   RestClient http;
 
   @BeforeEach
@@ -95,6 +99,15 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
             .baseUrl("http://localhost:" + port + "/api/v1")
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
+    // 0.24.0 운영 제한 확인 기본 — 막지 않음
+    quality.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.post(
+                urlPathEqualTo("/api/v1/internal/operation-restriction-checks"))
+            .atPriority(10)
+            .willReturn(
+                aResponse()
+                    .withHeader("Content-Type", "application/json")
+                    .withBody("{\"restricted\":false,\"matches\":[]}")));
     // 위치 서비스 기본 — 방식 없음(모두 단건). 묶음 시나리오는 더 높은 우선순위로 덮는다.
     location.stubFor(
         com.github.tomakehurst.wiremock.client.WireMock.post(
@@ -583,6 +596,18 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                 "sealNos",
                 List.of("SEAL-1")),
             Map.of("trfId", trf3, "lpns", List.of())));
+    // 0.24.0 운영 제한 확인이 안 되면 TOUT 하지 않고 UNKNOWN_RESULT — 같은 본문 재전송이 다시 확인
+    var down =
+        quality.stubFor(
+            com.github.tomakehurst.wiremock.client.WireMock.post(
+                    urlPathEqualTo("/api/v1/internal/operation-restriction-checks"))
+                .atPriority(1)
+                .willReturn(aResponse().withStatus(503)));
+    Res u = post(SERVICE, "/internal/departure-validations", depBody);
+    assertThat(u.body().path("transfers").get(0).path("postingStatus").asString())
+        .as(u.body().toString())
+        .isEqualTo("UNKNOWN_RESULT");
+    quality.removeStub(down);
     Res v = post(SERVICE, "/internal/departure-validations", depBody);
     assertThat(v.status()).as(v.body().toString()).isEqualTo(200);
     assertThat(v.body().path("overallResult").asString()).isEqualTo("PARTIALLY_MATCHED");
