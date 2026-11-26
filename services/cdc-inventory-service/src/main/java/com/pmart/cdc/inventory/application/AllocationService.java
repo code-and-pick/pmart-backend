@@ -113,6 +113,8 @@ public class AllocationService {
   private final EventEnvelopeCodec codec;
   private final RecountHoldStore holds;
   private final com.pmart.cdc.inventory.infrastructure.CountStore counts;
+  private final com.pmart.cdc.inventory.infrastructure.RestrictionClient restrictions;
+  private final com.pmart.cdc.inventory.infrastructure.SkuProjectionStore projections;
 
   public AllocationService(
       StockStore stock,
@@ -125,7 +127,11 @@ public class AllocationService {
       EventPublisher events,
       EventEnvelopeCodec codec,
       RecountHoldStore holds,
-      com.pmart.cdc.inventory.infrastructure.CountStore counts) {
+      com.pmart.cdc.inventory.infrastructure.CountStore counts,
+      com.pmart.cdc.inventory.infrastructure.RestrictionClient restrictions,
+      com.pmart.cdc.inventory.infrastructure.SkuProjectionStore projections) {
+    this.restrictions = restrictions;
+    this.projections = projections;
     this.holds = holds;
     this.counts = counts;
     this.stock = stock;
@@ -137,6 +143,19 @@ public class AllocationService {
     this.ledger = ledger;
     this.events = events;
     this.codec = codec;
+  }
+
+  /** 새 할당·추가 할당 앞 운영 제한(0.19.0) — SKU 온도대는 상품 사본(없으면 비움 — 센터·SKU 범위만 맞는다). */
+  private void requireNotRestricted(String cdcId, List<String> skus) {
+    restrictions.requireAllowed(
+        cdcId,
+        "ALLOCATION",
+        skus.stream()
+            .map(
+                s ->
+                    new com.pmart.cdc.inventory.infrastructure.RestrictionClient.Item(
+                        s, projections.find(s).map(p -> p.storageType()).orElse(null)))
+            .toList());
   }
 
   // ---------- 할당 ----------
@@ -151,6 +170,10 @@ public class AllocationService {
     }
     if (cmd.lines().isEmpty() || !dup.isEmpty()) {
       throw new PmartException(ErrorCode.VALIDATION_FAILED, "할당 줄이 비었거나 같은 SKU 가 두 번 있습니다.", dup);
+    }
+    // 0.19.0 운영 제한(WMS CDC-F-031) — 트랜잭션 밖. 같은 TRF·버전이 이미 있으면(재생) 다시 묻지 않는다
+    if (!allocations.existsFor(cmd.trfId(), cmd.trfVersion())) {
+      requireNotRestricted(cmd.cdcId(), cmd.lines().stream().map(AllocateLine::sku).toList());
     }
     // 피킹 선반 여부는 트랜잭션·행 잠금 밖에서 미리 읽는다(위치 서비스를 기다리며 잠그지 않게). 그 사이 새로 생긴 칸은 선반 아님으로 본다
     Set<String> codes = new HashSet<>();
@@ -377,6 +400,7 @@ public class AllocationService {
             .orElseThrow(
                 () ->
                     PmartException.notFound("NOT_FOUND", "할당 " + cmd.allocationId() + " 이 없습니다."));
+    requireNotRestricted(head.cdcId(), cmd.lines().stream().map(AddLine::sku).toList()); // 0.19.0
     Set<String> codes = new HashSet<>();
     for (AddLine l : cmd.lines()) {
       stock.balances(head.cdcId(), l.sku()).forEach(b -> codes.add(b.locationCode()));

@@ -64,7 +64,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(
       name = "approval",
       baseUrlProperties = "pmart.inventory.approval-ref.approval-base-url"),
-  @ConfigureWireMock(name = "product", baseUrlProperties = "pmart.inventory.product-base-url")
+  @ConfigureWireMock(name = "product", baseUrlProperties = "pmart.inventory.product-base-url"),
+  @ConfigureWireMock(name = "quality", baseUrlProperties = "pmart.inventory.cdc-quality-base-url")
 })
 class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
@@ -89,6 +90,9 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("product")
   WireMockServer product;
 
+  @InjectWireMock("quality")
+  WireMockServer quality;
+
   @Autowired JdbcTemplate jdbc;
   @Autowired ObjectMapper mapper;
   @Autowired KafkaTemplate<String, String> kafka;
@@ -100,6 +104,11 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
   @BeforeEach
   void client() {
+    // 0.19.0 운영 제한 확인 — 기본은 막지 않음(시험마다 더 높은 우선순위로 덮는다)
+    quality.stubFor(
+        WireMock.post(WireMock.urlPathEqualTo("/api/v1/internal/operation-restriction-checks"))
+            .atPriority(10)
+            .willReturn(WireMock.okJson("{\"restricted\":false,\"matches\":[]}")));
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1")
@@ -1672,6 +1681,53 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     bad.put("action", "RELEASE");
     bad.put("approvalRef", "APV-X");
     assertThat(post(SERVICE, "/internal/quality-postings", key(), bad).status()).isEqualTo(400);
+
+    // 0.19.0 운영 제한 — 이 SKU 새 할당이 막히면 409, 확인이 안 되면 503(보류)
+    quality.stubFor(
+        WireMock.post(WireMock.urlPathEqualTo("/api/v1/internal/operation-restriction-checks"))
+            .atPriority(1)
+            .withRequestBody(WireMock.containing(sku))
+            .willReturn(
+                WireMock.okJson(
+                    "{\"restricted\":true,\"matches\":[{\"restrictionId\":\"OR-1\",\"reason\":\"CONGESTION\",\"sku\":\""
+                        + sku
+                        + "\"}]}")));
+    Res blocked =
+        post(
+            SERVICE,
+            "/internal/allocations",
+            key(),
+            Map.of(
+                "cdcId",
+                CENTER,
+                "trfId",
+                "TRF-" + UUID.randomUUID(),
+                "trfVersion",
+                1,
+                "lines",
+                List.of(Map.of("sku", sku, "requestedQty", 1))));
+    assertThat(blocked.status()).as(blocked.body().toString()).isEqualTo(409);
+    assertThat(blocked.body().path("code").asString()).isEqualTo("OPERATION_RESTRICTED");
+    quality.stubFor(
+        WireMock.post(WireMock.urlPathEqualTo("/api/v1/internal/operation-restriction-checks"))
+            .atPriority(1)
+            .withRequestBody(WireMock.containing(sku))
+            .willReturn(WireMock.aResponse().withStatus(503)));
+    Res down =
+        post(
+            SERVICE,
+            "/internal/allocations",
+            key(),
+            Map.of(
+                "cdcId",
+                CENTER,
+                "trfId",
+                "TRF-" + UUID.randomUUID(),
+                "trfVersion",
+                1,
+                "lines",
+                List.of(Map.of("sku", sku, "requestedQty", 1))));
+    assertThat(down.status()).isEqualTo(503);
   }
 
   JsonNode allocate(String sku, int qty) {

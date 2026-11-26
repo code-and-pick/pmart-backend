@@ -110,6 +110,17 @@ public class AllocationStore {
   }
 
   /** 같은 TRF 의 할당(버전 무관) — 잠근다. */
+  /** 이 TRF·버전의 할당이 이미 있는지(잠그지 않음 — 0.19.0 재생이면 운영 제한 확인을 건너뛴다). */
+  public boolean existsFor(String trfId, int trfVersion) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM allocation WHERE trf_id = ? AND trf_version = ?",
+            Integer.class,
+            trfId,
+            trfVersion);
+    return n != null && n > 0;
+  }
+
   public List<AllocationRow> lockByTrf(String trfId) {
     return jdbc.query(
         SELECT + " WHERE trf_id = ? ORDER BY trf_version FOR UPDATE", (rs, i) -> row(rs), trfId);
