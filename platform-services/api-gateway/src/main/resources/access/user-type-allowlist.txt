@@ -86,6 +86,7 @@ GET /api/v1/cdcs/{cdcId}/lpns OPERATOR
 GET /api/v1/cdcs/{cdcId}/operation-restrictions OPERATOR
 GET /api/v1/cdcs/{cdcId}/operation-restrictions/{restrictionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
+GET /api/v1/cdcs/{cdcId}/outbound-summary/daily OPERATOR
 GET /api/v1/cdcs/{cdcId}/putaway-tasks OPERATOR
 GET /api/v1/cdcs/{cdcId}/putaway-tasks/{taskId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
@@ -112,6 +113,7 @@ GET /api/v1/cdcs/{cdcId}/transport-requests OPERATOR
 GET /api/v1/cdcs/{cdcId}/transport-requests/{trfId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/trips OPERATOR
 GET /api/v1/cdcs/{cdcId}/waves OPERATOR
+GET /api/v1/cdcs/{cdcId}/worker-throughput OPERATOR
 GET /api/v1/cdcs/{cdcId}/workers OPERATOR
 GET /api/v1/centers OPERATOR
 GET /api/v1/centers/{centerId} OPERATOR

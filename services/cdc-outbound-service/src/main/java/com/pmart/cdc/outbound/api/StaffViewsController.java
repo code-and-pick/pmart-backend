@@ -390,7 +390,10 @@ public class StaffViewsController implements StaffViewsApi {
   @Override
   public ResponseEntity<OutboundSummary> getOutboundSummary(
       String cdcId, @Nullable LocalDate date) {
-    var s = views.summary(cdcId, date);
+    return ResponseEntity.ok(summaryDto(views.summary(cdcId, date)));
+  }
+
+  static OutboundSummary summaryDto(com.pmart.cdc.outbound.application.StaffViews.Summary s) {
     var out = new OutboundSummary();
     out.setCdcId(s.cdcId());
     out.setDate(s.date());
@@ -421,7 +424,7 @@ public class StaffViewsController implements StaffViewsApi {
                             .pickedQty((int) m.picked())
                             .shortQty((int) m.shortQty()))
                 .toList()));
-    return ResponseEntity.ok(out);
+    return out;
   }
 
   @org.springframework.beans.factory.annotation.Autowired
@@ -496,5 +499,47 @@ public class StaffViewsController implements StaffViewsApi {
 
   private static OffsetDateTime time(java.time.Instant i) {
     return OffsetDateTime.ofInstant(i, ZoneOffset.UTC);
+  }
+
+  @Override
+  public ResponseEntity<
+          com.pmart.cdc.outbound.api.generated.model.GetDailyOutboundSummary200Response>
+      getDailyOutboundSummary(String cdcId, LocalDate from, LocalDate to) {
+    return ResponseEntity.ok(
+        new com.pmart.cdc.outbound.api.generated.model.GetDailyOutboundSummary200Response()
+            .items(
+                new ArrayList<>(
+                    views.dailySummary(cdcId, from, to).stream()
+                        .map(StaffViewsController::summaryDto)
+                        .toList())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.GetWorkerThroughput200Response>
+      getWorkerThroughput(String cdcId, @Nullable LocalDate from, @Nullable LocalDate to) {
+    var t = views.throughput(cdcId, from, to);
+    return ResponseEntity.ok(
+        new com.pmart.cdc.outbound.api.generated.model.GetWorkerThroughput200Response()
+            .from(t.from())
+            .to(t.to())
+            .items(
+                new ArrayList<>(
+                    t.items().stream()
+                        .map(
+                            w ->
+                                new com.pmart.cdc.outbound.api.generated.model
+                                        .GetWorkerThroughput200ResponseItemsInner()
+                                    .workerId(w.workerId())
+                                    .tasks(w.tasks())
+                                    .tasksByKind(counts(w.tasksByKind()))
+                                    .pickedLines(w.pickedLines())
+                                    .pickedQty(w.pickedQty())
+                                    .shortLines(w.shortLines())
+                                    .shortQty(w.shortQty())
+                                    .firstStartedAt(time(w.firstStartedAt()))
+                                    .lastCompletedAt(time(w.lastCompletedAt()))
+                                    .mainFloor(w.mainFloor())
+                                    .mainZone(w.mainZone()))
+                        .toList())));
   }
 }

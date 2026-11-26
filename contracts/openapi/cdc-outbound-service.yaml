@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.26.0
+  version: 0.27.0
   description: |
+    0.27.0(2026-11-26, DC 백오피스 KP-2·WF-1 — pmart-clients docs/handoff/cdc-backoffice/2026-11-26-backend-kpi-workforce.md): 날짜 범위 출고 집계
+      `GET /cdcs/{cdcId}/outbound-summary/daily?from=&to=`(최대 31일 — 날짜마다 그날 출고 집계와 같은 값)·작업자 실적 `GET /cdcs/{cdcId}/worker-throughput?from=&to=`
+      (끝난 작업의 담당자별 작업 수·피킹 줄·수량·부족 보고 줄·첫 시작·마지막 끝·주 구역 — 작업 기록에서 계산, 새 정본 없음). 읽기만.
     0.26.0(2026-11-26, TMS 1단계 — 설계 docs/cdc/design/2026-11-26-tms-first-stage.md): transport-planning 이 이관요청서를 가져가는 `GET /internal/transport-feed`
       (기한 구간의 TRF 줄 + 온도대·BOX·R/T·무게). cdc-outbound 는 TMS 를 부르지 않는다(pull).
     0.25.0(2026-11-26, DC 백오피스 M-5 사건 기록 — PC 5 요청 2026-11-25-backend-monitoring-gaps): `GET /cdcs/{cdcId}/events?since=&until=&types=&limit=` — 이미 남아 있는 사실
@@ -910,6 +913,74 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/OutboundSummary' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/outbound-summary/daily:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 날짜 범위 출고 집계 (0.27.0 KP-2) — 날짜마다 outbound-summary 와 같은 값'
+      operationId: getDailyOutboundSummary
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date }, description: '포함 — from ≤ to·최대 31일(넘으면 400)' }
+      responses:
+        '200':
+          description: 날짜 순
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/OutboundSummary' } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/worker-throughput:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 작업자 실적 (0.27.0 WF-1) — 끝난 작업의 담당자별'
+      description: |
+        끝난 시각(completedAt, Asia/Seoul 날짜)이 [from, to] 인 작업(DONE·PARTIAL)의 담당자별 — 작업 수·종류별 작업 수, 피킹 줄(실피킹 > 0 인 줄)·피킹 수량(낱개 그대로 — 단위를 섞지 않음),
+        부족 보고 줄(부족 > 0 인 줄)·부족 수량, 첫 시작·마지막 끝, 주 구역(가장 많이 한 층·구역). 작업 기록에서 계산한다(새 정본 없음 — 근무 시간·가동률은 근무 정본이 생긴 뒤).
+        작업자 ID 순. from·to 생략 = 오늘, 최대 31일.
+      operationId: getWorkerThroughput
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [workerId, tasks, pickedLines, pickedQty, shortLines, shortQty]
+                      properties:
+                        workerId: { type: string }
+                        tasks: { type: integer }
+                        tasksByKind: { type: array, items: { $ref: '#/components/schemas/CountByKey' } }
+                        pickedLines: { type: integer }
+                        pickedQty: { type: integer, description: 낱개 }
+                        shortLines: { type: integer }
+                        shortQty: { type: integer }
+                        firstStartedAt: { type: [string, 'null'], format: date-time }
+                        lastCompletedAt: { type: [string, 'null'], format: date-time }
+                        mainFloor: { type: [string, 'null'] }
+                        mainZone: { type: [string, 'null'] }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/regions:

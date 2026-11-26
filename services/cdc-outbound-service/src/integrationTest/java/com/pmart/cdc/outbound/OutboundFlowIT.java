@@ -601,6 +601,48 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(tempTrf).as(feed2.toString()).isNotNull();
     assertThat(tempTrf.path("tempClasses").toString()).isEqualTo("[\"CHILLED\"]");
     assertThat(tempTrf.path("boxCount").asInt()).isZero();
+    // 0.27.0 KP-2 — 날짜 범위 출고 집계(그날 값 = outbound-summary), 31일 넘으면 400
+    String dueDay =
+        java.time.LocalDate.ofInstant(due, java.time.ZoneId.of("Asia/Seoul")).toString();
+    JsonNode daily =
+        get(OPS, "/cdcs/" + CENTER + "/outbound-summary/daily?from=" + dueDay + "&to=" + dueDay)
+            .body();
+    assertThat(daily.path("items").size()).isEqualTo(1);
+    assertThat(daily.path("items").get(0).path("approvedQty").asInt())
+        .isEqualTo(
+            get(OPS, "/cdcs/" + CENTER + "/outbound-summary?date=" + dueDay)
+                .body()
+                .path("approvedQty")
+                .asInt());
+    assertThat(
+            get(OPS, "/cdcs/" + CENTER + "/outbound-summary/daily?from=2026-01-01&to=2026-03-01")
+                .status())
+        .isEqualTo(400);
+    // 0.27.0 WF-1 — 작업자 실적(끝난 작업의 담당자별): w1 은 DONE 작업 하나·부족 없음, w2 는 PARTIAL·부족 1
+    String today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Seoul")).toString();
+    JsonNode tp = get(OPS, "/cdcs/" + CENTER + "/worker-throughput?from=" + today).body();
+    JsonNode w1row = null;
+    JsonNode w2row = null;
+    for (JsonNode x : tp.path("items")) {
+      if ("w1".equals(x.path("workerId").asString())) {
+        w1row = x;
+      }
+      if ("w2".equals(x.path("workerId").asString())) {
+        w2row = x;
+      }
+    }
+    assertThat(w1row).as(tp.toString()).isNotNull();
+    assertThat(w1row.path("tasks").asInt()).isGreaterThanOrEqualTo(1);
+    assertThat(w1row.path("pickedQty").asInt()).isPositive();
+    assertThat(w1row.path("firstStartedAt").isNull()).isFalse();
+    assertThat(w2row).as(tp.toString()).isNotNull();
+    assertThat(w2row.path("shortLines").asInt()).isGreaterThanOrEqualTo(1);
+    assertThat(
+            get(
+                    TestJwt.operator("ops-y", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    "/cdcs/" + CENTER + "/worker-throughput")
+                .status())
+        .isEqualTo(403);
     assertThat(
             get(
                     SERVICE,

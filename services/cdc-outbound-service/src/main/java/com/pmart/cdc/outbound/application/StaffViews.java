@@ -194,6 +194,121 @@ public class StaffViews {
         store.byMfc(cdcId, from, to));
   }
 
+  static final int MAX_DAYS = 31;
+
+  /** 날짜 범위 출고 집계(0.27.0 KP-2) — 날짜마다 {@link #summary}. */
+  public List<Summary> dailySummary(String cdcId, LocalDate from, LocalDate to) {
+    Support.requireCenter(cdcId);
+    range(from, to);
+    List<Summary> out = new java.util.ArrayList<>();
+    for (LocalDate d = from; !d.isAfter(to); d = d.plusDays(1)) {
+      out.add(summary(cdcId, d));
+    }
+    return out;
+  }
+
+  public record WorkerThroughput(
+      String workerId,
+      int tasks,
+      Map<String, Long> tasksByKind,
+      int pickedLines,
+      int pickedQty,
+      int shortLines,
+      int shortQty,
+      @Nullable Instant firstStartedAt,
+      @Nullable Instant lastCompletedAt,
+      @Nullable String mainFloor,
+      @Nullable String mainZone) {}
+
+  public record Throughput(LocalDate from, LocalDate to, List<WorkerThroughput> items) {}
+
+  /** 작업자 실적(0.27.0 WF-1) — 끝난 작업(DONE·PARTIAL)의 담당자별, 작업 기록에서 계산. */
+  public Throughput throughput(String cdcId, @Nullable LocalDate from, @Nullable LocalDate to) {
+    Support.requireCenter(cdcId);
+    LocalDate today = LocalDate.ofInstant(Instant.now(clock), SEOUL);
+    LocalDate f = from != null ? from : (to != null ? to : today);
+    LocalDate t = to != null ? to : (from != null ? from : today);
+    range(f, t);
+    var rows =
+        store.finishedTasks(
+            cdcId,
+            f.atStartOfDay(SEOUL).toInstant(),
+            t.plusDays(1).atStartOfDay(SEOUL).toInstant());
+    Map<String, List<StaffViewStore.FinishedTask>> by = new java.util.TreeMap<>();
+    for (var r : rows) {
+      by.computeIfAbsent(r.assigneeId(), k -> new java.util.ArrayList<>()).add(r);
+    }
+    List<WorkerThroughput> items = new java.util.ArrayList<>();
+    for (var e : by.entrySet()) {
+      List<StaffViewStore.FinishedTask> ts = e.getValue();
+      Map<String, Long> kinds = new java.util.TreeMap<>();
+      Map<String, Integer> floors = new java.util.HashMap<>();
+      Map<String, Integer> zones = new java.util.HashMap<>();
+      int pl = 0;
+      int pq = 0;
+      int sl = 0;
+      int sq = 0;
+      Instant first = null;
+      Instant last = null;
+      for (var x : ts) {
+        kinds.merge(x.kind(), 1L, Long::sum);
+        if (x.floor() != null) {
+          floors.merge(x.floor(), 1, Integer::sum);
+        }
+        if (x.zone() != null) {
+          zones.merge(x.zone(), 1, Integer::sum);
+        }
+        pl += x.pickedLines();
+        pq += x.pickedQty();
+        sl += x.shortLines();
+        sq += x.shortQty();
+        if (x.startedAt() != null && (first == null || x.startedAt().isBefore(first))) {
+          first = x.startedAt();
+        }
+        if (x.completedAt() != null && (last == null || x.completedAt().isAfter(last))) {
+          last = x.completedAt();
+        }
+      }
+      items.add(
+          new WorkerThroughput(
+              e.getKey(),
+              ts.size(),
+              kinds,
+              pl,
+              pq,
+              sl,
+              sq,
+              first,
+              last,
+              most(floors),
+              most(zones)));
+    }
+    return new Throughput(f, t, items);
+  }
+
+  private static @Nullable String most(Map<String, Integer> m) {
+    String best = null;
+    int n = -1;
+    for (var e : new java.util.TreeMap<>(m).entrySet()) {
+      if (e.getValue() > n) {
+        best = e.getKey();
+        n = e.getValue();
+      }
+    }
+    return best;
+  }
+
+  private static void range(LocalDate from, LocalDate to) {
+    if (to.isBefore(from)) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "from 은 to 와 같거나 앞이어야 합니다.");
+    }
+    if (java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1 > MAX_DAYS) {
+      throw new com.pmart.common.web.PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "기간은 31일까지입니다.");
+    }
+  }
+
   private static @Nullable String blank(@Nullable String v) {
     return v == null || v.isBlank() ? null : v.strip();
   }

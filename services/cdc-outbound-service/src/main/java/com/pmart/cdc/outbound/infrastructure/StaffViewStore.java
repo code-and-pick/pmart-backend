@@ -397,4 +397,48 @@ public class StaffViewStore {
         rs.getTimestamp("created_at").toInstant(),
         rs.getTimestamp("updated_at").toInstant());
   }
+
+  /** 끝난 작업 한 건의 줄 합(0.27.0 WF-1). */
+  public record FinishedTask(
+      String assigneeId,
+      String kind,
+      @Nullable String zone,
+      @Nullable String floor,
+      @Nullable Instant startedAt,
+      @Nullable Instant completedAt,
+      int pickedLines,
+      int pickedQty,
+      int shortLines,
+      int shortQty) {}
+
+  /** 끝난 시각이 [from, to) 인 DONE·PARTIAL 작업(담당자 있는 것). */
+  public List<FinishedTask> finishedTasks(String cdcId, Instant from, Instant to) {
+    return jdbc.query(
+        "SELECT t.assignee_id, t.kind, t.zone, t.floor, t.started_at, t.completed_at,"
+            + " count(l.line_no) FILTER (WHERE l.picked_qty > 0) AS pl,"
+            + " coalesce(sum(l.picked_qty), 0) AS pq,"
+            + " count(l.line_no) FILTER (WHERE l.short_qty > 0) AS sl,"
+            + " coalesce(sum(l.short_qty), 0) AS sq"
+            + " FROM task t LEFT JOIN task_line l ON l.task_id = t.task_id"
+            + " WHERE t.cdc_id = ? AND t.state IN ('DONE', 'PARTIAL') AND t.assignee_id IS NOT NULL"
+            + " AND t.completed_at >= ? AND t.completed_at < ? GROUP BY t.task_id",
+        (rs, i) -> {
+          java.sql.Timestamp st = rs.getTimestamp("started_at");
+          java.sql.Timestamp ct = rs.getTimestamp("completed_at");
+          return new FinishedTask(
+              rs.getString("assignee_id"),
+              rs.getString("kind"),
+              rs.getString("zone"),
+              rs.getString("floor"),
+              st == null ? null : st.toInstant(),
+              ct == null ? null : ct.toInstant(),
+              rs.getInt("pl"),
+              rs.getInt("pq"),
+              rs.getInt("sl"),
+              rs.getInt("sq"));
+        },
+        cdcId,
+        java.sql.Timestamp.from(from),
+        java.sql.Timestamp.from(to));
+  }
 }
