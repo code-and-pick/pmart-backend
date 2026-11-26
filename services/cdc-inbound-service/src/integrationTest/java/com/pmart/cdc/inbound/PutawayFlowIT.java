@@ -2,6 +2,7 @@ package com.pmart.cdc.inbound;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
@@ -164,9 +165,17 @@ class PutawayFlowIT extends PostgresKafkaContainerSupport {
         get(urlPathEqualTo("/api/v1/internal/pick-faces"))
             .willReturn(
                 okJson(
-                    "{\"truncated\":false,\"items\":[{\"centerId\":\"CDC01\",\"locationCode\":\""
+                    "{\"truncated\":true,\"nextCursor\":\""
+                        + SHELF
+                        + "\",\"items\":[{\"centerId\":\"CDC01\",\"locationCode\":\""
                         + SHELF
                         + "\",\"temperatureZone\":\"AMBIENT\",\"maxQty\":80,\"pickFaceMinQty\":10,\"pickFaceTargetQty\":40}]}")));
+    // cdc-location 0.9.0 쪽 넘기기 — 둘째 쪽(빈 쪽·끝)
+    location.stubFor(
+        get(urlPathEqualTo("/api/v1/internal/pick-faces"))
+            .withQueryParam("after", equalTo(SHELF))
+            .atPriority(1)
+            .willReturn(okJson("{\"truncated\":false,\"nextCursor\":null,\"items\":[]}")));
     location.stubFor(
         post(urlPathEqualTo("/api/v1/internal/space-reservations"))
             .willReturn(okJson("{\"reservationId\":\"SR-1\",\"state\":\"RESERVED\"}")));
@@ -295,6 +304,9 @@ class PutawayFlowIT extends PostgresKafkaContainerSupport {
 
     // 4) 자동 보충 — 현재 5 ≤ 최소 10, 필요 35, 입수 12 → 24. 다시 훑으면 진행 중 24 → 필요 11 → 배수 때문에 0(BELOW_UNIT)
     replenishment.sweep();
+    location.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/internal/pick-faces"))
+            .withQueryParam("after", equalTo(SHELF)));
     JsonNode chk =
         read(MANAGER, "/cdcs/" + CENTER + "/replenishment-checks").body().path("items").get(0);
     assertThat(chk.path("reason").asString()).as(chk.toString()).isEqualTo("CREATED");

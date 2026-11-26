@@ -568,6 +568,17 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(set.status()).as(set.body().toString()).isEqualTo(200);
     JsonNode pf = get(SERVICE, "/internal/pick-faces?centerId=" + CENTER).body();
     assertThat(pf.path("items").findValuesAsString("locationCode")).contains(a).doesNotContain(b);
+    // 0.9.0 쪽 넘기기 — limit 1 이면 한 칸, 더 있으면 nextCursor = 마지막 칸, after 는 그 칸 뒤부터
+    assertThat(pf.path("nextCursor").isNull()).isTrue();
+    JsonNode one = get(SERVICE, "/internal/pick-faces?centerId=" + CENTER + "&limit=1").body();
+    assertThat(one.path("items").size()).isEqualTo(1);
+    if (one.path("truncated").asBoolean()) {
+      assertThat(one.path("nextCursor").asString())
+          .isEqualTo(one.path("items").get(0).path("locationCode").asString());
+    }
+    JsonNode afterA =
+        get(SERVICE, "/internal/pick-faces?centerId=" + CENTER + "&after=" + a).body();
+    assertThat(afterA.path("items").findValuesAsString("locationCode")).doesNotContain(a);
   }
 
   Map<String, Object> dock(String trip, String temp, String start, String end) {

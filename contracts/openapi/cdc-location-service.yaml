@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.8.0
+  version: 0.9.0
   description: |
+    0.9.0(2026-11-26, 시뮬레이터 R-26 — 칠곡 피킹면 21,846칸): `GET /internal/pick-faces` 쪽 넘기기 — `after`(앞 쪽의 nextCursor = 마지막 칸 코드, 그 뒤부터)·`limit`(1~5,000, 기본 5,000),
+      응답 `nextCursor`(더 있으면 마지막 칸 코드, 끝이면 null). `truncated` 는 그대로(= nextCursor 있음). 전에는 앞 5,000칸만 돌려줘 cdc-inbound 자동 보충이 나머지를 보지 못했다.
     0.8.0(2026-11-26, 도크 배정 — DC 백오피스 TR-3/DK-1·2, 사용자 "계획완료 때 자동"·"지금 만들기"): 도크 예약 구현(501 해제).
       `POST /internal/dock-reservations` — transport-planning 이 계획완료 때 부른다. 창 = 상차 시작 ~ 계획 출차. 그 센터의 ACTIVE DOCK 중 온도대가 같고
       창이 겹치는 살아 있는 예약이 없는 칸을 코드 순으로 고른다(preferredDockCode 가 비어 있으면 그것 먼저). 같은 trip·purpose 의 살아 있는 예약은 하나 —
@@ -527,10 +529,12 @@ paths:
     get:
       tags: [internal]
       summary: '[cdc-inbound→cdc-location] 최소·목표가 설정된 ACTIVE 피킹 선반 (0.7.0 — 자동 보충 감지)'
-      description: centerId 를 비우면 모든 센터. 칸 코드 순, 최대 5,000(넘으면 truncated).
+      description: centerId 를 비우면 모든 센터. 칸 코드 순, 한 쪽 최대 5,000 — 더 있으면 nextCursor 를 after 로 다시 부른다(0.9.0).
       operationId: listPickFaces
       parameters:
         - { name: centerId, in: query, required: false, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: after, in: query, required: false, description: '(0.9.0) 앞 쪽의 nextCursor — 이 칸 코드 뒤부터', schema: { type: string } }
+        - { name: limit, in: query, required: false, description: '(0.9.0) 한 쪽 칸 수', schema: { type: integer, minimum: 1, maximum: 5000, default: 5000 } }
       responses:
         '200':
           description: OK
@@ -539,7 +543,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  truncated: { type: boolean }
+                  truncated: { type: boolean, description: 더 있음(nextCursor 가 있음) }
+                  nextCursor: { type: [string, 'null'], description: '(0.9.0) 다음 쪽 after 값 — 끝이면 null' }
                   items:
                     type: array
                     items:

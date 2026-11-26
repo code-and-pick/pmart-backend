@@ -181,25 +181,27 @@ public class InternalController implements InternalApi {
 
   @Override
   public ResponseEntity<com.pmart.cdc.location.api.generated.model.ListPickFaces200Response>
-      listPickFaces(@Nullable String centerId) {
-    var rows = space.pickFaces(centerId, 5001);
-    boolean cut = rows.size() > 5000;
+      listPickFaces(@Nullable String centerId, @Nullable String after, @Nullable Integer limit) {
+    int size = limit == null ? 5000 : Math.max(1, Math.min(5000, limit));
+    var rows = space.pickFaces(centerId, after == null || after.isBlank() ? null : after, size + 1);
+    boolean cut = rows.size() > size;
+    var page = cut ? rows.subList(0, size) : rows;
     var out = new com.pmart.cdc.location.api.generated.model.ListPickFaces200Response();
     out.setTruncated(cut);
+    out.setNextCursor(cut ? page.get(page.size() - 1).locationCode() : null);
     out.setItems(
-        (cut ? rows.subList(0, 5000) : rows)
-            .stream()
-                .map(
-                    r ->
-                        new com.pmart.cdc.location.api.generated.model
-                                .ListPickFaces200ResponseItemsInner()
-                            .centerId(r.centerId())
-                            .locationCode(r.locationCode())
-                            .temperatureZone(r.temperatureZone())
-                            .maxQty(r.maxQty())
-                            .pickFaceMinQty(r.minQty())
-                            .pickFaceTargetQty(r.targetQty()))
-                .toList());
+        page.stream()
+            .map(
+                r ->
+                    new com.pmart.cdc.location.api.generated.model
+                            .ListPickFaces200ResponseItemsInner()
+                        .centerId(r.centerId())
+                        .locationCode(r.locationCode())
+                        .temperatureZone(r.temperatureZone())
+                        .maxQty(r.maxQty())
+                        .pickFaceMinQty(r.minQty())
+                        .pickFaceTargetQty(r.targetQty()))
+            .toList());
     return ResponseEntity.ok(out);
   }
 

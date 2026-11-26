@@ -189,17 +189,38 @@ public class Clients {
   }
 
   public List<PickFace> pickFaces() {
-    JsonNode n =
-        call(
-            "cdc-location-service",
-            () ->
-                location
-                    .get()
-                    .uri("/api/v1/internal/pick-faces")
-                    .header("X-Source-System", SOURCE)
-                    .retrieve()
-                    .body(String.class));
     List<PickFace> out = new ArrayList<>();
+    String after = null;
+    for (int guard = 0; guard < 1000; guard++) { // cdc-location 0.9.0 쪽 넘기기(한 쪽 5,000칸)
+      final String cursor = after;
+      JsonNode n =
+          call(
+              "cdc-location-service",
+              () ->
+                  location
+                      .get()
+                      .uri(
+                          u -> {
+                            u.path("/api/v1/internal/pick-faces");
+                            if (cursor != null) {
+                              u.queryParam("after", cursor);
+                            }
+                            return u.build();
+                          })
+                      .header("X-Source-System", SOURCE)
+                      .retrieve()
+                      .body(String.class));
+      readPickFaces(n, out);
+      JsonNode next = n.path("nextCursor");
+      if (!next.isString() || next.asString().isBlank() || next.asString().equals(after)) {
+        return out;
+      }
+      after = next.asString();
+    }
+    return out;
+  }
+
+  private static void readPickFaces(JsonNode n, List<PickFace> out) {
     for (JsonNode it : n.path("items")) {
       out.add(
           new PickFace(
@@ -210,7 +231,6 @@ public class Clients {
               it.path("pickFaceMinQty").asInt(),
               it.path("pickFaceTargetQty").asInt()));
     }
-    return out;
   }
 
   /** 공간 예약 — reservationId. */

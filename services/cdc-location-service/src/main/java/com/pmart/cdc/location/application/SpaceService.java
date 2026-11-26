@@ -378,14 +378,22 @@ public class SpaceService {
         .value();
   }
 
-  public List<PickFace> pickFaces(@Nullable String centerId, int limit) {
+  public List<PickFace> pickFaces(@Nullable String centerId, @Nullable String after, int limit) {
     String sql =
         "SELECT center_id, location_code, temperature_zone, max_qty, pick_face_min_qty, pick_face_target_qty"
             + " FROM location WHERE location_type = 'PICK_FACE' AND state = 'ACTIVE'"
             + " AND pick_face_min_qty IS NOT NULL AND pick_face_target_qty IS NOT NULL"
             + (centerId == null ? "" : " AND center_id = ?")
+            + (after == null ? "" : " AND location_code > ?")
             + " ORDER BY location_code LIMIT ?";
-    Object[] args = centerId == null ? new Object[] {limit} : new Object[] {centerId, limit};
+    List<Object> args = new java.util.ArrayList<>();
+    if (centerId != null) {
+      args.add(centerId);
+    }
+    if (after != null) {
+      args.add(after);
+    }
+    args.add(limit);
     return jdbc.query(
         sql,
         (rs, i) ->
@@ -396,7 +404,7 @@ public class SpaceService {
                 (Integer) rs.getObject(4),
                 rs.getInt(5),
                 rs.getInt(6)),
-        args);
+        args.toArray());
   }
 
   private static PmartException conflict(

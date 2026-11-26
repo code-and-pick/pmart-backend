@@ -28,3 +28,4 @@
 - 자동 보충 `ReplenishmentService`(주기 `pmart.inbound.replenishment-interval`, 기본 1분): cdc-location `/internal/pick-faces`(최소·목표 둘 다 설정된 칸만) × 재고 스냅샷 — 계산은 흐름 문서. 칸별 마지막 판단 `replenishment_check` → `GET /cdcs/{cdcId}/replenishment-checks`.
 - 주소 `pmart.inbound.cdc-inventory-base-url`(기본 http://cdc-inventory-service:8601)·`cdc-location-base-url`(기본 http://cdc-location-service:8602). 사건 발행 없음. ASN 은 501(3단계).
 - 결정 역할 고침(2026-11-26): `CDC_SUPERVISOR`(직원 권한 정본) — 전에는 정본에 없는 `CDC_MANAGER`.
+- (2026-11-26, cdc-location 0.9.0 에 맞춤) 자동 보충이 `/internal/pick-faces` 를 nextCursor 가 없을 때까지 쪽 넘겨 모두 읽는다(계약 판 그대로).

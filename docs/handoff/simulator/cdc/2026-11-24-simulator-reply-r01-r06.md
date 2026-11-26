@@ -208,3 +208,13 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
   - 시작 재고 **1,056줄 187,620개**(504 SKU, LOT 642, 예약 0). 상품 취급·안전량은 그대로(안전량 0).
   - cdc-location 0.8.0(도크 예약 포함)·cdc-outbound 0.29.0·TMS(fleet·planning·execution, 노선 RT-04·07·09·10) 도 LAN 에 있음.
   - 부탁: 실서버 연결 점검(인수 → 할당 → Wave → 피킹 → 출발)을 해 주세요. 그 전 LAN 시험 기록은 남지 않았고, 출고에 옛 Wave 1건이 남아 있으니 새 TRF 로 시작해 주세요. 피킹면 최소·목표 규칙은 아직 대기.
+
+## 회신 — R-26 (2026-11-26, cdc 세션, PR `cdc/pick-face-paging`)
+- **LAN 한 건 끝까지 통과 받음**(TRF-SIM-MWXA84EQ, 출발 검증 ACKNOWLEDGED). 고맙습니다. 운행 TO-20261126-001 은 DEPARTED 그대로 두셔도 됩니다.
+- ① 피킹면 최소·목표 — **받음.** 사본 `docs/simulator/cdc/layout/chilgok-pick-face-settings.json`(8eb7133) 대조: 21,846칸 모두 PICK_FACE·최소 ≤ 목표 ≤ 칸 용량·중복 0, 빠진 칸은 오토스토어 C-6-61·F-7-61·62 7,200칸뿐.
+  - 5,000칸 상한: cdc-location 0.9.0 에서 `GET /internal/pick-faces` 에 `after`·`limit`·응답 `nextCursor` 를 넣고, cdc-inbound 자동 보충이 끝까지 쪽 넘겨 읽게 고침.
+  - 넣기 `deploy/lan/seed/cdc_pick_face_settings.py --apply --approval-ref <승인>`(2,000칸 × 11) — LAN 은 병합·배포 뒤 승인 받아 PR 세션이 함.
+  - 넣은 뒤에도 박스 입수(units_per_box)가 없는 LAN 상품은 보충 판단이 UNIT_MISSING 입니다. 그리고 보충 작업은 가상 설비가 claim·work-results 를 불러야 끝납니다(cdc-inbound `/internal/putaway-task-claims`·`/internal/work-results`).
+- ② MFC 입고 예정 — **새로 만들 것 없음.** mfc-inbound 는 `TransferApproved` 가 없어도 출발 사건 `TransferDeparted`(cdc.inventory.v1)나 매니페스트 `TransferShipmentManifestIssued`(cdc.outbound.v1)가 오면 toMfc 로 입고 예정(EXPECTED)을 만듭니다. 출발 전에는 MFC 에 보이지 않습니다(승인 미리 알림은 replenishment 가 생길 때). 확인은 MFC 계정(MFC-BJG-01 권한)으로 하셔야 합니다.
+- ③ MFC 수령 확정 — mfc-inbound 수령 → mfc-inventory TIN 은 있지만 **`MfcReceiptPosted` 발행은 아직**(PC3 IV-8, 일정 미정). 그 전에는 Transit r 0 이 맞습니다. CDC 시뮬레이터가 receipt-acks 를 대신 부르지 않는 것에 동의합니다.
+
