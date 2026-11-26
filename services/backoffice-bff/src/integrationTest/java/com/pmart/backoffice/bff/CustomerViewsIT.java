@@ -45,7 +45,8 @@ import tools.jackson.databind.ObjectMapper;
   @ConfigureWireMock(name = "hr", baseUrlProperties = "pmart.bff.hr-base-url"),
   @ConfigureWireMock(name = "claim", baseUrlProperties = "pmart.bff.claim-base-url"),
   @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.bff.execution-base-url"),
-  @ConfigureWireMock(name = "audit", baseUrlProperties = "pmart.bff.audit-base-url")
+  @ConfigureWireMock(name = "audit", baseUrlProperties = "pmart.bff.audit-base-url"),
+  @ConfigureWireMock(name = "auth", baseUrlProperties = "pmart.bff.auth-base-url")
 })
 class CustomerViewsIT {
 
@@ -76,11 +77,14 @@ class CustomerViewsIT {
   @InjectWireMock("audit")
   WireMockServer audit;
 
+  @InjectWireMock("auth")
+  WireMockServer auth;
+
   RestClient http;
 
   @BeforeEach
   void setUp() {
-    for (WireMockServer w : List.of(customer, order, cases, hr, claim, execution, audit)) {
+    for (WireMockServer w : List.of(customer, order, cases, hr, claim, execution, audit, auth)) {
       w.resetAll();
     }
     http =
@@ -451,5 +455,201 @@ class CustomerViewsIT {
         WireMock.get(urlPathEqualTo("/api/v1/customers/CU-1"))
             .willReturn(aResponse().withStatus(503)));
     assertThat(get("/views/customer/CU-1").status()).as("머리 장애 503").isEqualTo(503);
+  }
+
+  // ------------------------------------------------------------------ 0.29.0 목록·구매 요약·활동·분류·지표
+
+  static String ago(long days) {
+    return java.time.Instant.now().minus(java.time.Duration.ofDays(days)).toString();
+  }
+
+  void stubSummaries(String body) {
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/metrics/customer-summaries"))
+            .willReturn(json(200, body)));
+  }
+
+  void stubActivities(String body) {
+    auth.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/customers/activities"))
+            .willReturn(json(200, body)));
+  }
+
+  @Test
+  void listPassesFiltersAndAddsPurchaseActivityAndSegment() {
+    customer.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customers"))
+            .withQueryParam("name", equalTo("김민"))
+            .withQueryParam("status", equalTo("ACTIVE"))
+            .withQueryParam("joinedFrom", equalTo("2026-01-01"))
+            .withQueryParam("size", equalTo("2"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[
+                      {"customerId":"CU-1","nameMasked":"김*수","status":"ACTIVE","joinedAt":"%s"},
+                      {"customerId":"CU-2","nameMasked":"김*희","status":"ACTIVE","joinedAt":"%s"}],
+                     "page":{"nextCursor":"c2","size":2}}"""
+                        .formatted(ago(3), ago(500)))));
+    stubSummaries(
+        """
+        {"amountSince":"2026-08-26","items":[
+          {"customerId":"CU-1","orderCount":2,"totalAmount":1200000,"amount3m":1200000,"firstOrderAt":"%s","lastOrderAt":"%s"},
+          {"customerId":"CU-2","orderCount":0,"totalAmount":0,"amount3m":0,"firstOrderAt":null,"lastOrderAt":null}]}"""
+            .formatted(ago(2), ago(2)));
+    String login = ago(1);
+    stubActivities(
+        """
+        {"items":[{"accountId":"CU-1","lastLoginAt":"%s","lastTokenRefreshAt":null},
+                  {"accountId":"CU-2","lastLoginAt":null,"lastTokenRefreshAt":null}]}"""
+            .formatted(login));
+
+    Res r = get("/views/customers?name=김민&status=ACTIVE&joinedFrom=2026-01-01&size=2");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    JsonNode a = r.body().path("items").path(0);
+    assertThat(a.path("customerId").asString()).isEqualTo("CU-1");
+    assertThat(a.path("purchase").path("orderCount").asLong()).isEqualTo(2);
+    assertThat(a.path("purchase").path("amountSince").asString()).isEqualTo("2026-08-26");
+    assertThat(a.path("segment").asString()).as("신규이면서 우수 → 우수 우선").isEqualTo("TOP");
+    assertThat(java.time.Instant.parse(a.path("lastActiveAt").asString()))
+        .as("로그인이 마지막 주문보다 늦다")
+        .isEqualTo(java.time.Instant.parse(login));
+    JsonNode b = r.body().path("items").path(1);
+    assertThat(b.path("segment").asString()).as("산 적 없고 가입 1년보다 전 → 휴면").isEqualTo("DORMANT");
+    assertThat(b.path("lastActiveAt").isNull()).as("셋 다 없음").isTrue();
+    assertThat(r.body().path("page").path("nextCursor").asString()).isEqualTo("c2");
+    assertThat(r.body().path("unavailableSources")).isEmpty();
+    order.verify(
+        getRequestedFor(urlPathEqualTo("/api/v1/orders/metrics/customer-summaries"))
+            .withQueryParam("customerIds", equalTo("CU-1,CU-2"))
+            .withHeader("Authorization", equalTo("Bearer " + CS)));
+  }
+
+  @Test
+  void lastOrderFilterGoesThroughOrderThenCustomerInOrderOfLastPurchase() {
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/metrics/customer-ids"))
+            .withQueryParam("lastOrderTo", equalTo("2025-11-25"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"customerId":"CU-9","lastOrderAt":"2025-10-01T00:00:00Z"},
+                              {"customerId":"CU-8","lastOrderAt":"2025-09-01T00:00:00Z"}],
+                     "page":{"nextCursor":null,"size":50}}""")));
+    customer.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customers"))
+            .withQueryParam("customerIds", equalTo("CU-9,CU-8"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"items":[{"customerId":"CU-8","status":"ACTIVE","joinedAt":"2024-01-01T00:00:00Z"},
+                              {"customerId":"CU-9","status":"ACTIVE","joinedAt":"2024-01-01T00:00:00Z"}]}""")));
+    stubSummaries(
+        """
+        {"amountSince":"2026-08-26","items":[
+          {"customerId":"CU-9","orderCount":1,"totalAmount":10000,"amount3m":0,"lastOrderAt":"2025-10-01T00:00:00Z"},
+          {"customerId":"CU-8","orderCount":1,"totalAmount":10000,"amount3m":0,"lastOrderAt":"2025-09-01T00:00:00Z"}]}""");
+    auth.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/customers/activities"))
+            .willReturn(aResponse().withStatus(503)));
+
+    Res r = get("/views/customers?lastOrderTo=2025-11-25");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("items").path(0).path("customerId").asString()).isEqualTo("CU-9");
+    assertThat(r.body().path("items").path(1).path("customerId").asString()).isEqualTo("CU-8");
+    assertThat(r.body().path("items").path(0).path("segment").asString()).isEqualTo("DORMANT");
+    assertThat(r.body().path("items").path(0).path("lastActiveAt").isNull())
+        .as("auth 장애면 최근 활동일 모름")
+        .isTrue();
+    assertThat(r.body().path("unavailableSources").toString()).contains("auth-service");
+
+    assertThat(get("/views/customers?lastOrderTo=2025-11-25&name=김민").status())
+        .as("마지막 구매일 + 이름 400")
+        .isEqualTo(400);
+  }
+
+  @Test
+  void nameSearchAuditFailureIsEmptyListNotZeroCustomers() {
+    customer.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customers")).willReturn(aResponse().withStatus(503)));
+
+    Res r = get("/views/customers?name=김민");
+
+    assertThat(r.status()).isEqualTo(200);
+    assertThat(r.body().path("items")).isEmpty();
+    assertThat(r.body().path("unavailableSources").toString()).contains("customer-service");
+    order.verify(0, getRequestedFor(urlPathEqualTo("/api/v1/orders/metrics/customer-summaries")));
+  }
+
+  @Test
+  void detailAddsPurchaseLastActiveAndSegment() {
+    customer.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/customers/CU-1"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"customerId\":\"CU-1\",\"status\":\"ACTIVE\",\"joinedAt\":\"%s\"}"
+                        .formatted(ago(400)))));
+    String last = ago(200);
+    stubSummaries(
+        """
+        {"amountSince":"2026-08-26","items":[
+          {"customerId":"CU-1","orderCount":3,"totalAmount":90000,"amount3m":0,"firstOrderAt":"%s","lastOrderAt":"%s"}]}"""
+            .formatted(ago(390), last));
+    stubActivities(
+        "{\"items\":[{\"accountId\":\"CU-1\",\"lastLoginAt\":null,\"lastTokenRefreshAt\":null}]}");
+
+    Res r = get("/views/customer/CU-1");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("purchase").path("orderCount").asLong()).isEqualTo(3);
+    assertThat(r.body().path("segment").asString()).as("마지막 구매 6개월보다 전 → 위험").isEqualTo("AT_RISK");
+    assertThat(java.time.Instant.parse(r.body().path("lastActiveAt").asString()))
+        .isEqualTo(java.time.Instant.parse(last));
+  }
+
+  @Test
+  void metricsGivesRatiosWithNumeratorAndDenominator() {
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/metrics/customers"))
+            .withQueryParam("from", equalTo("2026-11-01"))
+            .withQueryParam("to", equalTo("2026-11-26"))
+            .withQueryParam("mfcId", equalTo("MFC-BJG-01"))
+            .willReturn(
+                json(
+                    200,
+                    """
+                    {"from":"2026-11-01","to":"2026-11-26","mfcId":"MFC-BJG-01","customerCount":8,
+                     "repeatCustomerCount":4,"oneTimeCustomerCount":4,"orderCount":41,"purchaseAmount":1234567}""")));
+
+    Res r = get(ADMIN, "/views/customer-metrics?from=2026-11-01&to=2026-11-26&centerId=MFC-BJG-01");
+
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(200);
+    assertThat(r.body().path("repeatRate").path("numerator").asLong()).isEqualTo(4);
+    assertThat(r.body().path("repeatRate").path("denominator").asLong()).isEqualTo(8);
+    assertThat(r.body().path("repeatRate").path("ratio").asDouble()).isEqualTo(0.5);
+    assertThat(r.body().path("averageOrderCount").path("ratio").asDouble()).isEqualTo(41.0 / 8);
+    assertThat(r.body().path("purchaseAmount").asLong()).isEqualTo(1234567);
+
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/metrics/customers"))
+            .willReturn(
+                json(
+                    200,
+                    "{\"customerCount\":0,\"repeatCustomerCount\":0,\"oneTimeCustomerCount\":0,\"orderCount\":0,\"purchaseAmount\":0}")));
+    Res zero = get(ADMIN, "/views/customer-metrics?from=2026-11-01&to=2026-11-26");
+    assertThat(zero.body().path("repeatRate").path("ratio").isNull()).as("분모 0 → null").isTrue();
+
+    order.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/orders/metrics/customers"))
+            .willReturn(aResponse().withStatus(503)));
+    assertThat(get(ADMIN, "/views/customer-metrics?from=2026-11-01&to=2026-11-26").status())
+        .as("장애는 503 — 0 으로 보이지 않게")
+        .isEqualTo(503);
   }
 }

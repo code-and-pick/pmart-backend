@@ -4,6 +4,8 @@ import com.pmart.backoffice.bff.api.generated.ViewsApi;
 import com.pmart.backoffice.bff.api.generated.model.GetApprovalInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetCaseInboxView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetClaimsView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetCustomerListView200Response;
+import com.pmart.backoffice.bff.api.generated.model.GetCustomerMetricsView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetCustomerSearchView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetCustomerView200Response;
 import com.pmart.backoffice.bff.api.generated.model.GetLiveDeliveryView200Response;
@@ -16,6 +18,7 @@ import com.pmart.backoffice.bff.api.generated.model.GetUnifiedLookupView200Respo
 import com.pmart.backoffice.bff.api.generated.model.GetWorkCountsView200Response;
 import com.pmart.backoffice.bff.application.ApprovalInboxView;
 import com.pmart.backoffice.bff.application.CaseInboxView;
+import com.pmart.backoffice.bff.application.CustomerInsights;
 import com.pmart.backoffice.bff.application.CustomerViews;
 import com.pmart.backoffice.bff.application.LiveDeliveryView;
 import com.pmart.backoffice.bff.application.MetricsView;
@@ -51,6 +54,7 @@ public class ViewsController implements ViewsApi {
   private final WorkCountsView workCounts;
   private final RecordListViews recordLists;
   private final CustomerViews customers;
+  private final CustomerInsights customerInsights;
   private final ObjectMapper mapper;
 
   public ViewsController(
@@ -64,6 +68,7 @@ public class ViewsController implements ViewsApi {
       WorkCountsView workCounts,
       RecordListViews recordLists,
       CustomerViews customers,
+      CustomerInsights customerInsights,
       ObjectMapper mapper) {
     this.approvalInbox = approvalInbox;
     this.pendingWork = pendingWork;
@@ -75,6 +80,7 @@ public class ViewsController implements ViewsApi {
     this.workCounts = workCounts;
     this.recordLists = recordLists;
     this.customers = customers;
+    this.customerInsights = customerInsights;
     this.mapper = mapper;
   }
 
@@ -199,6 +205,31 @@ public class ViewsController implements ViewsApi {
   public ResponseEntity<GetCustomerView200Response> getCustomerView(String customerId) {
     return ResponseEntity.ok(
         mapper.convertValue(customers.detail(customerId), GetCustomerView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetCustomerListView200Response> getCustomerListView(
+      @Nullable String name,
+      @Nullable LocalDate joinedFrom,
+      @Nullable LocalDate joinedTo,
+      @Nullable String status,
+      @Nullable LocalDate lastOrderFrom,
+      @Nullable LocalDate lastOrderTo,
+      Integer size,
+      @Nullable String cursor) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            customerInsights.list(
+                name, joinedFrom, joinedTo, status, lastOrderFrom, lastOrderTo, size, cursor),
+            GetCustomerListView200Response.class));
+  }
+
+  @Override
+  public ResponseEntity<GetCustomerMetricsView200Response> getCustomerMetricsView(
+      LocalDate from, LocalDate to, @Nullable String centerId) {
+    return ResponseEntity.ok(
+        mapper.convertValue(
+            customerInsights.metrics(from, to, centerId), GetCustomerMetricsView200Response.class));
   }
 
   @Override

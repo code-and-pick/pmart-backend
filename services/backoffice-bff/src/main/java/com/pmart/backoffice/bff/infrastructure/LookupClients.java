@@ -37,7 +37,11 @@ public class LookupClients {
     /** 고객 찾기·상세(BF-2, CU-4 customer 0.11.0, 2026-11-20). */
     CUSTOMER("customer-service"),
     /** 고객 정보 열람 기록(BF-5, audit 0.3.0 `GET /pii-access-logs` — OPERATOR_ADMIN 만, 2026-11-23). */
-    AUDIT("audit-service");
+    AUDIT("audit-service"),
+    /** 고객별 구매 요약·마지막 구매 고객·구매 지표(O-12·O-13 order 0.24.0·0.25.0 — 2026-11-26). 주문 칸과 따로 표시. */
+    ORDER_METRICS("order-service/metrics"),
+    /** 고객 마지막 로그인·토큰 갱신(CU-6 auth 0.12.0 내부 `/internal/customers/activities` — 2026-11-26). */
+    AUTH("auth-service");
 
     public final String system;
 
@@ -64,6 +68,8 @@ public class LookupClients {
     urls.put(Source.HR, props.hrBaseUrl());
     urls.put(Source.CUSTOMER, props.customerBaseUrl());
     urls.put(Source.AUDIT, props.auditBaseUrl());
+    urls.put(Source.ORDER_METRICS, props.orderBaseUrl());
+    urls.put(Source.AUTH, props.authBaseUrl());
     Map<Source, RestClient> built = new java.util.EnumMap<>(Source.class);
     urls.forEach((k, v) -> built.put(k, builder.clone().baseUrl(v).build()));
     this.clients = java.util.Collections.unmodifiableMap(built);

@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: backoffice-bff
-  version: 0.28.0
+  version: 0.29.0
   description: |
+    **0.29.0(2026-11-26 — BF-5 2차, customer 0.22.0 CU-5·auth 0.12.0 CU-6·order 0.24.0 O-13·0.25.0 O-12)**: 새 `GET /views/customers`(고객 목록 — 이름 2글자 앞부분·가입일·상태, 또는 마지막 구매일 기간)와 `GET /views/customer-metrics`(구매 지표 — 재구매율·한 번만 산 비율·평균 구매 횟수, 분자·분모). 목록 줄과 고객 상세에 `purchase`(구매 횟수·누적·3개월 금액·첫·마지막 구매)·`lastActiveAt`(max(로그인, 토큰 갱신, 마지막 주문))·`segment`(DORMANT·AT_RISK·TOP·NEW·REGULAR — 사용자 결정 2026-11-23·26).
     **0.28.0(2026-11-23 — customer 0.16.0 CU-7)**: 고객 찾기 줄(CustomerSummaryView)과 고객 상세 머리 `customer` 에 `restriction`(NONE·RESTRICTED·SUSPENDED)·`restrictedUntil` — customer 값 그대로. 걸기·풀기·이력은 화면이 customer 를 직접.
     **0.27.0(2026-11-23 — BF-5 "문의 담당 상담원", 사용자 "2번으로 해")**: 고객 상세 문의 칸 줄에 `lastAnsweredBy`(case 0.36.0 — 마지막으로 답한 직원 운영자 ID, case 배포 전·답 없으면 null)와 `lastAnsweredByLabel`(hr "이름 · 사번" — 상담원 접수 칸과 같은 한 번 조회, 실패면 이름만 null).
     **0.26.0(2026-11-23 — BF-5, case 0.34.0 R-13 배포 뒤)**: 고객 상세 `views/customer/{id}` 에 `customerNotes`(case `GET /customer-notes?customerId=&size=10` — 상담 메모 글·쓴 직원 "이름 · 사번"·고친 시각, 줄마다 `mine` = 부른 직원이 쓴 것 → 화면이 고치기·지우기 단추). **CS_AGENT·OPERATOR_ADMIN 만**(case 가 그 둘만) — 그 밖 직원은 부르지 않고 null. 쓰기·고치기·지우기는 화면이 case `/customer-notes` 를 직접.
@@ -287,6 +288,84 @@ paths:
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '503':
           description: customer-service 장애 — 머리를 못 읽음
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /views/customers:
+    get:
+      tags: [views]
+      summary: 고객 목록 — 이름·가입일·상태 또는 마지막 구매일, 줄마다 구매 요약·최근 활동일·분류 (0.29.0, BF-5 2차)
+      x-added-in: '2026-11-26'
+      description: |
+        **호출한 직원의 토큰**으로(권한은 원천 판정 — CS_AGENT·OPERATOR_ADMIN). 응답은 가린 값만. 찾는 값·고객 ID 는 로그에 남기지 않는다.
+          - 기본: customer `GET /customers` 목록 모드(CU-5, customer 0.22.0) — 가입 최근 순, 거르기 `name`(이름 **2글자 이상 앞부분**, 별명 안 찾음)·`joinedFrom`·`joinedTo`(한국 날짜 포함)·`status`.
+            **이름으로 찾으면 customer 가 audit 검색 기록을 남긴 뒤에만 결과를 준다** — 기록 실패(customer 503)는 200 + 빈 items + unavailableSources `customer-service`(화면 "잠시 뒤 다시").
+          - `lastOrderFrom`·`lastOrderTo`(마지막 산 주문 확정 한국 날짜, 포함): order `GET /orders/metrics/customer-ids`(O-12) → customer `?customerIds=`. 마지막 구매 최근 순. **한 번도 안 산 고객은 나오지 않는다.** 이름·가입일·상태와 같이 주면 400.
+          - 쪽: `size` 1~50(기본 50), 다음 쪽은 같은 거르기 + `page.nextCursor`(목록 원천 커서 그대로).
+        줄마다 `purchase` = order `GET /orders/metrics/customer-summaries`(취소·만료 빼고, 환불 안 뺌, 배달팁·봉투 뺌), `lastActiveAt` = max(auth `/internal/customers/activities` 로그인·토큰 갱신, purchase.lastOrderAt) — 두 원천 중 하나라도 못 읽으면 null, `segment` = 아래 분류(purchase 를 못 읽으면 null).
+        **분류(사용자 결정 2026-11-23·2026-11-26, 한국 날짜)**: DORMANT 휴면 = 마지막 구매가 1년보다 전(산 적 없으면 가입이 1년보다 전) → AT_RISK 위험 = 6개월보다 전(산 적 없으면 가입 기준) → TOP 우수 = 3개월 안 구매 100만 원 이상(purchase.amount3m) → NEW 신규 = 가입 1달 이내 → REGULAR 일반. 겹치면 이 순서.
+        원천: 목록 원천 401·403·400 그대로, 장애는 200 + 빈 items + unavailableSources. 덤 원천(`order-service/metrics`·`auth-service`) 실패는 그 값만 null + unavailableSources, 404(배포 전)는 값만 null.
+      operationId: getCustomerListView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: name, in: query, schema: { type: string, minLength: 2, maxLength: 50 } }
+        - { name: joinedFrom, in: query, schema: { type: string, format: date } }
+        - { name: joinedTo, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, WITHDRAW_PENDING, WITHDRAW_COMPLETED] } }
+        - { name: lastOrderFrom, in: query, schema: { type: string, format: date } }
+        - { name: lastOrderTo, in: query, schema: { type: string, format: date } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 50, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 500 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - type: object
+                    required: [items, page]
+                    properties:
+                      items: { type: array, items: { $ref: '#/components/schemas/CustomerListRow' } }
+                      page:
+                        type: object
+                        properties:
+                          nextCursor: { type: [string, 'null'] }
+                          size: { type: integer }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /views/customer-metrics:
+    get:
+      tags: [views]
+      summary: 고객 구매 지표 — 재구매율·한 번만 산 비율·평균 구매 횟수 (0.29.0, O-13)
+      x-added-in: '2026-11-26'
+      description: |
+        order `GET /orders/metrics/customers`(O-13, order 0.24.0)를 **호출한 직원의 토큰**으로. **첫 구매 기준**(사용자 결정 2026-11-26): 첫 산 주문의 확정 한국 날짜가 from~to 안인 고객만, 그 고객의 주문은 첫 구매부터 to 까지.
+        `centerId` → 원천 `mfcId`(그 센터 주문만으로 셈). 권한·기간 상한(366일)은 원천 판정 — OPERATOR_ADMIN 모든 센터, MFC_SUPERVISOR 는 centerId 필수·자기 센터만.
+        비율은 분자·분모와 함께(BO-28): `repeatRate` = 재구매 고객 ÷ 고객, `oneTimeRate`(이탈률) = 한 번만 산 고객 ÷ 고객, `averageOrderCount` = 주문 ÷ 고객. 분모 0 이면 ratio null.
+        원천 4xx 그대로(400 은 조건 오류), 장애는 503(0 으로 보이지 않게).
+      operationId: getCustomerMetricsView
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: centerId, in: query, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ComposedView'
+                  - $ref: '#/components/schemas/CustomerMetricsView'
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '503':
+          description: order-service 장애
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -1244,6 +1323,9 @@ components:
                   createdAt: { type: [string, 'null'], format: date-time }
                   editedAt: { type: [string, 'null'], format: date-time }
                   mine: { type: boolean, description: 부른 직원이 쓴 메모 — 고치기·지우기는 쓴 사람만(case 판정) }
+        purchase: { $ref: '#/components/schemas/CustomerPurchase' }
+        lastActiveAt: { type: [string, 'null'], format: date-time, x-added-in: '2026-11-26', description: '(0.29.0) max(마지막 로그인, 마지막 토큰 갱신, 마지막 주문) — 원천 하나라도 못 읽으면 null' }
+        segment: { $ref: '#/components/schemas/CustomerSegment' }
         piiAccessLogs:
           type: [object, 'null']
           x-added-in: '2026-11-23'
@@ -1262,6 +1344,55 @@ components:
                   fields: { type: array, items: { type: string } }
                   purpose: { type: [string, 'null'] }
                   screen: { type: [string, 'null'] }
+    CustomerPurchase:
+      type: [object, 'null']
+      x-added-in: '2026-11-26'
+      description: (0.29.0, order 0.25.0 O-12 customer-summaries 그대로) 산 것 = 취소·만료 빼고, 환불 안 뺌, 배달팁·봉투 뺌. 산 것 없으면 0·null. 원천을 못 읽으면 이 칸 null
+      properties:
+        orderCount: { type: integer, format: int64 }
+        totalAmount: { type: integer, format: int64 }
+        amount3m: { type: integer, format: int64, description: amountSince 이후 산 금액(우수 판정) }
+        amountSince: { type: [string, 'null'], format: date, description: 오늘(한국) 3개월 전 날짜 }
+        firstOrderAt: { type: [string, 'null'], format: date-time }
+        lastOrderAt: { type: [string, 'null'], format: date-time }
+    CustomerSegment:
+      type: [string, 'null']
+      x-added-in: '2026-11-26'
+      description: (0.29.0) DORMANT 휴면·AT_RISK 위험·TOP 우수·NEW 신규·REGULAR 일반 — 규칙은 /views/customers 설명. 구매 요약을 못 읽었거나 판정할 값(가입일)이 없으면 null
+    CustomerListRow:
+      x-added-in: '2026-11-26'
+      allOf:
+        - $ref: '#/components/schemas/CustomerSummaryView'
+        - type: object
+          properties:
+            joinedAt: { type: [string, 'null'], format: date-time }
+            purchase: { $ref: '#/components/schemas/CustomerPurchase' }
+            lastActiveAt: { type: [string, 'null'], format: date-time, description: 'max(마지막 로그인, 마지막 토큰 갱신, 마지막 주문) — 원천 하나라도 못 읽으면 null, 셋 다 없으면 null' }
+            segment: { $ref: '#/components/schemas/CustomerSegment' }
+    CountRatio:
+      type: object
+      x-added-in: '2026-11-26'
+      required: [numerator, denominator]
+      properties:
+        numerator: { type: integer, format: int64 }
+        denominator: { type: integer, format: int64 }
+        ratio: { type: [number, 'null'], description: 분모 0 이면 null }
+    CustomerMetricsView:
+      type: object
+      x-added-in: '2026-11-26'
+      description: (0.29.0, order 0.24.0 O-13 그대로 + 비율)
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        centerId: { type: [string, 'null'] }
+        customerCount: { type: integer, format: int64, description: 기간 안 첫 구매 고객 }
+        repeatCustomerCount: { type: integer, format: int64 }
+        oneTimeCustomerCount: { type: integer, format: int64 }
+        orderCount: { type: integer, format: int64 }
+        purchaseAmount: { type: integer, format: int64 }
+        repeatRate: { $ref: '#/components/schemas/CountRatio' }
+        oneTimeRate: { $ref: '#/components/schemas/CountRatio' }
+        averageOrderCount: { $ref: '#/components/schemas/CountRatio' }
     ComposedView:
       type: object
       description: 모든 화면 응답의 공통 머리. 원천별 asOf 목록과 조회 실패 원천을 분리해 보여준다.

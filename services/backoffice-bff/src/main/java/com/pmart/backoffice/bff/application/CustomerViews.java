@@ -49,10 +49,12 @@ public class CustomerViews {
 
   private final LookupClients clients;
   private final Clock clock;
+  private final CustomerInsights insights;
 
-  public CustomerViews(LookupClients clients, Clock clock) {
+  public CustomerViews(LookupClients clients, Clock clock, CustomerInsights insights) {
     this.clients = clients;
     this.clock = clock;
+    this.insights = insights;
   }
 
   /** 고객 찾기 — 고객번호·전화·주문번호 중 하나만(완전 일치). */
@@ -147,6 +149,13 @@ public class CustomerViews {
 
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("customer", head);
+    // 0.29.0 구매 요약·최근 활동일·분류(O-12·CU-6) — 덤 원천 실패는 값만 null + unavailableSources
+    Map<String, @Nullable Instant> joined = new LinkedHashMap<>();
+    joined.put(customerId, CustomerInsights.instant(text(c, "joinedAt")));
+    insights
+        .insights(token, joined, used, failed)
+        .getOrDefault(customerId, CustomerInsights.Insight.NONE)
+        .into(body);
 
     // 주문 — order 직원용 검색(customerId = accountId), 연락처는 싣지 않는다
     used.add(Source.ORDER);
@@ -561,7 +570,7 @@ public class CustomerViews {
 
   // ------------------------------------------------------------------ 공통
 
-  private static Map<String, Object> summary(JsonNode c) {
+  static Map<String, Object> summary(JsonNode c) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("customerId", text(c, "customerId"));
     m.put("customerNumber", text(c, "customerNumber"));
@@ -621,7 +630,7 @@ public class CustomerViews {
     }
   }
 
-  private static PmartException rejected(HttpClientErrorException e, String what) {
+  static PmartException rejected(HttpClientErrorException e, String what) {
     int sc = e.getStatusCode().value();
     if (sc == 401) {
       return new PmartException(
@@ -637,7 +646,7 @@ public class CustomerViews {
         "SOURCE_REJECTED", HttpStatus.valueOf(sc), what + " 원천이 거절했습니다.", false, List.of());
   }
 
-  private static Map<String, Object> out(
+  static Map<String, Object> out(
       Instant now, Set<Source> used, Set<Source> failed, Map<String, Object> body) {
     List<Map<String, Object>> sources = new ArrayList<>();
     List<String> unavailable = new ArrayList<>();
@@ -656,11 +665,11 @@ public class CustomerViews {
     return out;
   }
 
-  private static boolean blank(@Nullable String v) {
+  static boolean blank(@Nullable String v) {
     return v == null || v.isBlank();
   }
 
-  private static String token() {
+  static String token() {
     return PmartPrincipal.currentTokenValue()
         .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자 토큰이 필요합니다."));
   }
