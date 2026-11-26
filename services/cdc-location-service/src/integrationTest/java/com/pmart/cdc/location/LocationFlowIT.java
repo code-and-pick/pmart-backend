@@ -404,4 +404,167 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
                 .asString())
         .isEqualTo("RETIRED");
   }
+
+  /** 0.7.0 공간 예약(현물 + 미완료 예약 + 신규 ≤ maxQty)·해제·소비, 피킹 선반 최소·목표 설정·목록. */
+  @Test
+  void spaceReservationAndPickFaceSettings() {
+    String a = "CDC01-A-5-61-20-1-1";
+    String b = "CDC01-A-5-61-20-1-2";
+    Map<String, Object> la = shelf(a);
+    la.put("capacity", Map.of("unit", "EACH", "maxQty", 80));
+    Map<String, Object> lb = shelf(b); // maxQty 없음
+    Res made =
+        post(
+            SERVICE,
+            "/internal/location-batches",
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "approvalRef",
+                "BO-06-SP",
+                "activate",
+                true,
+                "items",
+                List.of(la, lb)),
+            null);
+    assertThat(made.status()).as(made.body().toString()).isEqualTo(200);
+    String path = "/internal/space-reservations";
+    // 현물 50 + 30 = 80 → 됨, 같은 칸 다음 예약 1 → 넘침
+    Res r1 =
+        post(
+            SERVICE,
+            path,
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "sourceRef",
+                "PT-1",
+                "lines",
+                List.of(
+                    Map.of("locationCode", a, "sku", "E-00000001", "qty", 30, "occupiedQty", 50))),
+            null);
+    assertThat(r1.status()).as(r1.body().toString()).isEqualTo(200);
+    String rid = r1.body().path("reservationId").asString();
+    assertThat(r1.body().path("state").asString()).isEqualTo("RESERVED");
+    Res over =
+        post(
+            SERVICE,
+            path,
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "sourceRef",
+                "PT-2",
+                "lines",
+                List.of(
+                    Map.of("locationCode", a, "sku", "E-00000001", "qty", 1, "occupiedQty", 50))),
+            null);
+    assertThat(over.status()).isEqualTo(409);
+    assertThat(over.body().path("code").asString()).isEqualTo("CAPACITY_EXCEEDED");
+    // maxQty 미등록 칸은 422
+    Res cfg =
+        post(
+            SERVICE,
+            path,
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "sourceRef",
+                "PT-3",
+                "lines",
+                List.of(
+                    Map.of("locationCode", b, "sku", "E-00000001", "qty", 1, "occupiedQty", 0))),
+            null);
+    assertThat(cfg.status()).isEqualTo(422);
+    // 소비 20(재고 이동 반영분) → PARTIALLY_CONSUMED, 나머지 해제 → CONSUMED, 넘게 해제 409
+    Res c =
+        post(
+            SERVICE,
+            path + "/" + rid + "/releases",
+            key(),
+            Map.of(
+                "action",
+                "CONSUME",
+                "commitId",
+                "CMT-1",
+                "lines",
+                List.of(Map.of("locationCode", a, "qty", 20))),
+            null);
+    assertThat(c.body().path("state").asString())
+        .as(c.body().toString())
+        .isEqualTo("PARTIALLY_CONSUMED");
+    assertThat(
+            post(
+                    SERVICE,
+                    path + "/" + rid + "/releases",
+                    key(),
+                    Map.of(
+                        "action",
+                        "RELEASE",
+                        "lines",
+                        List.of(Map.of("locationCode", a, "qty", 11))),
+                    null)
+                .status())
+        .isEqualTo(409);
+    Res rel =
+        post(SERVICE, path + "/" + rid + "/releases", key(), Map.of("action", "RELEASE"), null);
+    assertThat(rel.body().path("state").asString()).isEqualTo("CONSUMED");
+    assertThat(rel.body().path("lines").get(0).path("releasedQty").asInt()).isEqualTo(10);
+    // 이제 여유가 다시 생김(현물 70 가정 + 10)
+    assertThat(
+            post(
+                    SERVICE,
+                    path,
+                    key(),
+                    Map.of(
+                        "centerId",
+                        CENTER,
+                        "sourceRef",
+                        "PT-4",
+                        "lines",
+                        List.of(
+                            Map.of(
+                                "locationCode",
+                                a,
+                                "sku",
+                                "E-00000001",
+                                "qty",
+                                10,
+                                "occupiedQty",
+                                70))),
+                    null)
+                .status())
+        .isEqualTo(200);
+    // 피킹 선반 최소·목표
+    Res bad =
+        post(
+            SERVICE,
+            "/internal/pick-face-settings",
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "items",
+                List.of(Map.of("locationCode", a, "pickFaceMinQty", 30, "pickFaceTargetQty", 20))),
+            null);
+    assertThat(bad.status()).isEqualTo(400);
+    Res set =
+        post(
+            SERVICE,
+            "/internal/pick-face-settings",
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "items",
+                List.of(Map.of("locationCode", a, "pickFaceMinQty", 24, "pickFaceTargetQty", 80))),
+            null);
+    assertThat(set.status()).as(set.body().toString()).isEqualTo(200);
+    JsonNode pf = get(SERVICE, "/internal/pick-faces?centerId=" + CENTER).body();
+    assertThat(pf.path("items").findValuesAsString("locationCode")).contains(a).doesNotContain(b);
+  }
 }

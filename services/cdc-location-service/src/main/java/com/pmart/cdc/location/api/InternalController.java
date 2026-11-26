@@ -30,8 +30,13 @@ public class InternalController implements InternalApi {
 
   private final LocationService service;
   private final PickMethodService pickMethods;
+  private final com.pmart.cdc.location.application.SpaceService space;
 
-  public InternalController(LocationService service, PickMethodService pickMethods) {
+  public InternalController(
+      LocationService service,
+      PickMethodService pickMethods,
+      com.pmart.cdc.location.application.SpaceService space) {
+    this.space = space;
     this.service = service;
     this.pickMethods = pickMethods;
   }
@@ -87,5 +92,136 @@ public class InternalController implements InternalApi {
     out.setMissing(
         body.getLocationCodes().stream().filter(c -> !found.contains(c)).distinct().toList());
     return ResponseEntity.ok(out);
+  }
+
+  // ---------- 0.7.0 공간 예약·피킹 선반 설정 ----------
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.SpaceReservation>
+      createSpaceReservation(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.location.api.generated.model.CreateSpaceReservationRequest body) {
+    var v =
+        space.reserve(
+            idempotencyKey,
+            xSourceSystem,
+            new com.pmart.cdc.location.application.SpaceService.Reserve(
+                body.getCenterId(),
+                body.getSourceRef(),
+                body.getExpiresAt() == null ? null : body.getExpiresAt().toInstant(),
+                body.getLines().stream()
+                    .map(
+                        l ->
+                            new com.pmart.cdc.location.application.SpaceService.ReserveLine(
+                                l.getLocationCode(),
+                                l.getSku(),
+                                l.getLot(),
+                                l.getQty(),
+                                l.getOccupiedQty()))
+                    .toList()));
+    return ResponseEntity.ok(reservation(v));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.SpaceReservation>
+      getSpaceReservation(String reservationId) {
+    return ResponseEntity.ok(reservation(space.get(reservationId)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.SpaceReservation>
+      releaseSpaceReservation(
+          String reservationId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.location.api.generated.model.ReleaseSpaceReservationRequest body) {
+    var v =
+        space.release(
+            idempotencyKey,
+            xSourceSystem,
+            reservationId,
+            body.getAction().getValue(),
+            body.getCommitId(),
+            body.getLines() == null
+                ? List.of()
+                : body.getLines().stream()
+                    .map(
+                        l ->
+                            new com.pmart.cdc.location.application.SpaceService.ReleaseLine(
+                                l.getLocationCode(), l.getQty()))
+                    .toList());
+    return ResponseEntity.ok(reservation(v));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.SetPickFaceSettings200Response>
+      setPickFaceSettings(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.location.api.generated.model.SetPickFaceSettingsRequest body) {
+    int n =
+        space.setPickFaces(
+            idempotencyKey,
+            xSourceSystem,
+            body.getCenterId(),
+            body.getItems().stream()
+                .map(
+                    i ->
+                        new com.pmart.cdc.location.application.SpaceService.Setting(
+                            i.getLocationCode(), i.getPickFaceMinQty(), i.getPickFaceTargetQty()))
+                .toList());
+    var out = new com.pmart.cdc.location.api.generated.model.SetPickFaceSettings200Response();
+    out.setSetCount(n);
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.ListPickFaces200Response>
+      listPickFaces(@Nullable String centerId) {
+    var rows = space.pickFaces(centerId, 5001);
+    boolean cut = rows.size() > 5000;
+    var out = new com.pmart.cdc.location.api.generated.model.ListPickFaces200Response();
+    out.setTruncated(cut);
+    out.setItems(
+        (cut ? rows.subList(0, 5000) : rows)
+            .stream()
+                .map(
+                    r ->
+                        new com.pmart.cdc.location.api.generated.model
+                                .ListPickFaces200ResponseItemsInner()
+                            .centerId(r.centerId())
+                            .locationCode(r.locationCode())
+                            .temperatureZone(r.temperatureZone())
+                            .maxQty(r.maxQty())
+                            .pickFaceMinQty(r.minQty())
+                            .pickFaceTargetQty(r.targetQty()))
+                .toList());
+    return ResponseEntity.ok(out);
+  }
+
+  static com.pmart.cdc.location.api.generated.model.SpaceReservation reservation(
+      com.pmart.cdc.location.application.SpaceService.View v) {
+    var r = new com.pmart.cdc.location.api.generated.model.SpaceReservation();
+    r.setReservationId(v.reservationId());
+    r.setCenterId(v.centerId());
+    r.setSourceRef(v.sourceRef());
+    r.setState(
+        com.pmart.cdc.location.api.generated.model.SpaceReservation.StateEnum.fromValue(v.state()));
+    r.setVersion(v.version());
+    r.setExpiresAt(v.expiresAt() == null ? null : LocationsController.time(v.expiresAt()));
+    r.setLines(
+        v.lines().stream()
+            .map(
+                l ->
+                    new com.pmart.cdc.location.api.generated.model.SpaceReservationLinesInner()
+                        .locationCode(l.locationCode())
+                        .sku(l.sku())
+                        .lot(l.lot())
+                        .reservedQty(l.reservedQty())
+                        .consumedQty(l.consumedQty())
+                        .releasedQty(l.releasedQty()))
+            .toList());
+    return r;
   }
 }

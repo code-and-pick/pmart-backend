@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.6.0
+  version: 0.7.0
   description: |
     CDC 시설 수용조건·7구간 LOC 마스터(센터-온도-구역-랙-베이-단-포지션)·상태·적치 후보·공간 용량 예약·도크 자원의 정본. (docs/architecture/service-map.md §4)
     수량은 cdc-inventory, 작업은 cdc-inbound/outbound가 정본. 공간 예약 불변식: 점유 + 미완료 예약 + 신규 ≤ 허용량.
@@ -9,6 +9,9 @@ info:
     점유(occupiedQty)는 cdc-inventory 사본을 아직 받지 않아 비운다(asOf.freshness UNAVAILABLE). 적치 후보·공간 예약·도크 예약은 아직 501.
     0.3.0(2026-11-25): 공개 경로를 `/cdcs/{cdcId}/locations…` 로 옮김 — 게이트웨이 `/api/v1/locations/**` 가 mfc-location 라우트라 겹침(PC1 R-16).
     목록의 centerId 조회 조건은 경로 cdcId 로, 등록 본문의 centerId 는 경로와 같아야 한다(400 CENTER_MISMATCH). 내부 경로는 그대로.
+    0.7.0(2026-11-26, cdc-inbound 적치·보충 — WMS CDC-F-010~013, 사가 S7 1단계): 공간 예약 `/internal/space-reservations`(만들기·조회·해제·소비) 구현 —
+      칸 행을 잠그고 현물(부르는 쪽이 cdc-inventory 에서 읽어 occupiedQty 로 준다 — 점유 정본은 재고) + 미완료 예약 + 새 예약 ≤ maxQty. 피킹 선반 최소·목표 설정 `POST /internal/pick-face-settings`
+      (시드·설정, 시뮬레이터 값)·설정된 피킹 선반 목록 `GET /internal/pick-faces`(자동 보충 감지용).
     0.6.0(2026-11-26): 칠곡 구역 글자·도크 바꿈(시뮬레이터 R-22, 사용자 2026-11-26 기사 사진 근거) — 상온 A~F·냉장 G·냉동 H(옛 A 냉동·B 냉장·C~H 상온),
       7층 오토스토어 F 61~62(옛 H), 90 DOCK 은 층마다 북쪽 벽(층 5~7 — 지하 B1 접안 없앰, 층 B1 은 이제 400 DOCK_FLOOR). 경로·모양 변화 없음. 이미 등록된 칸은 다시 검사하지 않는다(LAN 위치 전환 때 새 목록으로).
     0.5.1(2026-11-25): 칠곡 문법 넓힘(R-19, 사용자 2026-11-25) — 팔레트 랙 1단 PICK_FACE(박스 피킹면)·통로 93 바닥 레인(단 1, PICK_FACE)·7층 H 61~62 오토스토어(단 1~16·칸 1~2). 경로·모양 변화 없음.
@@ -360,44 +363,53 @@ paths:
   /internal/space-reservations:
     post:
       tags: [internal]
-      summary: '[cdc-inbound→cdc-location] 공간 용량 예약 (S7 1단계, 점유 + 미완료 예약 + 신규 ≤ 허용량) → CapacityReservationResult'
+      summary: '[cdc-inbound→cdc-location] 공간 용량 예약 (0.7.0 구현 — S7 1단계, 현물 + 미완료 예약 + 신규 ≤ 허용량)'
+      description: |
+        줄마다 그 칸 행을 잠그고(같은 칸 동시 예약은 줄 선다) `occupiedQty`(부르는 쪽이 cdc-inventory 스냅샷에서 읽은 그 칸 현물 — 품질 상태 무관 합) + 그 칸의 미완료 예약(예약 − 소비 − 해제) + qty ≤ maxQty 를 검사한다.
+        한 줄이라도 넘으면 전부 거절 409 CAPACITY_EXCEEDED(details 에 칸·남은 여유). 칸이 ACTIVE 가 아니면 409 LOCATION_NOT_ACTIVE, 없으면 404, maxQty 미등록이면 422 CONFIG_REQUIRED(0·무제한으로 대신하지 않음).
+        같은 sourceRef 는 한 번(같은 본문 = 같은 예약, 다른 본문 409). 자동 만료는 없다(expiresAt 은 기록만) — 부르는 쪽이 해제·소비한다.
       operationId: createSpaceReservation
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [sourceRef, lines]
+              required: [centerId, sourceRef, lines]
               properties:
-                sourceRef: { type: string, description: putawayTaskId / moveId }
-                expiresAt: { type: string, format: date-time, description: 미완료 시 자동 해제 시각 (미지정 시 정책값) }
+                centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                sourceRef: { type: string, maxLength: 64, description: putawayTaskId }
+                expiresAt: { type: string, format: date-time, description: 기록만(자동 해제 없음) }
                 lines:
                   type: array
                   minItems: 1
+                  maxItems: 50
                   items:
                     type: object
-                    required: [locationCode, sku, qty]
+                    required: [locationCode, sku, qty, occupiedQty]
                     properties:
                       locationCode: { $ref: '#/components/schemas/LocationCode' }
                       sku: { $ref: '_common.yaml#/components/schemas/Sku' }
                       lot: { type: string }
-                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      qty: { type: integer, minimum: 1 }
+                      occupiedQty: { type: integer, minimum: 0, description: 'cdc-inventory 의 그 칸 현물(지금) — 점유 정본은 재고' }
       responses:
         '200':
-          description: 예약 결과. resultId = reservationId
+          description: 예약
           content:
             application/json:
-              schema:
-                allOf:
-                  - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
-                  - { $ref: '#/components/schemas/SpaceReservation' }
+              schema: { $ref: '#/components/schemas/SpaceReservation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409':
-          description: IDEMPOTENCY_CONFLICT / CAPACITY_EXCEEDED / LOCATION_BLOCKED
+          description: CAPACITY_EXCEEDED / LOCATION_NOT_ACTIVE / SPACE_RESERVATION_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '422':
+          description: CONFIG_REQUIRED(maxQty 미등록)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
@@ -405,7 +417,7 @@ paths:
   /internal/space-reservations/{reservationId}:
     get:
       tags: [internal]
-      summary: 공간 예약 조회 (RESERVED/CONSUMED/RELEASED/EXPIRED)
+      summary: 공간 예약 조회 (0.7.0)
       operationId: getSpaceReservation
       parameters:
         - { name: reservationId, in: path, required: true, schema: { type: string } }
@@ -420,13 +432,15 @@ paths:
   /internal/space-reservations/{reservationId}/releases:
     post:
       tags: [internal]
-      summary: '[cdc-inbound→cdc-location] 공간 예약 해제 (전부/일부). 이동 전기 완료분은 CONSUME으로 점유 전환'
+      summary: '[cdc-inbound→cdc-location] 공간 예약 해제·소비 (0.7.0) — 이동이 반영된 만큼 CONSUME(그만큼 재고 현물이 됨), 안 쓸 만큼 RELEASE'
+      description: |
+        줄마다 그 칸의 남은 예약(예약 − 소비 − 해제) 이하(넘으면 409 OVER_RELEASE). lines 를 비우면 남은 전량. 다 쓰거나 풀면 CONSUMED(소비가 있었으면)·RELEASED, 일부면 PARTIALLY_CONSUMED.
+        같은 Idempotency-Key 는 한 번.
       operationId: releaseSpaceReservation
       parameters:
         - { name: reservationId, in: path, required: true, schema: { type: string } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
       requestBody:
         required: true
         content:
@@ -436,21 +450,99 @@ paths:
               required: [action]
               properties:
                 action: { type: string, enum: [RELEASE, CONSUME] }
-                commitId: { type: string, description: CONSUME일 때 cdc-inventory 이동 commitId }
+                commitId: { type: string, description: CONSUME일 때 cdc-inventory 이동 commitId(기록) }
                 lines:
                   type: array
-                  description: 비우면 전량
+                  description: 비우면 남은 전량
                   items:
                     type: object
-                    required: [locationCode, sku, qty]
+                    required: [locationCode, qty]
                     properties:
                       locationCode: { $ref: '#/components/schemas/LocationCode' }
-                      sku: { type: string }
-                      qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
+                      qty: { type: integer, minimum: 1 }
       responses:
-        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '200':
+          description: 바뀐 예약
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpaceReservation' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '409':
+          description: OVER_RELEASE
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/pick-face-settings:
+    post:
+      tags: [internal]
+      summary: '[시드·cdc-inbound→cdc-location] 피킹 선반 최소·목표량 설정 (0.7.0, 2,000칸까지 — 전부 또는 전무)'
+      description: |
+        PICK_FACE 칸만(아니면 400 PICK_FACE_ONLY), 목표 ≥ 최소(400 TARGET_BELOW_MIN), 둘 다 null 이면 설정 해제. 단위는 낱개(SKU 판매단위). 자동 보충(cdc-inbound)은 둘 다 있는 칸만 본다 — 없는 칸은 "설정 대기".
+      operationId: setPickFaceSettings
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [centerId, items]
+              properties:
+                centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 2000
+                  items:
+                    type: object
+                    required: [locationCode]
+                    properties:
+                      locationCode: { $ref: '#/components/schemas/LocationCode' }
+                      pickFaceMinQty: { type: [integer, 'null'], minimum: 0 }
+                      pickFaceTargetQty: { type: [integer, 'null'], minimum: 0 }
+      responses:
+        '200':
+          description: 설정한 칸 수
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setCount: { type: integer }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/pick-faces:
+    get:
+      tags: [internal]
+      summary: '[cdc-inbound→cdc-location] 최소·목표가 설정된 ACTIVE 피킹 선반 (0.7.0 — 자동 보충 감지)'
+      description: centerId 를 비우면 모든 센터. 칸 코드 순, 최대 5,000(넘으면 truncated).
+      operationId: listPickFaces
+      parameters:
+        - { name: centerId, in: query, required: false, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  truncated: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        centerId: { type: string }
+                        locationCode: { type: string }
+                        temperatureZone: { type: string }
+                        maxQty: { type: [integer, 'null'] }
+                        pickFaceMinQty: { type: integer }
+                        pickFaceTargetQty: { type: integer }
 
   /internal/dock-reservations:
     post:
@@ -601,6 +693,7 @@ components:
       type: object
       properties:
         reservationId: { type: string }
+        centerId: { type: string }
         sourceRef: { type: string }
         state: { type: string, enum: [RESERVED, PARTIALLY_CONSUMED, CONSUMED, RELEASED, EXPIRED] }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
