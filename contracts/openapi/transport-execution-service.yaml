@@ -1,110 +1,368 @@
 openapi: 3.1.0
 info:
   title: transport-execution-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    간선 운행·정차·실제 출발 사실(departureId)·인계 증빙·운행 사건·최신 ETA·비용 근거의 정본. (docs/architecture/service-map.md §6)
-    TOUT 전기는 cdc-inventory, TIN은 mfc-inventory, 품질 판정은 quality, 재배정 계획은 transport-planning, 지급은 회계.
-    실제 출발은 사람이 등록한 증빙 사실이며 GPS로 합성하지 않는다. 인계 증빙은 TIN이 아니다. 도착은 수량 증거가 아니다.
+    간선 운행·정차·실제 출발 사실(departureId)·인계 증빙·운행 예외·예상 도착의 정본. (docs/architecture/service-map.md §6)
+    TOUT 전기는 cdc-inventory(cdc-outbound 출발 검증이 부른다), TIN 은 mfc-inventory, 배차·재배정은 transport-planning, 차량·기사는 fleet.
+    실제 출발은 사람이 등록한 사실이며 상차완료로 자동 처리하지 않는다. 실시간 GPS 는 없고 이벤트 시각·위치만 남긴다(TMS D-08). 인계 증빙은 TIN 이 아니다.
+    0.2.0(2026-11-26, TMS 1단계 — 설계 docs/cdc/design/2026-11-26-tms-first-stage.md, 사용자 "TMS 2.3 에 맞춰"): 옛 0.1.0(TMS v1.1 — 출발 전 대조·비용 근거)을 바꿨다.
+      - 운행 = planning 계획완료 운송지시서의 실행(tripId = orderId). 상태 SCHEDULED → CHECKED_IN → LOADED → DEPARTED → COMPLETED / CANCELLED(출차 전만). 정차 PLANNED → ARRIVED → HANDED_OVER → DEPARTED.
+      - 출차 → cdc-outbound `POST /internal/departure-validations`(상차 스캔 = 출발 구성) + TruckActuallyDeparted. 인계 = 출고(상차 스캔) vs 인수 박스 대조 → MATCHED / MISMATCHED + 예외.
+      - 예상 도착·지연 플래그(정본 9.3 — 계획 + 30분 또는 07:30 초과). DC 백오피스 TR-2 `GET /cdcs/{cdcId}/trips`, MFC 도착 예정 `GET /mfcs/{mfcId}/inbound-trips`.
+      - 직원(OPERATOR — 자기 센터)이 기사·작업자 대신 입력한다(기사 앱 없음). 시뮬레이터는 같은 명령을 `/internal/trips/...` 로(source SIMULATED). 도크 배정·온도 이탈·운임 근거는 뒤로.
 servers:
   - url: /api/v1
 security:
   - bearerAuth: []
 tags:
-  - { name: trips, description: 운행 조회·출발 전 대조·출발·물리적 종료 }
-  - { name: stops, description: 정차 도착/하차/인계/출차 }
-  - { name: incidents, description: 운행 사건 }
-  - { name: eta, description: 최신 ETA }
-  - { name: cost, description: 비용 근거 }
-  - { name: internal, description: 서비스 간 조회 }
+  - { name: trips, description: 운행 조회·입차·상차완료·출차·복귀 }
+  - { name: stops, description: 정차 도착·인계·출발 }
+  - { name: incidents, description: 운행 예외 }
+  - { name: internal, description: 서비스 간 호출(planning·시뮬레이터) }
 
 paths:
+  /cdcs/{cdcId}/trips:
+    get:
+      tags: [trips]
+      summary: '[0.2.0] 센터 출발 운행 목록 (DC 백오피스 TR-2) — 출고일·상태'
+      description: 이 센터에서 출발하는 운행. 계획 출차 → 노선 → 온도대 순. 자기 센터 운영자만(다른 센터 403).
+      operationId: listCenterTrips
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - { name: shipDate, in: query, schema: { type: string, format: date } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/TripState' } }
+        - { name: delayed, in: query, schema: { type: boolean } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripPage' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /mfcs/{mfcId}/inbound-trips:
+    get:
+      tags: [trips]
+      summary: '[0.2.0] MFC 도착 예정 운행 (정본 18장 "MFC 도착 예정") — 그 MFC 정차가 있는 운행'
+      operationId: listMfcInboundTrips
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: mfcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: arrivalDate, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripPage' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /trips/{tripId}:
     get:
       tags: [trips]
-      summary: 운행 조회 (상태·정차·출발 사실·사건·ETA 요약)
+      summary: '[0.2.0] 운행 하나 — 정차·이벤트·예외·출발 사실'
+      description: 출발 센터 운영자 또는 정차 MFC 운영자.
       operationId: getTrip
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
       parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/TripId'
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Trip' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
-  /trips/{tripId}/pre-departure-checks:
+  /trips/{tripId}/check-ins:
     post:
       tags: [trips]
-      summary: 출발 전 실상차 대조 등록 (타 MFC 혼입·누락·봉인·구획)
-      description: 대조 결과 FAIL이면 출발 등록은 409 INVALID_STATE. 결과 조회는 GET /trips/{tripId}(preDepartureCheck).
-      operationId: recordPreDepartureCheck
+      summary: '[0.2.0] 입차 — 차량이 DC 에 들어옴 (SCHEDULED → CHECKED_IN, 출발 센터 운영자)'
+      operationId: checkInTrip
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
       parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/TripId'
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /trips/{tripId}/loading-completions:
+    post:
+      tags: [trips]
+      summary: '[0.2.0] 상차완료 — 이관요청서별 상차 스캔 (CHECKED_IN → LOADED, 정본 9.1)'
+      description: |
+        transfers = 이 운행 이관요청서마다 실은 박스(·R/T) 바코드. 운행에 없는 TRF 는 400 UNKNOWN_TRF. 계획 TRF 가 빠졌거나 lpns 가 비면 그 TRF 는 미상차(예외 NOT_LOADED)이고
+        나머지가 하나 이상이면 LOADED(미상차 TRF 는 출발 구성에서 빠진다 — 배차 담당이 다른 차량·미배차 처리, 정본 11장). 모두 빠지면 409 NOTHING_LOADED.
+        다시 보내면 마지막 스캔으로 바꾼다(출차 전만).
+      operationId: completeLoading
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/PreDepartureCheckInput' }
+            schema: { $ref: '#/components/schemas/LoadingInput' }
       responses:
-        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
+        '200': { $ref: '#/components/responses/TripOk' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-        '422':
-          description: EVIDENCE_REQUIRED (봉인·사진 누락)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
   /trips/{tripId}/departures:
     post:
       tags: [trips]
-      summary: 실제 출발 사실 등록 → TruckActuallyDeparted (departureId 발급)
+      summary: '[0.2.0] 출차 — 실제 출발 사실 departureId 발급 → cdc-outbound 출발 검증 (LOADED → DEPARTED, 정본 9.2)'
       description: |
-        운행당 실제 출발은 1회. 재등록은 같은 departureId를 돌려준다. source=SIMULATED는 훈련·리허설용이며 TOUT 전기 대상이 아니다.
-        trfCompositions는 이 출발에 실린 TRF별 구성(48/60 등)을 동결한다. 미출발 잔량은 같은 TRF로 보내지 않는다.
-      operationId: recordDeparture
+        LOADED 에서만(409 INVALID_STATE). departureId(DEP-) 한 번 — 같은 키 재전송은 같은 결과. 한 트랜잭션에 DEPARTED·출발 사실·TruckActuallyDeparted(outbox)를 남기고,
+        트랜잭션 밖에서 cdc-outbound `POST /internal/departure-validations`(trfCompositions = 상차 스캔, 키 = departureId). 결과는 outboundLinkage(ACKNOWLEDGED·FAILED·UNKNOWN_RESULT) —
+        불명·미전달이면 주기 재시도가 같은 키로 다시 보낸다(출차 사실은 취소하지 않음 — 정본 17장). 출고 확정(TOUT)은 WMS 가 한다.
+      operationId: departTrip
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
       parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/TripId'
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
       requestBody:
-        required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/DepartureInput' }
       responses:
-        '201':
-          description: 출발 사실 (기존 사실이면 동일 본문)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Departure' }
-        '409':
-          description: INVALID_STATE (대조 미통과·이미 출발) / IDEMPOTENCY_CONFLICT / VERSION_CONFLICT
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '422':
-          description: EVIDENCE_REQUIRED (evidenceRef 누락)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /trips/{tripId}/physical-ends:
+    post:
+      tags: [trips]
+      summary: '[0.2.0] DC 복귀 — 모든 정차 인계 뒤 (DEPARTED → COMPLETED, fleet 점유 해제)'
+      description: 인계 안 된 정차가 있으면 409 STOPS_OPEN. 점유 해제가 안 되면 경고만(운행은 COMPLETED).
+      operationId: endTrip
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /trips/{tripId}/stops/{stopSeq}/arrivals:
+    post:
+      tags: [stops]
+      summary: '[0.2.0] MFC 도착 (운행 DEPARTED, 정차 PLANNED → ARRIVED) — 앞 정차가 출발하지 않았으면 409 PREVIOUS_STOP_OPEN'
+      operationId: arriveAtStop
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/StopSeq'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /trips/{tripId}/stops/{stopSeq}/handovers:
+    post:
+      tags: [stops]
+      summary: '[0.2.0] 인계 — 하차 스캔으로 인계 증빙 HO- (ARRIVED → HANDED_OVER, 정본 10.2·10.3, 그 MFC 운영자)'
+      description: |
+        transfers = 그 정차 이관요청서마다 받은 박스 바코드. 출고(상차 스캔)와 비교: 모두 같으면 MATCHED, 빠짐(부족)·더 있음(초과·오배송)이 있으면 MISMATCHED +
+        예외 QTY_MISMATCH(차이 박스 목록) — 차량 출발은 막지 않는다. 그 정차에 없는 TRF 는 400 UNKNOWN_TRF. 한 번만(다시 오면 같은 본문 = 그대로, 다른 본문 409 HANDOVER_RECORDED — 정정은 뒤로).
+        인수 확정(TIN)은 MFC 가 한다 — 이 증빙은 운송 사실의 근거다.
+      operationId: recordHandover
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/StopSeq'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HandoverInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /trips/{tripId}/stops/{stopSeq}/departures:
+    post:
+      tags: [stops]
+      summary: '[0.2.0] 정차 출발 (HANDED_OVER → DEPARTED) — 인계 증빙 없이 출발할 수 없다(409 HANDOVER_REQUIRED)'
+      operationId: departStop
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '#/components/parameters/StopSeq'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /trips/{tripId}/incidents:
+    post:
+      tags: [incidents]
+      summary: '[0.2.0] 운행 예외 등록 (지연 사유·차량 고장·사고·하차 대기·온도 이탈 — 수동, 정본 11장)'
+      operationId: raiseIncident
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, description]
+              properties:
+                type: { $ref: '#/components/schemas/IncidentType' }
+                stopSeq: { type: integer }
+                description: { type: string, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /trips/{tripId}/incidents/{incidentId}/resolutions:
+    post:
+      tags: [incidents]
+      summary: '[0.2.0] 예외 해결 기록 (OPEN → RESOLVED) — 운행이 끝나도 예외는 따로 남는다'
+      operationId: resolveIncident
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - { name: incidentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resolution]
+              properties:
+                resolution: { type: string, maxLength: 500 }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/trips:
+    post:
+      tags: [internal]
+      summary: '[planning→execution] 운행 만들기 — 계획완료 운송지시서 사본 (tripId = orderId, 같은 본문 재전송은 그대로)'
+      description: 같은 tripId·다른 본문이면 SCHEDULED 일 때만 바꾸고(지시서 version 이 더 높을 때), 아니면 409 TRIP_CONFLICT.
+      operationId: createTrip
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TripInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/trips/{tripId}/cancellations:
+    post:
+      tags: [internal]
+      summary: '[planning→execution] 운행 취소 — 출차 전만 (DEPARTED 뒤 409 ALREADY_DEPARTED)'
+      operationId: cancelTrip
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /internal/trips/{tripId}/commands/{command}:
+    post:
+      tags: [internal]
+      summary: '[시뮬레이터→execution] 운행 명령 — 직원 경로와 같은 본문·규칙 (토큰 없이 X-Source-System, 칠곡 CDC-9)'
+      description: |
+        command = check-ins·loading-completions·departures·physical-ends·stops-<seq>-arrivals·stops-<seq>-handovers·stops-<seq>-departures.
+        본문은 같은 이름의 직원 경로와 같다. 출차 source 기본 SIMULATED. 게이트웨이는 `/internal/**` 을 막으므로 LAN 서비스 주소로 직접 부른다.
+      operationId: runTripCommand
+      parameters:
+        - $ref: '#/components/parameters/TripId'
+        - { name: command, in: path, required: true, schema: { type: string, pattern: '^(check-ins|loading-completions|departures|physical-ends|stops-[1-9]-(arrivals|handovers|departures))$' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { $ref: '#/components/responses/TripOk' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /internal/departures/{departureId}:
     get:
       tags: [internal]
-      summary: '[cdc-outbound/cdc-inventory/planning→execution] 실제 출발 사실 조회 (원결과 조회)'
-      operationId: getDeparture
+      summary: 출발 사실 조회 (cdc-outbound·mfc-inbound — UNKNOWN_RESULT 해소)
+      operationId: getDepartureFact
       parameters:
         - { name: departureId, in: path, required: true, schema: { type: string } }
       responses:
@@ -112,511 +370,235 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Departure' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /trips/{tripId}/stops/{stopId}/arrivals:
-    post:
-      tags: [stops]
-      summary: 정차 도착 등록 → StopArrived (수량 증거 아님)
-      operationId: recordStopArrival
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: stopId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/StopEventInput' }
-      responses:
-        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-
-  /trips/{tripId}/stops/{stopId}/unloading-starts:
-    post:
-      tags: [stops]
-      summary: 하차 시작 등록 (하차면 배정 확인)
-      operationId: recordUnloadingStart
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: stopId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/StopEventInput' }
-      responses:
-        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-
-  /trips/{tripId}/stops/{stopId}/handovers:
-    post:
-      tags: [stops]
-      summary: 인계 증빙 등록 → TransportHandoverEvidenceRecorded (TIN 아님)
-      description: 정차·TRF·LPN·수량·인계자/인수자·사진·봉인을 기록한다. 수량 차이는 discrepancies에 남기고 사건(QTY)으로 연결한다.
-      operationId: recordHandover
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: stopId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/HandoverInput' }
-      responses:
-        '201':
-          description: 인계 증빙 (handoverId 발급)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Handover' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-        '422':
-          description: EVIDENCE_REQUIRED (사진·인수자 누락)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-
-  /trips/{tripId}/stops/{stopId}/handovers/{handoverId}:
-    get:
-      tags: [stops]
-      summary: 인계 증빙 조회
-      operationId: getHandover
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: stopId, in: path, required: true, schema: { type: string } }
-        - { name: handoverId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Handover' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /trips/{tripId}/stops/{stopId}/departures:
-    post:
-      tags: [stops]
-      summary: 정차 출차 등록 (인계 기록 후에만)
-      operationId: recordStopDeparture
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: stopId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/StopEventInput' }
-      responses:
-        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409':
-          description: INVALID_STATE (인계 미기록 정차)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-
-  /trips/{tripId}/incidents:
-    post:
-      tags: [incidents]
-      summary: 운행 사건 등록 → TransportIncidentRaised (환적·재출발 자동 없음)
-      operationId: raiseTransportIncident
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/IncidentInput' }
-      responses:
-        '201':
-          description: 사건 (incidentId 발급)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Incident' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-    get:
-      tags: [incidents]
-      summary: 운행 사건 목록
-      operationId: listTransportIncidents
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: state, in: query, schema: { $ref: '#/components/schemas/IncidentState' } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/Incident' } }
-
-  /trips/{tripId}/incidents/{incidentId}:
-    get:
-      tags: [incidents]
-      summary: 운행 사건 조회
-      operationId: getTransportIncident
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: incidentId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Incident' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /trips/{tripId}/eta:
-    get:
-      tags: [eta]
-      summary: 최신 ETA 조회 (최초 약속 originalPromise 보존)
-      operationId: getTripEta
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TripEta' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /trips/{tripId}/physical-ends:
-    post:
-      tags: [trips]
-      summary: 운행 물리적 종료 등록 (마지막 정차 후 복귀) → TripPhysicallyEnded
-      description: fleet 재가용 계산 입력이 된다. 수량 의무가 남아 있으면 운행은 CLOSED가 아니라 PHYSICAL_ENDED에 머문다.
-      operationId: recordPhysicalEnd
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 간선 기사용 사용자 종류 없음(현장 담당자·운영자 기준)"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [endedAt, returnCenterId]
-              properties:
-                endedAt: { type: string, format: date-time }
-                returnCenterId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-                odometerKm: { type: number }
-                evidenceRef: { type: string }
-      responses:
-        '200': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-
-  /trips/{tripId}/cost-basis:
-    get:
-      tags: [cost]
-      summary: 비용 근거 조회 (요율 버전·대기·추가 정차; 요율 미등록이면 NOT_COMPUTABLE)
-      description: 산정 불가는 0원이 아니다. 지급 정본은 회계이며 여기서는 근거만 제공한다.
-      operationId: getTripCostBasis
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 미구현, 비용 근거는 운영자 조회로 봄"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/CostBasis' }
+              schema: { $ref: '#/components/schemas/DepartureFact' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
 components:
+  parameters:
+    CdcId: { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+    TripId: { name: tripId, in: path, required: true, schema: { type: string } }
+    StopSeq: { name: stopSeq, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 9 } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Size: { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+  responses:
+    TripOk:
+      description: 바뀐(또는 지금) 운행
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Trip' }
   schemas:
+    TempClass:
+      type: string
+      enum: [AMBIENT, CHILLED, FROZEN]
     TripState:
       type: string
-      enum: [DRAFT, VALIDATING, CONFIRMED, LOADING, READY, IN_TRANSIT, PHYSICAL_ENDED, CLOSED]
+      description: SCHEDULED(계획완료)·CHECKED_IN(입차)·LOADED(상차완료)·DEPARTED(출차완료 — 운행 중)·COMPLETED(운송완료 — 모든 정차 인계 + DC 복귀)·CANCELLED(출차 전 취소)
+      enum: [SCHEDULED, CHECKED_IN, LOADED, DEPARTED, COMPLETED, CANCELLED]
     StopState:
       type: string
-      enum: [PLANNED, ARRIVED, WAITING, UNLOADING, HANDOVER_PENDING, HANDOVER_RECORDED, DEPARTED]
-    IncidentState:
+      enum: [PLANNED, ARRIVED, HANDED_OVER, DEPARTED]
+    IncidentType:
       type: string
-      enum: [OPEN, ASSIGNED, ACTION_PENDING, RESOLVED, CLOSED]
-    StopEventInput:
+      description: NOT_LOADED(미상차 — 자동)·QTY_MISMATCH(인계 차이 — 자동)·DELAY·VEHICLE_BREAKDOWN·ACCIDENT·UNLOADING_WAIT·TEMPERATURE_EXCURSION·OTHER(수동)
+      enum: [NOT_LOADED, QTY_MISMATCH, DELAY, VEHICLE_BREAKDOWN, ACCIDENT, UNLOADING_WAIT, TEMPERATURE_EXCURSION, OTHER]
+    EventInput:
       type: object
-      required: [occurredAt]
       properties:
-        occurredAt: { type: string, format: date-time }
-        recordedBy: { type: string, description: 기사 또는 현장 담당자 식별자 }
-        location:
-          type: object
-          properties:
-            lat: { type: number }
-            lng: { type: number }
-        unloadingBayId: { type: string, description: mfc-capacity 하차면 예약 참조 }
-        evidenceRef: { type: string }
-        note: { type: string, maxLength: 500 }
-    PreDepartureCheckInput:
-      type: object
-      required: [result, checkedAt, checkedBy]
-      properties:
-        result: { type: string, enum: [PASS, FAIL] }
-        checkedAt: { type: string, format: date-time }
-        checkedBy: { type: string }
-        manifestRef: { type: string, description: TransferShipmentManifest 참조 }
-        findings:
-          type: array
-          items:
-            type: object
-            properties:
-              kind: { type: string, enum: [WRONG_MFC_MIXED, MISSING_LPN, SEAL_MISMATCH, COMPARTMENT_MISMATCH, EXTRA_LPN] }
-              lpn: { type: string }
-              trfId: { type: string }
-              detail: { type: string }
-        seals: { type: array, items: { type: object, properties: { compartmentId: { type: string }, sealNo: { type: string } } } }
-        evidenceRefs: { type: array, items: { type: string } }
-    TrfComposition:
-      type: object
-      required: [trfId, lines]
-      properties:
-        trfId: { type: string }
-        trfVersion: { type: integer }
-        lines:
-          type: array
-          items:
-            type: object
-            required: [sku, qty]
-            properties:
-              lpn: { type: string }
-              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-              lot: { type: string }
-              qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
-              compartmentId: { type: string }
-    DepartureInput:
-      type: object
-      required: [departedAt, source, vehicleId, driverId, evidenceRef, trfCompositions]
-      properties:
-        departedAt: { type: string, format: date-time }
-        source: { type: string, enum: [REAL, SIMULATED], description: GPS 추정으로 합성 금지 }
-        vehicleId: { type: string }
-        driverId: { type: string }
-        evidenceRef: { type: string, description: 발차 사진·게이트 기록 등 증빙 참조 }
-        preDepartureCheckId: { type: string }
-        trfCompositions: { type: array, minItems: 1, items: { $ref: '#/components/schemas/TrfComposition' } }
-        recordedBy: { type: string }
-    Departure:
+        at: { type: string, format: date-time, description: 일어난 시각(없으면 지금). 미래 시각 400 }
+        location: { type: string, maxLength: 120, description: 이벤트 위치(주소·좌표 문자열 — 실시간 추적 아님) }
+        temperatureC: { type: number, description: 적재함 온도 }
+    LoadingInput:
       allOf:
-        - $ref: '#/components/schemas/DepartureInput'
+        - $ref: '#/components/schemas/EventInput'
         - type: object
-          required: [departureId, tripId]
+          required: [transfers]
           properties:
-            departureId: { type: string }
-            tripId: { type: string }
-            fromCdc: { $ref: '_common.yaml#/components/schemas/CenterId' }
-            recordedAt: { type: string, format: date-time }
+            transfers:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [trfId, lpns]
+                properties:
+                  trfId: { type: string }
+                  lpns: { type: array, items: { type: string, maxLength: 64 }, description: 실은 박스(·R/T) 바코드 }
+                  rtCount: { type: integer, minimum: 0 }
+                  sealNos: { type: array, items: { type: string } }
+    DepartureInput:
+      allOf:
+        - $ref: '#/components/schemas/EventInput'
+        - type: object
+          properties:
+            source: { type: string, enum: [REAL, SIMULATED], default: REAL }
+            evidenceRef: { type: string, maxLength: 128 }
     HandoverInput:
+      allOf:
+        - $ref: '#/components/schemas/EventInput'
+        - type: object
+          required: [transfers]
+          properties:
+            receiverName: { type: string, maxLength: 30, description: 인수자 표시 이름(직원 ID 는 토큰에서) }
+            transfers:
+              type: array
+              minItems: 1
+              items:
+                type: object
+                required: [trfId, receivedLpns]
+                properties:
+                  trfId: { type: string }
+                  receivedLpns: { type: array, items: { type: string, maxLength: 64 } }
+                  damagedLpns: { type: array, items: { type: string, maxLength: 64 } }
+    TripInput:
       type: object
-      required: [trfId, handedAt, handedBy, receivedBy, lines, evidenceRef]
+      required: [tripId, orderVersion, cdcId, shipDate, routeId, tempClass, vehicleId, driverId, plannedDepartureAt, plannedReturnAt, stops]
       properties:
-        trfId: { type: string }
-        handedAt: { type: string, format: date-time }
-        handedBy: { type: string, description: 인계자(기사) }
-        receivedBy: { type: string, description: 인수자(MFC 담당) }
-        lines:
+        tripId: { type: string }
+        orderVersion: { type: integer }
+        cdcId: { type: string }
+        shipDate: { type: string, format: date }
+        routeId: { type: string }
+        tempClass: { $ref: '#/components/schemas/TempClass' }
+        vehicleId: { type: string }
+        plateNo: { type: [string, 'null'] }
+        driverId: { type: string }
+        driverName: { type: [string, 'null'] }
+        reservationId: { type: [string, 'null'] }
+        plannedLoadingStartAt: { type: string, format: date-time }
+        plannedDepartureAt: { type: string, format: date-time }
+        plannedReturnAt: { type: string, format: date-time }
+        returnMinutes: { type: integer }
+        stops:
           type: array
           minItems: 1
           items:
             type: object
-            required: [sku, qty]
+            required: [seq, mfcId, plannedArrivalAt, legMinutes, trfIds]
             properties:
-              lpn: { type: string }
-              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-              lot: { type: string }
-              qty: { type: integer, minimum: 0 }
-        seals: { type: array, items: { type: object, properties: { compartmentId: { type: string }, sealNo: { type: string }, intact: { type: boolean } } } }
-        evidenceRef: { type: string, description: 사진·서명 참조 }
-        discrepancies:
-          type: array
-          items:
-            type: object
-            properties:
-              kind: { type: string, enum: [SHORT, OVER, DAMAGED, WRONG_LPN, SEAL_BROKEN] }
-              lpn: { type: string }
-              sku: { type: string }
-              expectedQty: { type: integer }
-              actualQty: { type: integer }
-              note: { type: string }
-    Handover:
-      allOf:
-        - $ref: '#/components/schemas/HandoverInput'
-        - type: object
-          required: [handoverId, tripId, stopId]
-          properties:
-            handoverId: { type: string }
-            tripId: { type: string }
-            stopId: { type: string }
-            departureId: { type: string }
-            incidentId: { type: [string, 'null'], description: 차이가 있으면 연결된 QTY 사건 }
-            recordedAt: { type: string, format: date-time }
-    IncidentInput:
+              seq: { type: integer }
+              mfcId: { type: string }
+              plannedArrivalAt: { type: string, format: date-time }
+              plannedDepartureAt: { type: string, format: date-time }
+              legMinutes: { type: integer }
+              trfIds: { type: array, items: { type: string } }
+    Trip:
       type: object
-      required: [kind, occurredAt, reportedBy]
-      properties:
-        kind: { type: string, enum: [DELAY, BREAKDOWN, GPS_LOST, TEMP, QTY] }
-        occurredAt: { type: string, format: date-time }
-        reportedBy: { type: string }
-        stopId: { type: string }
-        trfIds: { type: array, items: { type: string } }
-        custodyLocation:
-          type: object
-          description: 화물 현 보관 위치(고장·환적 대기 시 안전 보관 근거)
-          properties:
-            kind: { type: string, enum: [ON_VEHICLE, CENTER, THIRD_PARTY, UNKNOWN] }
-            centerId: { type: string }
-            lat: { type: number }
-            lng: { type: number }
-            description: { type: string }
-        delayMinutes: { type: integer }
-        excursionId: { type: string, description: cold-chain 이탈 사건 참조 }
-        handoverId: { type: string, description: QTY 사건의 근거 인계 }
-        evidenceRef: { type: string }
-        description: { type: string, maxLength: 1000 }
-    Incident:
-      allOf:
-        - $ref: '#/components/schemas/IncidentInput'
-        - type: object
-          required: [incidentId, tripId, state]
-          properties:
-            incidentId: { type: string }
-            tripId: { type: string }
-            state: { $ref: '#/components/schemas/IncidentState' }
-            caseId: { type: [string, 'null'], description: case-service 이관 참조 }
-            resolution: { type: string }
-            raisedAt: { type: string, format: date-time }
-            resolvedAt: { type: [string, 'null'], format: date-time }
-    TripEta:
-      type: object
-      required: [tripId, asOf]
+      required: [tripId, cdcId, shipDate, routeId, tempClass, state, stops, version]
       properties:
         tripId: { type: string }
-        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+        cdcId: { type: string }
+        shipDate: { type: string, format: date }
+        routeId: { type: string }
+        tempClass: { $ref: '#/components/schemas/TempClass' }
+        vehicleId: { type: string }
+        plateNo: { type: [string, 'null'] }
+        driverId: { type: string }
+        driverName: { type: [string, 'null'], description: 표시 이름(fleet) }
+        state: { $ref: '#/components/schemas/TripState' }
+        delayed: { type: boolean, description: '어느 정차든 예상 도착 > 계획 + 30분 또는 > 07:30(플래그 — 상태 아님)' }
+        plannedLoadingStartAt: { type: string, format: date-time }
+        plannedDepartureAt: { type: string, format: date-time }
+        plannedReturnAt: { type: string, format: date-time }
+        checkedInAt: { type: [string, 'null'], format: date-time }
+        loadedAt: { type: [string, 'null'], format: date-time }
+        departedAt: { type: [string, 'null'], format: date-time }
+        endedAt: { type: [string, 'null'], format: date-time }
+        departureId: { type: [string, 'null'] }
+        outboundLinkage: { type: [string, 'null'], enum: [PENDING, ACKNOWLEDGED, FAILED, UNKNOWN_RESULT, null], description: cdc-outbound 출발 검증 전달 상태 }
+        outboundResult: { type: [string, 'null'], description: cdc-outbound 출발 검증 결과(MATCHED·PARTIALLY_MATCHED·MISMATCHED) 또는 거절 사유 }
+        trfCount: { type: integer }
+        boxCount: { type: integer, description: 상차 스캔 박스 수(상차 전이면 0) }
+        rtCount: { type: integer }
         stops:
           type: array
           items:
             type: object
             properties:
-              stopId: { type: string }
-              centerId: { type: string }
-              originalPromise: { type: string, format: date-time, description: 배정 시 최초 약속 (불변) }
-              latestEta: { type: string, format: date-time }
-              delayMinutes: { type: integer }
-              basis: { type: string, enum: [PLAN, GPS, DRIVER_REPORT, INCIDENT] }
-              matrixVersion: { type: string }
-    Stop:
-      type: object
-      properties:
-        stopId: { type: string }
-        sequence: { type: integer }
-        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        state: { $ref: '#/components/schemas/StopState' }
-        trfIds: { type: array, items: { type: string } }
-        plannedArriveAt: { type: string, format: date-time }
-        arrivedAt: { type: [string, 'null'], format: date-time }
-        unloadingStartedAt: { type: [string, 'null'], format: date-time }
-        departedAt: { type: [string, 'null'], format: date-time }
-        handoverIds: { type: array, items: { type: string } }
-    Trip:
-      type: object
-      required: [tripId, state, version]
-      properties:
-        tripId: { type: string }
-        version: { $ref: '_common.yaml#/components/schemas/Version' }
-        state: { $ref: '#/components/schemas/TripState' }
-        assignmentId: { type: string }
-        assignmentVersion: { type: integer }
-        instructionVersion: { type: integer }
-        vehicleId: { type: string }
-        driverId: { type: string }
-        fromCdc: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        preDepartureCheck:
-          type: object
-          properties:
-            checkId: { type: string }
-            result: { type: string, enum: [PASS, FAIL] }
-            checkedAt: { type: string, format: date-time }
-        departure: { $ref: '#/components/schemas/Departure' }
-        stops: { type: array, items: { $ref: '#/components/schemas/Stop' } }
-        openIncidentIds: { type: array, items: { type: string } }
-        obligations:
+              seq: { type: integer }
+              mfcId: { type: string }
+              state: { $ref: '#/components/schemas/StopState' }
+              trfIds: { type: array, items: { type: string } }
+              plannedArrivalAt: { type: string, format: date-time }
+              estimatedArrivalAt: { type: [string, 'null'], format: date-time, description: 최신 예상(계획을 덮지 않음) }
+              arrivedAt: { type: [string, 'null'], format: date-time }
+              handedOverAt: { type: [string, 'null'], format: date-time }
+              departedAt: { type: [string, 'null'], format: date-time }
+              delayed: { type: boolean }
+              handover:
+                oneOf:
+                  - type: 'null'
+                  - type: object
+                    properties:
+                      handoverId: { type: string }
+                      result: { type: string, enum: [MATCHED, MISMATCHED] }
+                      shippedBoxes: { type: integer }
+                      receivedBoxes: { type: integer }
+                      missingLpns: { type: array, items: { type: string } }
+                      extraLpns: { type: array, items: { type: string } }
+                      damagedLpns: { type: array, items: { type: string } }
+                      receiverId: { type: [string, 'null'] }
+                      receiverName: { type: [string, 'null'] }
+        transfers:
           type: array
-          description: 수량 의무 대사 상태(출발 q = 수령 r + 손실 l + 미정산 t)
           items:
             type: object
             properties:
               trfId: { type: string }
-              departedQty: { type: integer }
-              receivedQty: { type: [integer, 'null'] }
-              state: { type: string, enum: [PENDING, RECONCILED, DISCREPANCY] }
-        physicallyEndedAt: { type: [string, 'null'], format: date-time }
-        sources:
+              stopSeq: { type: integer }
+              loaded: { type: boolean }
+              lpns: { type: array, items: { type: string } }
+              rtCount: { type: [integer, 'null'] }
+        events:
           type: array
           items:
             type: object
             properties:
-              system: { type: string }
-              asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-    CostBasis:
+              at: { type: string, format: date-time }
+              type: { type: string }
+              stopSeq: { type: [integer, 'null'] }
+              location: { type: [string, 'null'] }
+              temperatureC: { type: [number, 'null'] }
+              actorId: { type: [string, 'null'] }
+              source: { type: [string, 'null'] }
+        incidents:
+          type: array
+          items:
+            type: object
+            properties:
+              incidentId: { type: string }
+              type: { $ref: '#/components/schemas/IncidentType' }
+              stopSeq: { type: [integer, 'null'] }
+              state: { type: string, enum: [OPEN, RESOLVED] }
+              description: { type: string }
+              resolution: { type: [string, 'null'] }
+              raisedAt: { type: string, format: date-time }
+              resolvedAt: { type: [string, 'null'], format: date-time }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+    TripPage:
       type: object
-      required: [tripId, state]
+      required: [items, page, size, hasNext]
       properties:
+        items: { type: array, items: { $ref: '#/components/schemas/Trip' } }
+        page: { type: integer }
+        size: { type: integer }
+        hasNext: { type: boolean }
+    DepartureFact:
+      type: object
+      properties:
+        departureId: { type: string }
         tripId: { type: string }
-        state:
-          type: string
-          description: NOT_COMPUTABLE는 요율 미등록. 0원으로 해석 금지.
-          enum: [COMPUTED, PARTIAL, NOT_COMPUTABLE]
-        rateVersion: { type: [string, 'null'] }
-        missing: { type: array, items: { type: string, enum: [BASE_RATE, WAITING_RATE, EXTRA_STOP_RATE, DISTANCE_RATE] } }
-        components:
+        vehicleId: { type: string }
+        driverId: { type: string }
+        cdcId: { type: string }
+        departedAt: { type: string, format: date-time }
+        source: { type: string, enum: [REAL, SIMULATED] }
+        trfCompositions:
           type: array
           items:
             type: object
             properties:
-              kind: { type: string, enum: [BASE, DISTANCE, WAITING, EXTRA_STOP, OVERTIME] }
-              quantity: { type: number }
-              unit: { type: string }
-              amount: { $ref: '_common.yaml#/components/schemas/Money' }
-              evidenceRef: { type: string }
-        totalAmount: { type: [integer, 'null'], description: NOT_COMPUTABLE면 null }
-        computedAt: { type: string, format: date-time }
+              trfId: { type: string }
+              mfcId: { type: string }
+              lpns: { type: array, items: { type: string } }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

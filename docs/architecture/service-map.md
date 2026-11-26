@@ -243,6 +243,8 @@
 
 ## 6. Middle-mile TMS (5)
 
+> **1단계(2026-11-26, 사용자 "planning·execution·fleet"·"TMS 2.3 에 맞춰" — 설계 `docs/cdc/design/2026-11-26-tms-first-stage.md`, 계약 0.2.0)**: transport-planning(8701 — 고정 노선 × 온도대 정규차 자동 배차·이관요청서 검증·운송지시서), transport-execution(8702 — 입차·상차·출차·정차·인계·예외·지연), fleet(8703 — 운송사·차량·기사·점유)를 cdc 세션이 만든다. 이관요청서는 cdc-outbound `transport-feed` 에서 가져오고(pull), 출차는 cdc-outbound 출발 검증을 부른다. 아래 소유 목록 중 후보 계산·S8 자원 사가·도크·하차면·운임·routing·cold-chain 은 뒤로.
+
 ### transport-planning-service `[2단계]`
 - **소유**: 운송 요청(TRF당 1건; RECEIVED/DATA_PENDING/PLAN_READY/ASSIGNED/IN_PROGRESS/OBLIGATION_PENDING/CLOSED/CANCELLED_BEFORE_DEPARTURE), 보류 사유 분류(주소 불명≠차량 부족, TIME_INFEASIBLE, MODEL_INPUT_PENDING), 직송/순회/회차 후보, 적재 계획(실차 총한도+구획별 한도 동시, 혼적·하차 접근·반입 적합성, 상위PLT/하위BOX 중복 금지), 정차 시간표(§10.1: A_i, S_i, H_i, D_i, R_i), 배정(PROPOSED→RESERVED→CONFIRMED→SUPERSEDED/CANCELLED, 버전), 지시서·수신 상태, 출발 전 변경(TMS-D06), 운송 가능성 회신(TransportFeasibility), 미편성 목록.
 - **소유하지 않음**: 보충량·승인(replenishment), 차량·기사 정본(fleet), 도로시간(routing), 실제 출발·인계(execution), 도크/하차면 정본(cdc-location/mfc-capacity), 화물 구성 정본(cdc-outbound).

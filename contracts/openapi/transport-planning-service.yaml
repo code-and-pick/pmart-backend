@@ -1,101 +1,188 @@
 openapi: 3.1.0
 info:
   title: transport-planning-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    간선(CDC→MFC) 운송 요청·후보·배정·지시서·미편성 목록의 정본. (docs/architecture/service-map.md §6)
-    차량·기사 정본은 fleet-service, 도로시간은 transport-routing-service, 실제 출발·인계 사실은 transport-execution-service,
-    도크/하차면 정본은 cdc-location/mfc-capacity, 보충량·승인은 replenishment-service. 이 서비스는 그 값들의 사본만 가진다.
-    사가 S8(자원 예약): fleet 점유 → cdc-location 도크 → mfc-capacity 하차면 → CONFIRMED. 일부 성공은 RESERVED, 이번 시도 신규 예약만 보상.
+    간선(DC→MFC) 노선 마스터·이관요청서 수신·검증·운송지시서(배차 계획)의 정본. (docs/architecture/service-map.md §6)
+    차량·기사·점유 정본은 fleet-service, 실제 입차·출차·인계는 transport-execution-service, TRF 수량·화물은 cdc-outbound·cdc-inventory. 이 서비스는 그 값의 사본만 가진다.
+    0.2.0(2026-11-26, TMS 1단계 — 설계 docs/cdc/design/2026-11-26-tms-first-stage.md, 사용자 "TMS 2.3 에 맞춰"): 옛 0.1.0(TMS v1.1 — 후보 계산·S8 자원 예약 사가·지시서)을 바꿨다.
+      - 노선(RT-)·노선 × 온도대 정규차 계약 → 출고일마다 운송지시서(TO-) 자동 생성(정본 7.1) → 수동 요청서 이동(7.3 의 1·2단계) → 계획완료(fleet 점유 + execution 운행) / 결행 / 취소.
+      - 이관요청서는 cdc-outbound `GET /internal/transport-feed` 에서 가져온다(pull — cdc-outbound 가 TMS 를 부르지 않는다). 검증 V1~V8(정본 5.2), 온도대 하나(D-06).
+      - 용차·자동 잔량 배분·OR-Tools 보조·도크 예약·운임은 뒤로. 칠곡은 용차 없음(CDC-8) — 용량을 넘으면 플래그만.
 servers:
   - url: /api/v1
 security:
   - bearerAuth: []
 tags:
-  - { name: transport-requests, description: 운송 요청(TRF당 1건) }
-  - { name: plan-candidates, description: 직송/순회/회차 후보 계산 }
-  - { name: assignments, description: 배정(S8 자원 예약) 및 출발 전 변경 }
-  - { name: instructions, description: 기사 지시서 }
-  - { name: unplanned, description: 미편성 목록 }
-  - { name: internal, description: 서비스 간 호출(서비스 토큰) }
+  - { name: routes, description: 고정 노선과 정규차 계약 }
+  - { name: transport-requests, description: 이관요청서(TRF) 수신·검증 }
+  - { name: transport-orders, description: 운송지시서(배차) }
+  - { name: internal, description: 서비스 간 호출 }
 
 paths:
-  /internal/transport-requests:
-    post:
-      tags: [internal]
-      summary: '[replenishment→planning] 운송 요청 접수 (TransferApproved 기반, TMS-D01)'
-      description: |
-        trfId + version이 멱등 키 역할을 한다. 같은 trfId·같은 version·다른 본문은 409 IDEMPOTENCY_CONFLICT.
-        접수 결과 state는 RECEIVED(접수만) / DATA_PENDING(missing[]에 부족 입력) / PLAN_READY / TIME_INFEASIBLE(dueAt 내 도달 불가 확정).
-        ACCEPTED는 "요청 접수"이지 운송 편성 성공이 아니다.
-      operationId: receiveTransportRequest
+  /cdcs/{cdcId}/routes:
+    get:
+      tags: [routes]
+      summary: '[0.2.0] 노선 목록 — 노선 ID 순, 정차·정규차 포함'
+      operationId: listRoutes
+      x-pmart-user-types: [OPERATOR]
       parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - { name: active, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Route' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [routes]
+      summary: '[0.2.0] 노선 등록 (CDC_MANAGER) — 정차 1~3곳(멀티드롭 최대 3 — 정본 7.4)'
+      description: |
+        정차 순서 = 방문 순서. 시각 검증(정본 3.3): 첫 정차 계획 도착 = 출차 + 첫 구간 분, 다음 정차 = 앞 정차 도착 + 하차 30분 + 구간 분.
+        마지막 정차 도착이 07:30(Asia/Seoul, 출고 다음 날)을 넘으면 400 ROUTE_TIME_INFEASIBLE. 같은 MFC 가 살아 있는 다른 노선에 있으면 409 MFC_ALREADY_ROUTED.
+      operationId: createRoute
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/TransportRequestInput' }
+            schema: { $ref: '#/components/schemas/RouteInput' }
       responses:
-        '202':
-          description: 접수 결과 (state·missing 포함)
+        '201':
+          description: 등록됨
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TransportRequestReceipt' }
+              schema: { $ref: '#/components/schemas/Route' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
-        '409':
-          description: IDEMPOTENCY_CONFLICT (같은 trfId·version·다른 본문) / INVALID_STATE (출발 후 변경)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
-  /transport-requests/{transportRequestId}:
+  /cdcs/{cdcId}/routes/{routeId}:
+    get:
+      tags: [routes]
+      summary: '[0.2.0] 노선 하나'
+      operationId: getRoute
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - { name: routeId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/routes/{routeId}/regular-vehicles:
+    post:
+      tags: [routes]
+      summary: '[0.2.0] 노선 × 온도대 정규차·기본 기사 지정 (CDC_MANAGER) — 이미 있으면 바꿈'
+      description: |
+        fleet 에서 차량(REGULAR·사용 중·온도대 일치 — 아니면 409 VEHICLE_NOT_ELIGIBLE)과 기사(사용 중)를 확인하고 최대 R/T·중량 사본을 둔다. fleet 이 안 되면 503.
+        이미 만든 운송지시서는 바뀌지 않는다(다음 생성부터).
+      operationId: setRegularVehicle
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - { name: routeId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tempClass, vehicleId, driverId]
+              properties:
+                tempClass: { $ref: '#/components/schemas/TempClass' }
+                vehicleId: { type: string }
+                driverId: { type: string }
+      responses:
+        '200':
+          description: 바뀐 노선
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /cdcs/{cdcId}/transport-requests:
     get:
       tags: [transport-requests]
-      summary: 운송 요청 조회 (상태·보류 사유·현재 배정)
+      summary: '[0.2.0] 이관요청서 목록 — 잔여 물량 화면(state=HELD·ACCEPTED)'
+      description: 출고일·상태·MFC 로 거른다. 기한(dueAt) 빠른 순. 보류·반려도 사유와 함께 그대로 보인다(정본 5.2 "숨기지 않음").
+      operationId: listTransportRequests
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - { name: shipDate, in: query, schema: { type: string, format: date } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/TransportRequestState' } }
+        - { name: mfcId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TransportRequest' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/transport-requests/{trfId}:
+    get:
+      tags: [transport-requests]
+      summary: '[0.2.0] 이관요청서 하나'
       operationId: getTransportRequest
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
-        - { name: transportRequestId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CdcId'
+        - { name: trfId, in: path, required: true, schema: { type: string } }
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TransportRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
-  /internal/transport-feasibility:
-    get:
-      tags: [internal]
-      summary: '[replenishment→planning] 운송 가능성 회신 (TransportFeasibility)'
-      description: feasible=false는 "현재 사본 기준 불가"이며 차량 부족·주소 불명·시간 불가를 reasonCode로 구분한다.
-      operationId: getTransportFeasibility
-      parameters:
-        - { name: trfId, in: query, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TransportFeasibility' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /plan-candidates:
+  /cdcs/{cdcId}/transport-orders/generations:
     post:
-      tags: [plan-candidates]
-      summary: 운송 후보 계산 (직송/순회/회차; routing 후보 계산 호출)
+      tags: [transport-orders]
+      summary: '[0.2.0] 출고일 배차 생성 — TRF 가져오기·검증 → 노선 × 온도대 운송지시서(계획중) (정본 7.1)'
       description: |
-        계산 결과는 정본 변경이 아니다. 채택은 POST /assignments. 편성 불가 요청은 unplanned[]에 사유와 함께 돌려준다.
-        적재 계획 제약 — 실차 총한도+구획별 한도 동시, 혼적·하차 접근·반입 적합성, 상위PLT/하위BOX 중복 금지.
-      operationId: computePlanCandidates
+        1) cdc-outbound `GET /internal/transport-feed`(dueAt 이 (D 12:00, D+1 12:00] Asia/Seoul)에서 TRF 를 읽어 이관요청서를 만들거나 새 버전을 반영(V4·V5 — 출차 뒤 새 버전은 반려).
+        2) 검증(정본 5.2): V1 필수값·V2 노선에 든 MFC(없으면 HELD NO_ROUTE)·V6 할당(ALLOCATED 수용, PARTIALLY_ALLOCATED 할당량만, 전·실패 HELD ALLOCATION_PENDING, 취소 EXCLUDED)·
+           D-06 온도대 하나(둘 이상 HELD MIXED_TEMPERATURE, 아직 모름 HELD TEMP_UNKNOWN)·V8 R/T > 그 온도대 정규차 최대 HELD OVER_VEHICLE_CAPACITY(R/T 카운팅 전이면 미룸)·V7 21:30 뒤 수신은 lateReceipt 표시만.
+        3) 살아 있는 노선 × 온도대마다 운송지시서가 없으면 만든다(정규차·기본 기사 사본, 계획 시각 = 노선 시각). 정규차가 없는 노선·온도대는 만들지 않고 unplannedReasons 에 NO_REGULAR_VEHICLE.
+        4) 수용 요청서를 그 MFC 노선·온도대의 계획중 지시서에 연결(이미 연결된 것은 그대로). 물량 0 지시서는 cancelCandidate. 적재 초과면 OVER_CAPACITY 플래그.
+        다시 부르면 새·바뀐 TRF 만 반영한다(계획완료 뒤 지시서는 건드리지 않고, 새 TRF 는 HELD ORDER_CLOSED). cdc-outbound 가 안 되면 503(아무것도 바꾸지 않음).
+      operationId: generateTransportOrders
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
+        - $ref: '#/components/parameters/CdcId'
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
       requestBody:
@@ -104,103 +191,92 @@ paths:
           application/json:
             schema:
               type: object
-              required: [transportRequestIds]
+              required: [shipDate]
               properties:
-                transportRequestIds: { type: array, minItems: 1, items: { type: string } }
-                planDate: { type: string, format: date, description: Asia/Seoul 기준 운행일 }
-                strategies:
-                  type: array
-                  items: { type: string, enum: [DIRECT, MULTI_STOP, WAVE] }
-                timeLimitSec: { type: integer, minimum: 1, maximum: 600 }
+                shipDate: { type: string, format: date, description: 출고일 D(Asia/Seoul) }
       responses:
         '200':
-          description: 후보 집합
+          description: 생성 결과
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PlanCandidateSet' }
-        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
-        '422': { $ref: '_common.yaml#/components/responses/UnprocessableConfig' }
+              schema:
+                type: object
+                properties:
+                  shipDate: { type: string, format: date }
+                  orders: { type: array, items: { $ref: '#/components/schemas/TransportOrder' } }
+                  requests:
+                    type: object
+                    description: 이번 호출에서 상태별 요청서 수
+                    additionalProperties: { type: integer }
+                  unplannedReasons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        routeId: { type: string }
+                        tempClass: { $ref: '#/components/schemas/TempClass' }
+                        reason: { type: string }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
-  /plan-candidates/{candidateSetId}:
+  /cdcs/{cdcId}/transport-orders:
     get:
-      tags: [plan-candidates]
-      summary: 후보 집합 조회 (계산 요청의 짝 조회)
-      operationId: getPlanCandidateSet
+      tags: [transport-orders]
+      summary: '[0.2.0] 운송지시서 목록 — 배차 현황(노선 × 온도대·상태·적재율)'
+      operationId: listTransportOrders
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
-        - { name: candidateSetId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CdcId'
+        - { name: shipDate, in: query, schema: { type: string, format: date } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/TransportOrderState' } }
+        - { name: routeId, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: 출고일 → 계획 출차 → 노선 → 온도대 순
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/TransportOrder' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/transport-orders/{orderId}:
+    get:
+      tags: [transport-orders]
+      summary: '[0.2.0] 운송지시서 하나 — 정차·연결 요청서·변경 이력'
+      operationId: getTransportOrder
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - $ref: '#/components/parameters/OrderId'
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/PlanCandidateSet' }
+              schema: { $ref: '#/components/schemas/TransportOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
-  /assignments:
+  /cdcs/{cdcId}/transport-orders/{orderId}/request-moves:
     post:
-      tags: [assignments]
-      summary: 후보 채택 → 배정 생성 및 S8 자원 예약 시작
+      tags: [transport-orders]
+      summary: '[0.2.0] 요청서 옮기기 — 이 계획중 지시서의 요청서를 같은 온도대 다른 계획중 지시서로 (정본 7.3 의 1·2단계, 수동)'
       description: |
-        S8 순서 — fleet 차량·기사 점유 → cdc-location 도크 → mfc-capacity 하차면. 전부 성공 시 CONFIRMED, 일부 성공은 RESERVED로 머무르며
-        이번 시도에서 새로 잡은 예약만 보상한다. 응답 ACCEPTED는 배정 확정이 아니다. 진행은 GET /assignments/{assignmentId}.
-      operationId: createAssignment
+        둘 다 PLANNING 이고 같은 출고일·온도대여야 한다(409 INVALID_STATE·TEMP_MISMATCH). 받는 지시서에 그 MFC 정차가 없으면 끝에 더한다 — 정차 3곳을 넘으면 409 TOO_MANY_STOPS,
+        시각 검증(07:30)을 넘으면 409 ROUTE_TIME_INFEASIBLE. 받는 쪽 적재가 넘으면 OVER_CAPACITY 플래그(막지 않음). 두 지시서 version +1.
+      operationId: moveTransportRequest
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [candidateSetId, candidateId]
-              properties:
-                candidateSetId: { type: string }
-                candidateId: { type: string }
-                adoptedBy: { type: string, description: 운영자 또는 자동 편성기 식별자 }
-      responses:
-        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409':
-          description: INVALID_STATE (후보 만료·이미 배정됨) / IDEMPOTENCY_CONFLICT
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
-
-  /assignments/{assignmentId}:
-    get:
-      tags: [assignments]
-      summary: 배정 조회 (상태·버전·자원 예약별 결과)
-      operationId: getAssignment
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
-      parameters:
-        - { name: assignmentId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Assignment' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /assignments/{assignmentId}/changes:
-    post:
-      tags: [assignments]
-      summary: 출발 전 배정 변경 (TMS-D06; 실제 출발 사실 선확인)
-      description: |
-        execution의 실제 출발(departureId)이 존재하면 409 INVALID_STATE. 출발 여부 불명이면 UNKNOWN_RESULT로 보류하고 원결과 조회로 해소한다.
-        변경 성공 시 이전 배정 버전은 SUPERSEDED, 이전 지시서 버전은 무효.
-      operationId: requestAssignmentChange
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
-      parameters:
-        - { name: assignmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '#/components/parameters/CdcId'
+        - $ref: '#/components/parameters/OrderId'
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
         - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
@@ -210,296 +286,290 @@ paths:
           application/json:
             schema:
               type: object
-              required: [changeType, reason]
+              required: [trfId, toOrderId]
               properties:
-                changeType: { type: string, enum: [REPLACE_VEHICLE, REPLACE_DRIVER, RESCHEDULE, REMOVE_STOP, ADD_STOP, CANCEL] }
-                reason: { type: string, maxLength: 500 }
-                newCandidateId: { type: string }
-                newVehicleId: { type: string }
-                newDriverId: { type: string }
-                newPlannedDepartAt: { type: string, format: date-time }
-      responses:
-        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409':
-          description: INVALID_STATE (실제 출발 이후) / VERSION_CONFLICT
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
-
-  /assignments/{assignmentId}/changes/{requestId}:
-    get:
-      tags: [assignments]
-      summary: 배정 변경 요청 결과 조회
-      operationId: getAssignmentChange
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
-      parameters:
-        - { name: assignmentId, in: path, required: true, schema: { type: string } }
-        - { name: requestId, in: path, required: true, schema: { type: string } }
+                trfId: { type: string }
+                toOrderId: { type: string }
+                reason: { type: string, maxLength: 300 }
       responses:
         '200':
-          description: OK
+          description: 받는 지시서
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  requestId: { type: string }
-                  state: { type: string, enum: [PENDING, APPLIED, REJECTED, UNKNOWN] }
-                  reason: { type: string }
-                  newAssignmentVersion: { type: integer }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /trips/{tripId}/instructions:
-    get:
-      tags: [instructions]
-      summary: 기사 지시서 조회 (최신 버전만 유효; SUPERSEDED 버전은 무효)
-      operationId: getTripInstructions
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 간선기사는 사용자 종류가 없음(RIDER 는 배송 라이더)이라 운영자 조회로 둠"
-      parameters:
-        - { name: tripId, in: path, required: true, schema: { type: string } }
-        - { name: version, in: query, schema: { type: integer }, description: 생략 시 최신 }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/TripInstruction' }
+              schema: { $ref: '#/components/schemas/TransportOrder' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
-  /unplanned:
-    get:
-      tags: [unplanned]
-      summary: 미편성 운송 요청 목록 (일자별, 사유 분류)
-      operationId: listUnplanned
+  /cdcs/{cdcId}/transport-orders/{orderId}/confirmations:
+    post:
+      tags: [transport-orders]
+      summary: '[0.2.0] 계획완료 — 차량·기사 확정(fleet 점유) → execution 운행 만들기 (정본 7.5)'
+      description: |
+        PLANNING 에서만, 연결 요청서가 하나 이상, OVER_CAPACITY 아님(409 OVER_CAPACITY — 용차 없음, 요청서를 옮기거나 WMS 가 나눠야 함).
+        vehicleId·driverId 를 주면 바꾼다(차량은 같은 온도대·최대 R/T·중량이 지금 적재 이상 — 409 VEHICLE_NOT_ELIGIBLE). 트랜잭션 밖에서:
+        fleet `POST /internal/reservations`(창 = 계획 상차 시작 ~ 계획 복귀, purposeRef = orderId — 겹치면 409 RESOURCE_OCCUPIED 그대로) → CONFIRMING →
+        execution `POST /internal/trips`(tripId = orderId) → DISPATCHED, 요청서 ASSIGNED. execution 이 불명이면 CONFIRMING 으로 남고 같은 요청을 다시 보내면 이어서 한다(같은 키).
+      operationId: confirmTransportOrder
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 서비스 코드 없음, 센터·운송 운영 업무라 직원 화면용"
       parameters:
-        - { name: date, in: query, required: true, schema: { type: string, format: date } }
-        - { name: fromCdc, in: query, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/PageSize'
-        - $ref: '_common.yaml#/components/parameters/PageCursor'
+        - $ref: '#/components/parameters/CdcId'
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vehicleId: { type: string }
+                driverId: { type: string }
       responses:
         '200':
-          description: OK
+          description: 계획완료된 지시서(DISPATCHED) 또는 CONFIRMING(execution 불명)
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-                  items: { type: array, items: { $ref: '#/components/schemas/UnplannedItem' } }
-                  page: { $ref: '_common.yaml#/components/schemas/Page' }
+              schema: { $ref: '#/components/schemas/TransportOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /cdcs/{cdcId}/transport-orders/{orderId}/skips:
+    post:
+      tags: [transport-orders]
+      summary: '[0.2.0] 결행 — 운행하지 않음 (PLANNING, 연결 요청서 없을 때만 — 있으면 409 HAS_REQUESTS)'
+      operationId: skipTransportOrder
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 결행된 지시서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cdcs/{cdcId}/transport-orders/{orderId}/cancellations:
+    post:
+      tags: [transport-orders]
+      summary: '[0.2.0] 취소 — 출차 전만 (정본 11.1)'
+      description: |
+        PLANNING 이면 바로 CANCELLED. DISPATCHED 면 execution `POST /internal/trips/{tripId}/cancellations`(출차 뒤면 409 ALREADY_DEPARTED 그대로) → fleet 점유 해제 → CANCELLED.
+        연결 요청서는 ACCEPTED 로 돌아가 잔여 물량에 다시 보인다.
+      operationId: cancelTransportOrder
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 취소된 지시서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportOrder' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
+
+  /internal/transport-orders/{orderId}/trip-updates:
+    post:
+      tags: [internal]
+      summary: '[execution→planning] 운행 상태 사본 — 출차·운송완료를 지시서·요청서에 적는다 (멱등, 낮은 tripVersion 무시)'
+      description: DEPARTED 면 요청서 DEPARTED, COMPLETED 면 정차별 인계 결과로 요청서 HANDED_OVER. 지시서 상태는 DISPATCHED 그대로(tripState 사본만).
+      operationId: recordTripUpdate
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tripState, tripVersion, at]
+              properties:
+                tripState: { type: string }
+                tripVersion: { type: integer }
+                at: { type: string, format: date-time }
+                handedOverTrfIds: { type: array, items: { type: string } }
+      responses:
+        '204': { description: 반영함(또는 이미 반영) }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
 components:
+  parameters:
+    CdcId: { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+    OrderId: { name: orderId, in: path, required: true, schema: { type: string } }
+    Page: { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+    Size: { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
   schemas:
+    TempClass:
+      type: string
+      enum: [AMBIENT, CHILLED, FROZEN]
+    RouteStopInput:
+      type: object
+      required: [mfcId, legMinutes]
+      properties:
+        mfcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+        legMinutes: { type: integer, minimum: 1, maximum: 900, description: '앞 지점(첫 정차는 DC)에서 이 정차까지 주행 분 [가정 — 실측 행렬은 routing 단계]' }
+    RouteInput:
+      type: object
+      required: [routeId, name, departureTime, stops, returnMinutes]
+      properties:
+        routeId: { type: string, pattern: '^RT-[0-9]{2,3}$' }
+        name: { type: string, maxLength: 60 }
+        departureTime: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', description: '계획 출차(Asia/Seoul, 출고일 D — 23:00 이전이면 D, 00:00~ 이면 D+1). 상차 시작은 30분 전' }
+        stops: { type: array, minItems: 1, maxItems: 3, items: { $ref: '#/components/schemas/RouteStopInput' } }
+        returnMinutes: { type: integer, minimum: 1, maximum: 900, description: 마지막 정차 → DC 복귀 주행 분 }
+    Route:
+      type: object
+      required: [routeId, cdcId, name, departureTime, stops, returnMinutes, active, regularVehicles]
+      properties:
+        routeId: { type: string }
+        cdcId: { type: string }
+        name: { type: string }
+        departureTime: { type: string }
+        returnMinutes: { type: integer }
+        active: { type: boolean }
+        stops:
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              mfcId: { type: string }
+              legMinutes: { type: integer }
+              plannedArrivalOffsetMinutes: { type: integer, description: 출차부터 이 정차 도착까지 분(하차 30분 포함 계산) }
+        regularVehicles:
+          type: array
+          items:
+            type: object
+            properties:
+              tempClass: { $ref: '#/components/schemas/TempClass' }
+              vehicleId: { type: string }
+              driverId: { type: string }
+              maxRt: { type: integer }
+              maxWeightKg: { type: integer }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
     TransportRequestState:
       type: string
-      enum: [RECEIVED, DATA_PENDING, PLAN_READY, TIME_INFEASIBLE, ASSIGNED, IN_PROGRESS, OBLIGATION_PENDING, CLOSED, CANCELLED_BEFORE_DEPARTURE]
-    HoldReasonCode:
-      type: string
-      description: 보류 사유 분류. 주소 불명과 차량 부족은 구분한다.
-      enum: [ADDRESS_UNKNOWN, NO_VEHICLE, NO_DRIVER, NO_DOCK, NO_UNLOADING_BAY, TIME_INFEASIBLE, MODEL_INPUT_PENDING, CAPACITY_EXCEEDED, TEMP_CLASS_UNSUPPORTED, ACCESS_RESTRICTED]
-    CargoLine:
-      type: object
-      required: [sku, qty]
-      properties:
-        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-        qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
-        tempClass: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
-        handlingUnit: { type: string, enum: [PLT, BOX], description: 상위PLT/하위BOX 중복 계상 금지 }
-    ExpectedCargo:
-      type: object
-      properties:
-        weightKg: { type: number, minimum: 0 }
-        volumeM3: { type: number, minimum: 0 }
-        palletCount: { type: integer, minimum: 0 }
-        boxCount: { type: integer, minimum: 0 }
-        tempClasses: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
-    TransportRequestInput:
-      type: object
-      required: [trfId, version, fromCdc, toMfc, lines, deadlineMeaning, dueAt]
-      properties:
-        trfId: { type: string }
-        version: { $ref: '_common.yaml#/components/schemas/Version' }
-        fromCdc: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        toMfc: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        lines: { type: array, minItems: 1, items: { $ref: '#/components/schemas/CargoLine' } }
-        deadlineMeaning:
-          type: string
-          description: dueAt의 의미. ARRIVAL=MFC 도착 기한, READY_FOR_SALE=사용준비 완료 기한.
-          enum: [ARRIVAL, READY_FOR_SALE]
-        dueAt: { type: string, format: date-time }
-        expectedCargo: { $ref: '#/components/schemas/ExpectedCargo' }
-        approvalRef: { type: string, description: 사업승인 참조(approval-service) }
-    TransportRequestReceipt:
-      type: object
-      required: [transportRequestId, trfId, version, state]
-      properties:
-        transportRequestId: { type: string }
-        trfId: { type: string }
-        version: { type: integer }
-        state: { $ref: '#/components/schemas/TransportRequestState' }
-        missing:
-          type: array
-          description: DATA_PENDING일 때 부족한 입력 항목
-          items: { type: string, enum: [DESTINATION_ADDRESS, DESTINATION_COORDINATES, RECEIVING_WINDOW, TEMP_CLASS, CARGO_DIMENSIONS, ROAD_MATRIX, VEHICLE_CLASS] }
-        holdReasons: { type: array, items: { $ref: '#/components/schemas/HoldReasonCode' } }
+      description: RECEIVED(검증 전 짧은 상태)·ACCEPTED(배차 대기)·HELD(보류)·REJECTED(반려)·EXCLUDED(제외 — 취소)·ASSIGNED(계획완료 지시서)·DEPARTED·HANDED_OVER
+      enum: [RECEIVED, ACCEPTED, HELD, REJECTED, EXCLUDED, ASSIGNED, DEPARTED, HANDED_OVER]
     TransportRequest:
-      allOf:
-        - $ref: '#/components/schemas/TransportRequestReceipt'
-        - type: object
-          properties:
-            fromCdc: { type: string }
-            toMfc: { type: string }
-            dueAt: { type: string, format: date-time }
-            deadlineMeaning: { type: string }
-            lines: { type: array, items: { $ref: '#/components/schemas/CargoLine' } }
-            currentAssignmentId: { type: [string, 'null'] }
-            tripId: { type: [string, 'null'] }
-            departureId: { type: [string, 'null'], description: execution 실제 출발 사실 사본 }
-            sources:
-              type: array
-              items:
-                type: object
-                properties:
-                  system: { type: string }
-                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-    TransportFeasibility:
       type: object
-      required: [trfId, feasible, asOf]
+      required: [trfId, trfVersion, cdcId, mfcId, shipDate, state]
       properties:
         trfId: { type: string }
-        feasible: { type: boolean }
-        reasonCode: { $ref: '#/components/schemas/HoldReasonCode' }
-        candidateRuns:
-          type: array
-          items:
-            type: object
-            properties:
-              plannedDepartAt: { type: string, format: date-time }
-              plannedArriveAt: { type: string, format: date-time }
-              vehicleClass: { type: string }
-              strategy: { type: string, enum: [DIRECT, MULTI_STOP, WAVE] }
-        capacityLimit:
-          type: object
-          description: 현재 사본 기준 운송 가능 상한
-          properties:
-            weightKg: { type: number }
-            volumeM3: { type: number }
-            palletCount: { type: integer }
-        earliestReadyAt: { type: string, format: date-time }
-        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-    StopSchedule:
-      type: object
-      description: "§10.1 정차 시간표: A=도착, S=하차 시작, H=인계, D=출차, R=복귀"
-      properties:
-        stopId: { type: string }
-        centerId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        sequence: { type: integer }
-        arriveAt: { type: string, format: date-time }
-        unloadStartAt: { type: string, format: date-time }
-        handoverAt: { type: string, format: date-time }
-        departAt: { type: string, format: date-time }
-        receivingWindow:
-          type: object
-          properties:
-            start: { type: string, format: date-time }
-            end: { type: string, format: date-time }
-        trfIds: { type: array, items: { type: string } }
-    LoadPlan:
-      type: object
-      properties:
-        totalWeightKg: { type: number }
-        totalVolumeM3: { type: number }
-        compartments:
-          type: array
-          items:
-            type: object
-            properties:
-              compartmentId: { type: string }
-              tempClass: { type: string }
-              weightKg: { type: number }
-              volumeM3: { type: number }
-              trfIds: { type: array, items: { type: string } }
-    PlanCandidate:
-      type: object
-      required: [candidateId, strategy, transportRequestIds]
-      properties:
-        candidateId: { type: string }
-        strategy: { type: string, enum: [DIRECT, MULTI_STOP, WAVE] }
-        transportRequestIds: { type: array, items: { type: string } }
-        vehicleId: { type: string }
-        driverId: { type: string }
-        vehicleClass: { type: string }
-        plannedDepartAt: { type: string, format: date-time }
-        returnAt: { type: string, format: date-time }
-        stops: { type: array, items: { $ref: '#/components/schemas/StopSchedule' } }
-        loadPlan: { $ref: '#/components/schemas/LoadPlan' }
-        routingResultId: { type: string }
-        matrixVersion: { type: string }
-        expiresAt: { type: string, format: date-time, description: 후보 유효 시한(이후 채택 불가) }
-    UnplannedItem:
-      type: object
-      properties:
-        transportRequestId: { type: string }
-        trfId: { type: string }
-        toMfc: { type: string }
+        trfNumber: { type: [string, 'null'], description: cdc-outbound 화면 번호 }
+        trfVersion: { type: integer }
+        cdcId: { type: string }
+        mfcId: { type: string }
+        shipDate: { type: string, format: date }
         dueAt: { type: string, format: date-time }
-        reasons: { type: array, items: { $ref: '#/components/schemas/HoldReasonCode' } }
-        missing: { type: array, items: { type: string } }
-    PlanCandidateSet:
+        tempClass: { oneOf: [ { $ref: '#/components/schemas/TempClass' }, { type: 'null' } ], description: 온도대가 하나일 때만(둘 이상이면 null + HELD MIXED_TEMPERATURE) }
+        tempClasses: { type: array, items: { $ref: '#/components/schemas/TempClass' } }
+        allocationState: { type: string, description: cdc-outbound TRF 상태 사본 }
+        approvedQty: { type: integer }
+        acceptedQty: { type: integer, description: 수용 수량 — 부분할당이면 할당량(V6) }
+        boxCount: { type: integer }
+        rtCount: { type: [integer, 'null'], description: 'R/T 수(cdc-outbound RT LPN — 22:00 카운팅 전이면 null, 그동안 V8·적재 초과 검사는 미룬다)' }
+        weightKg: { type: number }
+        state: { $ref: '#/components/schemas/TransportRequestState' }
+        reason: { type: [string, 'null'], description: '보류·반려 사유: NO_ROUTE·ALLOCATION_PENDING·MIXED_TEMPERATURE·TEMP_UNKNOWN·OVER_VEHICLE_CAPACITY·ORDER_CLOSED·MISSING_FIELDS·VERSION_AFTER_DEPARTURE·WRONG_ORIGIN' }
+        lateReceipt: { type: boolean, description: 'V7 — 출고일 21:30 뒤 처음 받음(이월 판단은 배차 담당)' }
+        orderId: { type: [string, 'null'] }
+        receivedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TransportOrderState:
+      type: string
+      description: PLANNING(계획중)·CONFIRMING(계획완료 진행 중 — execution 응답 대기)·DISPATCHED(계획완료 → 운행으로 넘김)·SKIPPED(결행)·CANCELLED
+      enum: [PLANNING, CONFIRMING, DISPATCHED, SKIPPED, CANCELLED]
+    TransportOrder:
       type: object
-      required: [candidateSetId, state]
+      required: [orderId, cdcId, shipDate, routeId, tempClass, state, version]
       properties:
-        candidateSetId: { type: string }
-        state: { type: string, enum: [COMPUTING, READY, PARTIAL, NO_SOLUTION, FAILED] }
-        routingState: { type: string, enum: [FOUND, NO_SOLUTION, TIME_LIMIT, INFEASIBLE, MODEL_INPUT_PENDING] }
-        candidates: { type: array, items: { $ref: '#/components/schemas/PlanCandidate' } }
-        unplanned: { type: array, items: { $ref: '#/components/schemas/UnplannedItem' } }
-        computedAt: { type: string, format: date-time }
-    ResourceReservation:
-      type: object
-      properties:
-        kind: { type: string, enum: [VEHICLE, DRIVER, CDC_DOCK, MFC_UNLOADING_BAY] }
-        ownerService: { type: string, description: fleet-service / cdc-location-service / mfc-capacity-service }
-        reservationId: { type: [string, 'null'] }
-        state: { type: string, enum: [NOT_REQUESTED, REQUESTED, HELD, FAILED, RELEASED, UNKNOWN] }
-        createdThisAttempt: { type: boolean, description: true인 예약만 보상 대상 }
-        asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-    Assignment:
-      type: object
-      required: [assignmentId, assignmentVersion, state]
-      properties:
-        assignmentId: { type: string }
-        assignmentVersion: { $ref: '_common.yaml#/components/schemas/Version' }
-        state: { type: string, enum: [PROPOSED, RESERVED, CONFIRMED, SUPERSEDED, CANCELLED] }
-        tripId: { type: string, description: CONFIRMED 시 발급 }
-        candidate: { $ref: '#/components/schemas/PlanCandidate' }
-        reservations: { type: array, items: { $ref: '#/components/schemas/ResourceReservation' } }
-        supersededBy: { type: [string, 'null'] }
-        departureId: { type: [string, 'null'], description: 실제 출발 사실이 있으면 변경 불가 }
+        orderId: { type: string, description: 'TO-yyyyMMdd-nnn(출고일·순번) — 운행 tripId 와 같다' }
+        cdcId: { type: string }
+        shipDate: { type: string, format: date }
+        arrivalDate: { type: string, format: date }
+        routeId: { type: string }
+        tempClass: { $ref: '#/components/schemas/TempClass' }
+        contractType: { type: string, enum: [REGULAR, SPOT] }
+        vehicleId: { type: [string, 'null'] }
+        driverId: { type: [string, 'null'] }
+        maxRt: { type: integer }
+        maxWeightKg: { type: integer }
+        loadRt: { type: integer }
+        loadWeightKg: { type: number }
+        loadRatio: { type: number, description: loadRt / maxRt }
+        plannedLoadingStartAt: { type: string, format: date-time }
+        plannedDepartureAt: { type: string, format: date-time }
+        plannedReturnAt: { type: string, format: date-time }
+        stops:
+          type: array
+          items:
+            type: object
+            properties:
+              seq: { type: integer }
+              mfcId: { type: string }
+              plannedArrivalAt: { type: string, format: date-time }
+              plannedDepartureAt: { type: string, format: date-time }
+              trfIds: { type: array, items: { type: string } }
+              boxCount: { type: integer }
+              rtCount: { type: integer }
+        trfIds: { type: array, items: { type: string } }
+        cancelCandidate: { type: boolean, description: 물량 0 — 결행 후보(정본 7.1) }
+        flags: { type: array, items: { type: string, enum: [OVER_CAPACITY] } }
+        state: { $ref: '#/components/schemas/TransportOrderState' }
+        reservationId: { type: [string, 'null'], description: fleet 점유 }
+        tripState: { type: [string, 'null'], description: execution 운행 상태 사본 }
+        reason: { type: [string, 'null'] }
+        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        history:
+          type: array
+          description: 변경 이력(정본 8.2 — 생성·이동·차량 변경·계획완료·결행·취소)
+          items:
+            type: object
+            properties:
+              at: { type: string, format: date-time }
+              action: { type: string }
+              actorId: { type: [string, 'null'] }
+              detail: { type: [string, 'null'] }
+              version: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-    TripInstruction:
-      type: object
-      required: [tripId, version, state]
-      properties:
-        tripId: { type: string }
-        version: { type: integer }
-        state: { type: string, enum: [ISSUED, ACKNOWLEDGED, SUPERSEDED, CANCELLED] }
-        assignmentId: { type: string }
-        assignmentVersion: { type: integer }
-        vehicleId: { type: string }
-        driverId: { type: string }
-        plannedDepartAt: { type: string, format: date-time }
-        stops: { type: array, items: { $ref: '#/components/schemas/StopSchedule' } }
-        loadPlan: { $ref: '#/components/schemas/LoadPlan' }
-        notes: { type: string }
-        issuedAt: { type: string, format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

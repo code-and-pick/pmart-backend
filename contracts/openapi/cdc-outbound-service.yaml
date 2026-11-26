@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.25.0
+  version: 0.26.0
   description: |
+    0.26.0(2026-11-26, TMS 1단계 — 설계 docs/cdc/design/2026-11-26-tms-first-stage.md): transport-planning 이 이관요청서를 가져가는 `GET /internal/transport-feed`
+      (기한 구간의 TRF 줄 + 온도대·BOX·R/T·무게). cdc-outbound 는 TMS 를 부르지 않는다(pull).
     0.25.0(2026-11-26, DC 백오피스 M-5 사건 기록 — PC 5 요청 2026-11-25-backend-monitoring-gaps): `GET /cdcs/{cdcId}/events?since=&until=&types=&limit=` — 이미 남아 있는 사실
       (TRF 인수·Wave 생성/릴리스/조작·작업 시작/끝/조작·피킹 부족/정리·출발 검증·미출발 취소·리콜 막힘)을 시간 최신 순으로 모아 보인다. 새 표·사건 저장 없음, 이상 알림 등급은 없음(기준 결정 전).
     0.24.0(2026-11-26, 운영 제한 지키기 — WMS CDC-F-031, 사용자 "새 할당과 출발"): 출발 검증의 일치 TRF 마다 TOUT 직전 cdc-quality 운영 제한 확인(활동 DEPARTURE, 출발 줄 SKU·Wave 온도대)
@@ -1478,6 +1480,52 @@ paths:
                   reason: { type: string, description: 요청 사유 }
                   rejectReason: { type: string, description: REJECTED 일 때 재고 응답(HTTP 상태·코드·설명) }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/transport-feed:
+    get:
+      tags: [internal]
+      summary: '[transport-planning→cdc-outbound] 이관요청서 가져오기 — 기한 구간의 TRF (0.26.0)'
+      description: |
+        이 센터가 인수한 TRF 중 dueAt 이 [dueFrom, dueTo) 인 것(취소·출발 포함 — 상태로 판단은 planning). 기한 순, 같으면 trfId 순, 최대 2000줄(넘으면 truncated=true).
+        - tempClasses: 검품 합격 BOX 의 온도대(출발 준비 조회 temperatureZones 와 같음). BOX 가 없으면 작업 줄 피킹 위치의 온도대(cdc-location), 그것도 없으면 빈 목록.
+        - boxCount·weightG: 검품 합격 BOX 기준(출발했으면 출발 BOX). rtCount: 그 TRF 에 묶인 R/T LPN 수 — 없으면 null(22:00 카운팅 전).
+        조회만 한다.
+      operationId: getTransportFeed
+      parameters:
+        - { name: cdcId, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: dueFrom, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: dueTo, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, truncated]
+                properties:
+                  asOf: { type: string, format: date-time }
+                  truncated: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [trfId, trfVersion, mfcId, state, dueAt, approvedQty, allocatedQty, tempClasses, boxCount]
+                      properties:
+                        trfId: { type: string }
+                        trfNumber: { type: [string, 'null'] }
+                        trfVersion: { type: integer }
+                        mfcId: { type: string }
+                        state: { type: string, description: TRF 상태(ALLOCATED·PARTIALLY_ALLOCATED·ALLOCATION_FAILED·…·DEPARTED·CANCELLED) }
+                        dueAt: { type: string, format: date-time }
+                        approvedQty: { type: integer }
+                        allocatedQty: { type: integer }
+                        tempClasses: { type: array, items: { type: string, enum: [AMBIENT, CHILLED, FROZEN] } }
+                        boxCount: { type: integer }
+                        rtCount: { type: [integer, 'null'] }
+                        weightG: { type: integer }
+                        receivedAt: { type: string, format: date-time, description: 이 센터가 TRF 를 인수한 시각 }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /internal/outbound-readiness:
     get:
