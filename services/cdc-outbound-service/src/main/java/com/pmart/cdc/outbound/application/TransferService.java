@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -75,6 +76,13 @@ public class TransferService {
     this.inventory = inventory;
     this.tx = tx;
     this.support = support;
+  }
+
+  /** 인수 조건의 온도대(0.26.0) — AMBIENT·CHILLED·FROZEN 만, 본문 지문에는 넣지 않는다. */
+  public void noteTemperatureZone(String trfId, @Nullable String zone) {
+    if (zone != null && java.util.Set.of("AMBIENT", "CHILLED", "FROZEN").contains(zone)) {
+      store.setTemperatureZone(trfId, zone);
+    }
   }
 
   public CommandResult intake(String requestId, Intake in) {

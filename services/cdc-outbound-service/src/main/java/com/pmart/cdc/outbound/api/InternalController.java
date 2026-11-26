@@ -208,6 +208,14 @@ public class InternalController implements InternalApi {
                 body.getLines().stream()
                     .map(l -> new IntakeLine(l.getSku(), l.getApprovedQty()))
                     .toList()));
+    // 0.26.0 — 인수 조건의 온도대(본문 지문 밖, transport-feed 가 검품 전에 쓴다)
+    if (body.getConditions() != null) {
+      body.getConditions().stream()
+          .filter(c -> "TEMPERATURE_ZONE".equals(c.getKind()))
+          .map(c -> c.getValue())
+          .findFirst()
+          .ifPresent(z -> transfers.noteTemperatureZone(body.getTrfId(), z));
+    }
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(Dto.command(r));
   }
 

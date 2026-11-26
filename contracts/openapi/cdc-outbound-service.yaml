@@ -1487,7 +1487,7 @@ paths:
       summary: '[transport-planning→cdc-outbound] 이관요청서 가져오기 — 기한 구간의 TRF (0.26.0)'
       description: |
         이 센터가 인수한 TRF 중 dueAt 이 [dueFrom, dueTo) 인 것(취소·출발 포함 — 상태로 판단은 planning). 기한 순, 같으면 trfId 순, 최대 2000줄(넘으면 truncated=true).
-        - tempClasses: 검품 합격 BOX 의 온도대(출발 준비 조회 temperatureZones 와 같음). 검품 전이면 빈 목록(planning 은 TEMP_UNKNOWN 으로 보류하고 다음 생성 때 다시 본다).
+        - tempClasses: 검품 합격 BOX 의 온도대(출발 준비 조회 temperatureZones 와 같음). BOX 가 없으면 TRF 인수 조건 `conditions[kind=TEMPERATURE_ZONE]` 의 온도대(V17 — 본문 지문 밖), 그것도 없으면 빈 목록(planning 은 TEMP_UNKNOWN 으로 보류).
         - boxCount·weightG: 검품 합격 BOX 기준(출발했으면 출발 BOX). rtCount: 그 TRF 에 묶인 R/T LPN 수 — 없으면 null(22:00 카운팅 전).
         조회만 한다.
       operationId: getTransportFeed

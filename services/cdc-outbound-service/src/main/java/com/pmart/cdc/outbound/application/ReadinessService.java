@@ -254,7 +254,9 @@ public class ReadinessService {
               t.dueAt(),
               approved,
               allocated,
-              r.temperatureZones(),
+              !r.temperatureZones().isEmpty()
+                  ? r.temperatureZones()
+                  : t.temperatureZone() == null ? List.of() : List.of(t.temperatureZone()),
               r.readyLpnCount(),
               rt == 0 ? null : rt,
               r.totalWeightG(),

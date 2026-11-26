@@ -578,6 +578,29 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(mine.path("tempClasses")).isEqualTo(rdInsp.path("temperatureZones"));
     assertThat(mine.path("approvedQty").asInt()).isPositive();
     assertThat(feed.path("truncated").asBoolean()).isFalse();
+    // 인수 조건의 온도대 — 검품 BOX 전에도 feed 가 그 온도대를 준다(본문 지문 밖이라 같은 본문 재전송은 그대로)
+    String trfT = "TRF-T-" + UUID.randomUUID().toString().substring(0, 6);
+    Map<String, Object> withTemp = trf(trfT, 2, 2);
+    withTemp.put("conditions", List.of(Map.of("kind", "TEMPERATURE_ZONE", "value", "CHILLED")));
+    assertThat(post(SERVICE, "/internal/transfer-intakes", withTemp).status()).isEqualTo(202);
+    assertThat(post(SERVICE, "/internal/transfer-intakes", withTemp).status()).isEqualTo(202);
+    JsonNode feed2 =
+        get(
+                SERVICE,
+                "/internal/transport-feed?cdcId=CDC01&dueFrom="
+                    + due.minusSeconds(60)
+                    + "&dueTo="
+                    + due.plusSeconds(60))
+            .body();
+    JsonNode tempTrf = null;
+    for (JsonNode x : feed2.path("items")) {
+      if (trfT.equals(x.path("trfId").asString())) {
+        tempTrf = x;
+      }
+    }
+    assertThat(tempTrf).as(feed2.toString()).isNotNull();
+    assertThat(tempTrf.path("tempClasses").toString()).isEqualTo("[\"CHILLED\"]");
+    assertThat(tempTrf.path("boxCount").asInt()).isZero();
     assertThat(
             get(
                     SERVICE,

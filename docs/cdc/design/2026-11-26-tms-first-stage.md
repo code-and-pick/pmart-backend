@@ -26,7 +26,7 @@
 - 시드 스크립트 `deploy/lan/seed/tms_*.py`(fleet → planning 순).
 
 ## 3. 이관요청서(transport request)
-- **가져오기(pull)**: planning 이 cdc-outbound 새 내부 조회 `GET /internal/transport-feed?cdcId&dueFrom&dueTo`(cdc-outbound 0.26.0)에서 TRF 줄을 읽어 이관요청서로 만든다. cdc-outbound 가 planning 을 부르지 않는다(출고가 TMS 에 묶이지 않게). 줄 = trfId·버전·mfcId·dueAt·TRF 상태·승인·할당량·온도대(검품 BOX 기준 — 검품 전이면 비어 TEMP_UNKNOWN 보류, 정본 시간표상 생성은 21:30 출고 완료 뒤)·BOX 수·R/T 수·무게.
+- **가져오기(pull)**: planning 이 cdc-outbound 새 내부 조회 `GET /internal/transport-feed?cdcId&dueFrom&dueTo`(cdc-outbound 0.26.0)에서 TRF 줄을 읽어 이관요청서로 만든다. cdc-outbound 가 planning 을 부르지 않는다(출고가 TMS 에 묶이지 않게). 줄 = trfId·버전·mfcId·dueAt·TRF 상태·승인·할당량·온도대(검품 BOX 기준, 없으면 TRF 인수 조건 TEMPERATURE_ZONE — 시뮬레이터·SCM 은 온도대별로 TRF 를 낸다, 둘 다 없으면 TEMP_UNKNOWN 보류)·BOX 수·R/T 수·무게.
 - **출고일 D**: dueAt(도착 기한, Asia/Seoul)이 (D 12:00, D+1 12:00] 인 TRF. 정본 시간표(D 23:00 출차 → D+1 07:30 도착)에 맞춘 규칙.
 - 검증(정본 5.2, 수용 ACCEPTED / 보류 HELD / 반려 REJECTED / 제외 EXCLUDED):
   - V1 필수값 · V2 출발이 그 DC·목적이 노선에 등록된 MFC(노선 없음 = 보류 `NO_ROUTE` — 차량 부족과 구분)
@@ -70,8 +70,7 @@
 5. transport-execution 구현(운행·출차 → 출발 검증·인계·조회) — TR-2
 6. DC 백오피스 회신·시뮬레이터 회신
 
-## 8. 확인할 것(사용자·다른 세션)
-- 지금 TRF 가 온도대를 섞어 오는가 — 섞이면 D-06 대로 보류된다. replenishment(또는 시뮬레이터)가 온도대별로 나눠 발행해야 함.
-- 노선 시각·차량 수치는 [가정] — 실제 값이 생기면 시드만 고친다.
-- 22:00 전 예상 R/T(정본 5.1 "할당 시점 예상값") — WMS 가 줄 값이 없어 지금은 비운다. 환산 규칙(BOX 몇 개 = R/T 하나)이 필요하면 정해 주세요.
+## 8. 정한 것(사용자 2026-11-26 "알아서 해")
+- **온도대 혼합**: 시뮬레이터(`pmart-cdc-simulation` src/sim/supply.ts)는 TRF 를 MFC × 온도대마다 따로 내고 `conditions[TEMPERATURE_ZONE]` 을 붙인다 — 섞여 오지 않는다. 정본 D-06 그대로 섞이면 보류(MIXED_TEMPERATURE). cdc-outbound 가 이 조건을 저장해(V17) 검품 전에도 온도대를 안다.
+- **22:00 전 예상 R/T**: 환산 규칙을 만들지 않는다(정본에 없음). R/T 바코드가 생긴 뒤(22:00 카운팅)에만 용량을 검사하고, 그 전 생성은 R/T 를 비워 둔다 — 정본 시간표대로 22:00 카운팅 뒤 다시 생성하면 용량 검사가 된다.
 - 기사·운송사 계정(로그인)은 1단계에 없음 — 기사 앱이 생길 때 사용자 유형을 정한다.
