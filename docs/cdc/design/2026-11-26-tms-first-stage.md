@@ -59,8 +59,9 @@
 - TR-3 도크 배정은 뒤로(cdc-location 도크 예약 — 칠곡 R-22 층 도크 확정 뒤).
 
 ## 6. 사건(이번 범위)
-- execution 발행(토픽 `tms.trip.v1`): `TruckActuallyDeparted`(있는 스키마 그대로), `TripStateChanged`, `StopArrived`, `TransportHandoverEvidenceRecorded`. planning 발행 `TransportUnplannedReported`(보류·미배차). 구독은 이번 범위에 없음(planning 은 execution 운행 상태를 조회로).
-- Debezium 커넥터·토픽·pmart-config 는 PC1 몫(병합 때).
+- **1단계는 사건을 발행하지 않는다**(2026-11-26 구현 때 고침): `TruckActuallyDeparted` 의 출발 구성 줄은 SKU·LOT·수량이 필수인데 execution 은 상차 박스 바코드만 안다(내용물은 cdc-outbound 매니페스트). 지금 구독자도 없다(cdc-outbound 는 동기 호출로 받는다). 구독자가 생길 때 매니페스트를 붙여 발행한다.
+- 서비스 사이 알림은 동기: execution → cdc-outbound 출발 검증(출차), execution → planning `trip-updates`(상태 사본, 실패하면 주기 재시도).
+- 그래서 Debezium 커넥터·토픽은 이번에 필요 없다.
 
 ## 7. 순서(PR)
 1. 이 설계 + 계약 3개(fleet 0.2.0 · planning 0.2.0 · execution 0.2.0) + cdc-outbound 계약 0.26.0(transport-feed)

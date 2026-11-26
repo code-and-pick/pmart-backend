@@ -40,3 +40,4 @@ CREATE DATABASE cdc_quality_service;
 CREATE DATABASE cdc_inbound_service;
 CREATE DATABASE fleet_service;
 CREATE DATABASE transport_planning_service;
+CREATE DATABASE transport_execution_service;
