@@ -17,7 +17,7 @@ class ContractStubTest {
     scanner.addIncludeFilter(
         new org.springframework.core.type.filter.AnnotationTypeFilter(RestController.class));
     var beans = scanner.findCandidateComponents("com.pmart.cdc.outbound.api");
-    assertThat(beans).hasSize(6); // 0.11.0 StaffViewsController
+    assertThat(beans).hasSize(7); // 0.11.0 StaffViewsController · 0.29.0 WorkforceController
     for (var bd : beans) {
       Class<?> c = Class.forName(bd.getBeanClassName());
       assertThat(Arrays.stream(c.getInterfaces()).anyMatch(i -> i.getSimpleName().endsWith("Api")))

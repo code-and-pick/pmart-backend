@@ -2431,4 +2431,102 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     m.put("contents", List.of(Map.of("sku", sku, "lot", lot, "qty", qty)));
     return m;
   }
+
+  /** 0.29.0 WF-2 근무 — 시뮬레이터 근무조·계획 시드, 배치(관리자만·출근 전 바꾸기·출근 뒤 409), 출근·퇴근(본인·관리자), 계획 대비 현황. */
+  @Test
+  void workforceShiftsAndStaffing() {
+    String sup = TestJwt.operator("sup-wf", List.of("CDC_SUPERVISOR"), List.of(CENTER));
+    String worker = TestJwt.operator("cdcw-fc-01", List.of("CDC_WORKER"), List.of(CENTER));
+    String other = TestJwt.operator("cdcw-fc-02", List.of("CDC_WORKER"), List.of(CENTER));
+    JsonNode shifts = get(sup, "/cdcs/" + CENTER + "/shifts").body();
+    assertThat(shifts.path("shifts").findValuesAsString("shiftCode"))
+        .containsExactly("DAY", "EVENING", "NIGHT_DOCK");
+    assertThat(shifts.path("shifts").get(1).path("breaks").size()).isEqualTo(3);
+    int planned5Fc = 0;
+    for (JsonNode c : shifts.path("plan")) {
+      if ("EVENING".equals(c.path("shiftCode").asString())
+          && "5".equals(c.path("floor").asString())
+          && "FC".equals(c.path("role").asString())) {
+        planned5Fc = c.path("planned").asInt();
+      }
+    }
+    assertThat(planned5Fc).isEqualTo(11);
+    String day = "2026-12-03";
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("workDate", day);
+    body.put("shiftCode", "EVENING");
+    body.put("workerId", "cdcw-fc-01");
+    body.put("floor", "5");
+    body.put("role", "FC");
+    assertThat(post(worker, "/cdcs/" + CENTER + "/shift-assignments", body).status())
+        .isEqualTo(403);
+    Res a = post(sup, "/cdcs/" + CENTER + "/shift-assignments", body);
+    assertThat(a.status()).as(a.body().toString()).isEqualTo(200);
+    String id = a.body().path("assignmentId").asString();
+    // 출근 전이면 바꾸기(같은 배치)
+    body.put("role", "SORT");
+    assertThat(
+            post(sup, "/cdcs/" + CENTER + "/shift-assignments", body)
+                .body()
+                .path("assignmentId")
+                .asString())
+        .isEqualTo(id);
+    Map<String, Object> bad = new LinkedHashMap<>(body);
+    bad.put("shiftCode", "MIDNIGHT");
+    assertThat(
+            post(sup, "/cdcs/" + CENTER + "/shift-assignments", bad).body().path("code").asString())
+        .isEqualTo("UNKNOWN_SHIFT");
+    // 출근 — 다른 작업자 403, 본인 됨, 출근 뒤 배치 바꾸기 409, 퇴근 전 출근 기록 없으면 409
+    String base = "/cdcs/" + CENTER + "/shift-assignments/" + id;
+    assertThat(post(other, base + "/check-ins", Map.of()).status()).isEqualTo(403);
+    Res notIn = post(sup, base + "/check-outs", Map.of());
+    assertThat(notIn.body().path("code").asString()).isEqualTo("NOT_CHECKED_IN");
+    Res in = post(worker, base + "/check-ins", Map.of());
+    assertThat(in.body().path("checkInAt").isNull()).isFalse();
+    body.put("role", "FC");
+    assertThat(
+            post(sup, "/cdcs/" + CENTER + "/shift-assignments", body)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("CHECKED_IN");
+    // 계획 밖 칸도 현황에 보인다(계획 0)
+    Map<String, Object> extra = new LinkedHashMap<>(body);
+    extra.put("workerId", "cdcw-fc-02");
+    extra.put("floor", "ALL");
+    extra.put("role", "FC");
+    post(sup, "/cdcs/" + CENTER + "/shift-assignments", extra);
+    JsonNode st = get(sup, "/cdcs/" + CENTER + "/staffing?date=" + day).body();
+    JsonNode sort5 = null;
+    JsonNode extraCell = null;
+    for (JsonNode c : st.path("cells")) {
+      String k =
+          c.path("shiftCode").asString() + c.path("floor").asString() + c.path("role").asString();
+      if ("EVENING5SORT".equals(k)) {
+        sort5 = c;
+      }
+      if ("EVENINGALLFC".equals(k)) {
+        extraCell = c;
+      }
+    }
+    assertThat(sort5.path("planned").asInt()).isEqualTo(13);
+    assertThat(sort5.path("assigned").asInt()).isEqualTo(1);
+    assertThat(sort5.path("checkedIn").asInt()).isEqualTo(1);
+    assertThat(extraCell.path("planned").asInt()).isZero();
+    assertThat(extraCell.path("assigned").asInt()).isEqualTo(1);
+    assertThat(post(worker, base + "/check-outs", Map.of()).body().path("checkOutAt").isNull())
+        .isFalse();
+    assertThat(
+            get(sup, "/cdcs/" + CENTER + "/shift-assignments?date=" + day)
+                .body()
+                .path("items")
+                .size())
+        .isEqualTo(2);
+    assertThat(
+            get(
+                    TestJwt.operator("x", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    "/cdcs/" + CENTER + "/shifts")
+                .status())
+        .isEqualTo(403);
+  }
 }

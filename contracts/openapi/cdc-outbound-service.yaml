@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.28.0
+  version: 0.29.0
   description: |
+    0.29.0(2026-11-26, DC 백오피스 WF-2 근무 — 사용자 "시뮬레이션에서 정한대로 해"): 근무조(DAY 08:00~17:00·EVENING 13:00~22:00 휴게 3·NIGHT_DOCK 22:00~04:30)와
+      층 × 직무 계획 인원(시뮬레이터 config 값 — Flyway V18 시드)·근무 배치·출근/퇴근 기록·계획 대비 현황. 계획 인원은 참고값(배치·출근을 막지 않음).
     0.28.0(2026-11-26, DC 백오피스 KP-1 — 사용자 "있는 자료만 + 나머지 N/A"): 운영 확인 기준(WMS CDC-F-034 표) `GET /cdcs/{cdcId}/operating-metrics?from=&to=&mfcId=`.
       기한(dueAt)이 그 기간인 TRF 기준. 원천이 있는 것만 계산(승인 수요 충족률·정상 수령률 — cdc-inventory Transit, 예외 운영량 — 출발 대조·피킹 부족·운송 중 미정산),
       원수요 충족률·사용 준비 시간·약속 준수는 N/A(원천 없음 — replenishment 원수요·MFC 사용 준비 확인). SKU 를 섞은 낱개 합 비율은 확정이 아니라 잠정(provisional).
@@ -81,6 +83,7 @@ security:
   - bearerAuth: []
 tags:
   - { name: waves, description: Wave 생성·릴리스 (DRAFT→PLANNED→RELEASED→IN_PROGRESS→WORK_DONE→CLOSED) }
+  - { name: workforce, description: 근무조·배치·출근(0.29.0 WF-2 — 시뮬레이터 값) }
   - { name: tasks, description: 작업·실피킹 결과 }
   - { name: results, description: 분류·검품·상차 결과 등록 }
   - { name: transfers, description: 미출발 취소 }
@@ -1050,6 +1053,156 @@ paths:
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /cdcs/{cdcId}/shifts:
+    get:
+      tags: [workforce]
+      summary: '[0.29.0 WF-2] 근무조와 층 × 직무 계획 인원(시뮬레이터 값)'
+      operationId: listShifts
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [shifts, plan]
+                properties:
+                  shifts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        shiftCode: { type: string }
+                        name: { type: string }
+                        startTime: { type: string }
+                        endTime: { type: string, description: 시작보다 이르면 다음 날 }
+                        breaks: { type: array, items: { type: string, description: HH:mm-HH:mm } }
+                        source: { type: string, description: 값의 근거(시뮬레이터 설정 — 가정값) }
+                  plan: { type: array, items: { $ref: '#/components/schemas/StaffingCell' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/shift-assignments:
+    get:
+      tags: [workforce]
+      summary: '[0.29.0 WF-2] 근무 배치 목록 — 날짜(서울)·근무조'
+      operationId: listShiftAssignments
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+        - { name: shiftCode, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: 근무조 → 층 → 직무 → 작업자 순
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ShiftAssignment' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [workforce]
+      summary: '[0.29.0 WF-2] 근무 배치 — 그날 그 근무조에 작업자 한 명(CDC_SUPERVISOR)'
+      description: |
+        같은 날·같은 근무조·같은 작업자는 하나 — 출근 전이면 층·직무를 바꾸고, 출근 뒤면 409 CHECKED_IN. 없는 근무조 400 UNKNOWN_SHIFT,
+        층은 5·6·7·ALL, 직무는 FC·SORT·JOCKEY·REPLENISH·DPS·INSPECTOR·NIGHT_JOCKEY·LOADER. 계획 인원을 넘어도 막지 않는다(현황에 넘침으로 보임).
+      operationId: assignShift
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workDate, shiftCode, workerId, floor, role]
+              properties:
+                workDate: { type: string, format: date }
+                shiftCode: { type: string }
+                workerId: { type: string, maxLength: 128 }
+                floor: { type: string, enum: ['5', '6', '7', ALL] }
+                role: { $ref: '#/components/schemas/WorkRole' }
+      responses:
+        '200':
+          description: 배치
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftAssignment' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cdcs/{cdcId}/shift-assignments/{assignmentId}/check-ins:
+    post:
+      tags: [workforce]
+      summary: '[0.29.0 WF-2] 출근 — 작업자 본인 또는 CDC_SUPERVISOR (이미 출근이면 그대로)'
+      operationId: checkInShift
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: assignmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 배치
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftAssignment' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/shift-assignments/{assignmentId}/check-outs:
+    post:
+      tags: [workforce]
+      summary: '[0.29.0 WF-2] 퇴근 — 출근 뒤에만(아니면 409 NOT_CHECKED_IN), 이미 퇴근이면 그대로'
+      operationId: checkOutShift
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: assignmentId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: 배치
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShiftAssignment' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cdcs/{cdcId}/staffing:
+    get:
+      tags: [workforce]
+      summary: '[0.29.0 WF-2] 계획 대비 인원 현황 — 그날 근무조 × 층 × 직무(계획·배치·출근)'
+      operationId: getStaffing
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: 계획 칸과 배치만 있는 칸(계획 0) 모두
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [date, cells]
+                properties:
+                  date: { type: string, format: date }
+                  cells: { type: array, items: { $ref: '#/components/schemas/StaffingCell' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /cdcs/{cdcId}/regions:
     get:
       tags: [waves]
@@ -1695,6 +1848,31 @@ paths:
 
 components:
   schemas:
+    WorkRole:
+      type: string
+      description: '(0.29.0) FC 피킹 · SORT 분류(DAS 라인·분배) · JOCKEY 자키 · REPLENISH 보충 · DPS DPS 구역 · INSPECTOR 검품 · NIGHT_JOCKEY 야간 자키(R/T 하강) · LOADER 도크 상차'
+      enum: [FC, SORT, JOCKEY, REPLENISH, DPS, INSPECTOR, NIGHT_JOCKEY, LOADER]
+    ShiftAssignment:
+      type: object
+      properties:
+        assignmentId: { type: string }
+        workDate: { type: string, format: date }
+        shiftCode: { type: string }
+        workerId: { type: string }
+        floor: { type: string }
+        role: { $ref: '#/components/schemas/WorkRole' }
+        assignedBy: { type: string }
+        checkInAt: { type: [string, 'null'], format: date-time }
+        checkOutAt: { type: [string, 'null'], format: date-time }
+    StaffingCell:
+      type: object
+      properties:
+        shiftCode: { type: string }
+        floor: { type: string }
+        role: { $ref: '#/components/schemas/WorkRole' }
+        planned: { type: integer, description: 계획 인원(시뮬레이터 값 — 참고) }
+        assigned: { type: [integer, 'null'], description: 배치 인원(현황에서만) }
+        checkedIn: { type: [integer, 'null'], description: 지금 출근(퇴근 전) 인원(현황에서만) }
     CenterEventType:
       type: string
       enum: [TRF_RECEIVED, WAVE_CREATED, WAVE_RELEASED, WAVE_ADJUSTED, TASK_STARTED, TASK_COMPLETED, TASK_ADJUSTED, SHORTAGE_REPORTED, SHORTAGE_SETTLED, DEPARTURE_VALIDATED, PRE_DEPARTURE_CANCEL, RECALL_HOLD]

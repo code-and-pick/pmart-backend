@@ -97,8 +97,11 @@ GET /api/v1/cdcs/{cdcId}/regions OPERATOR
 GET /api/v1/cdcs/{cdcId}/replenishment-checks OPERATOR
 GET /api/v1/cdcs/{cdcId}/routes OPERATOR
 GET /api/v1/cdcs/{cdcId}/routes/{routeId} OPERATOR
+GET /api/v1/cdcs/{cdcId}/shift-assignments OPERATOR
+GET /api/v1/cdcs/{cdcId}/shifts OPERATOR
 GET /api/v1/cdcs/{cdcId}/shortages OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
+GET /api/v1/cdcs/{cdcId}/staffing OPERATOR
 GET /api/v1/cdcs/{cdcId}/stock-movements OPERATOR
 GET /api/v1/cdcs/{cdcId}/stock-snapshot OPERATOR
 GET /api/v1/cdcs/{cdcId}/tasks OPERATOR
@@ -504,6 +507,9 @@ POST /api/v1/cdcs/{cdcId}/recount-holds/{holdId}/releases OPERATOR
 POST /api/v1/cdcs/{cdcId}/regions OPERATOR
 POST /api/v1/cdcs/{cdcId}/routes OPERATOR
 POST /api/v1/cdcs/{cdcId}/routes/{routeId}/regular-vehicles OPERATOR
+POST /api/v1/cdcs/{cdcId}/shift-assignments OPERATOR
+POST /api/v1/cdcs/{cdcId}/shift-assignments/{assignmentId}/check-ins OPERATOR
+POST /api/v1/cdcs/{cdcId}/shift-assignments/{assignmentId}/check-outs OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handling-batches OPERATOR
 POST /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/holds OPERATOR
