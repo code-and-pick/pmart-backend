@@ -65,7 +65,16 @@ public class Ledger {
       List<Delta> deltas) {
     String commitId = newId("CMT");
     store.insertCommit(
-        new CommitRow(commitId, requestId, kind, "APPLIED", sourceSystem, sourceRef, cdcId, at),
+        new CommitRow(
+            commitId,
+            requestId,
+            kind,
+            "APPLIED",
+            sourceSystem,
+            sourceRef,
+            cdcId,
+            at,
+            PmartPrincipal.current().map(PmartPrincipal::subject).orElse(null)),
         deltas);
     return commitId;
   }

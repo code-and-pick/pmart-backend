@@ -26,7 +26,11 @@ public class LedgerStore {
       String sourceSystem,
       @Nullable String sourceRef,
       String cdcId,
-      Instant appliedAt) {}
+      Instant appliedAt,
+      @Nullable String actorId) {}
+
+  /** 이력 한 줄의 증감(0.20.0 — 원결과 ID 포함). */
+  public record MovementDelta(String commitId, Delta delta) {}
 
   public record TransitRow(
       String trfId,
@@ -67,7 +71,7 @@ public class LedgerStore {
   public void insertCommit(CommitRow c, List<Delta> deltas) {
     jdbc.update(
         "INSERT INTO inventory_commit (commit_id, request_id, posting_kind, status, source_system,"
-            + " source_ref, cdc_id, applied_at) VALUES (?,?,?,?,?,?,?,?)",
+            + " source_ref, cdc_id, applied_at, actor_id) VALUES (?,?,?,?,?,?,?,?,?)",
         c.commitId(),
         c.requestId(),
         c.postingKind(),
@@ -75,7 +79,8 @@ public class LedgerStore {
         c.sourceSystem(),
         c.sourceRef(),
         c.cdcId(),
-        Timestamp.from(c.appliedAt()));
+        Timestamp.from(c.appliedAt()),
+        c.actorId());
     List<Object[]> rows = new ArrayList<>();
     for (int i = 0; i < deltas.size(); i++) {
       Delta d = deltas.get(i);
@@ -94,22 +99,95 @@ public class LedgerStore {
 
   public Optional<CommitRow> findCommit(String commitId) {
     return jdbc
-        .query(
-            "SELECT commit_id, request_id, posting_kind, status, source_system, source_ref, cdc_id,"
-                + " applied_at FROM inventory_commit WHERE commit_id = ?",
-            (rs, i) ->
-                new CommitRow(
-                    rs.getString("commit_id"),
-                    rs.getString("request_id"),
-                    rs.getString("posting_kind"),
-                    rs.getString("status"),
-                    rs.getString("source_system"),
-                    rs.getString("source_ref"),
-                    rs.getString("cdc_id"),
-                    rs.getTimestamp("applied_at").toInstant()),
-            commitId)
+        .query(COMMIT_SELECT + " WHERE commit_id = ?", (rs, i) -> commitRow(rs), commitId)
         .stream()
         .findFirst();
+  }
+
+  private static final String COMMIT_SELECT =
+      "SELECT c.commit_id, c.request_id, c.posting_kind, c.status, c.source_system, c.source_ref,"
+          + " c.cdc_id, c.applied_at, c.actor_id FROM inventory_commit c";
+
+  private static CommitRow commitRow(ResultSet rs) throws SQLException {
+    return new CommitRow(
+        rs.getString("commit_id"),
+        rs.getString("request_id"),
+        rs.getString("posting_kind"),
+        rs.getString("status"),
+        rs.getString("source_system"),
+        rs.getString("source_ref"),
+        rs.getString("cdc_id"),
+        rs.getTimestamp("applied_at").toInstant(),
+        rs.getString("actor_id"));
+  }
+
+  /**
+   * 재고 이동 이력(0.20.0): 거르기에 맞는 증감을 하나라도 가진 이 센터 원결과, appliedAt 내림·commitId 내림. limit 은 호출자가 +1 해서 다음
+   * 쪽을 판단한다.
+   */
+  public List<CommitRow> movementCommits(
+      String cdcId,
+      @Nullable String sku,
+      @Nullable String lot,
+      @Nullable String locationCode,
+      @Nullable String kind,
+      Instant from,
+      Instant to,
+      int offset,
+      int limit) {
+    StringBuilder sql =
+        new StringBuilder(
+            COMMIT_SELECT
+                + " WHERE c.cdc_id = ? AND c.applied_at >= ? AND c.applied_at < ?"
+                + " AND EXISTS (SELECT 1 FROM inventory_commit_delta d WHERE d.commit_id = c.commit_id");
+    List<Object> args = new ArrayList<>();
+    args.add(cdcId);
+    args.add(Timestamp.from(from));
+    args.add(Timestamp.from(to));
+    if (sku != null) {
+      sql.append(" AND d.sku = ?");
+      args.add(sku);
+    }
+    if (lot != null) {
+      sql.append(" AND d.lot = ?");
+      args.add(lot);
+    }
+    if (locationCode != null) {
+      sql.append(" AND d.location_code = ?");
+      args.add(locationCode);
+    }
+    sql.append(")");
+    if (kind != null) {
+      sql.append(" AND c.posting_kind = ?");
+      args.add(kind);
+    }
+    sql.append(" ORDER BY c.applied_at DESC, c.commit_id DESC OFFSET ? LIMIT ?");
+    args.add(offset);
+    args.add(limit);
+    return jdbc.query(sql.toString(), (rs, i) -> commitRow(rs), args.toArray());
+  }
+
+  /** 여러 원결과의 증감(원결과·seq 순). */
+  public List<MovementDelta> deltasOf(List<String> commitIds) {
+    if (commitIds.isEmpty()) {
+      return List.of();
+    }
+    String in = String.join(",", commitIds.stream().map(x -> "?").toList());
+    return jdbc.query(
+        "SELECT commit_id, sku, lot, location_code, bucket, delta FROM inventory_commit_delta"
+            + " WHERE commit_id IN ("
+            + in
+            + ") ORDER BY commit_id, seq",
+        (rs, i) ->
+            new MovementDelta(
+                rs.getString("commit_id"),
+                new Delta(
+                    rs.getString("sku"),
+                    rs.getString("lot"),
+                    rs.getString("location_code"),
+                    rs.getString("bucket"),
+                    rs.getInt("delta"))),
+        commitIds.toArray());
   }
 
   public List<Delta> deltas(String commitId) {

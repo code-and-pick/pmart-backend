@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.19.0
+  version: 0.20.0
   description: |
+    0.20.0(2026-11-26, DC 백오피스 LG-1 재고 이동 이력 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-26-backend-missing-screens.md, 사용자 "응"):
+      `GET /cdcs/{cdcId}/stock-movements` — 원장(원결과 commit) 줄을 최신 순으로(시각·종류·칸·버킷 증감·원천 참조·처리자). sku 또는 locationCode 하나는 필수, 기간 기본 7일·최대 31일.
+      원결과에 처리자 `actorId`(요청 토큰 주체 — 내부 호출은 서비스 이름, 사건 구독은 null) 기록 시작(그 전 원결과는 null). 원결과 종류 `PostingKind` 를 실제 기록 값으로 넓힘
+      (ALLOCATION_ADD·TIN_ACK·TIN_CORRECTION·TRANSPORT_LOSS·QUALITY_HOLD·QUALITY_RELEASE·DISPOSAL — 전에는 `/internal/commits` 가 이 종류에서 500 이었다).
     0.19.0(2026-11-26, 운영 제한 지키기 — WMS CDC-F-031, 사용자 "새 할당과 출발"): 새 할당(`/internal/allocations`)·추가 할당(`…/additions`) 앞에 cdc-quality 운영 제한 확인
       (활동 ALLOCATION, SKU·온도대) — 막히면 409 OPERATION_RESTRICTED, 확인이 안 되면 보류(503 DEPENDENCY_UNAVAILABLE·주소 없음 CONFIG_REQUIRED). 같은 TRF·버전 재생은 다시 묻지 않음.
     0.18.0(2026-11-26, 리콜 — WMS CDC-F-028·정책 16.13, 사용자 "리콜은 출고대기분도 막음"·"본사 승인 번호 + 모든 CDC"): quality-postings HOLD 에 `recall: true` —
@@ -1064,6 +1068,49 @@ paths:
                         expiresAt: { type: [string, 'null'], format: date }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /cdcs/{cdcId}/stock-movements:
+    get:
+      tags: [commits]
+      summary: '[운영자] 재고 이동 이력 — 원장 줄 최신 순 (0.20.0 — DC 백오피스 LG-1)'
+      description: |
+        한 줄 = 원결과(commit) 하나 — 언제(appliedAt)·무엇으로(postingKind·sourceSystem·sourceRef·requestId)·누가(actorId)·어디서 얼마나(deltas: 칸·버킷별 증감).
+        **sku 또는 locationCode 중 하나는 필수**(400 VALIDATION_FAILED — 센터 전체 훑기 막음). 고른 줄이 거르기에 맞는 증감을 하나라도 가진 원결과이고,
+        deltas 에는 sku·lot 거르기에 맞는 증감만 담는다(locationCode 로 거르면 그 칸에 증감이 있는 SKU·LOT 의 다른 칸 증감도 함께 — 이동의 출발·도착을 같이 보인다).
+        기간 from·to(appliedAt, 기본 to = 지금·from = to − 7일, 최대 31일 — 넘으면 400). 최신 순(appliedAt 내림, 같으면 commitId), 쪽 나눔 page 0부터·size ≤ 200·hasNext.
+        뒤 수량(전기 후 잔고)은 담지 않는다 — 지금 수량은 location-stocks·stock-snapshot.
+        sourceRef 모양은 종류마다: ALLOCATION = trfId · RELEASE·ALLOCATION_ADD = `<사유>[:<참조>]` · TOUT = departureId · TIN_ACK = receiptId · TIN_CORRECTION = correctionId · TRANSPORT_LOSS = trfId ·
+          MOVE = `<moveKind>:<참조>`(REPLENISHMENT_MOVE·PICK_MOVE·RELOCATION…) · QUALITY_*·DISPOSAL = `<HOLD|RELEASE|DISPOSE>:<참조>` · CNT = `COUNT:<세션 ID>` · INITIAL_BALANCE = 승인 번호.
+        자기 센터 운영자만. 읽기만.
+      operationId: listStockMovements
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: sku, in: query, required: false, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: lot, in: query, required: false, schema: { type: string, maxLength: 64 } }
+        - { name: locationCode, in: query, required: false, schema: { type: string, maxLength: 40 } }
+        - { name: kind, in: query, required: false, schema: { $ref: '#/components/schemas/PostingKind' } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  items: { type: array, items: { $ref: '#/components/schemas/StockMovement' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /cdcs/{cdcId}/stock-snapshot:
     get:
       tags: [availability]
@@ -1634,12 +1681,42 @@ components:
               pendingQty: { type: integer, description: (0.16.1) 품질 미판정으로 받은 수량 }
               l: { type: integer, description: 승인 손실 }
               t: { type: integer, description: 미정산 }
+    PostingKind:
+      type: string
+      description: |
+        원결과 종류(0.20.0 — 실제 기록 값). ALLOCATION·ALLOCATION_ADD(할당·추가 할당 — RESERVED +)·RELEASE(해제 — RESERVED −)·TOUT(출발 — ON_HAND·RESERVED −, TRANSIT +)·
+        TIN_ACK·TIN_CORRECTION(MFC 수령·정정 — TRANSIT −)·TRANSPORT_LOSS(운송 손실 — TRANSIT −)·MOVE(내부 이동)·QUALITY_HOLD·QUALITY_RELEASE(품질 상태 전환)·DISPOSAL(폐기 — HELD −)·
+        CNT(실사 조정)·INITIAL_BALANCE(초기 보유). RECEIPT_ACK·QUALITY·LOSS·ADJ 는 예전 계약 값(지금 기록하지 않음).
+      enum: [ALLOCATION, ALLOCATION_ADD, RELEASE, TOUT, TIN_ACK, TIN_CORRECTION, TRANSPORT_LOSS, MOVE, QUALITY_HOLD, QUALITY_RELEASE, DISPOSAL, CNT, INITIAL_BALANCE, RECEIPT_ACK, QUALITY, LOSS, ADJ]
+    StockMovement:
+      type: object
+      required: [commitId, postingKind, appliedAt, sourceSystem, deltas]
+      properties:
+        commitId: { type: string }
+        postingKind: { $ref: '#/components/schemas/PostingKind' }
+        appliedAt: { type: string, format: date-time }
+        requestId: { type: string }
+        sourceSystem: { type: string }
+        sourceRef: { type: [string, 'null'], description: 원천 참조(종류마다 모양 — 경로 설명) }
+        actorId: { type: [string, 'null'], description: 처리자(요청 토큰 주체 — 운영자 ID 또는 서비스 이름). 사건 구독·0.20.0 전 원결과는 null — 그때는 sourceSystem 을 보인다 }
+        deltas:
+          type: array
+          items:
+            type: object
+            required: [sku, lot, bucket, delta]
+            properties:
+              sku: { type: string }
+              lot: { type: string }
+              locationCode: { type: [string, 'null'], description: TRANSIT 은 null 일 수 있다 }
+              bucket: { type: string, enum: [ON_HAND, RESERVED, HELD, TRANSIT] }
+              delta: { type: integer }
     Commit:
       type: object
       properties:
         commitId: { type: string }
         requestId: { type: string }
-        postingKind: { type: string, enum: [ALLOCATION, RELEASE, TOUT, RECEIPT_ACK, MOVE, QUALITY, LOSS, ADJ, CNT, INITIAL_BALANCE] }
+        postingKind: { $ref: '#/components/schemas/PostingKind' }
+        actorId: { type: [string, 'null'], description: '(0.20.0) 요청 토큰 주체(운영자 ID·서비스 이름), 사건 구독·0.20.0 전 원결과는 null' }
         status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
         sourceSystem: { type: string }
         sourceRef: { type: string }

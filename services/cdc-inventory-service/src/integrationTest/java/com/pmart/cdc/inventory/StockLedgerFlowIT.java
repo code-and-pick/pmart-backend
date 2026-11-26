@@ -1936,5 +1936,63 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
         .isEqualTo(400);
     assertThat(move("RELOCATION", mv(sku, "M1", shelf, shelf, 1, null, null)).status())
         .isEqualTo(400);
+
+    // 5) 재고 이동 이력(0.20.0 LG-1) — 원장 줄 최신 순, 처리자, sku·칸·종류 거르기
+    String hist = "/cdcs/" + CENTER + "/stock-movements";
+    JsonNode bySku = get(OPERATOR, hist + "?sku=" + sku).body();
+    List<String> kinds = bySku.path("items").findValuesAsString("postingKind");
+    assertThat(kinds).contains("TOUT", "ALLOCATION", "INITIAL_BALANCE");
+    assertThat(kinds.stream().filter("MOVE"::equals).count()).isEqualTo(3);
+    assertThat(bySku.path("items").get(0).path("actorId").asString()).isNotBlank();
+    assertThat(bySku.path("hasNext").asBoolean()).isFalse();
+    JsonNode tout = get(OPERATOR, hist + "?sku=" + sku + "&kind=TOUT").body().path("items");
+    assertThat(tout.size()).isEqualTo(1);
+    assertThat(tout.get(0).path("sourceRef").asString()).isEqualTo(dep.get("departureId"));
+    int toutOnHand = 0;
+    for (JsonNode x : tout.get(0).path("deltas")) {
+      if ("ON_HAND".equals(x.path("bucket").asString())) {
+        toutOnHand += x.path("delta").asInt();
+      }
+    }
+    assertThat(toutOnHand).isEqualTo(-60);
+    // 선반 칸으로만 거르면 보충 이동의 출발(랙) 증감도 함께 보인다
+    JsonNode byShelf = get(OPERATOR, hist + "?locationCode=" + shelf).body().path("items");
+    JsonNode rep2 = null;
+    for (JsonNode x : byShelf) {
+      if (x.path("commitId").asString().equals(rep.body().path("resultId").asString())) {
+        rep2 = x;
+      }
+    }
+    assertThat(rep2).isNotNull();
+    assertThat(rep2.path("sourceRef").asString()).startsWith("REPLENISHMENT_MOVE:");
+    assertThat(rep2.path("deltas").findValuesAsString("locationCode")).contains(rack, shelf);
+    JsonNode page0 = get(OPERATOR, hist + "?sku=" + sku + "&size=2").body();
+    assertThat(page0.path("items").size()).isEqualTo(2);
+    assertThat(page0.path("hasNext").asBoolean()).isTrue();
+    assertThat(get(OPERATOR, hist).status()).isEqualTo(400);
+    assertThat(
+            get(
+                    OPERATOR,
+                    hist
+                        + "?sku="
+                        + sku
+                        + "&from="
+                        + Instant.now().minus(Duration.ofDays(40))
+                        + "&to="
+                        + Instant.now())
+                .status())
+        .isEqualTo(400);
+    assertThat(
+            get(
+                    TestJwt.operator("op-2", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    hist + "?sku=" + sku)
+                .status())
+        .isEqualTo(403);
+    assertThat(
+            get(SERVICE, "/internal/commits/" + rep.body().path("resultId").asString())
+                .body()
+                .path("actorId")
+                .asString())
+        .isNotBlank();
   }
 }

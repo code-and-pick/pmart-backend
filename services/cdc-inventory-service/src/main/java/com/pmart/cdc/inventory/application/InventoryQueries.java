@@ -9,13 +9,16 @@ import com.pmart.cdc.inventory.infrastructure.LedgerStore.TransitRow;
 import com.pmart.cdc.inventory.infrastructure.StockStore;
 import com.pmart.cdc.inventory.infrastructure.StockStore.BalanceRow;
 import com.pmart.cdc.inventory.infrastructure.StockStore.SafetyRow;
+import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,6 +62,13 @@ public class InventoryQueries {
   public record TransitView(TransitRow transit, List<TransitLineRow> lines) {}
 
   public record TransitPage(List<TransitView> items, @Nullable String nextCursor) {}
+
+  /** 재고 이동 이력 한 쪽(0.20.0). */
+  public record MovementPage(
+      Instant from, Instant to, List<CommitView> items, int page, int size, boolean hasNext) {}
+
+  static final Duration MOVEMENT_DEFAULT_RANGE = Duration.ofDays(7);
+  static final Duration MOVEMENT_MAX_RANGE = Duration.ofDays(31);
 
   private final StockStore stock;
   private final LedgerStore ledgerStore;
@@ -196,5 +206,73 @@ public class InventoryQueries {
       items.add(new TransitView(t, ledgerStore.transitLines(t.trfId())));
     }
     return new TransitPage(items, more ? items.get(items.size() - 1).transit().trfId() : null);
+  }
+
+  /**
+   * 재고 이동 이력(0.20.0 — DC 백오피스 LG-1): 원장 줄 최신 순. sku 또는 locationCode 필수, 기간 기본 7일·최대 31일. deltas 는
+   * sku·lot 거르기에 맞는 것만 — locationCode 로 거르면 그 칸에 증감이 있는 SKU·LOT 의 다른 칸 증감도 함께(이동의 출발·도착).
+   */
+  @Transactional(readOnly = true)
+  public MovementPage stockMovements(
+      String cdcId,
+      @Nullable String sku,
+      @Nullable String lot,
+      @Nullable String locationCode,
+      @Nullable String kind,
+      @Nullable Instant from,
+      @Nullable Instant to,
+      int page,
+      int size) {
+    Operator.requireCenter(cdcId);
+    if (sku == null && locationCode == null) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "sku 또는 locationCode 중 하나는 있어야 합니다.");
+    }
+    Instant end = to == null ? ledger.now() : to;
+    Instant start = from == null ? end.minus(MOVEMENT_DEFAULT_RANGE) : from;
+    if (!start.isBefore(end)) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "from 은 to 보다 앞이어야 합니다.");
+    }
+    if (Duration.between(start, end).compareTo(MOVEMENT_MAX_RANGE) > 0) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "기간은 31일까지입니다.");
+    }
+    int p = Math.max(0, page);
+    int n = Math.min(200, Math.max(1, size));
+    List<CommitRow> rows =
+        ledgerStore.movementCommits(
+            cdcId,
+            sku,
+            lot,
+            locationCode,
+            kind,
+            start,
+            end,
+            (int) Math.min(Integer.MAX_VALUE, (long) p * n),
+            n + 1);
+    boolean hasNext = rows.size() > n;
+    List<CommitRow> pageRows = hasNext ? rows.subList(0, n) : rows;
+    Map<String, List<Delta>> byCommit = new LinkedHashMap<>();
+    for (var md : ledgerStore.deltasOf(pageRows.stream().map(CommitRow::commitId).toList())) {
+      byCommit.computeIfAbsent(md.commitId(), k -> new ArrayList<>()).add(md.delta());
+    }
+    List<CommitView> items = new ArrayList<>();
+    for (CommitRow c : pageRows) {
+      List<Delta> all = byCommit.getOrDefault(c.commitId(), List.of());
+      Set<String> atLocation = new java.util.HashSet<>();
+      if (locationCode != null) {
+        for (Delta d : all) {
+          if (locationCode.equals(d.locationCode())) {
+            atLocation.add(d.sku() + "|" + d.lot());
+          }
+        }
+      }
+      List<Delta> shown =
+          all.stream()
+              .filter(d -> sku == null || sku.equals(d.sku()))
+              .filter(d -> lot == null || lot.equals(d.lot()))
+              .filter(d -> locationCode == null || atLocation.contains(d.sku() + "|" + d.lot()))
+              .toList();
+      items.add(new CommitView(c, shown));
+    }
+    return new MovementPage(start, end, items, p, n, hasNext);
   }
 }

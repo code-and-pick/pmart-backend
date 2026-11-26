@@ -192,3 +192,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 - 2026-11-26: 입고·적치·보충 1/3 — cdc-location 0.7.0(Flyway V4) 공간 예약·피킹 선반 최소·목표 설정. PR `cdc/location-space`. 다음 cdc-inbound 새 서비스(적치 지시·자동 보충·가상 설비 결과·다음 작업 받기), 그 뒤 시드(최소·목표 규칙은 시뮬레이터 세션이 사용자 확인 중).
 - 2026-11-26: 입고·적치·보충 2/3 — **cdc-inbound-service 새로 만듦**(0.2.0, 포트 8605, Flyway V2) 적치 지시·자동 보충·가상 설비 claim·결과. 흐름 `docs/business/flows/cdc-putaway-replenishment.md`. PR `cdc/inbound-service`(#519 다음). 남은 것: 최소·목표 시드(시뮬레이터 세션이 사용자 확인 중)·박스 입수는 상품 물류 규격에 있어야 보충됨.
 - 2026-11-26: 0~4절 전면 갱신(다른 계정으로 넘기기 전 — 사용자 요청). PR `cdc/handover-rewrite`.
+- 2026-11-26: 재고 이동 이력 cdc-inventory 0.20.0(Flyway V11, DC 백오피스 LG-1 — #579) `GET /cdcs/{cdcId}/stock-movements`, 원결과 처리자 actorId, PostingKind 실제 값으로(옛 `/internal/commits` 500 고침). PR `cdc/stock-movements`. PC1: 게이트웨이 라우트 `/api/v1/cdcs/*/stock-movements` → cdc-inventory. 다음: TR 운송은 사용자 확인 뒤.
