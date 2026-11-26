@@ -7,6 +7,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - 마지막 갱신: 2026-11-24.
 
 ## 000. 2026-11-26 오후 세션
+- [ ] **칠곡 피킹면 최소·목표 21,846칸(cdc 세션 2026-11-26, 시뮬레이터 R-26, PR `cdc/pick-face-paging`)** — ① 병합 → cdc-location 0.9.0 → cdc-inbound 배포(순서 이대로 — 새 cdc-inbound 는 쪽 넘기기를 쓰고, 옛 cdc-location 은 after 를 무시해 같은 쪽을 다시 주지만 nextCursor 가 없어 한 번에 끝남) ② 사용자 승인 받아 `PMART_CDC_LOCATION=http://<pc3>:8602/api/v1 python -I deploy/lan/seed/cdc_pick_face_settings.py --apply --approval-ref <승인>`(2,000칸 × 11) ③ 확인: `GET /internal/pick-faces?centerId=CDC01` 쪽 합 21,846, 1~2분 뒤 cdc-inbound `GET /cdcs/CDC01/replenishment-checks` 에 판단이 쌓임(재고 없는 칸 NO_SKU, 박스 입수 없는 SKU UNIT_MISSING). 결과를 cdc 세션·DC 시뮬 세션에 알림.
 - [x] **칠곡 LAN 위치 전환 R-25 — 새로 시작** — 2026-11-26 PR 세션 끝(일지 `worklog/platform/2026-11-26.md`): 승인 AP-010fa062(위치)·AP-830ed6fd(시작 재고), CDC01 옛 칸·재고만 지움 → 43,958칸·87통로·시작 재고 1,056줄 187,620개(504 SKU, 예약 0). 결과는 cdc 세션이 시뮬레이터 회신에 적음.
 - [x] 구매 기록 활용 ①·R4·O-13(order 0.24.0·review 0.9.0)·O-12(order 0.25.0)·CU-5·CU-6(customer 0.22.0·auth 0.12.0) — 모두 LAN 배포. 앱·화면은 고객앱 세션(`handoff/clients/customer-app/2026-11-26-request-frequent-items.md`)·PC 2.
 - [ ] **JMeter 부하 시험** — `docs/operations/2026-11-26-jmeter-load-test-plan.md` §6(다른 세션에 시간 알림 → 비회원 토큰 100개 → 1분 확인 → 10·50·100명, 결과 `D:\pmart-perf\jmeter\`). 주문·결제 소량 스크립트는 몇 건인지 사용자 확인 뒤.
