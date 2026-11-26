@@ -42,7 +42,7 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
     post:
       tags: [routes]
-      summary: '[0.2.0] 노선 등록 (CDC_MANAGER) — 정차 1~3곳(멀티드롭 최대 3 — 정본 7.4)'
+      summary: '[0.2.0] 노선 등록 (CDC_SUPERVISOR) — 정차 1~3곳(멀티드롭 최대 3 — 정본 7.4)'
       description: |
         정차 순서 = 방문 순서. 시각 검증(정본 3.3): 첫 정차 계획 도착 = 출차 + 첫 구간 분, 다음 정차 = 앞 정차 도착 + 하차 30분 + 구간 분.
         마지막 정차 도착이 07:30(Asia/Seoul, 출고 다음 날)을 넘으면 400 ROUTE_TIME_INFEASIBLE. 같은 MFC 가 살아 있는 다른 노선에 있으면 409 MFC_ALREADY_ROUTED.
@@ -88,7 +88,7 @@ paths:
   /cdcs/{cdcId}/routes/{routeId}/regular-vehicles:
     post:
       tags: [routes]
-      summary: '[0.2.0] 노선 × 온도대 정규차·기본 기사 지정 (CDC_MANAGER) — 이미 있으면 바꿈'
+      summary: '[0.2.0] 노선 × 온도대 정규차·기본 기사 지정 (CDC_SUPERVISOR) — 이미 있으면 바꿈'
       description: |
         fleet 에서 차량(REGULAR·사용 중·온도대 일치 — 아니면 409 VEHICLE_NOT_ELIGIBLE)과 기사(사용 중)를 확인하고 최대 R/T·중량 사본을 둔다. fleet 이 안 되면 503.
         이미 만든 운송지시서는 바뀌지 않는다(다음 생성부터).

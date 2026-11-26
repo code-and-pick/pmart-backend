@@ -39,7 +39,7 @@
 - 상태: RECEIVED → ACCEPTED·HELD·REJECTED·EXCLUDED → ASSIGNED(운송지시서에 연결) → DEPARTED → HANDED_OVER. 보류·반려는 사유와 함께 잔여 물량 목록에 남는다(숨기지 않음).
 
 ## 4. 운송지시서(transport order) — planning
-- **생성** `POST /cdcs/{cdcId}/transport-orders/generations {shipDate}`(CDC_MANAGER·배차 담당, 같은 날 다시 부르면 새 TRF 만 더함): 가져오기 → 노선 × 온도대마다 운송지시서(TO-yyyyMMdd-nnn, **계획중 PLANNING**)를 정규차·기본 기사로 만들고 그 노선 MFC 의 수용 요청서를 연결. 물량 0 이면 `cancelCandidate`(결행 후보).
+- **생성** `POST /cdcs/{cdcId}/transport-orders/generations {shipDate}`(CDC_SUPERVISOR·배차 담당, 같은 날 다시 부르면 새 TRF 만 더함): 가져오기 → 노선 × 온도대마다 운송지시서(TO-yyyyMMdd-nnn, **계획중 PLANNING**)를 정규차·기본 기사로 만들고 그 노선 MFC 의 수용 요청서를 연결. 물량 0 이면 `cancelCandidate`(결행 후보).
 - 적재: Σ R/T ≤ 최대 R/T 그리고 Σ 무게 ≤ 최대 중량. 넘으면 플래그 `OVER_CAPACITY`(용차 없음 — 알림만, 계획완료 막음). 이관요청서 1건은 차량 1대(나누지 않음).
 - 잔량 배분(정본 7.3)의 1·2단계(같은 노선 다른 정규차·인접 노선)는 1단계에서 **수동 이동** `POST …/{orderId}/request-moves`(요청서를 같은 온도대 다른 계획중 지시서로) — 정차 3곳 이하·온도대 같음만 검사. 자동 배분·OR-Tools 보조는 뒤로.
 - **계획완료 CONFIRMED** `POST …/{orderId}/confirmations`: 차량·기사(바꿀 수 있음 — 같은 온도대·용량 이상) → fleet 점유 예약(차량·기사, `[상차 시작, 계획 복귀)`) → execution 운행 만들기 → `DISPATCHED`. 점유가 겹치면 409, execution 이 불명이면 CONFIRMING 으로 두고 같은 요청을 다시 받는다(멱등).

@@ -38,7 +38,7 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Carrier' } }
     post:
       tags: [carriers]
-      summary: '[0.2.0] 운송사 등록 (CDC_MANAGER)'
+      summary: '[0.2.0] 운송사 등록 (CDC_SUPERVISOR)'
       operationId: createCarrier
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -82,7 +82,7 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Vehicle' } }
     post:
       tags: [vehicles]
-      summary: '[0.2.0] 차량 등록 (CDC_MANAGER) — 같은 차량 ID 는 409'
+      summary: '[0.2.0] 차량 등록 (CDC_SUPERVISOR) — 같은 차량 ID 는 409'
       operationId: createVehicle
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -122,7 +122,7 @@ paths:
   /vehicles/{vehicleId}/changes:
     post:
       tags: [vehicles]
-      summary: '[0.2.0] 차량 정보 바꾸기 (CDC_MANAGER) — 최대 R/T·중량·사용 여부·번호판'
+      summary: '[0.2.0] 차량 정보 바꾸기 (CDC_SUPERVISOR) — 최대 R/T·중량·사용 여부·번호판'
       description: 온도대·운송사·계약 구분은 바꾸지 않는다(새 차량으로 등록). 사용 중지해도 이미 잡힌 점유는 그대로 둔다.
       operationId: changeVehicle
       x-pmart-user-types: [OPERATOR]
@@ -173,7 +173,7 @@ paths:
                   items: { type: array, items: { $ref: '#/components/schemas/Driver' } }
     post:
       tags: [drivers]
-      summary: '[0.2.0] 기사 등록 (CDC_MANAGER) — 표시 이름만(연락처·면허 번호 같은 개인정보는 받지 않는다)'
+      summary: '[0.2.0] 기사 등록 (CDC_SUPERVISOR) — 표시 이름만(연락처·면허 번호 같은 개인정보는 받지 않는다)'
       operationId: createDriver
       x-pmart-user-types: [OPERATOR]
       parameters:
