@@ -72,6 +72,23 @@ public class ShortfallService {
       return;
     }
     Instant at = support.now();
+    if ("RECALL".equals(reason) && staging(loc)) {
+      // 0.23.0 리콜 — 이미 집어 출고대기에 옮겨 적은 물건: 재할당하지 않고 막는다(출발 준비 RECALL_HOLD, 출발 전기는 재고가 거절)
+      jdbc.update(
+          "INSERT INTO recall_hold (trf_id, sku, lot, location_code, source_ref, allocation_id, qty, created_at)"
+              + " VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (trf_id, sku, lot, location_code, source_ref)"
+              + " DO UPDATE SET qty = recall_hold.qty + EXCLUDED.qty",
+          trfId,
+          sku,
+          lot,
+          loc,
+          p.path("sourceRef").asString("-"),
+          allocationId,
+          qty,
+          java.sql.Timestamp.from(at));
+      log.warn("리콜로 출고대기 물량 막힘 — trfId={} {}/{} {} x{}", trfId, sku, lot, loc, qty);
+      return;
+    }
     int left = qty;
     String firstTask = null;
     List<String> touched = new ArrayList<>();
@@ -116,6 +133,20 @@ public class ShortfallService {
         loc,
         qty,
         at);
+  }
+
+  /** 출고대기 자리(통로 91) — 7구간 코드의 넷째. */
+  static boolean staging(String locationCode) {
+    String[] p = locationCode.split("-");
+    return p.length == 7 && "91".equals(p[3]);
+  }
+
+  /** 리콜로 막힌 물량이 있는 TRF 인지(출발 준비 RECALL_HOLD). */
+  int recallHeldOfTrf(String trfId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM recall_hold WHERE trf_id = ?", Integer.class, trfId);
+    return n == null ? 0 : n;
   }
 
   /** 줄이 다 정리된 작업은 끝낸다(피킹 실적과 같은 규칙) — TRF PICKED·Wave WORK_DONE 도. */

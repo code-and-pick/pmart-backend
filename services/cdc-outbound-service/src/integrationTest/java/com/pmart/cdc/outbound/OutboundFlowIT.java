@@ -2167,6 +2167,35 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
                 Integer.class,
                 trf))
         .isZero();
+
+    // 0.23.0 리콜 — 출고대기 91 칸의 RECALL 은 재할당하지 않고 막는다(RECALL_HOLD), 작업 줄은 그대로
+    Map<String, Object> rc = new LinkedHashMap<>(p);
+    rc.put("locationCode", "CDC09-C-5-91-01-0-1");
+    rc.put("qty", 1);
+    rc.put("reason", "RECALL");
+    rc.put("sourceRef", "QH-RECALL-1");
+    var renv =
+        codec.create(
+            "cdc-inventory-service",
+            "AllocationShortfall",
+            1,
+            "Allocation",
+            alc,
+            2,
+            null,
+            com.pmart.common.messaging.EventEnvelope.EventSource.REAL,
+            rc);
+    int before = get(ops9, "/cdcs/" + c9 + "/tasks?waveId=" + wave).body().path("items").size();
+    txTemplate.executeWithoutResult(s -> shortfalls.apply(renv));
+    assertThat(readiness(trf).path("blockers").toString()).contains("RECALL_HOLD");
+    assertThat(get(ops9, "/cdcs/" + c9 + "/tasks?waveId=" + wave).body().path("items").size())
+        .isEqualTo(before);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT qty FROM recall_hold WHERE trf_id = ? AND source_ref = 'QH-RECALL-1'",
+                Integer.class,
+                trf))
+        .isEqualTo(1);
   }
 
   JsonNode readiness(String trf) {

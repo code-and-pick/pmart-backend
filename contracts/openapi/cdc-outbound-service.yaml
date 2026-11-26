@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.22.0
+  version: 0.23.0
   description: |
+    0.23.0(2026-11-26, 리콜 — WMS CDC-F-028·정책 16.13, 사용자 "리콜은 출고대기분도 막음"): cdc-inventory 0.18.0 의 AllocationShortfall reason RECALL 이 출고대기 91 칸이면
+      재할당하지 않고 막는다(Flyway V16 `recall_hold`) — 출발 준비 blockers RECALL_HOLD, 그 TRF 출발 전기는 재고가 거절(보류 현물). 91 밖 칸의 RECALL 은 품질 보류와 같게(작업 줄 부족·재할당).
     0.22.0(2026-11-26, DC 백오피스 Wave 조작 — 사용자 "큰 순서 전부 고치고" 4번, WMS CDC-F-017, Flyway V15): `POST /waves/{waveId}/holds {reason}`(PLANNED·RELEASED·IN_PROGRESS —
       단계와 따로, 보류 중엔 릴리스 409 WAVE_HELD·PDA 다음 작업 받기에서 빠짐, 받은·시작한 작업은 그대로)·`…/resumptions`·`…/cancellations {reason}`(PLANNED, 또는 시작·실적 없는 RELEASED —
       작업 CANCELLED, IN_WAVE TRF 는 Wave 에서 빠져 할당 상태로(다시 편성 가능, 할당·예약 그대로), 실적 있으면 409 PICKING_STARTED)·`…/merges {sourceWaveId}`(둘 다 PLANNED·같은 센터·온도대,
@@ -1451,6 +1453,7 @@ paths:
           (0.12.0) SHORTAGE_REALLOCATING(피킹 부족의 재고 해제·추가 할당이 아직 끝나지 않음 — 다시 집을 작업이 생길 수 있다).
           (0.13.0) VERSION_CHANGE_PENDING(새 버전 대체 중)·VERSION_CHANGE_HOLD(예전 할당 해제 거절).
           (0.14.0) PICK_MOVE_PENDING(피킹 재고를 출고대기 자리로 옮겨 적기가 아직 끝나지 않음).
+          (0.23.0) RECALL_HOLD(리콜 LOT 이 이 TRF 출고대기 물량에 있음 — 출발 불가, 품질 처리·미출발 취소로 정리).
       operationId: getOutboundReadiness
       parameters:
         - { name: trfId, in: query, required: true, schema: { type: string } }
