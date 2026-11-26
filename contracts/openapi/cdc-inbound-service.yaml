@@ -1,12 +1,15 @@
 openapi: 3.1.0
 info:
   title: cdc-inbound-service
-  version: 0.1.0
+  version: 0.2.0
   description: |
     CDC 적치 지시·내부 이동 MOV·피킹 위치 최소 이하 자동 보충·가상 설비 어댑터 결과 검증의 정본. (docs/architecture/service-map.md §4)
     1~2단계 범위는 적치·MOV·보충. ASN·실수령·검수·입고 차이는 3단계(x-stage 3 자리표시자).
     수량은 cdc-inventory, 공간 예약은 cdc-location, 품질 판정은 cdc-quality가 정본.
     사가 S7: location 공간 선점 → inventory 이동 반영 → 작업 완료. 실패 시 이번 선점분만 해제한다.
+    0.2.0(2026-11-26, 첫 구현 — 사용자 "입고·적치·보충"·"적치 지시까지"·"박스 입수"): 작업 하나 = 출발 칸 → 목적 칸 이동 한 줄(PUTAWAY 운영자 지시·REPLENISHMENT 자동 보충).
+      만들 때 cdc-location 공간 예약(현물은 cdc-inventory 스냅샷) → DISPATCHED → 가상 설비가 다음 작업 받기(claim) → 결과(work-results 증가분, eventId 한 번) → cdc-inventory move-postings →
+      cdc-location 예약 소비. 실패·취소는 남은 예약만 해제(이미 옮긴 것은 그대로). 자동 보충은 최소 이하 피킹 선반만(설정 없는 칸은 보충하지 않음 — 설정 대기). ASN·실수령·검수는 3단계 그대로.
 servers:
   - url: /api/v1
 security:
@@ -18,18 +21,20 @@ tags:
   - { name: asn, description: ASN·실수령·검수 (3단계) }
 
 paths:
-  /putaway-tasks:
+  /cdcs/{cdcId}/putaway-tasks:
     post:
       tags: [putaway-tasks]
-      summary: 적치 지시 생성 (cdc-location 후보 산출 → 공간 선점 RESERVED)
-      description: 공간 선점 실패(NO_ELIGIBLE_LOCATION 등)는 422 사유 코드로 반환하며 지시를 만들지 않는다. 생성은 수량 변경이 아니다.
+      summary: '[0.2.0] 적치 지시 — 출발 칸의 재고를 목적 칸으로 (운영자)'
+      description: |
+        WMS CDC-F-010. 그 센터 운영자. 줄 하나(sku·lot·출발·목적·qty·품질 상태 기본 RELEASED). 검사(트랜잭션 밖):
+        출발 칸에 예약 안 된 그 SKU·LOT·품질 현물 ≥ qty(cdc-inventory 스냅샷, 아니면 409 SOURCE_SHORT) · 목적 칸 ACTIVE·PICK_FACE/RESERVE·온도대 = 상품 보관 온도(409 DESTINATION_INVALID) ·
+        목적 칸 공간 예약(cdc-location — 넘치면 409 CAPACITY_EXCEEDED). 통과하면 DISPATCHED(가상 설비가 받아 갈 수 있음). 같은 Idempotency-Key·같은 본문은 같은 작업.
       operationId: createPutawayTask
       x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
       parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
@@ -37,233 +42,28 @@ paths:
             schema: { $ref: '#/components/schemas/PutawayTaskInput' }
       responses:
         '201':
-          description: 지시 생성 또는 기존 반환(같은 키·같은 본문)
+          description: 작업
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PutawayTask' }
-        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
-        '422':
-          description: 거절 (NO_ELIGIBLE_LOCATION, TEMPERATURE_MISMATCH, CAPACITY_EXCEEDED, LOT_INVALID, CONFIG_REQUIRED)
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: SOURCE_SHORT / DESTINATION_INVALID / CAPACITY_EXCEEDED / IDEMPOTENCY_CONFLICT
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
-
-  /putaway-tasks/{taskId}:
     get:
       tags: [putaway-tasks]
-      summary: 적치 지시 조회 (Q = C + U + K 진행 수량, 선점·전기 참조)
-      operationId: getPutawayTask
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
-      parameters:
-        - { name: taskId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/PutawayTask' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /putaway-tasks/{taskId}/executions:
-    post:
-      tags: [putaway-tasks]
-      summary: 작업자 실행 결과 등록 (부분 완료 허용, Q = C + U + K) → cdc-inventory 이동 반영 → PutawayTaskStateChanged
-      description: |
-        지시량 Q = 완료 C + 미완료 U + 취소 K. 이번 실행분만 cdc-inventory POST /internal/move-postings로 전기하고 commitId를 기록한다.
-        전기 실패 시 이번 선점분만 해제하고 FAILED→RETRY_READY. 자체 사본으로 성공을 판단하지 않는다.
-      operationId: recordPutawayExecution
+      summary: '[0.2.0] 적치·보충 작업 목록 — 최신 순'
+      operationId: listPutawayTasks
       x-pmart-user-types: [OPERATOR]
       parameters:
-        - { name: taskId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [workerId, lines]
-              properties:
-                workerId: { type: string }
-                executedAt: { type: string, format: date-time }
-                lines:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: object
-                    required: [sku, lot, toLocationCode, completedQty]
-                    properties:
-                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-                      lot: { type: string }
-                      toLocationCode: { type: string, description: 지시 위치와 다르면 예외 사유 필수 }
-                      completedQty: { type: integer, minimum: 0 }
-                      exceptionReason: { type: string, enum: [LOCATION_FULL, LOCATION_BLOCKED, DAMAGED, WRONG_LOT, OTHER] }
-      responses:
-        '202':
-          description: 접수. resultId = executionId (전기 commitId는 GET /putaway-tasks/{taskId})
-          content:
-            application/json:
-              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
-        '409':
-          description: INVALID_STATE (COMPLETED/CANCELLED) / VERSION_CONFLICT / EXECUTION_EXCEEDS_REMAINING (C 누계 > Q)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
-
-  /putaway-tasks/{taskId}/cancellations:
-    post:
-      tags: [putaway-tasks]
-      summary: 적치 지시 취소 (미완료 잔량 U → K, 선점 해제). 완료분 C는 되돌리지 않음
-      description: 실행 중 취소 경합은 버전으로 해소한다. 이미 전기된 완료분은 별도 MOV로만 이동한다.
-      operationId: cancelPutawayTask
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
-      parameters:
-        - { name: taskId, in: path, required: true, schema: { type: string } }
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [reason]
-              properties:
-                reason: { type: string, enum: [SOURCE_CANCELLED, LOCATION_UNAVAILABLE, QUALITY_HOLD, DUPLICATE, OTHER] }
-                note: { type: string, maxLength: 500 }
-      responses:
-        '202': { $ref: '_common.yaml#/components/responses/Accepted' }
-        '409':
-          description: INVALID_STATE (이미 COMPLETED) / VERSION_CONFLICT
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-
-  /replenishment-moves:
-    post:
-      tags: [replenishment-moves]
-      summary: 피킹 위치 보충 MOV 생성 (최소 이하 자동 또는 수동) → ReplenishmentMoveCreated
-      description: |
-        필요량 = max(0, 보충 목표 − 피킹 위치 현물 − 진행 중 보충). 지시량 = 배수 올림 후 min(필요량, 보관 위치 가용, 피킹 위치 잔여 용량).
-        센터 간 공급 TRF와 구분되는 센터 내부 이동이다. 실행·전기는 적치 지시와 같은 S7 경로.
-      operationId: createReplenishmentMove
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 구현 없음. 수동 생성은 CDC 센터 직원(자동 생성은 서비스 안에서)으로 봄"
-      parameters:
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/Traceparent'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [cdcId, sku, toLocationCode, trigger]
-              properties:
-                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-                sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-                toLocationCode: { type: string, description: 피킹 위치 }
-                trigger: { type: string, enum: [AUTO_MIN_LEVEL, MANUAL, WAVE_DEMAND] }
-                requestedQty: { type: integer, minimum: 1, description: 수동일 때. 자동은 산식으로 결정 }
-                requesterId: { type: string }
-      responses:
-        '201':
-          description: MOV 생성 또는 기존 반환(같은 키·같은 본문)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ReplenishmentMove' }
-        '409':
-          description: IDEMPOTENCY_CONFLICT / MOVE_IN_PROGRESS (같은 피킹 위치·SKU 미완료 보충 존재)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-        '422':
-          description: 거절 (NO_SOURCE_STOCK, CONFIG_REQUIRED 보충 목표·최소량 미설정, LOCATION_NOT_PICK_FACE)
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-
-  /replenishment-moves/{moveId}:
-    get:
-      tags: [replenishment-moves]
-      summary: 보충 MOV 조회 (산식 입력값·연결 적치 지시·진행)
-      operationId: getReplenishmentMove
-      x-pmart-user-types: [OPERATOR]
-      x-pmart-user-types-note: "추정 — 구현 없음. CDC 센터 직원(관리자·작업자) 업무로 봄"
-      parameters:
-        - { name: moveId, in: path, required: true, schema: { type: string } }
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ReplenishmentMove' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-
-  /internal/work-results:
-    post:
-      tags: [internal]
-      summary: '[virtual-equipment-adapter→cdc-inbound] 설비 작업 결과 수신 (WorkResult, eventId 멱등·증가분만 반영)'
-      description: |
-        같은 eventId 재수신은 기존 결과를 반환한다. 누계가 아닌 증가분(deltaQty)으로 해석하며 누계가 지시량 Q를 넘으면 거절한다.
-        검증 통과분은 작업 실행 결과와 같은 경로로 전기한다.
-      operationId: receiveWorkResult
-      parameters:
-        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
-        - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/Traceparent'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [eventId, equipmentId, taskId, occurredAt, lines]
-              properties:
-                eventId: { type: string }
-                equipmentId: { type: string }
-                taskId: { type: string, description: putawayTaskId / moveId }
-                occurredAt: { type: string, format: date-time }
-                lines:
-                  type: array
-                  minItems: 1
-                  items:
-                    type: object
-                    required: [sku, lot, toLocationCode, deltaQty]
-                    properties:
-                      sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-                      lot: { type: string }
-                      toLocationCode: { type: string }
-                      deltaQty: { type: integer, minimum: 1 }
-                      resultCode: { type: string, enum: [OK, JAM, MISREAD, REJECTED] }
-      responses:
-        '200':
-          description: 수신 결과 (APPLIED 또는 기존 결과)
-          content:
-            application/json:
-              schema: { $ref: '_common.yaml#/components/schemas/CommandResponse' }
-        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
-        '409':
-          description: IDEMPOTENCY_CONFLICT / WORK_RESULT_EXCEEDS_TASK / INVALID_STATE
-          content:
-            application/problem+json:
-              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-
-  /internal/work-results/{eventId}:
-    get:
-      tags: [internal]
-      summary: 설비 작업 결과 수신 상태 조회
-      operationId: getWorkResult
-      parameters:
-        - { name: eventId, in: path, required: true, schema: { type: string } }
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/PutawayTaskState' } }
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/PutawayTaskKind' } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string } }
       responses:
         '200':
           description: OK
@@ -272,16 +72,150 @@ paths:
               schema:
                 type: object
                 properties:
-                  eventId: { type: string }
-                  taskId: { type: string }
-                  status: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
-                  appliedQty: { type: integer }
-                  commitId: { type: string }
-                  rejectReason: { type: string }
-                  receivedAt: { type: string, format: date-time }
+                  items: { type: array, items: { $ref: '#/components/schemas/PutawayTask' } }
+                  nextCursor: { type: [string, 'null'] }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/putaway-tasks/{taskId}:
+    get:
+      tags: [putaway-tasks]
+      summary: '[0.2.0] 작업 조회 — 진행·결과 이력'
+      operationId: getPutawayTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PutawayTask' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
-  # ---------- 3단계 자리표시자 ----------
+  /cdcs/{cdcId}/putaway-tasks/{taskId}/cancellations:
+    post:
+      tags: [putaway-tasks]
+      summary: '[0.2.0] 작업 취소 — 남은 수량만(이미 옮긴 것은 그대로), 남은 공간 예약 해제'
+      description: |
+        CDC_MANAGER. DISPATCHED·IN_PROGRESS·PARTIALLY_COMPLETED 만, 반영 중인 결과가 있으면 409 RESULT_IN_FLIGHT(결과가 끝난 뒤). 취소 요청만으로 운반 중 물건이 돌아온 것으로 보지 않는다 — 결과가 나중에 오면 받지 않는다(409).
+      operationId: cancelPutawayTask
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: taskId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 취소된 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PutawayTask' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
+  /cdcs/{cdcId}/replenishment-checks:
+    get:
+      tags: [replenishment-moves]
+      summary: '[0.2.0] 자동 보충 판단 — 피킹 선반마다 마지막 계산(지시량 또는 0 의 사유)'
+      description: |
+        WMS CDC-F-013 "계산 결과 0은 작업을 만들지 않고 부족·단위·용량 사유를 표시". 주기 감지(`pmart.inbound.replenishment-interval`)의 칸별 마지막 결과 — 칸 코드 순.
+        reason: ABOVE_MIN(최소 초과) · CREATED(작업 만듦) · OPEN_TASK_COVERS(진행 중 보충이 채움) · UNIT_MISSING(박스 입수 미등록 — 설정 대기) · NO_SKU(빈 칸 — 어떤 SKU 칸인지 모름) ·
+        SOURCE_SHORT(랙 적격 재고 부족) · ROOM_SHORT(칸 여유 부족) · BELOW_UNIT(배수 때문에 0) · RESERVE_FAILED(공간 예약 실패).
+      operationId: listReplenishmentChecks
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: reason, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 2000, default: 500 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ReplenishmentCheck' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /internal/putaway-task-claims:
+    post:
+      tags: [internal]
+      summary: '[가상 설비→cdc-inbound] 다음 작업 받기 (0.2.0) — DISPATCHED 하나를 이 설비에 (만든 순)'
+      description: |
+        한 작업 한 설비(`FOR UPDATE SKIP LOCKED`). 이 설비가 이미 IN_PROGRESS·PARTIALLY_COMPLETED 작업을 들고 있으면 그것. 없으면 204. 같은 Idempotency-Key 는 같은 결과(시뮬레이터 요청 — 여러 대가 같은 작업을 집지 않게).
+      operationId: claimPutawayTask
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cdcId, deviceId]
+              properties:
+                cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
+                deviceId: { type: string, maxLength: 64 }
+                kinds: { type: array, items: { $ref: '#/components/schemas/PutawayTaskKind' } }
+      responses:
+        '200':
+          description: 받은 작업(IN_PROGRESS)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PutawayTask' }
+        '204': { description: 받을 작업 없음 }
+
+  /internal/work-results:
+    post:
+      tags: [internal]
+      summary: '[가상 설비→cdc-inbound] 작업 결과 (0.2.0) — eventId 한 번, 완료 증가분만 재고 이동'
+      description: |
+        WMS CDC-F-011. 그 작업을 받은 설비만(409 NOT_CLAIMED). SUCCESS = 남은 전량 완료(completedQty = 남은 수량, 아니면 400) · PARTIAL = 일부(completedQty ≤ 남은 수량) · FAILED = 더 못 함(completedQty 0).
+        완료 증가분은 cdc-inventory move-postings(PUTAWAY·REPLENISHMENT_MOVE, 키 `inb-move-<eventId>`) → cdc-location 예약 소비 → 작업 completedQty +. SUCCESS·누계 = 지시량이면 COMPLETED, 일부면 PARTIALLY_COMPLETED.
+        FAILED 면 FAILED + 남은 예약 해제. 재고가 거절하면 그 결과 REJECTED·작업 FAILED(남은 예약 해제), 응답 불명이면 결과 PENDING(서버가 같은 키로 다시). 같은 eventId 는 같은 응답(본문이 다르면 409). Idempotency-Key 는 공통 헤더 검사용 — eventId 를 그대로 쓴다(한 번 처리는 eventId 가 지킨다).
+      operationId: receiveWorkResult
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, taskId, deviceId, status, completedQty]
+              properties:
+                eventId: { type: string, maxLength: 64 }
+                taskId: { type: string }
+                deviceId: { type: string, maxLength: 64 }
+                status: { type: string, enum: [SUCCESS, PARTIAL, FAILED] }
+                completedQty: { type: integer, minimum: 0, description: 이번 증가분 }
+                failureReason: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: 결과 반영 뒤 작업
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PutawayTask' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /asn:
     post:
       tags: [asn]
@@ -324,94 +258,71 @@ components:
   schemas:
     PutawayTaskState:
       type: string
-      enum: [CREATED, RESERVED, DISPATCHED, IN_PROGRESS, PARTIALLY_COMPLETED, COMPLETED, FAILED, RETRY_READY, CANCELLED]
+      description: (0.2.0) RESERVED·CREATED 는 만드는 중의 짧은 상태. DISPATCHED = 설비가 받아 갈 수 있음, IN_PROGRESS = 받음.
+      enum: [CREATED, RESERVED, DISPATCHED, IN_PROGRESS, PARTIALLY_COMPLETED, COMPLETED, FAILED, CANCELLED]
+    PutawayTaskKind:
+      type: string
+      description: PUTAWAY(운영자 적치 지시) · REPLENISHMENT(최소 이하 자동 보충 — 수동 생성 없음, CDC-F-013)
+      enum: [PUTAWAY, REPLENISHMENT]
     PutawayTaskInput:
       type: object
-      required: [cdcId, sourceKind, sourceRef, lines]
+      required: [sku, lot, fromLocationCode, toLocationCode, qty]
       properties:
-        cdcId: { $ref: '_common.yaml#/components/schemas/CenterId' }
-        sourceKind: { type: string, enum: [INITIAL_BALANCE, RECEIPT, RELOCATION, QUALITY_RELEASE, REPLENISHMENT_MOVE] }
-        sourceRef: { type: string, description: 원천 ID (commitId / moveId / holdId) }
-        priority: { type: integer, minimum: 1, maximum: 5, default: 3 }
-        lines:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            required: [sku, lot, fromLocationCode, qty]
-            properties:
-              sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-              lot: { type: string }
-              expiresAt: { type: string, format: date }
-              fromLocationCode: { type: string, description: 스테이징·도크 위치 }
-              qty: { $ref: '_common.yaml#/components/schemas/Quantity' }
-              temperatureZone: { type: string, enum: [AMBIENT, CHILLED, FROZEN] }
-              preferredLocationCode: { type: string }
+        sku: { $ref: '_common.yaml#/components/schemas/Sku' }
+        lot: { type: string }
+        fromLocationCode: { type: string }
+        toLocationCode: { type: string }
+        qty: { type: integer, minimum: 1 }
+        qualityState: { type: string, enum: [RELEASED, HELD, QUARANTINED], default: RELEASED }
+        reason: { type: string, maxLength: 300 }
     PutawayTask:
-      allOf:
-        - { $ref: '#/components/schemas/PutawayTaskInput' }
-        - type: object
-          properties:
-            taskId: { type: string }
-            state: { $ref: '#/components/schemas/PutawayTaskState' }
-            version: { $ref: '_common.yaml#/components/schemas/Version' }
-            assigneeId: { type: string }
-            spaceReservationId: { type: string, description: cdc-location 공간 예약 }
-            progress:
-              type: array
-              description: Q = C + U + K
-              items:
-                type: object
-                properties:
-                  sku: { type: string }
-                  lot: { type: string }
-                  assignedLocationCode: { type: string }
-                  q: { type: integer, description: 지시량 }
-                  c: { type: integer, description: 완료 }
-                  u: { type: integer, description: 미완료 }
-                  k: { type: integer, description: 취소 }
-            executions:
-              type: array
-              items:
-                type: object
-                properties:
-                  executionId: { type: string }
-                  workerId: { type: string }
-                  executedAt: { type: string, format: date-time }
-                  completedQty: { type: integer }
-                  postingStatus: { $ref: '_common.yaml#/components/schemas/CommandStatus' }
-                  commitId: { type: string, description: cdc-inventory 이동 commitId }
-            failureReason: { type: string }
-            createdAt: { type: string, format: date-time }
-            completedAt: { type: string, format: date-time }
-    ReplenishmentMove:
       type: object
       properties:
-        moveId: { type: string }
+        taskId: { type: string }
         cdcId: { type: string }
+        kind: { $ref: '#/components/schemas/PutawayTaskKind' }
+        state: { $ref: '#/components/schemas/PutawayTaskState' }
         sku: { type: string }
-        toLocationCode: { type: string }
-        fromLocationCode: { type: string }
         lot: { type: string }
-        trigger: { type: string, enum: [AUTO_MIN_LEVEL, MANUAL, WAVE_DEMAND] }
-        state: { type: string, enum: [CREATED, TASK_ISSUED, IN_PROGRESS, COMPLETED, CANCELLED, FAILED] }
-        version: { $ref: '_common.yaml#/components/schemas/Version' }
-        calculation:
-          type: object
-          description: 산식 입력·결과 (asOf 사본)
-          properties:
-            targetLevel: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
-            minLevel: { $ref: '_common.yaml#/components/schemas/PolicyValue' }
-            pickFaceOnHand: { type: integer }
-            inProgressQty: { type: integer }
-            requiredQty: { type: integer }
-            sourceAvailable: { type: integer }
-            pickFaceRemainingCapacity: { type: integer }
-            orderedQty: { type: integer, description: 지시량 }
-            asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-        putawayTaskId: { type: string }
+        qualityState: { type: string }
+        fromLocationCode: { type: string }
+        toLocationCode: { type: string }
+        qty: { type: integer }
+        completedQty: { type: integer }
+        reservationId: { type: [string, 'null'], description: cdc-location 공간 예약 }
+        deviceId: { type: [string, 'null'] }
+        createdBy: { type: string }
+        reason: { type: [string, 'null'] }
+        failureReason: { type: [string, 'null'] }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              eventId: { type: string }
+              status: { type: string }
+              completedQty: { type: integer }
+              state: { type: string, enum: [PENDING, APPLIED, REJECTED], description: 재고 반영 상태 }
+              commitId: { type: [string, 'null'] }
+              rejectReason: { type: [string, 'null'] }
+              receivedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
-        completedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ReplenishmentCheck:
+      type: object
+      properties:
+        locationCode: { type: string }
+        sku: { type: [string, 'null'] }
+        currentQty: { type: [integer, 'null'] }
+        minQty: { type: integer }
+        targetQty: { type: integer }
+        openQty: { type: [integer, 'null'], description: 진행 중 보충 }
+        needQty: { type: [integer, 'null'] }
+        orderedQty: { type: [integer, 'null'], description: 이번에 만든 지시량 }
+        unitQty: { type: [integer, 'null'], description: 박스 입수 }
+        reason: { type: string }
+        taskId: { type: [string, 'null'] }
+        checkedAt: { type: string, format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

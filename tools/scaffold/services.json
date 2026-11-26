@@ -40,6 +40,7 @@
     { "name": "cdc-inventory-service",         "group": "cdc",      "domain": "cdc",      "port": 8601, "features": ["data", "kafka"] },
     { "name": "cdc-location-service",          "group": "cdc",      "domain": "cdc",      "port": 8602, "features": ["data", "kafka"] },
     { "name": "cdc-outbound-service",          "group": "cdc",      "domain": "cdc",      "port": 8603, "features": ["data", "kafka"] },
-    { "name": "cdc-quality-service",           "group": "cdc",      "domain": "cdc",      "port": 8604, "features": ["data", "kafka"] }
+    { "name": "cdc-quality-service",           "group": "cdc",      "domain": "cdc",      "port": 8604, "features": ["data", "kafka"] },
+    { "name": "cdc-inbound-service",           "group": "cdc",      "domain": "cdc",      "port": 8605, "features": ["data", "kafka"] }
   ]
 }

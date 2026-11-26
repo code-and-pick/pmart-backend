@@ -159,6 +159,7 @@
 - **구독**: `ProductVersionPublished`, `MfcReceiptPosted`, `ReceiptCorrectionPosted`, `HoldRequested/Released/DisposalApproved`(quality), `TruckDepartureValidated`(outbound).
 
 ### cdc-inbound-service `[2단계: 적치·MOV·보충 / 3단계: ASN·실수령·검수]`
+- **구현 상태(2026-11-26, 0.2.0)**: 적치 지시·자동 보충(최소 이하)·가상 설비 다음 작업 받기·결과 반영(재고 move-postings·location 공간 예약 소비). 흐름 `docs/business/flows/cdc-putaway-replenishment.md`. 적치 후보 자동 산출·출발 점유·사건 발행·ASN 은 다음.
 - **소유(1~2차 재정의 `[제안]`)**: 적치 지시(CREATED→RESERVED→DISPATCHED→IN_PROGRESS→PARTIALLY_COMPLETED→COMPLETED / FAILED→RETRY_READY / CANCELLED), 내부 이동 MOV, 피킹 위치 최소 이하 자동 보충(필요량·지시량 산식), 적치 예외·취소 경합, 가상 설비 어댑터 결과 검증(`WorkResult` 증가분 멱등). 3차에 ASN·실수령·검수·입고 차이 추가.
 - **소유하지 않음**: 수량(inventory), 공간 예약 정본(location), 품질 판정(quality).
 - **사가 S7**: location 공간 선점 → inventory 이동 반영 → 작업 완료. 실패 시 이번 선점분만 해제.

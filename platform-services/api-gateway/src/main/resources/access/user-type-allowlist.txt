@@ -87,10 +87,13 @@ GET /api/v1/cdcs/{cdcId}/lpns OPERATOR
 GET /api/v1/cdcs/{cdcId}/operation-restrictions OPERATOR
 GET /api/v1/cdcs/{cdcId}/operation-restrictions/{restrictionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
+GET /api/v1/cdcs/{cdcId}/putaway-tasks OPERATOR
+GET /api/v1/cdcs/{cdcId}/putaway-tasks/{taskId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
 GET /api/v1/cdcs/{cdcId}/quality-holds/{holdId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/recount-holds OPERATOR
 GET /api/v1/cdcs/{cdcId}/regions OPERATOR
+GET /api/v1/cdcs/{cdcId}/replenishment-checks OPERATOR
 GET /api/v1/cdcs/{cdcId}/shortages OPERATOR
 GET /api/v1/cdcs/{cdcId}/sku-handlings OPERATOR
 GET /api/v1/cdcs/{cdcId}/stock-snapshot OPERATOR
@@ -312,7 +315,6 @@ GET /api/v1/promotions/theme-targets OPERATOR
 GET /api/v1/promotions/{promotionId} OPERATOR
 GET /api/v1/purchase-orders/{purchaseOrderId} OPERATOR
 GET /api/v1/putaway-candidates OPERATOR
-GET /api/v1/putaway-tasks/{taskId} OPERATOR
 GET /api/v1/quality-decisions OPERATOR
 GET /api/v1/quality-decisions/{qualityDecisionId} OPERATOR
 GET /api/v1/quality-evidence-photos/{evidenceRef} OPERATOR
@@ -320,7 +322,6 @@ GET /api/v1/quality-incidents OPERATOR
 GET /api/v1/quality-incidents/{incidentId} OPERATOR
 GET /api/v1/recommendations OPERATOR
 GET /api/v1/redelivery-payments CUSTOMER
-GET /api/v1/replenishment-moves/{moveId} OPERATOR
 GET /api/v1/replenishment-status OPERATOR
 GET /api/v1/return-arrivals OPERATOR
 GET /api/v1/return-handovers OPERATOR
@@ -491,6 +492,8 @@ POST /api/v1/cdcs/{cdcId}/locations OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations/{locationCode}/state-changes OPERATOR
 POST /api/v1/cdcs/{cdcId}/operation-restrictions OPERATOR
 POST /api/v1/cdcs/{cdcId}/operation-restrictions/{restrictionId}/lifts OPERATOR
+POST /api/v1/cdcs/{cdcId}/putaway-tasks OPERATOR
+POST /api/v1/cdcs/{cdcId}/putaway-tasks/{taskId}/cancellations OPERATOR
 POST /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
 POST /api/v1/cdcs/{cdcId}/quality-holds/{holdId}/release-requests OPERATOR
 POST /api/v1/cdcs/{cdcId}/quality-holds/{holdId}/release-requests/{releaseId}/decisions OPERATOR
@@ -672,9 +675,6 @@ POST /api/v1/promotions/{promotionId}/end-submissions OPERATOR
 POST /api/v1/promotions/{promotionId}/submissions OPERATOR
 POST /api/v1/purchase-orders OPERATOR
 POST /api/v1/purchase-orders/{purchaseOrderId}/cancellations OPERATOR
-POST /api/v1/putaway-tasks OPERATOR
-POST /api/v1/putaway-tasks/{taskId}/cancellations OPERATOR
-POST /api/v1/putaway-tasks/{taskId}/executions OPERATOR
 POST /api/v1/quality-decisions OPERATOR
 POST /api/v1/quality-decisions/{qualityDecisionId}/approvals OPERATOR
 POST /api/v1/quality-evidence-photos OPERATOR
@@ -682,7 +682,6 @@ POST /api/v1/quality-incidents OPERATOR
 POST /api/v1/quality-incidents/{incidentId}/closures OPERATOR
 POST /api/v1/redelivery-payments/{redeliveryPaymentId}/declines CUSTOMER
 POST /api/v1/redelivery-payments/{redeliveryPaymentId}/payment-attempts CUSTOMER
-POST /api/v1/replenishment-moves OPERATOR
 POST /api/v1/return-handovers/{deliveryId}/code-reissues OPERATOR
 POST /api/v1/return-inspections OPERATOR
 POST /api/v1/return-receipts OPERATOR

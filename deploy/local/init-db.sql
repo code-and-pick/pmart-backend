@@ -37,3 +37,4 @@ CREATE DATABASE cdc_inventory_service;
 CREATE DATABASE cdc_location_service;
 CREATE DATABASE cdc_outbound_service;
 CREATE DATABASE cdc_quality_service;
+CREATE DATABASE cdc_inbound_service;
