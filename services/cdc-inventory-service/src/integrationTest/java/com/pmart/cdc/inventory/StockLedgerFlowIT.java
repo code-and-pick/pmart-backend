@@ -1134,6 +1134,11 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(tl.path("pendingQty").asInt()).isEqualTo(1);
     assertThat(tl.path("r").asInt()).isEqualTo(10);
     assertThat(tl.path("t").asInt()).isZero();
+    // 0.21.0: 수령 반영 시각·수령 ID(운영 지표 KP-1 이 읽음)
+    JsonNode tr = get(SERVICE, "/internal/transits?trfId=" + trf).body().path("items").get(0);
+    assertThat(tr.path("receiptIds").size()).isGreaterThanOrEqualTo(1);
+    assertThat(tr.path("firstReceiptAt").isNull()).isFalse();
+    assertThat(tr.path("lastReceiptAt").isNull()).isFalse();
     assertThat(
             post(SERVICE, "/internal/receipt-acks", key(), ack).body().path("appliedQty").asInt())
         .isEqualTo(6); // 같은 receiptId 같은 본문 — 그대로(추가 차감 0)

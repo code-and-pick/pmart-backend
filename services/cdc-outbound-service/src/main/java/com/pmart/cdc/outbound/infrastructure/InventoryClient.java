@@ -59,6 +59,23 @@ public class InventoryClient {
                 .body(String.class));
   }
 
+  /**
+   * GET /internal/transits?trfId — 그 TRF 의 운송 중 재고(0.28.0 운영 지표, cdc-inventory 0.21.0 수령 시각). 없으면
+   * null.
+   */
+  public @org.jspecify.annotations.Nullable JsonNode transit(String trfId) {
+    JsonNode n =
+        call(
+            () ->
+                http.get()
+                    .uri("/api/v1/internal/transits?trfId={t}", trfId)
+                    .header("X-Source-System", SOURCE)
+                    .retrieve()
+                    .body(String.class));
+    JsonNode items = n.path("items");
+    return items.isArray() && !items.isEmpty() ? items.get(0) : null;
+  }
+
   /** POST /internal/departure-postings(TOUT) — 같은 키·같은 본문은 기존 commitId. */
   public JsonNode depart(String key, Map<String, Object> body) {
     return post("/api/v1/internal/departure-postings", key, body);

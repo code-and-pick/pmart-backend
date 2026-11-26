@@ -326,4 +326,15 @@ public class LedgerStore {
         rs.getTimestamp("departed_at").toInstant(),
         rec == null ? null : rec.toInstant());
   }
+
+  public record ReceiptAt(String receiptId, Instant appliedAt) {}
+
+  /** 반영한 MFC 수령(0.21.0 — 운영 지표), 반영 시각 순. */
+  public List<ReceiptAt> appliedReceipts(String trfId) {
+    return jdbc.query(
+        "SELECT receipt_id, applied_at FROM transit_receipt WHERE trf_id = ? AND state = 'APPLIED'"
+            + " AND applied_at IS NOT NULL ORDER BY applied_at, receipt_id",
+        (rs, i) -> new ReceiptAt(rs.getString(1), rs.getTimestamp(2).toInstant()),
+        trfId);
+  }
 }

@@ -1,8 +1,12 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.27.0
+  version: 0.28.0
   description: |
+    0.28.0(2026-11-26, DC 백오피스 KP-1 — 사용자 "있는 자료만 + 나머지 N/A"): 운영 확인 기준(WMS CDC-F-034 표) `GET /cdcs/{cdcId}/operating-metrics?from=&to=&mfcId=`.
+      기한(dueAt)이 그 기간인 TRF 기준. 원천이 있는 것만 계산(승인 수요 충족률·정상 수령률 — cdc-inventory Transit, 예외 운영량 — 출발 대조·피킹 부족·운송 중 미정산),
+      원수요 충족률·사용 준비 시간·약속 준수는 N/A(원천 없음 — replenishment 원수요·MFC 사용 준비 확인). SKU 를 섞은 낱개 합 비율은 확정이 아니라 잠정(provisional).
+      분모 0 = N/A. 원장·품질·환불을 바꾸지 않는 읽기만. BI 대시보드·목표 수치 아님.
     0.27.0(2026-11-26, DC 백오피스 KP-2·WF-1 — pmart-clients docs/handoff/cdc-backoffice/2026-11-26-backend-kpi-workforce.md): 날짜 범위 출고 집계
       `GET /cdcs/{cdcId}/outbound-summary/daily?from=&to=`(최대 31일 — 날짜마다 그날 출고 집계와 같은 값)·작업자 실적 `GET /cdcs/{cdcId}/worker-throughput?from=&to=`
       (끝난 작업의 담당자별 작업 수·피킹 줄·수량·부족 보고 줄·첫 시작·마지막 끝·주 구역 — 작업 기록에서 계산, 새 정본 없음). 읽기만.
@@ -980,6 +984,69 @@ paths:
                         lastCompletedAt: { type: [string, 'null'], format: date-time }
                         mainFloor: { type: [string, 'null'] }
                         mainZone: { type: [string, 'null'] }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/operating-metrics:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 운영 확인 기준 (0.28.0 KP-1 — WMS CDC-F-034 표)'
+      description: |
+        기한(dueAt, Asia/Seoul 날짜)이 [from, to] 인 이 센터 TRF(mfcId 로 거름)를 평가 대상으로 한다. 최대 31일. 항목 6개는 늘 같은 순서로 나온다.
+        - APPROVED_DEMAND_FULFILLMENT 승인 수요 충족률 = 기한 안(마지막 수령 반영 ≤ dueAt) 정상 수령량 ÷ 평가 승인량(지금 버전 승인량 — 취소 TRF 포함, 분모를 줄이지 않음).
+        - ORIGINAL_DEMAND_FULFILLMENT 원수요 충족률 — N/A(원수요는 replenishment 정본, 아직 없음).
+        - NORMAL_RECEIPT_RATE 정상 수령률 = 정상 수령량 ÷ 실제 수령량(정상 + 격리 + 미판정). 미판정이 있으면 잠정.
+        - READY_TIME 사용 준비 시간 — N/A(MFC 적치·사용 준비 확인 원천 없음).
+        - PROMISE_COMPLIANCE 약속 준수 — N/A(사용 준비 원천이 없어 함께 비교할 수 없음 — 부분 비교를 합치지 않는다).
+        - EXCEPTION_VOLUME 예외 운영량 — 건수(비율 아님): components = 출발 대조 불일치 TRF·피킹 부족 기록·운송 중 미정산 TRF. 기한 손실·긴급 비중은 N/A.
+        잠정(provisional): 아직 수령·대사가 끝나지 않은 TRF 가 있거나, SKU 를 섞은 낱개 합 비율일 때(WMS: 서로 다른 SKU 합 비율을 확정 지표로 내지 않음).
+        sources = 계산에 쓴 TRF ID(원천 행 추적). cdc-inventory 가 안 되면 그 원천을 쓰는 항목만 N/A(DEPENDENCY_UNAVAILABLE).
+      operationId: getOperatingMetrics
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: mfcId, in: query, schema: { type: string, maxLength: 32 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, definitionVersion, asOf]
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  mfcId: { type: [string, 'null'] }
+                  definitionVersion: { type: string, description: '정의 버전 — 지금 "CDC-F-034/v1-provisional"(평가 기준 승인 전)' }
+                  asOf: { type: string, format: date-time }
+                  evaluatedTrfCount: { type: integer }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, status, provisional]
+                      properties:
+                        key: { type: string, enum: [APPROVED_DEMAND_FULFILLMENT, ORIGINAL_DEMAND_FULFILLMENT, NORMAL_RECEIPT_RATE, READY_TIME, PROMISE_COMPLIANCE, EXCEPTION_VOLUME] }
+                        label: { type: string }
+                        status: { type: string, enum: [VALUE, NA] }
+                        numerator: { type: [number, 'null'] }
+                        denominator: { type: [number, 'null'] }
+                        value: { type: [number, 'null'], description: '비율(0~1) 또는 건수 — 분모 0·원천 없음이면 null' }
+                        unit: { type: string, description: 'EA_MIXED_SKU(SKU 섞인 낱개 합)·COUNT' }
+                        provisional: { type: boolean }
+                        reasons: { type: array, items: { type: string }, description: 'SOURCE_UNAVAILABLE·ZERO_DENOMINATOR·MIXED_SKU·OPEN_RECEIPTS·PENDING_QUALITY·DEPENDENCY_UNAVAILABLE' }
+                        components:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              key: { type: string }
+                              count: { type: [integer, 'null'] }
+                              status: { type: string, enum: [VALUE, NA] }
+                        sources: { type: array, items: { type: string }, description: 계산에 쓴 TRF ID }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 

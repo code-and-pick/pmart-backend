@@ -9,7 +9,6 @@ import com.pmart.cdc.inventory.api.generated.model.TransitState;
 import com.pmart.cdc.inventory.application.InventoryQueries;
 import com.pmart.cdc.inventory.application.InventoryQueries.TransitView;
 import java.time.Instant;
-import java.util.List;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -180,7 +179,9 @@ public class ReconciliationController implements ReconciliationApi {
     out.setState(TransitState.fromValue(t.state()));
     out.setDepartedAt(Dto.time(t.departedAt()));
     out.setReconciledAt(Dto.time(t.reconciledAt()));
-    out.setReceiptIds(List.of());
+    out.setReceiptIds(new java.util.ArrayList<>(v.receiptIds()));
+    out.setFirstReceiptAt(Dto.time(v.firstReceiptAt()));
+    out.setLastReceiptAt(Dto.time(v.lastReceiptAt()));
     out.setLines(
         v.lines().stream()
             .map(

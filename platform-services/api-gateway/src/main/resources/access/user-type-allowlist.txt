@@ -83,6 +83,7 @@ GET /api/v1/cdcs/{cdcId}/location-stocks OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/lpns OPERATOR
+GET /api/v1/cdcs/{cdcId}/operating-metrics OPERATOR
 GET /api/v1/cdcs/{cdcId}/operation-restrictions OPERATOR
 GET /api/v1/cdcs/{cdcId}/operation-restrictions/{restrictionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR

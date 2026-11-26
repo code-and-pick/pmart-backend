@@ -59,7 +59,12 @@ public class InventoryQueries {
 
   public record CommitView(CommitRow commit, List<Delta> deltas) {}
 
-  public record TransitView(TransitRow transit, List<TransitLineRow> lines) {}
+  public record TransitView(
+      TransitRow transit,
+      List<TransitLineRow> lines,
+      List<String> receiptIds,
+      @Nullable Instant firstReceiptAt,
+      @Nullable Instant lastReceiptAt) {}
 
   public record TransitPage(List<TransitView> items, @Nullable String nextCursor) {}
 
@@ -203,7 +208,14 @@ public class InventoryQueries {
     boolean more = rows.size() > size;
     List<TransitView> items = new ArrayList<>();
     for (TransitRow t : more ? rows.subList(0, size) : rows) {
-      items.add(new TransitView(t, ledgerStore.transitLines(t.trfId())));
+      var rc = ledgerStore.appliedReceipts(t.trfId());
+      items.add(
+          new TransitView(
+              t,
+              ledgerStore.transitLines(t.trfId()),
+              rc.stream().map(LedgerStore.ReceiptAt::receiptId).toList(),
+              rc.isEmpty() ? null : rc.get(0).appliedAt(),
+              rc.isEmpty() ? null : rc.get(rc.size() - 1).appliedAt()));
     }
     return new TransitPage(items, more ? items.get(items.size() - 1).transit().trfId() : null);
   }

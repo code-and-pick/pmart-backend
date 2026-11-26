@@ -637,6 +637,60 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(w1row.path("firstStartedAt").isNull()).isFalse();
     assertThat(w2row).as(tp.toString()).isNotNull();
     assertThat(w2row.path("shortLines").asInt()).isGreaterThanOrEqualTo(1);
+    // 0.28.0 KP-1 — 운영 확인 기준: 원천 있는 것만, 없는 것은 N/A, SKU 섞인 합은 잠정
+    inventory.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                urlPathEqualTo("/api/v1/internal/transits"))
+            .atPriority(9)
+            .willReturn(com.github.tomakehurst.wiremock.client.WireMock.okJson("{\"items\":[]}")));
+    JsonNode om =
+        get(OPS, "/cdcs/" + CENTER + "/operating-metrics?from=" + dueDay + "&to=" + dueDay).body();
+    assertThat(om.path("definitionVersion").asString()).isEqualTo("CDC-F-034/v1-provisional");
+    List<String> omKeys = new java.util.ArrayList<>();
+    om.path("items").forEach(x -> omKeys.add(x.path("key").asString()));
+    assertThat(omKeys)
+        .containsExactly(
+            "APPROVED_DEMAND_FULFILLMENT",
+            "ORIGINAL_DEMAND_FULFILLMENT",
+            "NORMAL_RECEIPT_RATE",
+            "READY_TIME",
+            "PROMISE_COMPLIANCE",
+            "EXCEPTION_VOLUME");
+    JsonNode approvedItem = om.path("items").get(0);
+    assertThat(approvedItem.path("status").asString()).as(om.toString()).isEqualTo("VALUE");
+    assertThat(approvedItem.path("denominator").asInt()).isPositive();
+    assertThat(approvedItem.path("provisional").asBoolean()).isTrue();
+    assertThat(approvedItem.path("reasons").toString()).contains("MIXED_SKU", "OPEN_RECEIPTS");
+    assertThat(approvedItem.path("sources").toString()).contains(trf1);
+    assertThat(om.path("items").get(1).path("status").asString()).isEqualTo("NA");
+    assertThat(om.path("items").get(1).path("reasons").toString()).contains("SOURCE_UNAVAILABLE");
+    assertThat(om.path("items").get(2).path("reasons").toString()).contains("ZERO_DENOMINATOR");
+    JsonNode ex = om.path("items").get(5);
+    assertThat(ex.path("unit").asString()).isEqualTo("COUNT");
+    int shortageComponent = 0;
+    for (JsonNode c : ex.path("components")) {
+      if ("PICK_SHORTAGE".equals(c.path("key").asString())) {
+        shortageComponent = c.path("count").asInt();
+      }
+    }
+    assertThat(shortageComponent).isGreaterThanOrEqualTo(1);
+    JsonNode none =
+        get(
+                OPS,
+                "/cdcs/"
+                    + CENTER
+                    + "/operating-metrics?from="
+                    + dueDay
+                    + "&to="
+                    + dueDay
+                    + "&mfcId=MFC-NONE")
+            .body();
+    assertThat(none.path("evaluatedTrfCount").asInt()).isZero();
+    assertThat(none.path("items").get(0).path("reasons").toString()).contains("ZERO_DENOMINATOR");
+    assertThat(
+            get(OPS, "/cdcs/" + CENTER + "/operating-metrics?from=2026-01-01&to=2026-03-01")
+                .status())
+        .isEqualTo(400);
     assertThat(
             get(
                     TestJwt.operator("ops-y", List.of("CDC_SUPERVISOR"), List.of("CDC99")),

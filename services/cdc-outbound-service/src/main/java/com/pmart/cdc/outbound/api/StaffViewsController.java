@@ -25,11 +25,15 @@ public class StaffViewsController implements StaffViewsApi {
 
   private final StaffViews views;
   private final com.pmart.cdc.outbound.application.EventLog eventLog;
+  private final com.pmart.cdc.outbound.application.OperatingMetrics metrics;
 
   public StaffViewsController(
-      StaffViews views, com.pmart.cdc.outbound.application.EventLog eventLog) {
+      StaffViews views,
+      com.pmart.cdc.outbound.application.EventLog eventLog,
+      com.pmart.cdc.outbound.application.OperatingMetrics metrics) {
     this.views = views;
     this.eventLog = eventLog;
+    this.metrics = metrics;
   }
 
   /** 사건 기록(0.25.0 — DC 백오피스 M-5). */
@@ -541,5 +545,63 @@ public class StaffViewsController implements StaffViewsApi {
                                     .mainFloor(w.mainFloor())
                                     .mainZone(w.mainZone()))
                         .toList())));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.GetOperatingMetrics200Response>
+      getOperatingMetrics(String cdcId, LocalDate from, LocalDate to, @Nullable String mfcId) {
+    var r =
+        metrics.report(cdcId, from, to, mfcId == null || mfcId.isBlank() ? null : mfcId.strip());
+    var out =
+        new com.pmart.cdc.outbound.api.generated.model.GetOperatingMetrics200Response()
+            .from(r.from())
+            .to(r.to())
+            .mfcId(r.mfcId())
+            .definitionVersion(com.pmart.cdc.outbound.application.OperatingMetrics.DEFINITION)
+            .asOf(time(r.asOf()))
+            .evaluatedTrfCount(r.evaluatedTrfCount());
+    out.setItems(
+        new ArrayList<>(
+            r.items().stream()
+                .map(
+                    i ->
+                        new com.pmart.cdc.outbound.api.generated.model
+                                .GetOperatingMetrics200ResponseItemsInner()
+                            .key(
+                                com.pmart.cdc.outbound.api.generated.model
+                                    .GetOperatingMetrics200ResponseItemsInner.KeyEnum.fromValue(
+                                    i.key()))
+                            .label(i.label())
+                            .status(
+                                com.pmart.cdc.outbound.api.generated.model
+                                    .GetOperatingMetrics200ResponseItemsInner.StatusEnum.fromValue(
+                                    i.status()))
+                            .numerator(dec(i.numerator()))
+                            .denominator(dec(i.denominator()))
+                            .value(dec(i.value()))
+                            .unit(i.unit())
+                            .provisional(i.provisional())
+                            .reasons(new ArrayList<>(i.reasons()))
+                            .components(
+                                new ArrayList<>(
+                                    i.components().stream()
+                                        .map(
+                                            c ->
+                                                new com.pmart.cdc.outbound.api.generated.model
+                                                        .GetOperatingMetrics200ResponseItemsInnerComponentsInner()
+                                                    .key(c.key())
+                                                    .count(c.count())
+                                                    .status(
+                                                        com.pmart.cdc.outbound.api.generated.model
+                                                            .GetOperatingMetrics200ResponseItemsInnerComponentsInner
+                                                            .StatusEnum.fromValue(c.status())))
+                                        .toList()))
+                            .sources(new ArrayList<>(i.sources())))
+                .toList()));
+    return ResponseEntity.ok(out);
+  }
+
+  private static java.math.@Nullable BigDecimal dec(@Nullable Double d) {
+    return d == null ? null : java.math.BigDecimal.valueOf(d);
   }
 }
