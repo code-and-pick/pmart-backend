@@ -19,4 +19,5 @@ dependencies {
     testImplementation(project(":libraries:common-test"))
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(libs.wiremock.spring.boot) // cdc-inventory·pricing·approval 응답 고정
+    "integrationTestImplementation"(libs.spring.boot.starter.jdbc) // 시험에서 outbox 행 확인
 }

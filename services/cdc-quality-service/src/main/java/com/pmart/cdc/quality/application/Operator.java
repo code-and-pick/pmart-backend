@@ -15,6 +15,15 @@ public record Operator(String id, String sourceSystem, boolean manager) {
     return new Operator(p.subject(), sourceSystem, p.hasRole(MANAGER));
   }
 
+  /** 센터를 가리지 않는 운영자(리콜 — 여러 센터, 근거는 본사 승인 번호). */
+  public static Operator any(String sourceSystem) {
+    PmartPrincipal p =
+        PmartPrincipal.current()
+            .filter(x -> x.type() == PmartPrincipal.PrincipalType.OPERATOR)
+            .orElseThrow(() -> new PmartException(ErrorCode.FORBIDDEN, "운영자만 할 수 있습니다."));
+    return new Operator(p.subject(), sourceSystem, p.hasRole(MANAGER));
+  }
+
   /** 조회 — 이 센터의 운영자인지. */
   public static String requireCenter(String centerId) {
     return principal(centerId).subject();

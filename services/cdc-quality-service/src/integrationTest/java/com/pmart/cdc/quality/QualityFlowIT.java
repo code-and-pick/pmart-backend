@@ -42,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "spring.main.banner-mode=off",
+      "pmart.messaging.outbox.delete-after-insert=false",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
       "pmart.quality.approval-ref.mode=VERIFY",
       "pmart.quality.retry-interval=PT1H"
@@ -78,6 +79,8 @@ class QualityFlowIT extends PostgresKafkaContainerSupport {
 
   @Autowired ObjectMapper mapper;
   @Autowired DisposalService disposals;
+  @Autowired com.pmart.cdc.quality.application.RecallService recalls;
+  @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
 
   RestClient http;
 
@@ -294,5 +297,75 @@ class QualityFlowIT extends PostgresKafkaContainerSupport {
     assertThat(need.body().toString())
         .contains("APPROVAL_REQUIRED")
         .contains("CDC_STOCK_ADJUSTMENT");
+  }
+
+  /**
+   * 리콜(0.3.0): 승인 번호 없으면 422 → 발령(RecallIssued) → LOT 추적의 현물 CDC 두 곳에 보류(재고 HOLD recall) → 출발 추적 ·
+   * 추적 불명은 TRACING → 재시도로 ISSUED.
+   */
+  @Test
+  void recallHoldsEveryCdcWithStock() {
+    String trace =
+        "{\"sku\":\"E-00000088\",\"lot\":\"RL1\",\"stock\":["
+            + "{\"cdcId\":\"CDC01\",\"locationCode\":\"CDC01-A-5-61-01-1-1\",\"qualityState\":\"RELEASED\",\"onHand\":5,\"reserved\":0},"
+            + "{\"cdcId\":\"CDC01\",\"locationCode\":\"CDC01-A-5-91-01-0-1\",\"qualityState\":\"RELEASED\",\"onHand\":2,\"reserved\":2},"
+            + "{\"cdcId\":\"CDC02\",\"locationCode\":\"CDC02-A-5-61-01-1-1\",\"qualityState\":\"RELEASED\",\"onHand\":3,\"reserved\":0}],"
+            + "\"transits\":[{\"cdcId\":\"CDC01\",\"trfId\":\"TRF-9\",\"departureId\":\"DEP-9\",\"mfcId\":\"MFC-BJG-01\","
+            + "\"departedAt\":\"2026-11-26T01:00:00Z\",\"state\":\"TRANSIT_OPEN\",\"q\":4,\"received\":0,\"loss\":0,\"unreconciled\":4}]}";
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/lot-traces")).willReturn(okJson(trace)));
+    Map<String, Object> body =
+        Map.of("sku", "E-00000088", "lots", List.of("RL1"), "reason", "SUPPLIER_NOTICE");
+    assertThat(send(WORKER, "/cdc-recalls", key(), body).status()).isEqualTo(400); // 칸 없음
+    Map<String, Object> blank = new java.util.LinkedHashMap<>(body);
+    blank.put("approvalRef", " ");
+    Res no = send(WORKER, "/cdc-recalls", key(), blank);
+    assertThat(no.status()).isEqualTo(422);
+    assertThat(no.body().path("code").asString()).isEqualTo("APPROVAL_REQUIRED");
+    Map<String, Object> ok = new java.util.LinkedHashMap<>(body);
+    ok.put("approvalRef", "APV-HQ-RCL-1");
+    Res r = send(WORKER, "/cdc-recalls", key(), ok);
+    assertThat(r.status()).as(r.body().toString()).isEqualTo(201);
+    String rid = r.body().path("recallId").asString();
+    assertThat(r.body().path("state").asString()).isEqualTo("ISSUED");
+    assertThat(r.body().path("centers").findValuesAsString("cdcId"))
+        .containsExactlyInAnyOrder("CDC01", "CDC02");
+    assertThat(r.body().path("departures").get(0).path("mfcId").asString()).isEqualTo("MFC-BJG-01");
+    assertThat(r.body().path("traceFreshness").asString()).isEqualTo("CURRENT");
+    inventory.verify(
+        2,
+        postRequestedFor(urlPathEqualTo(POSTINGS))
+            .withRequestBody(matchingJsonPath("$.action", equalTo("HOLD")))
+            .withRequestBody(matchingJsonPath("$.recall", equalTo("true")))
+            .withRequestBody(matchingJsonPath("$.reason", equalTo("RECALL"))));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE type = 'RecallIssued' AND aggregateid = ?",
+                Integer.class,
+                rid))
+        .isEqualTo(1);
+    // 추적이 안 되면 TRACING → 재시도로 ISSUED
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/lot-traces"))
+            .atPriority(1)
+            .willReturn(aResponse().withStatus(503)));
+    Map<String, Object> ok2 = new java.util.LinkedHashMap<>(ok);
+    ok2.put("lots", List.of("RL2"));
+    Res t = send(WORKER, "/cdc-recalls", key(), ok2);
+    assertThat(t.body().path("state").asString()).isEqualTo("TRACING");
+    inventory.resetAll();
+    inventory.stubFor(
+        WireMock.get(urlPathEqualTo("/api/v1/internal/lot-traces")).willReturn(okJson(trace)));
+    inventory.stubFor(
+        post(urlPathEqualTo(POSTINGS))
+            .willReturn(
+                okJson("{\"status\":\"APPLIED\",\"resultId\":\"CMT-3\",\"appliedQty\":7}")));
+    recalls.retry();
+    assertThat(
+            get(WORKER, "/cdc-recalls/" + t.body().path("recallId").asString())
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("ISSUED");
   }
 }

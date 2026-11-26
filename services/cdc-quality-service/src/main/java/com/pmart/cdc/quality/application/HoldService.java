@@ -179,6 +179,29 @@ public class HoldService {
     return id;
   }
 
+  /** 리콜이 거는 보류(0.3.0) — 운영자·요청 키 없이(리콜·센터·LOT 한 번은 recall_center 가 지킨다). 트랜잭션 안에서 부른다. */
+  String insertSystemHold(
+      String cdcId, String actor, String sourceRef, String note, String sku, String lot) {
+    String holdId = newId("QH-");
+    Timestamp at = Timestamp.from(clock.instant());
+    jdbc.update(
+        "INSERT INTO quality_hold (hold_id, cdc_id, reason, source_ref, note, state, requested_by, created_at,"
+            + " updated_at) VALUES (?,?,'RECALL',?,?,'APPLYING',?,?,?)",
+        holdId,
+        cdcId,
+        sourceRef,
+        note,
+        actor,
+        at,
+        at);
+    jdbc.update(
+        "INSERT INTO quality_hold_line (hold_id, line_no, sku, lot, state) VALUES (?,1,?,?,'PENDING')",
+        holdId,
+        sku,
+        lot);
+    return holdId;
+  }
+
   /** 반영 안 된 줄마다 재고 HOLD(키 고정 — 다시 불러도 한 번). */
   public void processHold(String holdId) {
     Map<String, Object> h =
@@ -205,6 +228,9 @@ public class HoldService {
       body.put("action", "HOLD");
       body.put("sourceRef", holdId);
       body.put("reason", h.get("reason"));
+      if ("RECALL".equals(h.get("reason"))) {
+        body.put("recall", true); // 0.3.0 리콜 — 출고대기 91 까지(cdc-inventory 0.18.0)
+      }
       body.put("lines", List.of(line));
       String state;
       int held = 0;

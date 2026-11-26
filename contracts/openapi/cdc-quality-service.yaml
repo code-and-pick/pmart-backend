@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: cdc-quality-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
     CDC 품질 보류·격리·해제·리콜 판단과 승인 기록(본사 품질 책임자)·폐기 승인·FEFO 예외 이중 승인·온도 이탈 판정·LOT 계보·
     CDC 운영 제한(CDC-F-031)의 정본. (docs/architecture/service-map.md §4)
     수량 변경은 cdc-inventory(품질 전기·폐기 차감), 상품 마스터는 product-service가 정본. 판단은 여기서, 수량은 inventory에서.
+    0.3.0(2026-11-26, 리콜 — WMS CDC-F-028·정책 16.13, 사용자 "리콜"·"리콜은 출고대기분도 막음"·"본사 승인 번호 + 모든 CDC"): `/cdc-recalls`(여러 센터라 `/cdcs/{cdcId}` 밖 —
+      MFC `/recalls` 와 겹치지 않게). 발령 = 본사 승인 번호 필수 → RecallIssued(cdc.quality.v1) → cdc-inventory LOT 추적으로 현물이 있는 모든 CDC 에 보류(reason RECALL — 출고대기 91 까지).
     0.2.0(2026-11-26, 첫 구현 — 사용자 결정 "보류·해제·폐기만"·"MFC 품질과 같게"): 보류·해제 요청/결정·폐기 요청/결정/실행을 `/cdcs/{cdcId}/…` 아래로 옮겨 구현
       (게이트웨이에서 MFC 품질 `/disposal-approvals` 와 겹치지 않게). 재고 반영은 cdc-inventory `POST /internal/quality-postings`(0.15.0). 결정은 그 센터 CDC_MANAGER·요청자 본인 아님(422 SELF_APPROVAL),
       수량 × 판매 기준가 ≥ 10만 원 또는 한 SKU ≥ 20개면 본사 승인 번호(approval-service CDC_STOCK_ADJUSTMENT — 실사와 같은 관문, `pmart.quality.approval-ref.*`). 리콜·FEFO 예외·운영 제한·LOT 계보는 아직 501.
@@ -164,50 +166,76 @@ paths:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
 
-  /recalls:
+  /cdc-recalls:
     post:
       tags: [recalls]
-      summary: 리콜 발령 (SKU·LOT 범위, 전 센터) → RecallIssued → 해당 LOT 보류 생성
-      description: 리콜은 CDC 보류와 함께 MFC(mfc-inventory)·운송 중 Transit에도 통지 대상이 된다. 수량 회수는 각 정본이 처리한다.
+      summary: '[0.3.0] 리콜 발령 — 제조 LOT 리콜, 현물이 있는 모든 CDC 에 보류(출고대기까지)'
+      description: |
+        운영자 + 본사 승인 번호(approvalRef 필수 — 없으면 422 APPROVAL_REQUIRED, 사용자 "본사 승인 번호 + 모든 CDC"; 지금은 기록만, approval-service 확인은 AP-4 뒤).
+        발령과 같은 트랜잭션에 `RecallIssued`(cdc.quality.v1 — mfc-quality 등이 MFC·운송 중·고객 출고 쪽을 처리). 그다음(트랜잭션 밖) cdc-inventory `GET /internal/lot-traces` 로
+        LOT 마다 현물이 있는 CDC 를 찾아 센터·LOT 마다 보류(reason RECALL, sourceRef = recallId — 재고 HOLD `recall: true` 라 출고대기 91 까지, 걸린 예약은 풀려 출고에 RECALL 로 통지).
+        추적이 안 되면 TRACING 에 두고 서버가 다시. 같은 Idempotency-Key·같은 본문은 같은 리콜.
       operationId: issueRecall
       x-pmart-user-types: [OPERATOR]
       parameters:
         - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
         - $ref: '_common.yaml#/components/parameters/SourceSystem'
-        - $ref: '_common.yaml#/components/parameters/Traceparent'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [sku, lots, reason, issuerId, approvalRef]
+              required: [sku, lots, reason, approvalRef]
               properties:
                 sku: { $ref: '_common.yaml#/components/schemas/Sku' }
-                lots: { type: array, minItems: 1, items: { type: string } }
+                lots: { type: array, minItems: 1, maxItems: 50, items: { type: string } }
                 reason: { type: string, enum: [SAFETY, LABELING, CONTAMINATION, SUPPLIER_NOTICE, OTHER] }
                 severity: { type: string, enum: [CLASS_1, CLASS_2, CLASS_3] }
-                issuerId: { type: string }
-                approvalRef: { type: string }
-                externalRef: { type: string, description: 공급사·기관 리콜 번호 }
+                approvalRef: { type: string, maxLength: 128 }
+                externalRef: { type: string, maxLength: 128, description: 공급사·기관 리콜 번호 }
                 note: { type: string, maxLength: 1000 }
       responses:
         '201':
-          description: 리콜 생성 또는 기존 반환(같은 키·같은 본문)
+          description: 리콜(센터별 보류는 추적 뒤 — state)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Recall' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '409': { $ref: '_common.yaml#/components/responses/Conflict' }
         '422':
           description: APPROVAL_REQUIRED
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
-
-  /recalls/{recallId}:
     get:
       tags: [recalls]
-      summary: 리콜 조회 (연결 보류·센터별 처리 상태)
+      summary: '[0.3.0] 리콜 목록 — 최신 순'
+      operationId: listRecalls
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: sku, in: query, schema: { type: string } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, description: 앞 쪽 마지막 recallId, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Recall' } }
+                  nextCursor: { type: [string, 'null'] }
+
+  /cdc-recalls/{recallId}:
+    get:
+      tags: [recalls]
+      summary: '[0.3.0] 리콜 조회 — 센터별 보류·출발한 물량(정방향 추적)'
+      description: |
+        centers = 이 리콜로 건 센터·LOT 별 보류(보류 상태·보류 수량). departures = cdc-inventory LOT 추적의 출발(어느 MFC 로 얼마, 받은·미정산 — 지금 조회, 안 되면 비우고 traceFreshness UNAVAILABLE).
+        MFC 안의 재고·고객 출고는 각 정본이 본다(RecallIssued 구독).
       operationId: getRecall
       x-pmart-user-types: [OPERATOR]
       parameters:
@@ -638,22 +666,38 @@ components:
         sku: { type: string }
         lots: { type: array, items: { type: string } }
         reason: { type: string }
-        severity: { type: string }
-        state: { type: string, enum: [ISSUED, IN_PROGRESS, CLOSED] }
-        version: { $ref: '_common.yaml#/components/schemas/Version' }
+        severity: { type: [string, 'null'] }
         approvalRef: { type: string }
-        holdIds: { type: array, items: { type: string } }
-        centerStatus:
+        externalRef: { type: [string, 'null'] }
+        note: { type: [string, 'null'] }
+        state: { type: string, enum: [TRACING, ISSUED], description: 'TRACING: 센터 찾기·보류 걸기 중(서버가 다시), ISSUED: 현물이 있던 모든 CDC 에 보류를 걸었다' }
+        issuedBy: { type: string }
+        centers:
           type: array
           items:
             type: object
             properties:
-              centerId: { type: string }
-              centerType: { type: string, enum: [CDC, MFC, TRANSIT] }
-              affectedQty: { type: integer }
-              state: { type: string, enum: [NOTIFIED, HELD, DISPOSED, UNKNOWN] }
-              asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
-        issuedAt: { type: string, format: date-time }
+              cdcId: { type: string }
+              lot: { type: string }
+              holdId: { type: string }
+              holdState: { type: string }
+              heldQty: { type: integer }
+        departures:
+          type: array
+          items:
+            type: object
+            properties:
+              cdcId: { type: string }
+              lot: { type: string }
+              trfId: { type: string }
+              departureId: { type: string }
+              mfcId: { type: [string, 'null'] }
+              departedAt: { type: string, format: date-time }
+              q: { type: integer }
+              received: { type: integer }
+              unreconciled: { type: integer }
+        traceFreshness: { type: string, enum: [CURRENT, UNAVAILABLE] }
+        createdAt: { type: string, format: date-time }
     DisposalState:
       type: string
       enum: [REQUESTED, APPROVED, DECLINED, PARTIALLY_EXECUTED, COMPLETED]

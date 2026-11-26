@@ -72,6 +72,30 @@ public class InventoryClient {
     return new Posted(n.path("appliedQty").asInt(0), n.path("resultId").asString(null));
   }
 
+  /** LOT 추적(cdc-inventory 0.18.0 {@code GET /internal/lot-traces}) — 모든 CDC 의 현물·출발. */
+  public JsonNode lotTrace(String sku, String lot) {
+    String raw;
+    try {
+      raw =
+          Downstream.call(
+              INVENTORY,
+              () ->
+                  http.get()
+                      .uri("/api/v1/internal/lot-traces?sku={s}&lot={l}", sku, lot)
+                      .header("X-Source-System", SOURCE)
+                      .retrieve()
+                      .body(String.class));
+    } catch (HttpClientErrorException e) {
+      throw new PmartException(
+          "HTTP_" + e.getStatusCode().value(),
+          HttpStatus.valueOf(e.getStatusCode().value()),
+          e.getStatusText(),
+          false,
+          List.of());
+    }
+    return mapper.readTree(raw == null ? "{}" : raw);
+  }
+
   /** 다시 보내야 하는 실패(응답 불명·전달 안 됨). */
   public static boolean unknown(PmartException e) {
     return e.status().is5xxServerError()
