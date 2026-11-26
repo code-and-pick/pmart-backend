@@ -1,44 +1,138 @@
-# CDC 인수인계 (2026-11-24 작성)
+# CDC 인수인계 (2026-11-24 작성, 2026-11-26 전면 갱신 — 다른 계정으로 넘기기 전)
 
-CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무엇이 있고, 무엇이 없고, 어디부터 읽는지를 모았다. 업무 원문·ADR·계약이 정본이고, 이 문서와 다르면 그쪽을 따른다.
+CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니다. 무엇이 있고, 무엇을 기다리고, 다음에 무엇을 하는지를 모았습니다. 업무 원문·ADR·계약이 정본이고, 이 문서와 다르면 그쪽을 따릅니다. 0~4절은 2026-11-26 기준 현황이고, 5절은 날짜별 작업 기록입니다(그대로 이어 적으세요).
 
-## 0. 영역·세션
-- 영역: **cdc**(2026-11-26 사용자 결정 — `docs/operations/pc-split.md` §1, 클라이언트 `pc-split.md` 와 같게). 2026-11-24~25 는 "영역 밖 서비스"라 platform 몫이었다. 일지는 아직 `docs/worklog/platform/`(`cdc/` 폴더로 나눌지는 사용자와 정한다). platform 주 세션은 2026-11-26 부터 cdc 서비스 코드를 직접 고치지 않는다(게이트웨이·설정·배포만).
-- 작업 세션(2026-11-24 사용자): PC 1 의 **D 드라이브 클론** `D:\development\pmart-project\pmart-backend-cdc` 에서 연다(C 쪽 주 작업 폴더와 따로). **모든 변경은 무조건 PR**(사용자 2026-11-24 — 본 작업 폴더가 아니라 충돌이 날 수 있어서): main 에 직접 커밋·push 하지 않고, 일마다 `origin/main` 에서 `cdc/<주제>` 브랜치 → PR 전 `git rebase origin/main`·시험 다시 → PR → PR 백엔드 세션 검토·병합. 공용 표는 PR 본문에 "공용 표 갱신 필요". 게이트웨이·pmart-config·LAN 배치·배포는 PC1 백엔드 세션.
-- 그 세션만의 규칙은 클론의 `CLAUDE.local.md`(커밋 안 함).
+## 0. 영역·세션·작업 방식
+- **영역 cdc**(2026-11-26 사용자 결정 — `docs/operations/pc-split.md` §1). cdc-*-service 코드는 cdc 세션만 고칩니다.
+  - platform 주 세션(PC1 백엔드)은 게이트웨이 라우트·pmart-config·LAN 배치·배포만 합니다.
+  - 일지는 아직 `docs/worklog/platform/` 에 있습니다. `cdc/` 폴더로 나눌지는 사용자 결정입니다.
+- **작업 폴더**: PC 1 의 D 드라이브 클론 `D:\development\pmart-project\pmart-backend-cdc`. C 쪽 주 작업 폴더와 따로입니다.
+- **클론 전용 규칙** `CLAUDE.local.md`(커밋 안 함): 반드시 먼저 읽으세요. 요약:
+  - 사용자에게 보이는 글은 한국어로 씁니다.
+  - 서브에이전트는 쓰지 않습니다.
+  - 무거운 시험 전 남은 메모리를 확인하고, 4GB 아래면 미룹니다. 아래 "함정"을 보세요.
+  - `docker compose stop` 만 씁니다(`down` 금지).
+  - **모든 변경은 PR** 입니다. 문서 한 줄도 그렇습니다.
+- **PR 흐름**
+  1. `git fetch origin && git switch -c cdc/<주제> origin/main`
+  2. 계약 → 코드 → 시험
+  3. PR 전에 `git rebase origin/main` 하고 시험을 다시 돌립니다.
+  4. push 한 뒤 `gh pr create --body-file`. 본문에는 "바꾼 것 / 실행한 시험 / 영향 영역 / 공용 표 갱신 필요"를 씁니다.
+  5. **PR 백엔드** 세션이 검토·병합하고, PC1 이 설정·배포합니다.
+  - 병합된 브랜치는 다시 쓰지 않습니다.
+  - `service-requests/README.md` 공용 표는 직접 고치지 않습니다.
+- **같이 일하는 세션**(SendMessage 로 연락. 동료 요청이고, 큰 일·데이터 변경은 사용자 확인 뒤에 합니다)
+  - **PR 백엔드**: 검토·병합·LAN 배포. 병합은 대개 B 방식(새 커밋)이라 쌓아 둔 브랜치는 병합 뒤 main 에 **자기 커밋만** cherry-pick 해서 다시 올립니다.
+  - **PC1 백엔드**(platform): 라우트·설정·배포. 다른 PC 요청을 넘겨줍니다. CDC 서비스 판 번호를 서로 알려 겹치지 않게 합니다.
+  - **CDC 시뮬레이터**(`pmart-cdc-simulation` 세션, bridge): 칠곡 DC 배치·R 요청. 시뮬레이터 저장소는 읽기만 합니다(`C:\development\pmart-project\pmart-cdc-simulation`).
+  - 회신 파일: `docs/handoff/simulator/cdc/2026-11-24-simulator-reply-r01-r06.md` 끝에 이어 붙입니다.
+- **함정(이번에 실제로 겪은 것)**
+  - 메모리 확인은 시험과 **다른 명령으로 먼저** 합니다. 한 줄에 묶으면 값을 보기 전에 시험이 돕니다. 이것으로 두 번 규칙을 어겼습니다.
+  - 모자라면 `./gradlew.bat --stop` 으로 이 세션의 데몬을 내리면 2~4GB 가 돌아옵니다.
+  - 커밋 전에 매번 `spotlessApply` 와 해당 서비스 `check` 를 돌립니다. 한 번 빼먹어 PR 백엔드에서 spotlessJavaCheck 실패가 났습니다(#516).
+  - Bash heredoc 에 따옴표·복잡한 내용이 들어가면 "unexpected EOF" 가 납니다. 긴 파일은 Write 도구로, 고치기는 짧은 Python 스크립트(`python -I`)로 합니다.
+  - 변경 요청 POST 는 공통 헤더 검사가 **Idempotency-Key 를 요구**합니다. 내부 조회용 POST 도 그렇습니다(아무 고유값).
+  - 서비스 간 호출은 트랜잭션 밖에서 합니다. 같은 요청 키로 다시 오는 재생에서 앞 검사가 자기 몫 때문에 거절하지 않게 "이미 있으면 그것" 을 먼저 봅니다.
+  - LAN 은 아직 **옛 위치 배치(dd3d185)** 입니다. 구역 글자를 코드에 박지 말고 cdc-location 조회(온도대·유형)로 고릅니다(#505 교훈).
 
-## 1. 지금 있는 것
-| 무엇 | 상태 |
-|---|---|
-| `services/cdc-inventory-service` | 스캐폴딩(2026-10-30, 86xx 첫 서비스, 로컬 포트 8601). 상품 등록 슬라이스만: `commerce.product.v1` SkuIssued·ProductVersionPublished → `sku_projection`(물류 규격 units_per_box·boxes_per_pallet·ti·hi), 센터 취급 `center_sku_handling`(레코드 없음 = OFF, `/cdcs/{cdcId}/sku-handlings`). Flyway V1·V2. **장부(0.2.0, 2026-11-25)**: 초기 보유 `/internal/initial-balances`(센터·SKU·LOT 1회)·안전량 `/internal/safety-stocks`(새 경로)·가용 `max(0,E−R−S)`·FEFO 다LOT 할당/해제·TOUT 출발 전기(`TransferDeparted` 발행 — mfc-inbound 가 받음)·원결과·Transit 조회, Flyway V3. **내부 이동(0.3.0)**: `/internal/move-postings` — `allocationId` 를 주면 할당 예약을 함께 옮김(랙 → 피킹 선반 보충), Flyway V4. **재고 스냅샷(0.4.0)**: `/internal/snapshots` — LOT 마다 위치별 현물·예약. **아직 501: 수령 확인(receipt-acks)·품질·손실·조정·일일 대사.** 게이트웨이·LAN 배치·Helm 미등록 |
-| `services/cdc-location-service` | 2026-11-25 새로 만듦(로컬 포트 8602). 위치 마스터: 등록·일괄 등록 `/internal/location-batches`·조회·상태 전환(`LocStateChanged`), 칠곡 코드 문법 검사(CDC-3~5·7). 점유는 모름(null). 적치 후보·공간 예약·도크 예약은 501. pmart-config 정본 파일·게이트웨이·LAN 배치 없음(PC1 요청) |
-| `services/cdc-outbound-service` | 2026-11-25 새로 만듦(로컬 포트 8603, 계약 0.3.0). TRF 인수 → cdc-inventory 할당, Wave 생성·릴리스(할당의 지금 위치로 구역·층별 PICK Task), PDA 다음 작업 받기·착수·피킹 실적(부족 → PickShortageReported). Task 경로 `/cdcs/{cdcId}/tasks…`. 0.4.0: 분류·검품·상차(BOX·RT 롤테이너)·출발 검증 → TOUT·잔여 해제·매니페스트. 0.6.0: 출발 준비 조회(WMS 자기 사실만). 0.7.0: 미출발 취소·축소(피킹 전에만 — 사용자 확정). pmart-config·게이트웨이·LAN 없음(PC1 요청) |
-| 계약 | `contracts/openapi/cdc-{inventory,inbound,location,outbound,quality}-service.yaml` 다섯 개 모두 있음(구현은 inventory 일부만) |
-| 설계 | `docs/architecture/service-map.md` §4 CDC WMS — 다섯 서비스 소유·발행·구독·사가 S7(적치) |
-| 업무 원문 | `docs/business/WMS-business-logic.md`(정본) + `docs/business/WMS-dc-wave-business-logic.md`(Wave·지역 바코드 피킹·분배·라인·보충 MOV — 2026-11-24 사용자 채택) — `MFC-business-logic.md` 와 섞지 않는다 |
-| 시뮬레이터 | `pmart-cdc-simulation`(세션 "cdc 시뮬레이션", 2026-11-24 설계 시작). 센터 **칠곡 DC `CDC01`** — 고정값(8,600평·5~7층·520만 유닛·주소)·현장 근거·결정 CDC-1~8(층 배치·위치 코드·온도 글자·비랙 위치·공급 MFC 5곳·4지역·피킹 선반·하루 시간표)은 `docs/simulator/cdc/chilgok-dc.md`, 회신 `docs/handoff/simulator/cdc/`. 범위 **출고·피킹·상차만**(S-3·S-6), CDC 재고는 시작 재고(시드) |
+## 1. 서비스 현황 (main·LAN 모두 같음, 2026-11-26)
+| 서비스 | 판·Flyway | 포트 | 있는 것 |
+|---|---|---|---|
+| cdc-inventory | 0.19.0 · V10 | 8601 | 상품 투영·센터 취급·장부(현물·예약·LOT·Transit)·FEFO 할당/추가/해제·TOUT·내부 이동(PICK_MOVE 포함)·스냅샷·칸별 재고·재계수 대기·실사(CNT·승인 관문)·MFC 수령/정정 대사·운송 손실(입고 종결 뒤)·품질 전기(HOLD·RELEASE·DISPOSE, recall)·일일 대사(조회 때 계산)·LOT 추적·운영 제한 확인(새 할당)·상품 이름·실사 번호 |
+| cdc-location | 0.7.0 · V4 | 8602 | 위치 마스터(칠곡 문법 R-22)·통로 피킹 방식·일괄 조회·공간 예약·피킹 선반 최소·목표 |
+| cdc-outbound | 0.25.0 · V16 | 8603 | TRF 인수·Wave(묶음 피킹·DPS 통로)·PDA 다음 작업·피킹 실적·부족 재할당·버전 대체·미출발 취소·분류·검품·상차·출발 검증·매니페스트·출고대기 옮겨 적기·실사 부족/품질 보류/리콜 받기(RECALL_HOLD)·운영 제한 확인(출발)·DC 백오피스 조회·작업/Wave 조작·화면 번호·사건 기록 |
+| cdc-quality | 0.4.0 · V4 | 8604 | 보류·해제·폐기(요청·결정·실행)·리콜 발령(RecallIssued·모든 CDC 보류)·운영 제한(걸기·풀기·내부 확인·사건) |
+| cdc-inbound | 0.2.0 · V2 | 8605 | 적치 지시·자동 보충(최소 이하, 박스 입수 배수)·가상 설비 claim·결과(재고 이동·예약 소비)·보충 판단 조회 |
 
-## 2. 없는 것
-- 서비스: `cdc-inbound`·`cdc-quality`. cdc-outbound 출발 준비·미출발 취소, 피킹 부족 즉시 해제·재할당, TRF 새 버전 대체.
-- cdc-outbound 가 TMS 에 줄 것(TMS 정본 2.1, chilgok-dc.md CDC-8): 21:30 출고 작업 완료·22:00 MFC·온도대별 R/T 수(박스 스캔 → R/T 매핑), 방문 역순 상차 대조, 실제 출발 때만 TOUT. 회수(빈 R/T·회수품) 반품 입고는 cdc-inbound.
-- cdc-outbound 게이트웨이: `/api/v1/tasks/**` 는 mfc-fulfillment 라우트가 잡고 있다(PR 백엔드 #443 댓글) — cdc-outbound 를 만들 때 Task 경로를 `/cdcs/{cdcId}/tasks…` 처럼 겹치지 않게 바꾸고 게이트웨이 허용 목록·라우트를 같이 요청한다.
-- 칠곡 위치를 실제로 넣는 일 — 목록 사본(31,880칸 — 팔레트 19,584·선반 12,180, R-17 2안 6616cc1)·스크립트 `deploy/lan/seed/cdc_locations.py` 는 있다. cdc-location LAN 배치 뒤 PC1 이 `--apply`. 오토스토어 빈 코드(R-05)는 아직 없다.
-- cdc-inventory 의 MFC 수령 확인(Transit −r)·손실·이동·품질·조정·스냅샷·일일 대사.
-- 품목군 최소 잔여일수(총기간 T 의 30%·20%) — 제조일 입력이 없어 아직 계산하지 않음(할당 요청의 `minRemainingDays` 와 당일 차단만).
-- 승인량 초과 할당 검사 — 승인 정본(replenishment)이 없음.
-- 이어지는 운송은 TMS(scope S-4·S-7) — 이 문서 범위 밖.
+- 각 서비스의 자세한 규칙은 `services/<서비스>/CLAUDE.md`, 흐름은 `docs/business/flows/cdc-putaway-replenishment.md`(S7), 설계는 `docs/cdc/design/`, DC 백오피스 계획은 `docs/cdc/cdc-backoffice-plan.md` 에 있습니다.
+- 시드 스크립트 `deploy/lan/seed/cdc_*.py`(center·locations·pick_methods·stock·test_workers): 위치 → 통로 방식 → 시작 재고 순입니다. **LAN 위치 전환은 사용자가 "최종 배치"라고 할 때** 합니다.
+- **판 번호 규칙**: 다음 판은 main 의 계약 `version` + 1 입니다. 열린 PR 이 쓰는 판과 PC1 이 쓰는 판을 확인하고 서로 알립니다.
 
-## 3. 먼저 읽을 것
-1. 이 문서
-2. `docs/architecture/service-map.md` §4
-3. `docs/business/WMS-business-logic.md`
-4. `docs/simulator/cdc/README.md`, `docs/simulator/scope.md`
-5. `services/cdc-inventory-service/CLAUDE.md`, `docs/architecture/events.md` 의 CDC 줄, `docs/adr/` 의 CDC·재고 관련
+## 2. 다른 쪽을 기다리는 것
+| 무엇 | 누가 | 요청서 | 막힌 것 |
+|---|---|---|---|
+| MFC 이관 수령 확정 사건 `MfcReceiptPosted`·`ReceiptCorrectionPosted` | PC3 (mfc-inventory) | `service-requests/mfc-inventory-service.md` IV-8 | 운송 중 재고가 실제로 줄지 않음(복구용 API 로만) |
+| MFC 이관 입고 종결 알림 | PC3 (mfc-inbound) | `mfc-inbound-service.md` MI-5 | 운송 손실 승인은 종결 기록이 있어야 함(복구용 API 로만) |
+| 승인 종류 `CDC_STOCK_ADJUSTMENT`(kind COUNT_ADJUSTMENT·TRANSPORT_LOSS·QUALITY_RELEASE·DISPOSAL, cdc-inventory·cdc-quality) | PC1 (approval) | `approval-service.md` AP-4(덧붙임 2개) | LAN 은 RECORD_ONLY — 결정마다 승인 번호를 **기록만** |
+| 피킹 선반 최소·목표 **규칙**(예: 목표 = 칸 용량, 최소 = 30%) | 사용자(시뮬레이터 세션이 묻는 중) | 시뮬레이터 회신 | 자동 보충이 아무 칸도 돌지 않음 |
+| 상품 물류 규격 **박스 입수**(units_per_box) | product 데이터(LAN 상품) | — | 없으면 그 SKU 보충 UNIT_MISSING |
+| 시뮬레이터의 cdc-inbound 연결(claim·work-results), 보충 주체를 "가상 설비"로 | CDC 시뮬레이터(사용자 확인) | 시뮬레이터 회신 | 적치·보충 작업이 실제로 수행되지 않음 |
+| LAN 위치 전환(R-22 글자·층 도크·R-23 좌표·**R-24 36,121칸**) | 사용자 "최종 배치" | 시뮬레이터 R-22~24 | LAN 은 옛 배치 |
 
-## 4. 남은 결정(사용자)
-- ~~첫 작업~~ → 2026-11-25 사용자 "cdc-inventory 부터", ~~시작 재고 방식~~ → "초기 보유 API 로". 다음 순서(세션 추천): cdc-location(CDC-3~5 코드) → cdc-outbound(지역 Wave·FC·분배·라인, 시뮬레이터 R-11 작업 배정 API 포함) → cdc-inbound 보충 MOV.
-- ~~피킹 배정 방식~~ → 2026-11-25 사용자 "PDA 있고, MFC 기능은 다 구현되어 있으니까 그거 DC 버전 만들어서 쓰면 돼. 피킹은 다음 작업을 PDA 가 자동 배정". cdc-outbound 계약 0.2.0 에 MFC `next-tasks` 의 CDC 판(다음 작업 받기·착수)을 넣음. CDC 화면(PDA)도 MFC PDA 의 DC 판으로 만든다(pmart-clients 몫 — 클라이언트에 요청할 때 이 결정을 근거로).
-- cdc 영역을 따로 둘지(일지 폴더·PC).
+## 3. 앞으로 할 일 (추천 순서 — 사용자와 정하세요)
+1. **피킹 선반 최소·목표 시드**: 규칙이 정해지면 `deploy/lan/seed/cdc_pick_face_settings.py` 를 새로 만듭니다.
+   - 호출: cdc-location `POST /internal/pick-face-settings`(낱개 단위).
+   - 칸 용량은 시뮬레이터 값입니다: 선반 80·야채 레인 120·오토스토어 40·랙 1단 팔레트 유닛.
+   - 함께 할 일: LAN 상품의 박스 입수 유무를 확인합니다.
+2. **이상 알림**: 기준은 사용자 결정 "분명한 실패만"입니다.
+   - 대상: 부족 재할당 FAILED·출발 검증 불일치/거절·리콜 막힘·미출발 취소 거절.
+   - cdc-outbound 사건 기록(`GET /cdcs/{cdcId}/events`) 위에 표시나 별도 조회를 둡니다. 숫자 기준(오래된 작업)은 넣지 않습니다.
+3. **FEFO 예외 이중 승인**(cdc-quality `/fefo-exceptions`): 할당 규칙(cdc-inventory FEFO)이 바뀝니다. 경로를 `/cdcs/{cdcId}/…` 로 옮기세요(MFC 와 겹침). 업무 규칙은 사용자에게 묻습니다.
+4. **LOT 계보 화면**(cdc-quality `/lot-traces`): cdc-inventory `GET /internal/lot-traces` 가 이미 있으니 감싸면 됩니다. 경로를 옮기고 라우트를 PC1 에 요청합니다.
+5. **cdc-inbound 다음**
+   - 적치 후보 자동 산출: cdc-location `putaway-candidates`, 아직 501.
+   - 출발 점유: 출발 칸 실물을 잡아 두는 방식 — 합의가 필요합니다.
+   - 사건 발행: `PutawayTaskStateChanged`.
+   - ASN·실수령·검수는 3단계입니다.
+6. **운송(TMS)** 새 서비스(배차·출발·MFC 도착): 범위·서비스 경계는 사용자·`service-map.md` 를 먼저 봅니다.
+7. **반품·폐기·작업자 생산성·KPI 보고**: PC1 이 넘긴 DC 백오피스 6번입니다.
+8. **시뮬레이터로 끝까지 돌리기**: 인수 → 할당 → Wave → 피킹 → 출발 → MFC 수령. LAN 위치 전환 뒤가 좋습니다.
+9. **작은 남은 것**
+   - 일일 대사 새벽 배치·경보(시각 설정 결정 뒤)
+   - 손실로 해소한 양이 나중에 발견될 때의 승인 정정
+   - 리콜 발령 **뒤** 들어온 같은 LOT 막기(입고 수령이 생긴 뒤)
+   - cdc-inventory `/internal/loss-postings`·`/internal/adjustments` 501(실사 밖 조정)
+   - 품질 사건(HoldRequested 등) 발행
+   - 품목군 최소 잔여일수(제조일 입력 없음)
+   - 승인량 초과 할당 검사(replenishment 없음)
+   - DC 백오피스 요청(PC5)이 오면 `docs/handoff/clients/cdc-backoffice/` 에 회신합니다.
+
+## 4. 사용자 결정(확정 — 다시 묻지 마세요)
+- **피킹**
+  - PDA 다음 작업 자동 배정(MFC 기능의 DC 판).
+  - 묶음 피킹 방식은 통로 설정값이고, DPS 는 통로별입니다.
+  - 부족 칸은 새 할당에서 뺍니다. 피킹한 재고는 출고대기 자리로 옮겨 적습니다.
+- **TRF**
+  - 새 버전 대체는 피킹 시작 전까지만 됩니다.
+  - 미출발 취소도 피킹 전에만 됩니다.
+  - 부분 출고 승인·수동 할당은 **지금처럼** 둡니다(2026-11-26).
+- **실사**
+  - MFC 실사와 같은 방식이고, 승인은 MFC 와 같은 본사 기준입니다(10만 원·20개).
+  - 예약보다 적어지면 조정은 하고, 나중 예약부터 부족으로 표시합니다.
+- **수령·운송 손실**
+  - 미판정도 받은 수량으로 보고 바로 뺍니다. 수령은 사건 + 복구용 API 로 받습니다.
+  - 운송 손실은 MFC 입고 종결 확인 뒤에만 받고, 승인은 실사와 같은 본사 기준입니다.
+- **품질**
+  - 첫 범위는 재고 쪽 먼저였습니다.
+  - 걸린 예약은 나중 예약부터 풀고 출고에 알립니다. 출고대기분은 일반 보류면 건드리지 않습니다.
+  - cdc-quality 첫 범위는 보류·해제·폐기, 승인은 MFC 품질과 같게입니다.
+- **리콜**
+  - 출고대기분도 막습니다.
+  - 본사 승인 번호 + 모든 CDC 입니다.
+- **운영 제한**
+  - 새 할당과 출발을 막습니다.
+  - 거는·푸는 사람은 문서 그대로입니다(혼잡은 관리자, 안전은 현장 운영자·풀 때 본사, 본사 부과·품질은 본사 승인).
+- **일일 대사**
+  - 조회할 때 계산합니다.
+  - 예약·운송 중을 대조합니다.
+- **입고·적치·보충**
+  - 적치 지시까지 만듭니다.
+  - 최소·목표는 시뮬레이터 값으로 시드합니다(규칙은 대기).
+  - 이동 단위는 박스 입수입니다.
+- **이상 알림** 기준은 "분명한 실패만"입니다(아직 구현 전).
+- **도면**: 칠곡 DC 결정 CDC-1~ 은 `docs/simulator/cdc/chilgok-dc.md` 에 있습니다. 구역 글자(R-22)는 상온 A~F·냉장 G·냉동 H 입니다.
+- **남은 결정**
+  - 위 2절 대기 항목
+  - 일지 폴더(`docs/worklog/cdc/`) 분리 여부
+  - 이상 알림을 붙일 곳(사건 기록 표시 vs 따로)
+
+## 4-1. 먼저 읽을 것
+1. 이 문서와 클론의 `CLAUDE.local.md`
+2. `docs/architecture/service-map.md` §4 CDC WMS
+3. `docs/business/WMS-business-logic.md`(정본 — `MFC-business-logic.md` 와 섞지 않음)
+4. 각 `services/cdc-*-service/CLAUDE.md`
+5. `docs/simulator/cdc/README.md`·`chilgok-dc.md`
+6. `docs/operations/pc1-todo.md` 의 cdc 줄, `docs/architecture/service-requests/` 의 cdc 파일
 
 ## 5. 기록
 - 2026-11-24: 이 문서·D 클론 시작(PC 1, 사용자 "가, 나 둘다").
@@ -97,3 +191,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**. 무�
 - 2026-11-26: DC 백오피스 M-5 사건 기록 — cdc-outbound 0.25.0 `GET /cdcs/{cdcId}/events`(이미 남은 기록을 최신 순으로, 이상 알림 등급 없음). PR `cdc/event-log`(#517 다음). 화면 회신 `docs/handoff/clients/cdc-backoffice/2026-11-25-reply-monitoring-gaps.md` 덧붙임.
 - 2026-11-26: 입고·적치·보충 1/3 — cdc-location 0.7.0(Flyway V4) 공간 예약·피킹 선반 최소·목표 설정. PR `cdc/location-space`. 다음 cdc-inbound 새 서비스(적치 지시·자동 보충·가상 설비 결과·다음 작업 받기), 그 뒤 시드(최소·목표 규칙은 시뮬레이터 세션이 사용자 확인 중).
 - 2026-11-26: 입고·적치·보충 2/3 — **cdc-inbound-service 새로 만듦**(0.2.0, 포트 8605, Flyway V2) 적치 지시·자동 보충·가상 설비 claim·결과. 흐름 `docs/business/flows/cdc-putaway-replenishment.md`. PR `cdc/inbound-service`(#519 다음). 남은 것: 최소·목표 시드(시뮬레이터 세션이 사용자 확인 중)·박스 입수는 상품 물류 규격에 있어야 보충됨.
+- 2026-11-26: 0~4절 전면 갱신(다른 계정으로 넘기기 전 — 사용자 요청). PR `cdc/handover-rewrite`.
