@@ -201,4 +201,65 @@ public class ReadinessService {
         readyAt,
         blockers);
   }
+
+  /** 운송 가져오기 한 줄(0.26.0). rtCount 는 R/T 바코드가 없으면 null. */
+  public record FeedItem(
+      String trfId,
+      @Nullable String trfNumber,
+      int trfVersion,
+      String mfcId,
+      String state,
+      Instant dueAt,
+      int approvedQty,
+      int allocatedQty,
+      List<String> tempClasses,
+      int boxCount,
+      @Nullable Integer rtCount,
+      long weightG,
+      Instant receivedAt) {}
+
+  public record Feed(Instant asOf, boolean truncated, List<FeedItem> items) {}
+
+  static final int FEED_MAX = 2000;
+
+  /**
+   * transport-planning 이 이관요청서를 가져가는 조회(0.26.0 — TMS 1단계). 기한 [from, to) 인 TRF 마다 줄 합과 출발 준비의
+   * 온도대·BOX·무게(검품 합격 BOX, 출발했으면 출발 BOX), R/T 수. 조회만 한다.
+   */
+  @Transactional(readOnly = true)
+  public Feed feed(String cdcId, Instant from, Instant to) {
+    if (!from.isBefore(to)) {
+      throw new PmartException(
+          com.pmart.common.web.ErrorCode.VALIDATION_FAILED, "dueFrom 은 dueTo 보다 앞이어야 합니다.");
+    }
+    List<OutboundStore.FeedRow> rows = store.transfersDue(cdcId, from, to, FEED_MAX + 1);
+    boolean truncated = rows.size() > FEED_MAX;
+    List<FeedItem> items = new ArrayList<>();
+    for (OutboundStore.FeedRow t : truncated ? rows.subList(0, FEED_MAX) : rows) {
+      int approved = 0;
+      int allocated = 0;
+      for (TransferLineRow l : store.transferLines(t.trfId())) {
+        approved += l.approvedQty();
+        allocated += l.allocatedQty();
+      }
+      Readiness r = of(t.trfId());
+      int rt = lpns.rtCount(t.trfId());
+      items.add(
+          new FeedItem(
+              t.trfId(),
+              t.trfNumber(),
+              t.trfVersion(),
+              t.mfcId(),
+              t.state(),
+              t.dueAt(),
+              approved,
+              allocated,
+              r.temperatureZones(),
+              r.readyLpnCount(),
+              rt == 0 ? null : rt,
+              r.totalWeightG(),
+              t.createdAt()));
+    }
+    return new Feed(Instant.now(), truncated, items);
+  }
 }

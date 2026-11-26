@@ -26,14 +26,14 @@
 - 시드 스크립트 `deploy/lan/seed/tms_*.py`(fleet → planning 순).
 
 ## 3. 이관요청서(transport request)
-- **가져오기(pull)**: planning 이 cdc-outbound 새 내부 조회 `GET /internal/transport-feed?cdcId&dueFrom&dueTo`(cdc-outbound 0.26.0)에서 TRF 줄을 읽어 이관요청서로 만든다. cdc-outbound 가 planning 을 부르지 않는다(출고가 TMS 에 묶이지 않게). 줄 = trfId·버전·mfcId·dueAt·TRF 상태·승인·할당량·온도대(검품 BOX 기준 — 아직이면 줄 상품 보관 온도)·BOX 수·R/T 수·무게.
+- **가져오기(pull)**: planning 이 cdc-outbound 새 내부 조회 `GET /internal/transport-feed?cdcId&dueFrom&dueTo`(cdc-outbound 0.26.0)에서 TRF 줄을 읽어 이관요청서로 만든다. cdc-outbound 가 planning 을 부르지 않는다(출고가 TMS 에 묶이지 않게). 줄 = trfId·버전·mfcId·dueAt·TRF 상태·승인·할당량·온도대(검품 BOX 기준 — 검품 전이면 비어 TEMP_UNKNOWN 보류, 정본 시간표상 생성은 21:30 출고 완료 뒤)·BOX 수·R/T 수·무게.
 - **출고일 D**: dueAt(도착 기한, Asia/Seoul)이 (D 12:00, D+1 12:00] 인 TRF. 정본 시간표(D 23:00 출차 → D+1 07:30 도착)에 맞춘 규칙.
 - 검증(정본 5.2, 수용 ACCEPTED / 보류 HELD / 반려 REJECTED / 제외 EXCLUDED):
   - V1 필수값 · V2 출발이 그 DC·목적이 노선에 등록된 MFC(노선 없음 = 보류 `NO_ROUTE` — 차량 부족과 구분)
   - V4·V5 같은 trfId·버전은 그대로, 새 버전은 출차 전이면 반영(운송지시서 다시 계산), 출차 뒤면 반려
   - V6 할당: ALLOCATED → 수용, PARTIALLY_ALLOCATED → 할당량만 수용, 할당 전·실패 → 보류 `ALLOCATION_PENDING`, 취소 → 제외
   - **D-06 온도대 하나**: 온도대가 둘 이상이면 보류 `MIXED_TEMPERATURE`(WMS 가 나눠 다시 발행 — 정본). ⚠ 지금 TRF 가 온도대를 섞어 오는지는 확인 필요(§8)
-  - 온도대를 아직 모르면(검품 BOX·작업 위치 모두 없음) 보류 `TEMP_UNKNOWN` — 다음 생성 때 다시 본다
+  - 온도대를 아직 모르면(검품 BOX 없음) 보류 `TEMP_UNKNOWN` — 다음 생성 때 다시 본다
   - V8 R/T 가 그 온도대 차량 최대(20)를 넘으면 보류 `OVER_VEHICLE_CAPACITY`. R/T 는 cdc-outbound 의 실제 R/T 바코드 수만 쓴다 — 22:00 카운팅 전(R/T 없음)이면 검사를 미룬다(BOX→R/T 환산 규칙은 정본에 없어 만들지 않음)
   - V7(21:30 뒤 수신) — 1단계는 기록만(`lateReceipt`), 이월 판단은 배차 담당
 - 상태: RECEIVED → ACCEPTED·HELD·REJECTED·EXCLUDED → ASSIGNED(운송지시서에 연결) → DEPARTED → HANDED_OVER. 보류·반려는 사유와 함께 잔여 물량 목록에 남는다(숨기지 않음).

@@ -190,6 +190,36 @@ public class OutboundStore {
         waveId);
   }
 
+  /** 운송 가져오기 한 줄(0.26.0 transport-feed). */
+  public record FeedRow(
+      String trfId,
+      @Nullable String trfNumber,
+      int trfVersion,
+      String mfcId,
+      String state,
+      Instant dueAt,
+      Instant createdAt) {}
+
+  /** 기한 [from, to) 인 이 센터 TRF — 기한·trfId 순, limit 개까지. */
+  public List<FeedRow> transfersDue(String cdcId, Instant from, Instant to, int limit) {
+    return jdbc.query(
+        "SELECT trf_id, trf_number, trf_version, mfc_id, state, due_at, created_at FROM transfer"
+            + " WHERE cdc_id = ? AND due_at >= ? AND due_at < ? ORDER BY due_at, trf_id LIMIT ?",
+        (rs, i) ->
+            new FeedRow(
+                rs.getString("trf_id"),
+                rs.getString("trf_number"),
+                rs.getInt("trf_version"),
+                rs.getString("mfc_id"),
+                rs.getString("state"),
+                rs.getTimestamp("due_at").toInstant(),
+                rs.getTimestamp("created_at").toInstant()),
+        cdcId,
+        Timestamp.from(from),
+        Timestamp.from(to),
+        limit);
+  }
+
   public List<TransferLineRow> transferLines(String trfId) {
     return jdbc.query(
         "SELECT sku, line_no, approved_qty, allocated_qty, picked_qty, short_qty FROM transfer_line"

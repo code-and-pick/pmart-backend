@@ -259,6 +259,46 @@ public class InternalController implements InternalApi {
   }
 
   @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.GetTransportFeed200Response>
+      getTransportFeed(
+          String cdcId, java.time.OffsetDateTime dueFrom, java.time.OffsetDateTime dueTo) {
+    var f = readiness.feed(cdcId, dueFrom.toInstant(), dueTo.toInstant());
+    var out = new com.pmart.cdc.outbound.api.generated.model.GetTransportFeed200Response();
+    out.setAsOf(Dto.time(f.asOf()));
+    out.setTruncated(f.truncated());
+    out.setItems(
+        new java.util.ArrayList<>(
+            f.items().stream()
+                .map(
+                    i ->
+                        new com.pmart.cdc.outbound.api.generated.model
+                                .GetTransportFeed200ResponseItemsInner()
+                            .trfId(i.trfId())
+                            .trfNumber(i.trfNumber())
+                            .trfVersion(i.trfVersion())
+                            .mfcId(i.mfcId())
+                            .state(i.state())
+                            .dueAt(Dto.time(i.dueAt()))
+                            .approvedQty(i.approvedQty())
+                            .allocatedQty(i.allocatedQty())
+                            .tempClasses(
+                                new java.util.ArrayList<>(
+                                    i.tempClasses().stream()
+                                        .map(
+                                            com.pmart.cdc.outbound.api.generated.model
+                                                    .GetTransportFeed200ResponseItemsInner
+                                                    .TempClassesEnum
+                                                ::fromValue)
+                                        .toList()))
+                            .boxCount(i.boxCount())
+                            .rtCount(i.rtCount())
+                            .weightG((int) Math.min(Integer.MAX_VALUE, i.weightG()))
+                            .receivedAt(Dto.time(i.receivedAt())))
+                .toList()));
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
   public ResponseEntity<OutboundReadiness> getOutboundReadiness(String trfId) {
     return ResponseEntity.ok(readinessDto(readiness.of(trfId)));
   }

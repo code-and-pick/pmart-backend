@@ -481,4 +481,12 @@ public class LpnStore {
         rs.getString("load_seal_no"),
         rs.getString("departure_id"));
   }
+
+  /** 이 TRF 에 묶인 R/T 수(0.26.0 transport-feed) — 22:00 R/T 카운팅 전이면 0. */
+  public int rtCount(String trfId) {
+    Integer n =
+        jdbc.queryForObject(
+            "SELECT count(*) FROM lpn WHERE trf_id = ? AND unit_type = 'RT'", Integer.class, trfId);
+    return n == null ? 0 : n;
+  }
 }

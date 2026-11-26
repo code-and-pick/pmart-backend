@@ -556,6 +556,37 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(rdInsp.path("readyQty").asInt()).isEqualTo(7);
     assertThat(rdInsp.path("blockers").size()).isZero();
     assertThat(rdInsp.path("earliestReadyAt").isNull()).isFalse();
+    // 0.26.0 transport-feed — 기한 구간의 TRF 에 출발 준비의 온도대·BOX 수, R/T 수(이 RT 하나)
+    Instant due = Instant.parse(DUE);
+    JsonNode feed =
+        get(
+                SERVICE,
+                "/internal/transport-feed?cdcId=CDC01&dueFrom="
+                    + due.minusSeconds(60)
+                    + "&dueTo="
+                    + due.plusSeconds(60))
+            .body();
+    JsonNode mine = null;
+    for (JsonNode x : feed.path("items")) {
+      if (trf1.equals(x.path("trfId").asString())) {
+        mine = x;
+      }
+    }
+    assertThat(mine).as(feed.toString()).isNotNull();
+    assertThat(mine.path("boxCount").asInt()).isEqualTo(2);
+    assertThat(mine.path("rtCount").asInt()).isEqualTo(1);
+    assertThat(mine.path("tempClasses")).isEqualTo(rdInsp.path("temperatureZones"));
+    assertThat(mine.path("approvedQty").asInt()).isPositive();
+    assertThat(feed.path("truncated").asBoolean()).isFalse();
+    assertThat(
+            get(
+                    SERVICE,
+                    "/internal/transport-feed?cdcId=CDC01&dueFrom="
+                        + due
+                        + "&dueTo="
+                        + due.minusSeconds(1))
+                .status())
+        .isEqualTo(400);
     assertThat(post(OPS, "/loading-results", load).status()).isEqualTo(202);
     assertThat(readiness(trf1).path("readiness").asString()).isEqualTo("LOADED");
     Map<String, Object> other = new LinkedHashMap<>(load);
