@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.24.0
+  version: 0.25.0
   description: |
+    0.25.0(2026-11-26, DC 백오피스 M-5 사건 기록 — PC 5 요청 2026-11-25-backend-monitoring-gaps): `GET /cdcs/{cdcId}/events?since=&until=&types=&limit=` — 이미 남아 있는 사실
+      (TRF 인수·Wave 생성/릴리스/조작·작업 시작/끝/조작·피킹 부족/정리·출발 검증·미출발 취소·리콜 막힘)을 시간 최신 순으로 모아 보인다. 새 표·사건 저장 없음, 이상 알림 등급은 없음(기준 결정 전).
     0.24.0(2026-11-26, 운영 제한 지키기 — WMS CDC-F-031, 사용자 "새 할당과 출발"): 출발 검증의 일치 TRF 마다 TOUT 직전 cdc-quality 운영 제한 확인(활동 DEPARTURE, 출발 줄 SKU·Wave 온도대)
       — 막히면 그 TRF postingStatus REJECTED(OPERATION_RESTRICTED), 확인이 안 되면 UNKNOWN_RESULT(같은 출발 재전송이 다시 확인). 주소 `pmart.outbound.cdc-quality-base-url` 기본 http://cdc-quality-service:8604.
     0.23.0(2026-11-26, 리콜 — WMS CDC-F-028·정책 16.13, 사용자 "리콜은 출고대기분도 막음"): cdc-inventory 0.18.0 의 AllocationShortfall reason RECALL 이 출고대기 91 칸이면
@@ -563,6 +565,44 @@ paths:
                 required: [items]
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/TaskAdjustment' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/events:
+    get:
+      tags: [staff-views]
+      summary: '[운영자] 사건 기록 (0.25.0 — DC 백오피스 M-5)'
+      description: |
+        이 센터에서 일어난 일을 최신 순으로. 새로 쌓지 않고 이미 있는 기록을 모은다 — TRF_RECEIVED(인수)·WAVE_CREATED·WAVE_RELEASED·WAVE_ADJUSTED(보류·재개·취소·합치기·나누기)·
+        TASK_STARTED·TASK_COMPLETED(DONE·PARTIAL)·TASK_ADJUSTED(재배정·보류·재개·우선순위)·SHORTAGE_REPORTED·SHORTAGE_SETTLED(DONE·FAILED)·DEPARTURE_VALIDATED(결과)·
+        PRE_DEPARTURE_CANCEL(미출발 취소 요청·상태)·RECALL_HOLD(리콜로 막힌 출고대기 물량).
+        since 기본 = 지금 − 24시간, until 기본 = 지금, limit 기본 200·최대 500(넘으면 truncated). types 로 거른다(반복). 이상 알림 등급은 없다(기준이 정해지면 따로).
+      operationId: listCenterEvents
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: since, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: until, in: query, required: false, schema: { type: string, format: date-time } }
+        - name: types
+          in: query
+          required: false
+          style: form
+          explode: true
+          schema: { type: array, items: { $ref: '#/components/schemas/CenterEventType' } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 200 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cdcId: { type: string }
+                  since: { type: string, format: date-time }
+                  until: { type: string, format: date-time }
+                  truncated: { type: boolean }
+                  items: { type: array, items: { $ref: '#/components/schemas/CenterEvent' } }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /cdcs/{cdcId}/shortages:
@@ -1469,6 +1509,27 @@ paths:
 
 components:
   schemas:
+    CenterEventType:
+      type: string
+      enum: [TRF_RECEIVED, WAVE_CREATED, WAVE_RELEASED, WAVE_ADJUSTED, TASK_STARTED, TASK_COMPLETED, TASK_ADJUSTED, SHORTAGE_REPORTED, SHORTAGE_SETTLED, DEPARTURE_VALIDATED, PRE_DEPARTURE_CANCEL, RECALL_HOLD]
+    CenterEvent:
+      type: object
+      description: (0.25.0) 사건 기록 한 줄 — ref 는 그 사건의 대상(TRF·WAVE·TASK·SHORTAGE·DEPARTURE·CANCELLATION), refNumber 는 화면 번호(있으면)
+      properties:
+        at: { type: string, format: date-time }
+        type: { $ref: '#/components/schemas/CenterEventType' }
+        refType: { type: string }
+        refId: { type: string }
+        refNumber: { type: [string, 'null'] }
+        trfId: { type: [string, 'null'] }
+        waveId: { type: [string, 'null'] }
+        taskId: { type: [string, 'null'] }
+        sku: { type: [string, 'null'] }
+        qty: { type: [integer, 'null'] }
+        state: { type: [string, 'null'], description: 그 사건의 결과·상태(예 PARTIALLY_MATCHED·DONE·HELD) }
+        action: { type: [string, 'null'], description: 조작 종류(WAVE_ADJUSTED·TASK_ADJUSTED) }
+        actorId: { type: [string, 'null'] }
+        reason: { type: [string, 'null'] }
     OutboundReadiness:
       type: object
       description: '출발 준비(0.6.0) — 내부 /internal/outbound-readiness·직원 /cdcs/{cdcId}/transfers/{trfId}/readiness(0.16.0) 같은 모양'

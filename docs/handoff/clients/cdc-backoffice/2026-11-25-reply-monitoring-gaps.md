@@ -53,3 +53,10 @@ PC 5 요청(화면 번호 T·W·K, P-1 상품 이름). 규칙은 ADR-0070 덧붙
 - 나누기 `…/splits {trfIds, reason?}` — PLANNED, 고른 TRF 로 새 PLANNED Wave(201, 응답은 새 Wave). 다 옮길 수는 없어요.
 - 이력 `GET /waves/{waveId}/adjustments` → `items[{action HOLD·RESUME·CANCEL·MERGE_IN·MERGED·SPLIT_OUT·SPLIT_FROM, fromState, toState, otherWaveId, trfIds, reason, actorId, adjustedAt}]`.
 - 릴리스 뒤(작업이 생긴 뒤)는 합치기·나누기 안 됨 — 화면에서 버튼을 숨겨 주세요.
+
+## 덧붙임(2026-11-26 — M-5 사건 기록, cdc-outbound 0.25.0, cdc 세션 — LAN 배포 전)
+- `GET /cdcs/{cdcId}/events?since=&until=&types=&limit=` → `{cdcId, since, until, truncated, items[]}`. 줄 = `{at, type, refType, refId, refNumber, trfId, waveId, taskId, sku, qty, state, action, actorId, reason}`, **최신 순**.
+- type: `TRF_RECEIVED`·`WAVE_CREATED`·`WAVE_RELEASED`·`WAVE_ADJUSTED`(action 보류·재개·취소·합치기·나누기)·`TASK_STARTED`·`TASK_COMPLETED`(state DONE·PARTIAL)·`TASK_ADJUSTED`·`SHORTAGE_REPORTED`·`SHORTAGE_SETTLED`(DONE·FAILED, qty = 다시 잡은 양)·`DEPARTURE_VALIDATED`(state = 결과)·`PRE_DEPARTURE_CANCEL`·`RECALL_HOLD`. `types` 를 반복해 거른다.
+- since 기본 = 지금 − 24시간, until 기본 = 지금, limit 기본 200·최대 500(넘으면 truncated=true — since/until 을 좁혀 다시). since ≥ until 이면 400.
+- 새로 쌓는 사건 표가 아니라 이미 남은 기록을 모은 것이다 — 이상 알림 등급(빨강·노랑)은 기준이 정해지지 않아 없다. refNumber 는 화면 번호(T·W·K·S, 부족·취소는 비움).
+- 게이트웨이 라우트 `/api/v1/cdcs/*/events` 는 PC 1 이 넣는다.

@@ -24,9 +24,62 @@ import org.springframework.web.bind.annotation.RestController;
 public class StaffViewsController implements StaffViewsApi {
 
   private final StaffViews views;
+  private final com.pmart.cdc.outbound.application.EventLog eventLog;
 
-  public StaffViewsController(StaffViews views) {
+  public StaffViewsController(
+      StaffViews views, com.pmart.cdc.outbound.application.EventLog eventLog) {
     this.views = views;
+    this.eventLog = eventLog;
+  }
+
+  /** 사건 기록(0.25.0 — DC 백오피스 M-5). */
+  @Override
+  public ResponseEntity<com.pmart.cdc.outbound.api.generated.model.ListCenterEvents200Response>
+      listCenterEvents(
+          String cdcId,
+          java.time.@Nullable OffsetDateTime since,
+          java.time.@Nullable OffsetDateTime until,
+          @Nullable List<com.pmart.cdc.outbound.api.generated.model.CenterEventType> types,
+          @Nullable Integer limit) {
+    var p =
+        eventLog.events(
+            cdcId,
+            since == null ? null : since.toInstant(),
+            until == null ? null : until.toInstant(),
+            types == null
+                ? null
+                : types.stream()
+                    .map(com.pmart.cdc.outbound.api.generated.model.CenterEventType::getValue)
+                    .toList(),
+            limit);
+    var out = new com.pmart.cdc.outbound.api.generated.model.ListCenterEvents200Response();
+    out.setCdcId(cdcId);
+    out.setSince(p.since().atOffset(java.time.ZoneOffset.UTC));
+    out.setUntil(p.until().atOffset(java.time.ZoneOffset.UTC));
+    out.setTruncated(p.truncated());
+    out.setItems(
+        p.items().stream()
+            .map(
+                r ->
+                    new com.pmart.cdc.outbound.api.generated.model.CenterEvent()
+                        .at(r.at().atOffset(java.time.ZoneOffset.UTC))
+                        .type(
+                            com.pmart.cdc.outbound.api.generated.model.CenterEventType.fromValue(
+                                r.type()))
+                        .refType(r.refType())
+                        .refId(r.refId())
+                        .refNumber(r.refNumber())
+                        .trfId(r.trfId())
+                        .waveId(r.waveId())
+                        .taskId(r.taskId())
+                        .sku(r.sku())
+                        .qty(r.qty())
+                        .state(r.state())
+                        .action(r.action())
+                        .actorId(r.actorId())
+                        .reason(r.reason()))
+            .toList());
+    return ResponseEntity.ok(out);
   }
 
   @Override

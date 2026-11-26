@@ -617,6 +617,31 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(t1v.path("commitId").asString()).isEqualTo("CMT-9");
     assertThat(t1v.path("departedQty").asInt()).isEqualTo(7);
     assertThat(v.body().path("transfers").get(1).path("result").asString()).isEqualTo("MISMATCHED");
+    // M-5(0.25.0) 사건 기록 — 인수·Wave·작업·출발 검증이 최신 순으로, types 거르기, since ≥ until 400
+    JsonNode ev = get(OPS, "/cdcs/" + CENTER + "/events?limit=500").body();
+    assertThat(ev.path("items").findValuesAsString("type"))
+        .as(ev.toString())
+        .contains(
+            "TRF_RECEIVED",
+            "WAVE_CREATED",
+            "WAVE_RELEASED",
+            "TASK_COMPLETED",
+            "DEPARTURE_VALIDATED");
+    assertThat(ev.path("items").get(0).path("at").asString())
+        .isGreaterThanOrEqualTo(
+            ev.path("items").get(ev.path("items").size() - 1).path("at").asString());
+    JsonNode only =
+        get(OPS, "/cdcs/" + CENTER + "/events?types=DEPARTURE_VALIDATED&limit=500").body();
+    assertThat(only.path("items").findValuesAsString("type")).containsOnly("DEPARTURE_VALIDATED");
+    assertThat(only.path("items").findValuesAsString("refId")).contains(dep);
+    assertThat(
+            get(
+                    OPS,
+                    "/cdcs/"
+                        + CENTER
+                        + "/events?since=2030-01-01T00:00:00Z&until=2029-01-01T00:00:00Z")
+                .status())
+        .isEqualTo(400);
     // M-3(0.16.0) 직원 출발 검증 목록 — 결과로 거르기, 줄은 내부와 같은 모양
     JsonNode deps =
         get(OPS, "/cdcs/" + CENTER + "/departures?result=PARTIALLY_MATCHED&size=200").body();
