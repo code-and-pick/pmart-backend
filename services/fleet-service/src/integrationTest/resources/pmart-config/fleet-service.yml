@@ -1,0 +1,8 @@
+# fleet-service 고유 설정(모든 프로필). 환경별 값은 fleet-service-<프로필>.yml, 모든 서비스 공통은 application.yml. ADR-0029
+# 정본은 pmart-config 저장소 — 이 파일은 시험 사본. 2026-11-26 새 서비스(TMS 1단계): 정본에 같은 파일을 넣어야 한다(PC1 백엔드 요청).
+server:
+  port: 8703
+pmart:
+  messaging:
+    domain: tms
+# 이벤트 소비·발행 없음(점유는 planning·execution 이 동기로 부른다)
