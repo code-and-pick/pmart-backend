@@ -1584,6 +1584,96 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(rc.path("allocationRemaining").asInt()).isZero();
   }
 
+  /**
+   * 리콜(0.18.0): 10 중 4 할당 → 피킹 옮겨 적기(출고대기 91) → recall HOLD(칸 없음) = 선반 6·출고대기 4 모두 HELD, 출고대기 예약 4
+   * 풀고 AllocationShortfall(RECALL) → 그 TRF 출발 전기 거절. LOT 추적에 두 칸 HELD. recall 은 HOLD 만.
+   */
+  @Test
+  void recallHoldsStagingAndTraces() throws Exception {
+    String sku = "E-" + String.format("%08d", ThreadLocalRandom.current().nextInt(1, 99_999_999));
+    productReady(sku);
+    LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+    String shelf = "CDC01-C-5-61-11-1-1";
+    String staging = "CDC01-C-5-91-11-0-1";
+    post(
+        SERVICE,
+        "/internal/initial-balances",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-INIT-RC",
+            "lines",
+            List.of(ib(sku, "RC1", shelf, 10, today.plusDays(30), "VERIFIED", "RELEASED"))));
+    post(
+        OPERATOR,
+        "/cdcs/" + CENTER + "/sku-handlings",
+        key(),
+        Map.of("sku", sku, "enabled", true, "reason", "개시"));
+    post(
+        SERVICE,
+        "/internal/safety-stocks",
+        key(),
+        Map.of(
+            "cdcId",
+            CENTER,
+            "approvalRef",
+            "APV-S-RC",
+            "lines",
+            List.of(Map.of("sku", sku, "safetyQty", 0))));
+    JsonNode a = allocate(sku, 4);
+    String alc = a.path("allocationId").asString();
+    String trf = a.path("trfId").asString();
+    Res pm = move("PICK_MOVE", mv(sku, "RC1", shelf, staging, 4, null, alc));
+    assertThat(pm.status()).as(pm.body().toString()).isEqualTo(200);
+
+    Map<String, Object> recall = new LinkedHashMap<>();
+    recall.put("cdcId", CENTER);
+    recall.put("action", "HOLD");
+    recall.put("sourceRef", "RCL-" + sku);
+    recall.put("reason", "제조사 리콜");
+    recall.put("recall", true);
+    recall.put("lines", List.of(Map.of("sku", sku, "lot", "RC1")));
+    Res h = post(SERVICE, "/internal/quality-postings", key(), recall);
+    assertThat(h.status()).as(h.body().toString()).isEqualTo(200);
+    assertThat(h.body().path("appliedQty").asInt()).isEqualTo(10);
+    assertThat(qty(sku, "RC1", shelf, "HELD")).isEqualTo(6);
+    assertThat(qty(sku, "RC1", staging, "HELD")).isEqualTo(4);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT payload::text FROM outbox_event WHERE type = 'AllocationShortfall' AND aggregateid = ?",
+                String.class,
+                alc))
+        .contains("\"reason\": \"RECALL\"")
+        .contains(staging);
+    // 그 TRF 출발 전기는 거절(보류 현물 — 예약 없음)
+    Map<String, Object> dep = new LinkedHashMap<>();
+    dep.put("cdcId", CENTER);
+    dep.put("departureId", "DEP-" + UUID.randomUUID());
+    dep.put("departureSource", "SIMULATED");
+    dep.put("toMfcId", "MFC-BJG-01");
+    dep.put("trfId", trf);
+    dep.put("trfVersion", 1);
+    dep.put("allocationId", alc);
+    dep.put("departedAt", Instant.now().toString());
+    dep.put(
+        "lines",
+        List.of(Map.of("departureLineId", trf + "-1", "sku", sku, "lot", "RC1", "qty", 4)));
+    assertThat(post(SERVICE, "/internal/departure-postings", key(), dep).status())
+        .isNotEqualTo(200);
+    // LOT 추적 — 두 칸 HELD
+    JsonNode tr = get(SERVICE, "/internal/lot-traces?sku=" + sku + "&lot=RC1").body();
+    assertThat(tr.path("stock").size()).isEqualTo(2);
+    assertThat(tr.path("stock").findValuesAsString("qualityState")).containsOnly("HELD");
+    assertThat(tr.path("stock").findValuesAsString("locationCode")).contains(shelf, staging);
+    // recall 은 HOLD 만
+    Map<String, Object> bad = new LinkedHashMap<>(recall);
+    bad.put("action", "RELEASE");
+    bad.put("approvalRef", "APV-X");
+    assertThat(post(SERVICE, "/internal/quality-postings", key(), bad).status()).isEqualTo(400);
+  }
+
   JsonNode allocate(String sku, int qty) {
     Res r =
         post(

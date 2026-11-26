@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/AllocationShortfall.v1.json",
   "title": "AllocationShortfall",
-  "description": "실사 조정(COUNT_LOSS) 또는 품질 보류(QUALITY_HOLD — cdc-inventory 0.15.0, WMS CDC-F-028)로 칸 정상 현물이 이관 예약보다 적어져 그 칸에 늦게 잡힌 할당부터 예약을 푼 사실(할당마다). 발행 cdc-inventory(0.10.0 — 설계 docs/cdc/design/2026-11-25-count-adjustment.md §4, 사용자 결정). 구독 cdc-outbound(그 TRF 작업 줄 부족 → 다른 LOT 재할당·못 찾음). 토픽 cdc.inventory.v1",
+  "description": "실사 조정(COUNT_LOSS) 또는 품질 보류(QUALITY_HOLD — cdc-inventory 0.15.0, WMS CDC-F-028)·리콜(RECALL — 0.18.0, 출고대기 91 포함)로 칸 정상 현물이 이관 예약보다 적어져 그 칸에 늦게 잡힌 할당부터 예약을 푼 사실(할당마다). 발행 cdc-inventory(0.10.0 — 설계 docs/cdc/design/2026-11-25-count-adjustment.md §4, 사용자 결정). 구독 cdc-outbound(그 TRF 작업 줄 부족 → 다른 LOT 재할당·못 찾음). 토픽 cdc.inventory.v1",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"
@@ -54,7 +54,8 @@
               "type": "string",
               "enum": [
                 "COUNT_LOSS",
-                "QUALITY_HOLD"
+                "QUALITY_HOLD",
+                "RECALL"
               ]
             },
             "sourceRef": {

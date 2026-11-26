@@ -66,6 +66,7 @@ public class PostingsController implements PostingsApi {
             body.getApprovalRef(),
             body.getEvidenceRef(),
             body.getReason(),
+            Boolean.TRUE.equals(body.getRecall()),
             body.getLines().stream()
                 .map(
                     l ->

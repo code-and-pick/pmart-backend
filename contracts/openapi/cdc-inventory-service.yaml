@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.17.0
+  version: 0.18.0
   description: |
+    0.18.0(2026-11-26, 리콜 — WMS CDC-F-028·정책 16.13, 사용자 "리콜은 출고대기분도 막음"·"본사 승인 번호 + 모든 CDC"): quality-postings HOLD 에 `recall: true` —
+      출고대기 91 까지 보류(걸린 예약은 늦은 할당부터 풀고 AllocationShortfall reason RECALL — 그 TRF 출발 전기는 보류 현물이라 거절된다). LOT 추적 `GET /internal/lot-traces`
+      (모든 CDC 의 현물·출발 — cdc-quality 리콜이 센터를 찾고 출발분을 보인다).
     0.17.0(2026-11-26, CI-1 — PC5 DC 백오피스 P-1·화면 번호): 운영자 응답에 productName(product internalName, 10분 캐시 — product 가 안 되면 null)
       — stock-snapshot·location-stocks items·SkuHandling·CountSession sheet/lines·RecountHold. 실사 화면 번호 sessionNumber(C + 6자리, 무작위·겹치지 않음·바뀌지 않음 — ADR-0070 덧붙임)와 목록 찾기 number.
     0.16.1(2026-11-26, 고침): `GET /internal/transits` 줄의 r 에 미판정(pendingQty, 0.11.0)도 넣고 t = q − r − l 로 — 전에는 미판정을 빼지 않아 t 가 크게 보였다. 줄에 pendingQty 추가.
@@ -483,6 +486,7 @@ paths:
         HOLD: E → Held (유효 예약 R에 걸린 수량은 QUALITY_BLOCKED로 outbound에 통지). RELEASE: Held → E. DISPOSE: Held −q (장부 차감, approvalRef 필수).
         판단은 quality가 하고 수량 변경은 여기서만 한다.
         (0.15.0 구현, WMS CDC-F-028) 줄마다 sku·lot, locationCode 를 비우면 그 LOT 의 모든 칸(**출고대기 통로 91 제외** — 이미 피킹한 것은 MFC 처럼 건드리지 않음, 91 을 직접 주면 400 STAGING_NOT_HELD), qty 는 locationCode 와 함께만(비우면 그 범위 전량).
+        (0.18.0) `recall: true`(HOLD 만 — 아니면 400): 출고대기 91 도 포함(칸을 비우면 91 까지, 91 을 직접 줄 수도 있음). 걸린 예약을 풀 때 AllocationShortfall reason RECALL.
         - HOLD: 정상(RELEASED) → 보류(HELD), 총현물 그대로. 남는 정상 현물이 예약보다 적어지면 모자란 만큼 그 칸에 **늦게 잡힌 할당부터** 예약을 풀고 할당마다 `AllocationShortfall`(reason QUALITY_HOLD)
           — cdc-outbound 가 그 TRF 작업 줄 부족·재할당으로 처리(다른 LOT 을 여기서 자동으로 잡지 않음). LOT 마다 `LotBlocked`. 보류할 정상 현물이 없으면 appliedQty 0(원결과 없음).
         - RELEASE: 보류 → 정상. approvalRef(품질 해제 승인) 필수 — 없으면 422 APPROVAL_REQUIRED(설비 복구·시간 경과·일반 운영자 확인으로 해제하지 않음). 적격(기한·LOT 식별)은 할당 때 그대로 다시 본다. LOT 마다 `LotReleased`.
@@ -505,6 +509,7 @@ paths:
                 action: { type: string, enum: [HOLD, RELEASE, DISPOSE] }
                 sourceRef: { type: string, description: holdId / recallId / disposalApprovalId }
                 approvalRef: { type: string, description: RELEASE·DISPOSE 필수 (0.15.0 — 해제도 품질 승인) }
+                recall: { type: boolean, default: false, description: '(0.18.0) 리콜 보류 — 출고대기 91 까지(HOLD 만)' }
                 evidenceRef: { type: string, maxLength: 128, description: (0.15.0) DISPOSE 필수 — 실제 폐기 실행 증빙 }
                 reason: { type: string }
                 lines:
@@ -899,6 +904,54 @@ paths:
                   asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
                   items: { type: array, items: { $ref: '#/components/schemas/Availability' } }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /internal/lot-traces:
+    get:
+      tags: [reconciliation]
+      summary: '[cdc-quality→cdc-inventory] LOT 추적 — 모든 CDC 의 현물·출발 (0.18.0, 리콜 정방향 추적)'
+      description: |
+        WMS 정책 16.13.2 3~4·16.13.3 정방향 추적: 이 SKU·LOT 이 지금 어느 CDC·칸·품질 상태에 얼마나 있고(stock — 현물 0 인 행은 뺌),
+        어느 출발로 어느 MFC 에 얼마가 갔는지(transits — 받은·손실·미정산). 읽기만. MFC 안의 재고·고객 출고는 각 정본(mfc-inventory·order)이 본다.
+      operationId: getLotTrace
+      parameters:
+        - { name: sku, in: query, required: true, schema: { $ref: '_common.yaml#/components/schemas/Sku' } }
+        - { name: lot, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sku: { type: string }
+                  lot: { type: string }
+                  asOf: { $ref: '_common.yaml#/components/schemas/AsOf' }
+                  stock:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        cdcId: { type: string }
+                        locationCode: { type: string }
+                        qualityState: { type: string }
+                        onHand: { type: integer }
+                        reserved: { type: integer }
+                  transits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        cdcId: { type: string }
+                        trfId: { type: string }
+                        departureId: { type: string }
+                        mfcId: { type: [string, 'null'] }
+                        departedAt: { type: string, format: date-time }
+                        state: { $ref: '#/components/schemas/TransitState' }
+                        q: { type: integer }
+                        received: { type: integer, description: 정상 + 격리 + 미판정 }
+                        loss: { type: integer }
+                        unreconciled: { type: integer }
 
   /internal/daily-reconciliations:
     get:

@@ -62,6 +62,24 @@ public class ReconciliationService {
       List<TransitCheck> transitChecks,
       List<OpenTransit> openTransits) {}
 
+  public record TraceStock(
+      String cdcId, String locationCode, String qualityState, int onHand, int reserved) {}
+
+  public record TraceTransit(
+      String cdcId,
+      String trfId,
+      String departureId,
+      @Nullable String mfcId,
+      Instant departedAt,
+      String state,
+      int q,
+      int received,
+      int loss,
+      int unreconciled) {}
+
+  public record Trace(
+      String sku, String lot, Instant asOf, List<TraceStock> stock, List<TraceTransit> transits) {}
+
   private final JdbcTemplate jdbc;
   private final Clock clock;
 
@@ -219,6 +237,42 @@ public class ReconciliationService {
             || !trChecks.isEmpty();
     String state = differs ? "DISCREPANCY" : inProgress ? "IN_PROGRESS" : "BALANCED";
     return new Report(cdcId, date, state, now, items, resChecks, trChecks, open);
+  }
+
+  /** LOT 추적(0.18.0, 리콜 정방향 추적) — 모든 CDC 의 현물(0 뺌)·출발. 읽기만. */
+  public Trace lotTrace(String sku, String lot) {
+    List<TraceStock> stock =
+        jdbc.query(
+            "SELECT cdc_id, location_code, quality_state, on_hand, reserved FROM stock_balance"
+                + " WHERE sku = ? AND lot = ? AND on_hand > 0 ORDER BY cdc_id, location_code, quality_state",
+            (rs, i) ->
+                new TraceStock(
+                    rs.getString(1), rs.getString(2), rs.getString(3), rs.getInt(4), rs.getInt(5)),
+            sku,
+            lot);
+    List<TraceTransit> transits =
+        jdbc.query(
+            "SELECT t.cdc_id, t.trf_id, t.departure_id, t.to_mfc_id, t.departed_at, t.state, SUM(d.q),"
+                + " SUM(d.normal_qty + d.quarantined_qty + d.pending_qty), SUM(d.loss_qty),"
+                + " SUM(d.q - d.normal_qty - d.quarantined_qty - d.pending_qty - d.loss_qty)"
+                + " FROM transit_line d JOIN transit t ON t.trf_id = d.trf_id WHERE d.sku = ? AND d.lot = ?"
+                + " GROUP BY t.cdc_id, t.trf_id, t.departure_id, t.to_mfc_id, t.departed_at, t.state"
+                + " ORDER BY t.departed_at, t.trf_id",
+            (rs, i) ->
+                new TraceTransit(
+                    rs.getString(1),
+                    rs.getString(2),
+                    rs.getString(3),
+                    rs.getString(4),
+                    rs.getTimestamp(5).toInstant(),
+                    rs.getString(6),
+                    rs.getInt(7),
+                    rs.getInt(8),
+                    rs.getInt(9),
+                    rs.getInt(10)),
+            sku,
+            lot);
+    return new Trace(sku, lot, clock.instant(), stock, transits);
   }
 
   private Map<String, Integer> sums(String cdcId, @Nullable String sku, String when, Instant at) {

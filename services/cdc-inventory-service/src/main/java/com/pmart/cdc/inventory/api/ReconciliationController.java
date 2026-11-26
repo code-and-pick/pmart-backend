@@ -28,6 +28,47 @@ public class ReconciliationController implements ReconciliationApi {
     this.reconciliation = reconciliation;
   }
 
+  /** LOT 추적(0.18.0) — cdc-quality 리콜이 센터·출발분을 찾는다. */
+  @Override
+  public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.GetLotTrace200Response>
+      getLotTrace(String sku, String lot) {
+    var t = reconciliation.lotTrace(sku, lot);
+    var out = new com.pmart.cdc.inventory.api.generated.model.GetLotTrace200Response();
+    out.setSku(t.sku());
+    out.setLot(t.lot());
+    out.setAsOf(Dto.asOf(t.asOf()));
+    out.setStock(
+        t.stock().stream()
+            .map(
+                x ->
+                    new com.pmart.cdc.inventory.api.generated.model
+                            .GetLotTrace200ResponseStockInner()
+                        .cdcId(x.cdcId())
+                        .locationCode(x.locationCode())
+                        .qualityState(x.qualityState())
+                        .onHand(x.onHand())
+                        .reserved(x.reserved()))
+            .toList());
+    out.setTransits(
+        t.transits().stream()
+            .map(
+                x ->
+                    new com.pmart.cdc.inventory.api.generated.model
+                            .GetLotTrace200ResponseTransitsInner()
+                        .cdcId(x.cdcId())
+                        .trfId(x.trfId())
+                        .departureId(x.departureId())
+                        .mfcId(x.mfcId())
+                        .departedAt(Dto.time(x.departedAt()))
+                        .state(TransitState.fromValue(x.state()))
+                        .q(x.q())
+                        .received(x.received())
+                        .loss(x.loss())
+                        .unreconciled(x.unreconciled()))
+            .toList());
+    return ResponseEntity.ok(out);
+  }
+
   @Override
   public ResponseEntity<
           com.pmart.cdc.inventory.api.generated.model.GetDailyReconciliation200Response>

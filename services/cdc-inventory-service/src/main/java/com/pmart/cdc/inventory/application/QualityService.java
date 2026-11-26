@@ -50,6 +50,7 @@ public class QualityService {
       @Nullable String approvalRef,
       @Nullable String evidenceRef,
       @Nullable String reason,
+      boolean recall, // 0.18.0 리콜 — 출고대기 91 까지
       List<Line> lines) {}
 
   private final StockStore stock;
@@ -94,6 +95,9 @@ public class QualityService {
           ErrorCode.APPROVAL_REQUIRED,
           release ? "품질 해제에는 해제 승인(approvalRef)이 필요합니다." : "폐기에는 폐기 승인(approvalRef)이 필요합니다.");
     }
+    if (c.recall() && !"HOLD".equals(c.action())) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "recall 은 HOLD 에만 씁니다.");
+    }
     if (dispose && blank(c.evidenceRef())) {
       throw new PmartException(
           "EVIDENCE_REQUIRED",
@@ -112,7 +116,7 @@ public class QualityService {
       if (dispose && (l.locationCode() == null || l.qty() == null)) {
         bad.add(new PmartException.Detail(f, "DISPOSE_NEEDS_LOCATION_AND_QTY"));
       }
-      if (l.locationCode() != null && isStaging(l.locationCode())) {
+      if (l.locationCode() != null && isStaging(l.locationCode()) && !c.recall()) {
         bad.add(new PmartException.Detail(f + ".locationCode", "STAGING_NOT_HELD"));
       }
     }
@@ -149,7 +153,7 @@ public class QualityService {
                           && from.equals(b.qualityState())
                           && b.onHand() > 0
                           && (l.locationCode() == null
-                              ? !isStaging(b.locationCode())
+                              ? c.recall() || !isStaging(b.locationCode())
                               : b.locationCode().equals(l.locationCode())))
               .toList();
       int have = scope.stream().mapToInt(BalanceRow::onHand).sum();
@@ -281,7 +285,7 @@ public class QualityService {
     p.put("lot", s.at().lot());
     p.put("locationCode", s.at().locationCode());
     p.put("qty", s.qty());
-    p.put("reason", "QUALITY_HOLD");
+    p.put("reason", c.recall() ? "RECALL" : "QUALITY_HOLD");
     p.put("sourceRef", c.sourceRef());
     p.put("occurredAt", at.toString());
     emit("AllocationShortfall", "Allocation", s.allocationId(), p);
