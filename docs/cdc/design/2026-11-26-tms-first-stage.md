@@ -27,7 +27,7 @@
 
 ## 3. 이관요청서(transport request)
 - **가져오기(pull)**: planning 이 cdc-outbound 새 내부 조회 `GET /internal/transport-feed?cdcId&dueFrom&dueTo`(cdc-outbound 0.26.0)에서 TRF 줄을 읽어 이관요청서로 만든다. cdc-outbound 가 planning 을 부르지 않는다(출고가 TMS 에 묶이지 않게). 줄 = trfId·버전·mfcId·dueAt·TRF 상태·승인·할당량·온도대(검품 BOX 기준 — 아직이면 줄 상품 보관 온도)·BOX 수·R/T 수·무게.
-- **출고일 D**: dueAt(도착 기한, Asia/Seoul)이 (D 12:00, D+1 12:00] 인 TRF. 정본 시간표(D 23:00 출차 → D+1 07:30 도착)에 맞춘 규칙.
+- **출고일 D**: dueAt(도착 기한, Asia/Seoul)이 [D 12:00, D+1 12:00) 인 TRF. 정본 시간표(D 23:00 출차 → D+1 07:30 도착)에 맞춘 규칙.
 - 검증(정본 5.2, 수용 ACCEPTED / 보류 HELD / 반려 REJECTED / 제외 EXCLUDED):
   - V1 필수값 · V2 출발이 그 DC·목적이 노선에 등록된 MFC(노선 없음 = 보류 `NO_ROUTE` — 차량 부족과 구분)
   - V4·V5 같은 trfId·버전은 그대로, 새 버전은 출차 전이면 반영(운송지시서 다시 계산), 출차 뒤면 반려

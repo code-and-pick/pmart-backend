@@ -173,7 +173,7 @@ paths:
       tags: [transport-orders]
       summary: '[0.2.0] 출고일 배차 생성 — TRF 가져오기·검증 → 노선 × 온도대 운송지시서(계획중) (정본 7.1)'
       description: |
-        1) cdc-outbound `GET /internal/transport-feed`(dueAt 이 (D 12:00, D+1 12:00] Asia/Seoul)에서 TRF 를 읽어 이관요청서를 만들거나 새 버전을 반영(V4·V5 — 출차 뒤 새 버전은 반려).
+        1) cdc-outbound `GET /internal/transport-feed`(dueAt 이 [D 12:00, D+1 12:00) Asia/Seoul)에서 TRF 를 읽어 이관요청서를 만들거나 새 버전을 반영(V4·V5 — 계획중이면 반영·다시 연결, 계획완료 뒤 새 버전은 반영하지 않고 reason NEWER_VERSION(배차 담당이 지시서를 취소하고 다시 생성), 출차 뒤 새 버전은 반려 VERSION_AFTER_DEPARTURE).
         2) 검증(정본 5.2): V1 필수값·V2 노선에 든 MFC(없으면 HELD NO_ROUTE)·V6 할당(ALLOCATED 수용, PARTIALLY_ALLOCATED 할당량만, 전·실패 HELD ALLOCATION_PENDING, 취소 EXCLUDED)·
            D-06 온도대 하나(둘 이상 HELD MIXED_TEMPERATURE, 아직 모름 HELD TEMP_UNKNOWN)·V8 R/T > 그 온도대 정규차 최대 HELD OVER_VEHICLE_CAPACITY(R/T 카운팅 전이면 미룸)·V7 21:30 뒤 수신은 lateReceipt 표시만.
         3) 살아 있는 노선 × 온도대마다 운송지시서가 없으면 만든다(정규차·기본 기사 사본, 계획 시각 = 노선 시각). 정규차가 없는 노선·온도대는 만들지 않고 unplannedReasons 에 NO_REGULAR_VEHICLE.
@@ -507,7 +507,7 @@ components:
         rtCount: { type: [integer, 'null'], description: 'R/T 수(cdc-outbound RT LPN — 22:00 카운팅 전이면 null, 그동안 V8·적재 초과 검사는 미룬다)' }
         weightKg: { type: number }
         state: { $ref: '#/components/schemas/TransportRequestState' }
-        reason: { type: [string, 'null'], description: '보류·반려 사유: NO_ROUTE·ALLOCATION_PENDING·MIXED_TEMPERATURE·TEMP_UNKNOWN·OVER_VEHICLE_CAPACITY·ORDER_CLOSED·MISSING_FIELDS·VERSION_AFTER_DEPARTURE·WRONG_ORIGIN' }
+        reason: { type: [string, 'null'], description: '보류·반려 사유: NO_ROUTE·ALLOCATION_PENDING·MIXED_TEMPERATURE·TEMP_UNKNOWN·OVER_VEHICLE_CAPACITY·ORDER_CLOSED·NEWER_VERSION·MISSING_FIELDS·VERSION_AFTER_DEPARTURE·WRONG_ORIGIN' }
         lateReceipt: { type: boolean, description: 'V7 — 출고일 21:30 뒤 처음 받음(이월 판단은 배차 담당)' }
         orderId: { type: [string, 'null'] }
         receivedAt: { type: string, format: date-time }

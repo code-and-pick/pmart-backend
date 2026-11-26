@@ -1,0 +1,32 @@
+# transport-planning-service
+
+서비스 책임의 정본은 `docs/architecture/service-map.md` 의 `transport-planning-service` 절이다. 여기에는 **이 서비스 안에서만 적용되는 규칙**을 둔다.
+
+## 계약
+- REST: `contracts/openapi/transport-planning-service.yaml` → `openApiGenerate` 가 `com.pmart.transport.planning.api.generated` 에 인터페이스·DTO 생성. `api/*Controller` 가 구현한다. 계약을 먼저 고치고 코드를 맞춘다.
+- 이벤트: 발행·구독 목록은 service-map.md. 발행은 `EventPublisher`(Outbox, Debezium), 소비는 `InboxGuard` 안에서.
+
+## 패키지
+`com.pmart.transport.planning.{api, application, domain, infrastructure}` (service-architecture.md). Controller 에 업무 규칙 금지.
+
+## 데이터
+- 스키마 변경은 `src/main/resources/db/migration/V*.sql` 로만. 적용된 파일 수정 금지.
+- 다른 서비스 테이블·엔티티 접근 금지. 동기 조회는 API, 상태 전파는 이벤트.
+
+## 실행
+```bash
+./gradlew :services:transport-planning-service:check                      # 단위 + 통합(Testcontainers) + 계약 검증
+./gradlew :services:transport-planning-service:bootRun --args='--spring.profiles.active=local'   # deploy/local 기동 후
+```
+로컬 포트 8701.
+
+## 상태
+- 3단계 스캐폴딩(2026-10-23).
+- **0.2.0(2026-11-26, TMS 1단계 — 설계 `docs/cdc/design/2026-11-26-tms-first-stage.md`, cdc 세션)**, Flyway V2. 결정(노선·정규차·생성·이동·계획완료·결행·취소)은 `CDC_SUPERVISOR`, 조회는 그 센터 운영자.
+  - `domain/Schedule`(정본 3.3 — 출차 HH:mm 이 12:00 앞이면 D+1, 상차 = 출차 − 30분, 정차 도착 = 앞 출발 + 구간, 하차 30분, 마지막 도착 ≤ D+1 07:30, 기한 구간 [D 12:00, D+1 12:00)), `domain/RequestRules`(V1·취소·V2·V6·D-06·V8 순서).
+  - `RouteService`: 노선(정차 1~3, 같은 MFC 는 살아 있는 노선 하나 — 409 MFC_ALREADY_ROUTED, 시각 불가 400 ROUTE_TIME_INFEASIBLE)·노선 × 온도대 정규차(fleet 확인 — REGULAR·사용 중·온도대 일치, 최대값 사본).
+  - `PlanningService.generate`: cdc-outbound `transport-feed`(트랜잭션 밖, 안 되면 503·아무것도 안 바꿈) → 출고일 잠금 안에서 정규차 있는 노선 × 온도대 지시서(TO-yyyyMMdd-nnn, 없으면 만듦) → 요청서 반영·검증·연결(손으로 옮긴 계획중 지시서는 유지, 계획완료 뒤 새 버전은 NEWER_VERSION·출차 뒤 VERSION_AFTER_DEPARTURE 사유만). 적재·결행 후보·용량 초과는 조회 때 계산(저장 안 함).
+  - `move`: 같은 출고일·온도대 계획중끼리, 정차 3곳·07:30 검사, 더하는 정차의 구간 분은 원래 지시서의 그 정차 구간 [가정], 보내는 쪽은 노선 정차가 아니고 남은 요청서가 없으면 정차를 뺌.
+  - `confirm`: PLANNING → CONFIRMING(차량·기사 바꾸기 가능 — 온도대·용량 검사) → fleet 점유(키 고정, 창 = 상차 시작 ~ 복귀) → execution 운행(tripId = orderId) → DISPATCHED·요청서 ASSIGNED. 불명이면 CONFIRMING 그대로(같은 요청·주기 재시도 `pmart.planning.retry-interval` 가 이어 감), 업무 거절이면 이번 점유만 풀고 PLANNING(사유·이력). 요청 키 재생 대신 상태로 멱등.
+  - `cancel`(출차 전 — DISPATCHED 면 execution 취소 → 점유 해제, 요청서 ACCEPTED·잔여 물량)·`skip`(요청서 없을 때만)·`tripUpdate`(execution 이 알림 — 낮은 tripVersion 무시, DEPARTED·HANDED_OVER 를 요청서에).
+  - 이벤트 없음(1단계). 시드 `deploy/lan/seed/tms_routes.py`(RT-04·07·09·10 — 시각 [가정], fleet 시드 뒤).

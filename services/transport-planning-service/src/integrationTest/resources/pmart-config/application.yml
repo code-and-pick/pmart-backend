@@ -1,0 +1,20 @@
+# 모든 서비스 공통 설정(모든 프로필). 서비스별은 <spring.application.name>.yml, 환경별은 application-<프로필>.yml.
+# 프로필: local(개발자 PC) · lan(LAN 공유 개발 환경) · prod(AWS, 아직 없음). ADR-0029
+spring:
+  mvc:
+    problemdetails:
+      enabled: true # Spring MVC 자체 예외도 RFC 9457
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate # 스키마 변경은 Flyway 만 (service-architecture.md)
+  flyway:
+    locations: classpath:db/migration # common-messaging 이 classpath:db/migration/common 을 추가한다
+# 서비스 등록·조회(Eureka, ADR-0032)는 기본 꺼짐. lan 프로필(application-lan.yml)만 켠다. 운영(Kubernetes)은 Service DNS
+eureka:
+  client:
+    enabled: false
+# 업무 정책값 중 여러 서비스가 같이 읽는 것(2026-11-18)
+pmart:
+  commerce:
+    min-order-amount: 15000 # 최소 주문 상품액(원, BR-14 확정) — order-service 주문 초안이 막고 cart-service 가 "N원 더 담기" 안내. 둘이 이 한 값을 읽는다. 없으면 주문 초안 CONFIG_REQUIRED·장바구니 안내 비움
