@@ -37,7 +37,7 @@ public class RestrictionClient {
   public RestrictionClient(
       RestClient.Builder builder,
       ObjectMapper mapper,
-      @Value("${pmart.inventory.cdc-quality-base-url:}") String baseUrl) {
+      @Value("${pmart.inventory.cdc-quality-base-url:http://cdc-quality-service:8604}") String baseUrl) {
     this.http = baseUrl.isBlank() ? null : builder.clone().baseUrl(baseUrl).build();
     this.mapper = mapper;
   }
