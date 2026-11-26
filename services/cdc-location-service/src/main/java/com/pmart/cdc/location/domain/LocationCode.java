@@ -18,8 +18,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>통로 01~60 = 팔레트 랙(입고·적치 보관): 층 5~7, 베이 01~48(R-17 랙 묶음 — 통로 한쪽 12 × 2), 단 1~4(R-12), 슬롯 1~2,
  *       RESERVE(R-13 — QUARANTINE·TEMPORARY 도 허용). **1단은 PICK_FACE 도 된다**(R-19 박스 피킹면 — 사용자
  *       2026-11-25).
- *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE. 단 **7층 F
- *       61~62 = 오토스토어**(R-19, 0.6.0 R-22 에서 H → F): 베이 = 격자, 단 1~16, 칸 1~2.
+ *   <li>통로 61~89 = 피킹 선반(R-13, MFC 선반 모양): 층 5~7, 베이 = 유닛(01~), 단 1~5, 칸 1~3, PICK_FACE. 단 **오토스토어
+ *       61~62** (R-19 — 0.6.0 R-22 7층 F, 0.7.1 R-25 6층 C 더함): 베이 = 격자, 단 1~16, 칸 1~2.
  *   <li>통로 90 = DOCK(층마다 북쪽 벽 도크 — 0.6.0 R-22, 지하 B1 접안 없앰), 91 = STAGING 출고대기, 92 = STAGING 층 승강기
  *       문 — 모두 층 5~7·단 0·슬롯 1(CDC-5).
  *   <li>통로 93 = 바닥 레인(R-19, 6층 야채 분배): 층 5~7, 베이 01~, 단 1, 칸 1~, PICK_FACE. 94~99 는 비워 둔다.
@@ -45,6 +45,9 @@ public final class LocationCode {
           "F", "AMBIENT",
           "G", "CHILLED",
           "H", "FROZEN");
+
+  /** 오토스토어 구역-층(0.7.1 R-25 — 사용자 2026-11-26 "6F·7F 상온": 6층 C·7층 F, 통로 61~62). */
+  public static final java.util.Set<String> AUTOSTORE_AREAS = java.util.Set.of("C-6", "F-7");
 
   /** 나눈 값. */
   public record Parts(
@@ -147,9 +150,9 @@ public final class LocationCode {
       if (bay < 1) {
         out.add(new Violation("locationCode", "SHELF_BAY"));
       }
-      boolean autostore = p.area().equals("F") && p.floor().equals("7") && aisle <= 62;
+      boolean autostore = AUTOSTORE_AREAS.contains(p.area() + "-" + p.floor()) && aisle <= 62;
       if (autostore) {
-        // 7층 F 61~62 = 오토스토어(R-19): 베이 = 격자, 16단, 칸 2
+        // 오토스토어(R-19, 0.7.1 R-25 — 6층 C·7층 F 61~62): 베이 = 격자, 16단, 칸 2
         if (p.level() < 1 || p.level() > 16) {
           out.add(new Violation("locationCode", "AUTOSTORE_LEVEL"));
         }

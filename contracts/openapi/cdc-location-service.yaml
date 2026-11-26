@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.7.0
+  version: 0.7.1
   description: |
+    0.7.1(2026-11-26, R-25 — 사용자 "5F 냉장+냉동, 6F·7F 상온"): 칠곡 오토스토어 자리에 6층 C 61~62 를 더함(7층 F 61~62 와 같은 규칙 — 베이 = 격자·단 1~16·칸 1~2). 그 밖의 6층 C 선반은 보통 선반 규칙. 경로·모양 변화 없음.
     CDC 시설 수용조건·7구간 LOC 마스터(센터-온도-구역-랙-베이-단-포지션)·상태·적치 후보·공간 용량 예약·도크 자원의 정본. (docs/architecture/service-map.md §4)
     수량은 cdc-inventory, 작업은 cdc-inbound/outbound가 정본. 공간 예약 불변식: 점유 + 미완료 예약 + 신규 ≤ 허용량.
     0.2.0(2026-11-25): 위치 마스터 구현(등록·일괄 등록·조회·상태 전환·LocStateChanged). 칠곡(CDC01)은 코드 문법 CDC-3~5 를 검사한다.
@@ -61,7 +62,7 @@ paths:
         코드 첫 구간 = centerId. 칠곡(CDC01) 문법(chilgok-dc.md CDC-3~5): 구역 글자 A~H 와 temperatureZone 이 맞아야 한다((0.6.0) A~F AMBIENT·G CHILLED·H FROZEN).
         통로 01~60 = 팔레트 랙 — 입고·적치 보관(층 5~7·베이 01~48 홀수 왼쪽·짝수 오른쪽·단 1~4·슬롯 1~2, RESERVE — QUARANTINE·TEMPORARY 도 됨, (0.5.1) 1단은 박스 피킹면 PICK_FACE 도 됨),
         61~89 = 피킹 선반 — MFC 선반 모양(층 5~7·베이 = 유닛 01~·단 1~5·칸 1~3, 칸 하나 = SKU 하나, PICK_FACE)(시뮬레이터 R-13, 사용자 2026-11-25),
-        (0.5.1) 7층 오토스토어 61~62((0.6.0) 구역 F(베이 = 격자·단 1~16·칸 1~2, PICK_FACE).
+        (0.5.1) 7층 오토스토어 61~62((0.6.0) 구역 F, (0.7.1) 6층 C 도)(베이 = 격자·단 1~16·칸 1~2, PICK_FACE).
         90 = DOCK((0.6.0) 층마다 북쪽 벽 도크 — 층 5~7), 91·92 = STAGING(층 5~7) — 랙·선반이 아니면 단 0·슬롯 1. (0.5.1) 93 = 바닥 레인(층 5~7·단 1·칸 1~, PICK_FACE). 94~99 는 비워 둔다.
         어기면 400 VALIDATION_FAILED(details 에 규칙 이름). 자기 센터 운영자만(centers 클레임).
       operationId: createLocation

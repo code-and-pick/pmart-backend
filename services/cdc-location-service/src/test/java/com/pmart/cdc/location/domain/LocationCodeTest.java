@@ -126,5 +126,10 @@ class LocationCodeTest {
     assertThat(rules("CDC01-F-7-61-01-1-3", "AMBIENT", "PICK_FACE")).isEqualTo("AUTOSTORE_SLOT");
     assertThat(rules("CDC01-F-7-63-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
     assertThat(rules("CDC01-E-7-61-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
+    // 0.7.1 R-25: 6층 C 61~62 도 오토스토어, 다른 층의 C·6층 다른 구역은 보통 선반
+    assertThat(rules("CDC01-C-6-61-01-16-2", "AMBIENT", "PICK_FACE")).isEmpty();
+    assertThat(rules("CDC01-C-6-61-01-1-3", "AMBIENT", "PICK_FACE")).isEqualTo("AUTOSTORE_SLOT");
+    assertThat(rules("CDC01-C-5-61-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
+    assertThat(rules("CDC01-D-6-61-01-6-1", "AMBIENT", "PICK_FACE")).isEqualTo("SHELF_LEVEL");
   }
 }
