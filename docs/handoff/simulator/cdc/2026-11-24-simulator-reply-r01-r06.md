@@ -202,4 +202,9 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - **LAN 넣기는 사용자 승인 뒤**(cdc 세션은 배포하지 않음 — 승인되면 PC1/PR 세션이 `cdc_locations.py --apply` → `cdc_pick_methods.py --apply` → 시작 재고 순).
 - (시뮬레이터 답, 같은 날) 기타 센터 4곳 = **시뮬레이터가 정한 가상 묶음 목적지**(실제 센터 아님, 사용자 결정 "권역별 기타 센터 묶음" — MFC 5곳 밖 그 권역 나머지 수요, 하루 약 2,000줄·TRF 250줄 단위): `ETC-BUSAN`(91-06)·`ETC-HONAM`(91-07)·`ETC-CHUNGCHEONG`(91-08)·`ETC-GANGWON`(91-09). 시뮬 지역표 BUSAN = BJG·BNG·ETC-BUSAN, CHUNGCHEONG = SEJ·ETC-CHUNGCHEONG, GANGWON = CHC·ETC-GANGWON, 호남 = ETC-HONAM 만, 노선 RT-<권역>-ETC(편도 부산·충청 150분, 호남·강원 270분).
   - center-master·지역표·TMS 노선에 넣을지는 **사용자 결정 대기**. 그때까지 실서버에서는 이 센터 TRF 를 만들지 않음(목 모드만) — 지역 없음·NO_ROUTE 보류는 그대로 맞는 동작.
-
+- (같은 날, 사용자 결정 → PR 세션 적용 끝) **LAN 위치 전환 = 새로 시작.** 옛 dd3d185 칸·그 칸의 재고(CDC01)를 지우고 다시 넣음 — 승인 AP-010fa062(위치)·AP-830ed6fd(시작 재고, 기준일 2026-11-26).
+  - 칸 **43,958**(PICK_FACE 29,046·RESERVE 14,768·STAGING 132·DOCK 12) — 사본과 같음.
+  - 통로 방식 **87통로**(BOX_PICK 29·DISTRIBUTION 1·DPS 22·FC 3·LINE 32).
+  - 시작 재고 **1,056줄 187,620개**(504 SKU, LOT 642, 예약 0). 상품 취급·안전량은 그대로(안전량 0).
+  - cdc-location 0.8.0(도크 예약 포함)·cdc-outbound 0.29.0·TMS(fleet·planning·execution, 노선 RT-04·07·09·10) 도 LAN 에 있음.
+  - 부탁: 실서버 연결 점검(인수 → 할당 → Wave → 피킹 → 출발)을 해 주세요. 그 전 LAN 시험 기록은 남지 않았고, 출고에 옛 Wave 1건이 남아 있으니 새 TRF 로 시작해 주세요. 피킹면 최소·목표 규칙은 아직 대기.

@@ -33,16 +33,19 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
   - Bash heredoc 에 따옴표·복잡한 내용이 들어가면 "unexpected EOF" 가 납니다. 긴 파일은 Write 도구로, 고치기는 짧은 Python 스크립트(`python -I`)로 합니다.
   - 변경 요청 POST 는 공통 헤더 검사가 **Idempotency-Key 를 요구**합니다. 내부 조회용 POST 도 그렇습니다(아무 고유값).
   - 서비스 간 호출은 트랜잭션 밖에서 합니다. 같은 요청 키로 다시 오는 재생에서 앞 검사가 자기 몫 때문에 거절하지 않게 "이미 있으면 그것" 을 먼저 봅니다.
-  - LAN 은 아직 **옛 위치 배치(dd3d185)** 입니다. 구역 글자를 코드에 박지 말고 cdc-location 조회(온도대·유형)로 고릅니다(#505 교훈).
+  - LAN 위치는 2026-11-26 부터 **R-25(991c047, 43,958칸)** 입니다(새로 시작). 그래도 구역 글자를 코드에 박지 말고 cdc-location 조회(온도대·유형)로 고릅니다(#505 교훈).
 
-## 1. 서비스 현황 (main·LAN 모두 같음, 2026-11-26)
+## 1. 서비스 현황 (main·LAN 모두 같음, 2026-11-26 #536 병합·배포 뒤)
 | 서비스 | 판·Flyway | 포트 | 있는 것 |
 |---|---|---|---|
-| cdc-inventory | 0.19.0 · V10 | 8601 | 상품 투영·센터 취급·장부(현물·예약·LOT·Transit)·FEFO 할당/추가/해제·TOUT·내부 이동(PICK_MOVE 포함)·스냅샷·칸별 재고·재계수 대기·실사(CNT·승인 관문)·MFC 수령/정정 대사·운송 손실(입고 종결 뒤)·품질 전기(HOLD·RELEASE·DISPOSE, recall)·일일 대사(조회 때 계산)·LOT 추적·운영 제한 확인(새 할당)·상품 이름·실사 번호 |
-| cdc-location | 0.7.0 · V4 | 8602 | 위치 마스터(칠곡 문법 R-22)·통로 피킹 방식·일괄 조회·공간 예약·피킹 선반 최소·목표 |
-| cdc-outbound | 0.25.0 · V16 | 8603 | TRF 인수·Wave(묶음 피킹·DPS 통로)·PDA 다음 작업·피킹 실적·부족 재할당·버전 대체·미출발 취소·분류·검품·상차·출발 검증·매니페스트·출고대기 옮겨 적기·실사 부족/품질 보류/리콜 받기(RECALL_HOLD)·운영 제한 확인(출발)·DC 백오피스 조회·작업/Wave 조작·화면 번호·사건 기록 |
-| cdc-quality | 0.4.0 · V4 | 8604 | 보류·해제·폐기(요청·결정·실행)·리콜 발령(RecallIssued·모든 CDC 보류)·운영 제한(걸기·풀기·내부 확인·사건) |
-| cdc-inbound | 0.2.0 · V2 | 8605 | 적치 지시·자동 보충(최소 이하, 박스 입수 배수)·가상 설비 claim·결과(재고 이동·예약 소비)·보충 판단 조회 |
+| cdc-inventory | 0.21.0 · V11 | 8601 | 재고 이동 이력(stock-movements)·Transit 수령 ID·시각·상품 투영·센터 취급·장부(현물·예약·LOT·Transit)·FEFO 할당/추가/해제·TOUT·내부 이동(PICK_MOVE 포함)·스냅샷·칸별 재고·재계수 대기·실사(CNT·승인 관문)·MFC 수령/정정 대사·운송 손실(입고 종결 뒤)·품질 전기(HOLD·RELEASE·DISPOSE, recall)·일일 대사(조회 때 계산)·LOT 추적·운영 제한 확인(새 할당)·상품 이름·실사 번호 |
+| cdc-location | 0.8.0 · V5 | 8602 | 위치 마스터(칠곡 문법 R-22, 오토스토어 C-6·F-7)·도크 예약(계획완료 때 자동)·통로 피킹 방식·일괄 조회·공간 예약·피킹 선반 최소·목표 |
+| cdc-outbound | 0.29.0 · V18 | 8603 | 운송 가져오기 transport-feed·TRF 온도대·일별 출고 집계·작업자 실적·운영 확인 기준 KP-1(잠정)·근무(근무조·배치·출근·현황)·TRF 인수·Wave(묶음 피킹·DPS 통로)·PDA 다음 작업·피킹 실적·부족 재할당·버전 대체·미출발 취소·분류·검품·상차·출발 검증·매니페스트·출고대기 옮겨 적기·실사 부족/품질 보류/리콜 받기(RECALL_HOLD)·운영 제한 확인(출발)·DC 백오피스 조회·작업/Wave 조작·화면 번호·사건 기록 |
+| cdc-quality | 0.4.1 · V4 | 8604 | (결정 역할 CDC_SUPERVISOR) 보류·해제·폐기(요청·결정·실행)·리콜 발령(RecallIssued·모든 CDC 보류)·운영 제한(걸기·풀기·내부 확인·사건) |
+| cdc-inbound | 0.2.1 · V2 | 8605 | (결정 역할 CDC_SUPERVISOR) 적치 지시·자동 보충(최소 이하, 박스 입수 배수)·가상 설비 claim·결과(재고 이동·예약 소비)·보충 판단 조회 |
+| fleet (TMS) | 0.2.0 · V2 | 8703 | 운송사·차량·기사·점유 예약(차량·기사 따로, 겹침 거절) — LAN pc3, 시드 CR-01·차량 12·기사 12 |
+| transport-planning (TMS) | 0.3.0 · V3 | 8701 | 노선·정규차(RT-04·07·09·10)·운송 요청 가져오기·배차 생성·옮기기·계획완료(fleet 예약 → 도크 예약 → 운행)·취소 — LAN pc3 |
+| transport-execution (TMS) | 0.3.0 · V3 | 8702 | 운행 입차·상차·출차(cdc-outbound 출발 검증)·도착·인계·복귀, MFC 도착 예정 조회 — LAN pc3, 사건 발행 없음 |
 
 - 각 서비스의 자세한 규칙은 `services/<서비스>/CLAUDE.md`, 흐름은 `docs/business/flows/cdc-putaway-replenishment.md`(S7), 설계는 `docs/cdc/design/`, DC 백오피스 계획은 `docs/cdc/cdc-backoffice-plan.md` 에 있습니다.
 - 시드 스크립트 `deploy/lan/seed/cdc_*.py`(center·locations·pick_methods·stock·test_workers): 위치 → 통로 방식 → 시작 재고 순입니다. **LAN 위치 전환은 사용자가 "최종 배치"라고 할 때** 합니다.
@@ -57,7 +60,7 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 | 피킹 선반 최소·목표 **규칙**(예: 목표 = 칸 용량, 최소 = 30%) | 사용자(시뮬레이터 세션이 묻는 중) | 시뮬레이터 회신 | 자동 보충이 아무 칸도 돌지 않음 |
 | 상품 물류 규격 **박스 입수**(units_per_box) | product 데이터(LAN 상품) | — | 없으면 그 SKU 보충 UNIT_MISSING |
 | 시뮬레이터의 cdc-inbound 연결(claim·work-results), 보충 주체를 "가상 설비"로 | CDC 시뮬레이터(사용자 확인) | 시뮬레이터 회신 | 적치·보충 작업이 실제로 수행되지 않음 |
-| LAN 위치 전환(R-22 글자·층 도크·R-23 좌표·**R-24 36,121칸**) | 사용자 "최종 배치" | 시뮬레이터 R-22~24 | LAN 은 옛 배치 |
+| R-25 LAN 결과 확인(실서버 연결 점검) | CDC 시뮬레이터 | 시뮬레이터 회신 끝 | — (LAN 위치 전환은 2026-11-26 끝) |
 
 ## 3. 앞으로 할 일 (추천 순서 — 사용자와 정하세요)
 1. **피킹 선반 최소·목표 시드**: 규칙이 정해지면 `deploy/lan/seed/cdc_pick_face_settings.py` 를 새로 만듭니다.
@@ -207,3 +210,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 - 2026-11-26: DC 백오피스 KP·WF 요청(pmart-clients 2026-11-26-backend-kpi-workforce.md — 사용자 "KP-1 있는 자료만 + 나머지 N/A"·"WF-2 시뮬레이션에서 정한 대로") 1/3 — cdc-outbound 0.27.0 KP-2 일별 출고 집계·WF-1 작업자 실적. PR `cdc/outbound-daily-throughput`(#528 다음). 다음: KP-1 운영 지표, WF-2 근무.
 - 2026-11-26: KP 2/3 — KP-1 운영 확인 기준 cdc-outbound 0.28.0(원천 있는 것만, 나머지 N/A, SKU 섞인 합은 잠정)·cdc-inventory 0.21.0(Transit 수령 시각). PR `cdc/operating-metrics`(#534 다음). 다음: WF-2 근무(시뮬레이터 값).
 - 2026-11-26: KP 3/3 — WF-2 근무 cdc-outbound 0.29.0(Flyway V18 — 시뮬레이터 근무조·층 × 직무 계획 인원 시드, 배치·출근·퇴근·계획 대비 현황, 막지 않음). PR `cdc/workforce`(#535 다음). 회신 `docs/handoff/clients/cdc-backoffice/2026-11-26-reply-kpi-workforce.md` 에 KP-1·WF-2 덧붙임.
+- 2026-11-26: #526~#536 모두 병합·LAN 배포(PR 세션 일지 `worklog/platform/2026-11-26.md` 61~72줄). TMS 세 서비스 pc3, 시드 tms_fleet·tms_routes 넣음. **R-25 LAN 새로 시작 끝**: CDC01 칸 43,958(PICK_FACE 29,046·RESERVE 14,768·STAGING 132·DOCK 12)·통로 방식 87·시작 재고 1,056줄 187,620개(504 SKU, 예약 0, LOT 642). PR 세션은 cdc-location·cdc-inventory 의 CDC01 만 지웠다(상품 취급·안전량·다른 cdc 서비스 기록은 그대로 — cdc-outbound 에 옛 Wave 1건 남음, 옛 칸을 가리킬 수 있어 새 시험에 쓰지 말 것). 1절 표·pc1-todo 를 이 상태로 고침.
