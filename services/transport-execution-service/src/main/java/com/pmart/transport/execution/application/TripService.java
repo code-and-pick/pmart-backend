@@ -83,7 +83,9 @@ public class TripService {
       Instant plannedDepartureAt,
       Instant plannedReturnAt,
       int returnMinutes,
-      List<StopInput> stops) {}
+      List<StopInput> stops,
+      @Nullable String dockCode,
+      @Nullable String dockReservationId) {}
 
   /** 호출자 — 직원(센터 권한) 또는 시뮬레이터(내부 경로, 검사 없음). */
   public record Caller(String actorId, String source, @Nullable PmartPrincipal principal) {
@@ -186,7 +188,8 @@ public class TripService {
       List<TransferView> transfers,
       List<EventView> events,
       List<IncidentView> incidents,
-      int version) {}
+      int version,
+      @Nullable String dockCode) {}
 
   public record Page(List<TripView> items, int page, int size, boolean hasNext) {}
 
@@ -246,10 +249,10 @@ public class TripService {
           Instant now = clock.instant();
           jdbc.update(
               "INSERT INTO trip (trip_id, order_version, cdc_id, ship_date, route_id, temp_class,"
-                  + " vehicle_id, plate_no, driver_id, driver_name, reservation_id,"
+                  + " vehicle_id, plate_no, driver_id, driver_name, reservation_id, dock_code, dock_reservation_id,"
                   + " planned_loading_start_at, planned_departure_at, planned_return_at, return_minutes,"
                   + " state, input_hash, version, created_at, updated_at)"
-                  + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'SCHEDULED',?,1,?,?)",
+                  + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'SCHEDULED',?,1,?,?)",
               in.tripId(),
               in.orderVersion(),
               in.cdcId(),
@@ -261,6 +264,8 @@ public class TripService {
               in.driverId(),
               in.driverName(),
               in.reservationId(),
+              in.dockCode(),
+              in.dockReservationId(),
               ts(in.plannedLoadingStartAt()),
               ts(in.plannedDepartureAt()),
               ts(in.plannedReturnAt()),
@@ -921,7 +926,8 @@ public class TripService {
         transfers,
         events,
         incidents,
-        ((Number) t.get("version")).intValue());
+        ((Number) t.get("version")).intValue(),
+        (String) t.get("dock_code"));
   }
 
   // ======================= 다른 서비스 알림(트랜잭션 밖) =======================

@@ -30,3 +30,4 @@
   - `confirm`: PLANNING → CONFIRMING(차량·기사 바꾸기 가능 — 온도대·용량 검사) → fleet 점유(키 고정, 창 = 상차 시작 ~ 복귀) → execution 운행(tripId = orderId) → DISPATCHED·요청서 ASSIGNED. 불명이면 CONFIRMING 그대로(같은 요청·주기 재시도 `pmart.planning.retry-interval` 가 이어 감), 업무 거절이면 이번 점유만 풀고 PLANNING(사유·이력). 요청 키 재생 대신 상태로 멱등.
   - `cancel`(출차 전 — DISPATCHED 면 execution 취소 → 점유 해제, 요청서 ACCEPTED·잔여 물량)·`skip`(요청서 없을 때만)·`tripUpdate`(execution 이 알림 — 낮은 tripVersion 무시, DEPARTED·HANDED_OVER 를 요청서에).
   - 이벤트 없음(1단계). 시드 `deploy/lan/seed/tms_routes.py`(RT-04·07·09·10 — 시각 [가정], fleet 시드 뒤).
+- 0.3.0(2026-11-26, 도크 DK-2 — 사용자 "계획완료 때 자동"): 계획완료가 fleet 점유 뒤 cdc-location 도크 예약(창 = 상차 시작 ~ 계획 출차, `pmart.planning.cdc-location-base-url`) — NO_DOCK 이면 도크 없이(이력 NO_DOCK 한 번), CAPACITY_EXCEEDED 면 거절(이번 점유·도크만 풂). 운행 본문에 dockCode·dockReservationId. 취소·운행 DEPARTED 사본 때 도크 해제(실패해도 경고만). Flyway V3 `transport_order.dock_code·dock_reservation_id`.

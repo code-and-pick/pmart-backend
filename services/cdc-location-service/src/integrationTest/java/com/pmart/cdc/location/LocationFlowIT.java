@@ -57,6 +57,7 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
             .defaultStatusHandler(HttpStatusCode::isError, (q, r) -> {})
             .build();
     jdbc.update("DELETE FROM location_state_history");
+    jdbc.update("DELETE FROM dock_reservation");
     jdbc.update("DELETE FROM aisle_pick_method");
     jdbc.update("DELETE FROM location");
   }
@@ -566,5 +567,107 @@ class LocationFlowIT extends PostgresKafkaContainerSupport {
     assertThat(set.status()).as(set.body().toString()).isEqualTo(200);
     JsonNode pf = get(SERVICE, "/internal/pick-faces?centerId=" + CENTER).body();
     assertThat(pf.path("items").findValuesAsString("locationCode")).contains(a).doesNotContain(b);
+  }
+
+  Map<String, Object> dock(String trip, String temp, String start, String end) {
+    Map<String, Object> m = new LinkedHashMap<>();
+    m.put("centerId", CENTER);
+    m.put("tripId", trip);
+    m.put("vehicleId", "VH-" + trip);
+    m.put("purpose", "OUTBOUND_LOADING");
+    m.put("temperatureZone", temp);
+    m.put("routeId", "RT-04");
+    m.put("plateNo", "12가0001");
+    m.put("window", Map.of("start", start, "end", end));
+    return m;
+  }
+
+  /**
+   * 0.8.0 도크 예약: 온도대 같은 빈 도크를 코드 순으로, 겹치면 다음 칸, 다 차면 409, 칸 없으면 NO_DOCK, 같은 운행 다시 = 그대로, 해제 뒤 다시.
+   */
+  @Test
+  void dockReservations() {
+    Res made =
+        post(
+            SERVICE,
+            "/internal/location-batches",
+            key(),
+            Map.of(
+                "centerId",
+                CENTER,
+                "approvalRef",
+                "BO-06-DK",
+                "activate",
+                true,
+                "items",
+                List.of(
+                    loc("CDC01-G-5-90-01-0-1", "CHILLED", "DOCK"),
+                    loc("CDC01-G-5-90-02-0-1", "CHILLED", "DOCK"),
+                    loc("CDC01-A-6-90-01-0-1", "AMBIENT", "DOCK"))),
+            null);
+    assertThat(made.status()).as(made.body().toString()).isEqualTo(200);
+    String p = "/internal/dock-reservations";
+    String s = "2026-12-01T15:00:00Z";
+    String e = "2026-12-01T15:30:00Z";
+    Res r1 = post(SERVICE, p, key(), dock("TO-1", "CHILLED", s, e), null);
+    assertThat(r1.status()).as(r1.body().toString()).isEqualTo(200);
+    assertThat(r1.body().path("dockCode").asString()).isEqualTo("CDC01-G-5-90-01-0-1");
+    assertThat(r1.body().path("floor").asString()).isEqualTo("5");
+    assertThat(r1.body().path("status").asString()).isEqualTo("APPLIED");
+    assertThat(
+            post(SERVICE, p, key(), dock("TO-2", "CHILLED", s, e), null)
+                .body()
+                .path("dockCode")
+                .asString())
+        .isEqualTo("CDC01-G-5-90-02-0-1");
+    Res full = post(SERVICE, p, key(), dock("TO-3", "CHILLED", "2026-12-01T15:10:00Z", e), null);
+    assertThat(full.status()).isEqualTo(409);
+    assertThat(full.body().path("code").asString()).isEqualTo("CAPACITY_EXCEEDED");
+    assertThat(
+            post(SERVICE, p, key(), dock("TO-9", "FROZEN", s, e), null)
+                .body()
+                .path("code")
+                .asString())
+        .isEqualTo("NO_DOCK");
+    // 같은 운행·같은 창 = 같은 예약, 끝 = 다음 시작은 겹치지 않음
+    assertThat(
+            post(SERVICE, p, key(), dock("TO-1", "CHILLED", s, e), null)
+                .body()
+                .path("dockReservationId")
+                .asString())
+        .isEqualTo(r1.body().path("dockReservationId").asString());
+    assertThat(
+            post(SERVICE, p, key(), dock("TO-4", "CHILLED", e, "2026-12-01T16:00:00Z"), null)
+                .body()
+                .path("dockCode")
+                .asString())
+        .isEqualTo("CDC01-G-5-90-01-0-1");
+    // 해제(멱등) 뒤 그 칸을 다시 잡음
+    String id1 = r1.body().path("dockReservationId").asString();
+    assertThat(
+            post(SERVICE, p + "/" + id1 + "/releases", key(), Map.of("reason", "CANCELLED"), null)
+                .body()
+                .path("state")
+                .asString())
+        .isEqualTo("RELEASED");
+    assertThat(
+            post(SERVICE, p + "/" + id1 + "/releases", key(), Map.of("reason", "CANCELLED"), null)
+                .status())
+        .isEqualTo(200);
+    assertThat(
+            post(SERVICE, p, key(), dock("TO-3", "CHILLED", "2026-12-01T15:10:00Z", e), null)
+                .body()
+                .path("dockCode")
+                .asString())
+        .isEqualTo("CDC01-G-5-90-01-0-1");
+    // 운영자 보기(DK-1) — 서울 2026-12-02(00:00~ 이 창이 걸침)
+    JsonNode board =
+        get(OPERATOR, "/cdcs/" + CENTER + "/dock-reservations?date=2026-12-02&state=RESERVED")
+            .body();
+    assertThat(board.path("docks").size()).isEqualTo(3);
+    assertThat(board.path("items").findValuesAsString("tripId"))
+        .containsExactly("TO-3", "TO-4", "TO-2");
+    assertThat(board.path("items").get(0).path("routeId").asString()).isEqualTo("RT-04");
+    assertThat(get(OTHER, "/cdcs/" + CENTER + "/dock-reservations").status()).isEqualTo(403);
   }
 }

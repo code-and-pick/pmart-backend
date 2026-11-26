@@ -141,6 +141,8 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     m.put("driverId", "DR-04A");
     m.put("driverName", "기사 04A");
     m.put("reservationId", "FRS-" + id);
+    m.put("dockCode", "CDC01-A-6-90-01-0-1");
+    m.put("dockReservationId", "DKR-" + id);
     m.put("plannedLoadingStartAt", dep.minus(30, ChronoUnit.MINUTES).toString());
     m.put("plannedDepartureAt", dep.toString());
     m.put("plannedReturnAt", dep.plus(8, ChronoUnit.HOURS).toString());
@@ -185,6 +187,7 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     Res c = call(SERVICE, "/internal/trips", trip(id, 3, ship, dep));
     assertThat(c.status()).as(c.body().toString()).isEqualTo(200);
     assertThat(c.body().path("state").asString()).isEqualTo("SCHEDULED");
+    assertThat(c.body().path("dockCode").asString()).isEqualTo("CDC01-A-6-90-01-0-1"); // 0.3.0 DK-2
     assertThat(call(SERVICE, "/internal/trips", trip(id, 3, ship, dep)).status()).isEqualTo(200);
     Map<String, Object> other = trip(id, 2, ship, dep);
     other.put("vehicleId", "VH-OTHER");

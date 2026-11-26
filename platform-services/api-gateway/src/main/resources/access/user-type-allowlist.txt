@@ -78,6 +78,7 @@ GET /api/v1/cdcs/{cdcId}/count-sessions/{sessionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/departures OPERATOR
 GET /api/v1/cdcs/{cdcId}/disposal-approvals OPERATOR
 GET /api/v1/cdcs/{cdcId}/disposal-approvals/{disposalApprovalId} OPERATOR
+GET /api/v1/cdcs/{cdcId}/dock-reservations OPERATOR
 GET /api/v1/cdcs/{cdcId}/events OPERATOR
 GET /api/v1/cdcs/{cdcId}/location-stocks OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR

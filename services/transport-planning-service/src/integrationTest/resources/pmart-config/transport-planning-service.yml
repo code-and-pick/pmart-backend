@@ -9,5 +9,6 @@ pmart:
     cdc-outbound-base-url: http://cdc-outbound-service:8603
     fleet-base-url: http://fleet-service:8703
     execution-base-url: http://transport-execution-service:8702
+    cdc-location-base-url: http://cdc-location-service:8602 # 0.3.0 도크 예약
     retry-interval: PT30S # 계획완료 중(CONFIRMING) execution 응답 불명 다시 보내기
 # 이벤트 소비·발행 없음(1단계 — 운행 상태는 execution 이 /internal/transport-orders/{id}/trip-updates 로 알린다)

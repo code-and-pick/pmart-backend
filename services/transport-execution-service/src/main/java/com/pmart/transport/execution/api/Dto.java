@@ -59,6 +59,7 @@ final class Dto {
         .plateNo(v.plateNo())
         .driverId(v.driverId())
         .driverName(v.driverName())
+        .dockCode(v.dockCode())
         .state(TripState.fromValue(v.state()))
         .delayed(v.delayed())
         .plannedLoadingStartAt(time(v.plannedLoadingStartAt()))

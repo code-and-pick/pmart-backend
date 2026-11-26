@@ -17,7 +17,7 @@ class ContractStubTest {
     scanner.addIncludeFilter(
         new org.springframework.core.type.filter.AnnotationTypeFilter(RestController.class));
     var beans = scanner.findCandidateComponents("com.pmart.cdc.location.api");
-    assertThat(beans).hasSize(2);
+    assertThat(beans).hasSize(3); // Internal·Locations·Docks(0.8.0)
     for (var bd : beans) {
       Class<?> c = Class.forName(bd.getBeanClassName());
       assertThat(Arrays.stream(c.getInterfaces()).anyMatch(i -> i.getSimpleName().endsWith("Api")))

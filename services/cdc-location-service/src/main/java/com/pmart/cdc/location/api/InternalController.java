@@ -31,11 +31,14 @@ public class InternalController implements InternalApi {
   private final LocationService service;
   private final PickMethodService pickMethods;
   private final com.pmart.cdc.location.application.SpaceService space;
+  private final com.pmart.cdc.location.application.DockService docks;
 
   public InternalController(
       LocationService service,
       PickMethodService pickMethods,
-      com.pmart.cdc.location.application.SpaceService space) {
+      com.pmart.cdc.location.application.SpaceService space,
+      com.pmart.cdc.location.application.DockService docks) {
+    this.docks = docks;
     this.space = space;
     this.service = service;
     this.pickMethods = pickMethods;
@@ -223,5 +226,78 @@ public class InternalController implements InternalApi {
                         .releasedQty(l.releasedQty()))
             .toList());
     return r;
+  }
+
+  // ---------- 0.8.0 도크 예약 ----------
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.CreateDockReservation200Response>
+      createDockReservation(
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.location.api.generated.model.CreateDockReservationRequest b,
+          @Nullable String traceparent) {
+    var v =
+        docks.reserve(
+            idempotencyKey,
+            xSourceSystem,
+            new com.pmart.cdc.location.application.DockService.Reserve(
+                b.getCenterId(),
+                b.getTripId(),
+                b.getPurpose().getValue(),
+                b.getTemperatureZone() == null ? null : b.getTemperatureZone().getValue(),
+                b.getVehicleId(),
+                b.getRouteId(),
+                b.getPlateNo(),
+                b.getWindow().getStart().toInstant(),
+                b.getWindow().getEnd().toInstant(),
+                b.getPreferredDockCode()));
+    var d = DocksController.dto(v);
+    var out =
+        new com.pmart.cdc.location.api.generated.model.CreateDockReservation200Response()
+            .status(
+                com.pmart.cdc.location.api.generated.model.CreateDockReservation200Response
+                    .StatusEnum.APPLIED)
+            .requestId(idempotencyKey)
+            .resultId(v.dockReservationId())
+            .occurredAt(DocksController.time(v.createdAt()))
+            .dockReservationId(d.getDockReservationId())
+            .centerId(d.getCenterId())
+            .dockCode(d.getDockCode())
+            .tripId(d.getTripId())
+            .purpose(
+                com.pmart.cdc.location.api.generated.model.CreateDockReservation200Response
+                    .PurposeEnum.fromValue(v.purpose()))
+            .state(
+                com.pmart.cdc.location.api.generated.model.CreateDockReservation200Response
+                    .StateEnum.fromValue(v.state()))
+            .window(d.getWindow())
+            .version(d.getVersion())
+            .floor(d.getFloor())
+            .temperatureZone(d.getTemperatureZone())
+            .vehicleId(d.getVehicleId())
+            .routeId(d.getRouteId())
+            .plateNo(d.getPlateNo())
+            .releaseReason(d.getReleaseReason())
+            .createdAt(d.getCreatedAt());
+    return ResponseEntity.ok(out);
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.DockReservation>
+      getDockReservation(String reservationId) {
+    return ResponseEntity.ok(DocksController.dto(docks.get(reservationId)));
+  }
+
+  @Override
+  public ResponseEntity<com.pmart.cdc.location.api.generated.model.DockReservation>
+      releaseDockReservation(
+          String reservationId,
+          String idempotencyKey,
+          String xSourceSystem,
+          com.pmart.cdc.location.api.generated.model.ReleaseDockReservationRequest b) {
+    return ResponseEntity.ok(
+        DocksController.dto(
+            docks.release(idempotencyKey, xSourceSystem, reservationId, b.getReason().getValue())));
   }
 }

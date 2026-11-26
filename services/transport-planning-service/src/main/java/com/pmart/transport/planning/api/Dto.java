@@ -144,6 +144,8 @@ final class Dto {
         .flags(new ArrayList<>(flags))
         .state(TransportOrderState.fromValue(o.state()))
         .reservationId(o.reservationId())
+        .dockCode(o.dockCode())
+        .dockReservationId(o.dockReservationId())
         .tripState(o.tripState())
         .reason(o.reason())
         .version(o.version())

@@ -29,3 +29,4 @@
   - 트랜잭션 밖 알림: cdc-outbound `departure-validations`(키 = departureId, outboundLinkage ACKNOWLEDGED·FAILED·UNKNOWN_RESULT), planning `trip-updates`(version 이 `planning_synced_version` 보다 크면), 복귀 뒤 fleet 점유 해제. 실패·불명은 `retry()`(주기 `pmart.execution.retry-interval`)가 같은 키로 — 출차·인계 사실은 되돌리지 않는다.
   - 예상 도착·지연은 조회 때 계산(`domain/TripRules` — 실제 출차·도착부터 남은 구간 + 하차 30분, 계획 + 30분 또는 D+1 07:30 초과 = 지연 플래그). 저장 안 함.
   - **사건 발행 없음**(설계 §6 — TruckActuallyDeparted 줄 SKU·LOT 을 모름, 구독자 없음). 도크 배정·온도 이탈·운임 근거는 뒤로.
+- 0.3.0(2026-11-26, DK-2): 운행에 도크 사본 `dock_code`·`dock_reservation_id`(Flyway V3 — planning 이 준 값, 없으면 null). 도크 해제는 planning 몫.

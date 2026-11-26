@@ -56,7 +56,7 @@
 - **예상 도착·지연**(정본 9.3): 이벤트마다 남은 정차 예상 = 마지막 이벤트 시각 + 남은 계획 구간 + 하차 30분. 예상 > 계획 + 30분 또는 > 07:30 이면 `delayed` 플래그(상태 아님). 최초 계획은 덮지 않는다.
 - 조회(TR-2): `GET /cdcs/{cdcId}/trips?shipDate&state&page&size` — 운행 번호·노선·온도대·차량(번호판)·기사 표시 이름·계획/예상/실제 출차·정차별 도착·TRF 수·BOX·R/T 수·상태·지연. 운행 하나 `GET /trips/{tripId}`. MFC 쪽 도착 예정 `GET /mfcs/{mfcId}/inbound-trips?arrivalDate`.
 - 누가 부르나: 1단계는 **직원 토큰(OPERATOR — 자기 센터)** — 기사 앱·운송사 계정은 없다(직원이 대신 입력). MFC 인계는 그 MFC 직원. 시뮬레이터는 같은 경로를 `/internal/trips/...` 로 LAN 직접(CDC-9 방식, source SIMULATED).
-- TR-3 도크 배정은 뒤로(cdc-location 도크 예약 — 칠곡 R-22 층 도크 확정 뒤).
+- **TR-3 도크 배정(2026-11-26 사용자 "계획완료 때 자동"·"지금 만들기")**: 계획완료가 fleet 점유 뒤 cdc-location 도크 예약 — 창 = 상차 시작 ~ 계획 출차, 운행 온도대의 ACTIVE DOCK 중 빈 칸(코드 순). 도크 칸이 없으면(LAN 옛 배치) 도크 없이 계획완료, 칸이 다 차면 계획완료 거절. 출차·취소 때 해제. 운영자 보기 `GET /cdcs/{cdcId}/dock-reservations`, 운행·지시서에 dockCode 사본. 사람이 바꾸기(DK-3)는 다음.
 
 ## 6. 사건(이번 범위)
 - **1단계는 사건을 발행하지 않는다**(2026-11-26 구현 때 고침): `TruckActuallyDeparted` 의 출발 구성 줄은 SKU·LOT·수량이 필수인데 execution 은 상차 박스 바코드만 안다(내용물은 cdc-outbound 매니페스트). 지금 구독자도 없다(cdc-outbound 는 동기 호출로 받는다). 구독자가 생길 때 매니페스트를 붙여 발행한다.

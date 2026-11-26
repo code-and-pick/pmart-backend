@@ -32,6 +32,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
 
 /**
  * 이관요청서 수신·검증과 운송지시서(배차 계획) — TMS 정본 5·7·8장, 설계 §3·§4. 다른 서비스 호출(cdc-outbound·fleet·execution)은
@@ -114,7 +115,9 @@ public class PlanningService {
       int version,
       List<History> history,
       Instant createdAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      @Nullable String dockCode,
+      @Nullable String dockReservationId) {}
 
   public record Unplanned(String routeId, String tempClass, String reason) {}
 
@@ -529,7 +532,9 @@ public class PlanningService {
         ((Number) o.get("version")).intValue(),
         hist,
         ts(o.get("created_at")),
-        ts(o.get("updated_at")));
+        ts(o.get("updated_at")),
+        (String) o.get("dock_code"),
+        (String) o.get("dock_reservation_id"));
   }
 
   // ======================= 요청서 옮기기 =======================
@@ -738,13 +743,17 @@ public class PlanningService {
             reservationId,
             orderId);
       }
-      clients.createTrip("plan-trip-" + orderId + "-v" + o.version(), tripBody(o, reservationId));
+      String[] dock = reserveDock(o, actor);
+      clients.createTrip(
+          "plan-trip-" + orderId + "-v" + o.version(),
+          tripBody(o, reservationId, dock[0], dock[1]));
     } catch (PmartException e) {
       if (Clients.unknown(e)) {
         log.warn("계획완료 이어 가기 보류 {}: {}", orderId, e.getMessage());
         return view(orderId);
       }
-      // 업무 거절(점유 겹침·운행 충돌) — 계획중으로 되돌리고 이번에 잡은 점유만 푼다
+      // 업무 거절(점유 겹침·도크 없음·운행 충돌) — 계획중으로 되돌리고 이번에 잡은 점유·도크만 푼다
+      releaseDock(orderId, "REPLANNED");
       final String held = reservationId;
       if (held != null) {
         try {
@@ -756,7 +765,8 @@ public class PlanningService {
       tx.executeWithoutResult(
           s -> {
             jdbc.update(
-                "UPDATE transport_order SET state = 'PLANNING', reservation_id = NULL, reason = ?,"
+                "UPDATE transport_order SET state = 'PLANNING', reservation_id = NULL,"
+                    + " dock_code = NULL, dock_reservation_id = NULL, reason = ?,"
                     + " version = version + 1, updated_at = ? WHERE order_id = ?",
                 trim(e.code() + ": " + e.getMessage()),
                 Timestamp.from(clock.instant()),
@@ -787,7 +797,79 @@ public class PlanningService {
     return view(orderId);
   }
 
-  private Map<String, Object> tripBody(OrderView o, String reservationId) {
+  /**
+   * 도크 자동 배정(0.3.0 — 사용자 "계획완료 때 자동"): 창 = 상차 시작 ~ 계획 출차, 지시서 온도대. 그 온도대 도크 칸이 없으면(NO_DOCK) 도크 없이
+   * 이어 간다(이력 한 번). 다 차면(CAPACITY_EXCEEDED) 예외 — 계획완료 거절.
+   *
+   * @return {dockReservationId, dockCode} — 없으면 null 들
+   */
+  private String[] reserveDock(OrderView o, String actor) {
+    var cur =
+        jdbc.queryForList(
+            "SELECT dock_code, dock_reservation_id FROM transport_order WHERE order_id = ?",
+            o.orderId());
+    if (!cur.isEmpty() && cur.get(0).get("dock_reservation_id") != null) {
+      return new String[] {
+        (String) cur.get(0).get("dock_reservation_id"), (String) cur.get(0).get("dock_code")
+      };
+    }
+    try {
+      JsonNode d =
+          clients.reserveDock(
+              "plan-dock-" + o.orderId() + "-" + o.plannedLoadingStartAt().getEpochSecond(),
+              o.cdcId(),
+              o.orderId(),
+              o.vehicleId(),
+              o.tempClass(),
+              o.routeId(),
+              o.plateNo(),
+              o.plannedLoadingStartAt(),
+              o.plannedDepartureAt());
+      String id = d.path("dockReservationId").asString();
+      String code = d.path("dockCode").asString();
+      jdbc.update(
+          "UPDATE transport_order SET dock_code = ?, dock_reservation_id = ? WHERE order_id = ?",
+          code,
+          id,
+          o.orderId());
+      return new String[] {id, code};
+    } catch (PmartException e) {
+      if (!"NO_DOCK".equals(e.code())) {
+        throw e;
+      }
+      Integer noted =
+          jdbc.queryForObject(
+              "SELECT count(*) FROM transport_order_history WHERE order_id = ? AND action = 'NO_DOCK'",
+              Integer.class,
+              o.orderId());
+      if (noted == null || noted == 0) {
+        history(o.orderId(), "NO_DOCK", actor, trim(e.getMessage()), o.version());
+      }
+      return new String[] {null, null};
+    }
+  }
+
+  /** 도크 예약 해제(취소·출차·거절) — 실패해도 경고만(창이 지나면 다른 예약을 막지 않는다). */
+  void releaseDock(String orderId, String reason) {
+    var cur =
+        jdbc.queryForList(
+            "SELECT dock_reservation_id FROM transport_order WHERE order_id = ?", orderId);
+    if (cur.isEmpty() || cur.get(0).get("dock_reservation_id") == null) {
+      return;
+    }
+    String id = (String) cur.get(0).get("dock_reservation_id");
+    try {
+      clients.releaseDock("plan-dock-rel-" + orderId + "-" + reason, id, reason);
+    } catch (PmartException e) {
+      log.warn("도크 해제 보류 {} {}: {}", orderId, id, e.getMessage());
+    }
+  }
+
+  private Map<String, Object> tripBody(
+      OrderView o,
+      String reservationId,
+      @Nullable String dockReservationId,
+      @Nullable String dockCode) {
     Map<String, Object> m = new LinkedHashMap<>();
     m.put("tripId", o.orderId());
     m.put("orderVersion", o.version());
@@ -800,6 +882,8 @@ public class PlanningService {
     m.put("driverId", o.driverId());
     m.put("driverName", o.driverName());
     m.put("reservationId", reservationId);
+    m.put("dockCode", dockCode);
+    m.put("dockReservationId", dockReservationId);
     m.put("plannedLoadingStartAt", o.plannedLoadingStartAt().toString());
     m.put("plannedDepartureAt", o.plannedDepartureAt().toString());
     m.put("plannedReturnAt", o.plannedReturnAt().toString());
@@ -883,6 +967,7 @@ public class PlanningService {
         clients.release(
             "plan-rel-" + orderId + "-" + o.reservationId(), o.reservationId(), "CANCELLED");
       }
+      releaseDock(orderId, "CANCELLED");
     }
     tx.executeWithoutResult(
         s -> {
@@ -942,6 +1027,9 @@ public class PlanningService {
                 trf);
           }
         });
+    if ("DEPARTED".equals(tripState) || "COMPLETED".equals(tripState)) {
+      releaseDock(orderId, "DEPARTED"); // 출차하면 도크가 빈다(트랜잭션 밖)
+    }
   }
 
   // ======================= 공통 =======================

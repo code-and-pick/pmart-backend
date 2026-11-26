@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: transport-execution-service
-  version: 0.2.0
+  version: 0.3.0
   description: |
+    0.3.0(2026-11-26, DK-2): 운행에 계획완료 때 배정한 도크 사본 dockCode·dockReservationId(planning 이 운행을 만들 때 준다 — 없으면 null).
     간선 운행·정차·실제 출발 사실(departureId)·인계 증빙·운행 예외·예상 도착의 정본. (docs/architecture/service-map.md §6)
     TOUT 전기는 cdc-inventory(cdc-outbound 출발 검증이 부른다), TIN 은 mfc-inventory, 배차·재배정은 transport-planning, 차량·기사는 fleet.
     실제 출발은 사람이 등록한 사실이며 상차완료로 자동 처리하지 않는다. 실시간 GPS 는 없고 이벤트 시각·위치만 남긴다(TMS D-08). 인계 증빙은 TIN 이 아니다.
@@ -465,6 +466,8 @@ components:
         driverId: { type: string }
         driverName: { type: [string, 'null'] }
         reservationId: { type: [string, 'null'] }
+        dockCode: { type: [string, 'null'], description: (0.3.0) }
+        dockReservationId: { type: [string, 'null'], description: (0.3.0) }
         plannedLoadingStartAt: { type: string, format: date-time }
         plannedDepartureAt: { type: string, format: date-time }
         plannedReturnAt: { type: string, format: date-time }
@@ -495,6 +498,7 @@ components:
         plateNo: { type: [string, 'null'] }
         driverId: { type: string }
         driverName: { type: [string, 'null'], description: 표시 이름(fleet) }
+        dockCode: { type: [string, 'null'], description: '(0.3.0) 상차 도크 — 계획완료 때 자동 배정, 없으면 null' }
         state: { $ref: '#/components/schemas/TripState' }
         delayed: { type: boolean, description: '어느 정차든 예상 도착 > 계획 + 30분 또는 > 07:30(플래그 — 상태 아님)' }
         plannedLoadingStartAt: { type: string, format: date-time }

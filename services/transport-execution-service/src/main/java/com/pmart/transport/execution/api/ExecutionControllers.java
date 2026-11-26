@@ -300,7 +300,9 @@ final class ExecutionControllers {
                                   : s.getPlannedDepartureAt().toInstant(),
                               s.getLegMinutes(),
                               Dto.list(s.getTrfIds())))
-                  .toList());
+                  .toList(),
+              b.getDockCode(),
+              b.getDockReservationId());
       return ResponseEntity.ok(Dto.trip(trips.create(in)));
     }
 

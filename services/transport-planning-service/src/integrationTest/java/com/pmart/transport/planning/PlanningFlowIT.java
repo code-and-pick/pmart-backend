@@ -48,7 +48,8 @@ import tools.jackson.databind.ObjectMapper;
 @EnableWireMock({
   @ConfigureWireMock(name = "outbound", baseUrlProperties = "pmart.planning.cdc-outbound-base-url"),
   @ConfigureWireMock(name = "fleet", baseUrlProperties = "pmart.planning.fleet-base-url"),
-  @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.planning.execution-base-url")
+  @ConfigureWireMock(name = "execution", baseUrlProperties = "pmart.planning.execution-base-url"),
+  @ConfigureWireMock(name = "location", baseUrlProperties = "pmart.planning.cdc-location-base-url")
 })
 class PlanningFlowIT extends PostgresKafkaContainerSupport {
 
@@ -71,10 +72,22 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
   @InjectWireMock("execution")
   WireMockServer execution;
 
+  @InjectWireMock("location")
+  WireMockServer location;
+
   RestClient http;
 
   @BeforeEach
   void client() {
+    // 0.3.0 도크 — 기본은 칸을 잡아 준다, 해제는 늘 됨
+    location.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/dock-reservations"))
+            .willReturn(
+                okJson(
+                    "{\"dockReservationId\":\"DKR-1\",\"dockCode\":\"CDC01-A-6-90-01-0-1\",\"state\":\"RESERVED\"}")));
+    location.stubFor(
+        post(urlPathMatching("/api/v1/internal/dock-reservations/.*/releases"))
+            .willReturn(okJson("{\"state\":\"RELEASED\"}")));
     http =
         RestClient.builder()
             .baseUrl("http://localhost:" + port + "/api/v1")
@@ -371,10 +384,21 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
     assertThat(c.status()).as(c.body().toString()).isEqualTo(200);
     assertThat(c.body().path("state").asString()).isEqualTo("DISPATCHED");
     assertThat(c.body().path("reservationId").asString()).isEqualTo("FRS-1");
+    assertThat(c.body().path("dockCode").asString()).isEqualTo("CDC01-A-6-90-01-0-1");
+    JsonNode dockReq =
+        read(
+            location
+                .findAll(postRequestedFor(urlPathEqualTo("/api/v1/internal/dock-reservations")))
+                .get(0)
+                .getBodyAsString());
+    assertThat(java.time.Instant.parse(dockReq.path("window").path("end").asString()))
+        .isEqualTo(java.time.Instant.parse("2026-12-01T15:30:00Z")); // 계획 출차
+    assertThat(dockReq.path("temperatureZone").asString()).isEqualTo("AMBIENT");
     assertThat(req("TRF-001").path("state").asString()).isEqualTo("ASSIGNED");
     var trips = execution.findAll(postRequestedFor(urlPathEqualTo("/api/v1/internal/trips")));
     JsonNode tripBody = read(trips.get(trips.size() - 1).getBodyAsString());
     assertThat(tripBody.path("tripId").asString()).isEqualTo(id04);
+    assertThat(tripBody.path("dockCode").asString()).isEqualTo("CDC01-A-6-90-01-0-1");
     assertThat(tripBody.path("stops").size()).isEqualTo(2);
     assertThat(tripBody.path("stops").get(0).path("trfIds").toString()).contains("TRF-001");
     var res = fleet.findAll(postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations")));
@@ -423,6 +447,15 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
         post(urlPathEqualTo("/api/v1/internal/trips"))
             .atPriority(1)
             .willReturn(aResponse().withStatus(503)));
+    // 그 온도대 도크 칸이 없으면(NO_DOCK) 도크 없이 계획완료 — 이력은 한 번
+    location.stubFor(
+        post(urlPathEqualTo("/api/v1/internal/dock-reservations"))
+            .atPriority(1)
+            .willReturn(
+                aResponse()
+                    .withStatus(409)
+                    .withHeader("Content-Type", "application/problem+json")
+                    .withBody("{\"code\":\"NO_DOCK\",\"detail\":\"도크 칸 없음\"}")));
     int before =
         fleet.findAll(postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations"))).size();
     Res pend = call(SUP, "/cdcs/" + CDC + "/transport-orders/" + id07 + "/confirmations", Map.of());
@@ -434,6 +467,12 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
     Res again =
         call(SUP, "/cdcs/" + CDC + "/transport-orders/" + id07 + "/confirmations", Map.of());
     assertThat(again.body().path("state").asString()).isEqualTo("DISPATCHED");
+    assertThat(again.body().path("dockCode").isNull()).isTrue();
+    assertThat(
+            again.body().path("history").findValuesAsString("action").stream()
+                .filter("NO_DOCK"::equals)
+                .count())
+        .isEqualTo(1);
     assertThat(
             fleet.findAll(postRequestedFor(urlPathEqualTo("/api/v1/internal/reservations"))).size())
         .isEqualTo(before + 1); // 점유는 한 번만(이어 가기는 운행만 다시)
@@ -446,6 +485,11 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
     assertThat(call(SERVICE, "/internal/transport-orders/" + id04 + "/trip-updates", up).status())
         .isEqualTo(204);
     assertThat(req("TRF-002").path("state").asString()).isEqualTo("DEPARTED");
+    assertThat(
+            location.findAll(
+                postRequestedFor(
+                    urlPathEqualTo("/api/v1/internal/dock-reservations/DKR-1/releases"))))
+        .isNotEmpty(); // 출차하면 도크를 푼다
     up.put("tripState", "COMPLETED");
     up.put("tripVersion", 9);
     up.put("handedOverTrfIds", List.of("TRF-001"));

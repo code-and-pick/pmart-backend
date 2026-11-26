@@ -1,8 +1,14 @@
 openapi: 3.1.0
 info:
   title: cdc-location-service
-  version: 0.7.0
+  version: 0.8.0
   description: |
+    0.8.0(2026-11-26, 도크 배정 — DC 백오피스 TR-3/DK-1·2, 사용자 "계획완료 때 자동"·"지금 만들기"): 도크 예약 구현(501 해제).
+      `POST /internal/dock-reservations` — transport-planning 이 계획완료 때 부른다. 창 = 상차 시작 ~ 계획 출차. 그 센터의 ACTIVE DOCK 중 온도대가 같고
+      창이 겹치는 살아 있는 예약이 없는 칸을 코드 순으로 고른다(preferredDockCode 가 비어 있으면 그것 먼저). 같은 trip·purpose 의 살아 있는 예약은 하나 —
+      같은 창이면 그대로, 다르면 앞 것을 풀고 새로. 그 온도대 DOCK 칸이 아예 없으면 409 NO_DOCK(planning 은 도크 없이 계획완료), 칸은 있으나 모두 겹치면
+      409 CAPACITY_EXCEEDED(planning 은 계획완료를 거절). 해제 `POST /internal/dock-reservations/{id}/releases`(멱등).
+      운영자 `GET /cdcs/{cdcId}/dock-reservations?date=&dockCode=&state=`(DK-1, 서울 날짜의 창). 바꾸기(DK-3)는 다음.
     CDC 시설 수용조건·7구간 LOC 마스터(센터-온도-구역-랙-베이-단-포지션)·상태·적치 후보·공간 용량 예약·도크 자원의 정본. (docs/architecture/service-map.md §4)
     수량은 cdc-inventory, 작업은 cdc-inbound/outbound가 정본. 공간 예약 불변식: 점유 + 미완료 예약 + 신규 ≤ 허용량.
     0.2.0(2026-11-25): 위치 마스터 구현(등록·일괄 등록·조회·상태 전환·LocStateChanged). 칠곡(CDC01)은 코드 문법 CDC-3~5 를 검사한다.
@@ -26,6 +32,7 @@ security:
   - bearerAuth: []
 tags:
   - { name: locations, description: LOC 마스터·상태 (DRAFT→ACTIVE→BLOCKED/INACTIVE→RETIRED) }
+  - { name: docks, description: 도크 예약 조회(운영자 — 0.8.0) }
   - { name: internal, description: 서비스 간 호출 (cdc-inbound / cdc-outbound / TMS) }
 
 paths:
@@ -566,6 +573,8 @@ paths:
                 vehicleId: { type: string }
                 purpose: { type: string, enum: [OUTBOUND_LOADING, INBOUND_UNLOADING] }
                 temperatureZone: { $ref: '#/components/schemas/TemperatureZone' }
+                routeId: { type: string, description: (0.8.0) 화면용 사본 }
+                plateNo: { type: string, description: (0.8.0) 화면용 사본 }
                 window:
                   type: object
                   required: [start, end]
@@ -583,10 +592,61 @@ paths:
                   - { $ref: '_common.yaml#/components/schemas/CommandResponse' }
                   - { $ref: '#/components/schemas/DockReservation' }
         '409':
-          description: IDEMPOTENCY_CONFLICT / CAPACITY_EXCEEDED (창 내 가용 도크 없음)
+          description: IDEMPOTENCY_CONFLICT / CAPACITY_EXCEEDED (창 내 가용 도크 없음) / NO_DOCK (그 온도대 DOCK 칸 없음 — 0.8.0)
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /internal/dock-reservations/{reservationId}/releases:
+    post:
+      tags: [internal]
+      summary: '[0.8.0][transport-planning→cdc-location] 도크 예약 해제 (취소·출차 — 멱등)'
+      operationId: releaseDockReservation
+      parameters:
+        - { name: reservationId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, enum: [CANCELLED, DEPARTED, REPLANNED] }
+      responses:
+        '200':
+          description: 풀린(또는 이미 풀린) 예약
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DockReservation' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /cdcs/{cdcId}/dock-reservations:
+    get:
+      tags: [docks]
+      summary: '[0.8.0][운영자] 도크 예약 — 층별 도크 × 시간 (DC 백오피스 DK-1)'
+      description: 창이 그 서울 날짜(date, 기본 오늘)에 걸친 예약. 도크 코드 → 시작 순. 자기 센터 운영자만.
+      operationId: listDockReservations
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: dockCode, in: query, schema: { type: string, maxLength: 40 } }
+        - { name: state, in: query, schema: { type: string, enum: [RESERVED, RELEASED] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  docks: { type: array, description: 그 센터의 ACTIVE DOCK 칸(예약이 없어도), items: { type: object, properties: { dockCode: { type: string }, floor: { type: string }, temperatureZone: { type: string } } } }
+                  items: { type: array, items: { $ref: '#/components/schemas/DockReservation' } }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
   /internal/dock-reservations/{reservationId}:
     get:
@@ -717,9 +777,16 @@ components:
         dockCode: { type: string }
         tripId: { type: string }
         purpose: { type: string, enum: [OUTBOUND_LOADING, INBOUND_UNLOADING] }
-        state: { type: string, enum: [RESERVED, IN_USE, COMPLETED, RELEASED, EXPIRED] }
+        state: { type: string, enum: [RESERVED, IN_USE, COMPLETED, RELEASED, EXPIRED], description: (0.8.0) 쓰는 값은 RESERVED·RELEASED }
         window: { type: object, properties: { start: { type: string, format: date-time }, end: { type: string, format: date-time } } }
         version: { $ref: '_common.yaml#/components/schemas/Version' }
+        floor: { type: [string, 'null'], description: (0.8.0) 도크 층 }
+        temperatureZone: { type: [string, 'null'] }
+        vehicleId: { type: [string, 'null'] }
+        routeId: { type: [string, 'null'] }
+        plateNo: { type: [string, 'null'] }
+        releaseReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
   securitySchemes:
     bearerAuth:
       $ref: '_common.yaml#/components/securitySchemes/bearerAuth'

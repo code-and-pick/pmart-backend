@@ -57,6 +57,7 @@ public class Clients {
   private final RestClient outbound;
   private final RestClient fleet;
   private final RestClient execution;
+  private final RestClient location;
   private final ObjectMapper mapper;
 
   public Clients(
@@ -66,7 +67,10 @@ public class Clients {
           String outboundUrl,
       @Value("${pmart.planning.fleet-base-url:http://fleet-service:8703}") String fleetUrl,
       @Value("${pmart.planning.execution-base-url:http://transport-execution-service:8702}")
-          String executionUrl) {
+          String executionUrl,
+      @Value("${pmart.planning.cdc-location-base-url:http://cdc-location-service:8602}")
+          String locationUrl) {
+    this.location = builder.clone().baseUrl(locationUrl).build();
     this.outbound = builder.clone().baseUrl(outboundUrl).build();
     this.fleet = builder.clone().baseUrl(fleetUrl).build();
     this.execution = builder.clone().baseUrl(executionUrl).build();
@@ -193,6 +197,56 @@ public class Clients {
             fleet
                 .post()
                 .uri("/api/v1/internal/reservations/{r}/releases", reservationId)
+                .header("X-Source-System", SOURCE)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("reason", reason))
+                .retrieve()
+                .body(String.class));
+  }
+
+  // ---------- cdc-location(도크 — 0.3.0) ----------
+
+  public JsonNode reserveDock(
+      String key,
+      String cdcId,
+      String tripId,
+      @Nullable String vehicleId,
+      String temp,
+      String routeId,
+      @Nullable String plateNo,
+      Instant start,
+      Instant end) {
+    Map<String, Object> body = new java.util.LinkedHashMap<>();
+    body.put("centerId", cdcId);
+    body.put("tripId", tripId);
+    body.put("vehicleId", vehicleId);
+    body.put("purpose", "OUTBOUND_LOADING");
+    body.put("temperatureZone", temp);
+    body.put("routeId", routeId);
+    body.put("plateNo", plateNo);
+    body.put("window", Map.of("start", start.toString(), "end", end.toString()));
+    return call(
+        "cdc-location-service",
+        () ->
+            location
+                .post()
+                .uri("/api/v1/internal/dock-reservations")
+                .header("X-Source-System", SOURCE)
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(String.class));
+  }
+
+  public void releaseDock(String key, String reservationId, String reason) {
+    call(
+        "cdc-location-service",
+        () ->
+            location
+                .post()
+                .uri("/api/v1/internal/dock-reservations/{r}/releases", reservationId)
                 .header("X-Source-System", SOURCE)
                 .header("Idempotency-Key", key)
                 .contentType(MediaType.APPLICATION_JSON)
