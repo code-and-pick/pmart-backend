@@ -368,4 +368,132 @@ class QualityFlowIT extends PostgresKafkaContainerSupport {
                 .asString())
         .isEqualTo("ISSUED");
   }
+
+  /** 운영 제한(0.4.0): 사유별 거는·푸는 사람 → 내부 확인(활동·온도대·SKU 맞을 때만) → 풀면 더는 안 막음 · 사건. */
+  @Test
+  void operationRestrictionsGateAndLift() {
+    String base = "/cdcs/" + CENTER + "/operation-restrictions";
+    Map<String, Object> cong =
+        Map.of(
+            "activities",
+            List.of("ALLOCATION"),
+            "temperatureZone",
+            "CHILLED",
+            "reason",
+            "CONGESTION");
+    // 혼잡은 관리자만
+    assertThat(send(WORKER, base, key(), cong).status()).isEqualTo(403);
+    Res c = send(MANAGER, base, key(), cong);
+    assertThat(c.status()).as(c.body().toString()).isEqualTo(201);
+    String cid = c.body().path("restrictionId").asString();
+    // 본사 부과는 승인 번호 없으면 422
+    Map<String, Object> hq = new java.util.LinkedHashMap<>();
+    hq.put("activities", List.of("DEPARTURE"));
+    hq.put("skus", List.of("E-00000099"));
+    hq.put("reason", "HQ");
+    assertThat(send(WORKER, base, key(), hq).status()).isEqualTo(422);
+    hq.put("approvalRef", "APV-HQ-OR-1");
+    Res h = send(WORKER, base, key(), hq);
+    assertThat(h.status()).as(h.body().toString()).isEqualTo(201);
+    String hid = h.body().path("restrictionId").asString();
+    // 확인: 냉장 할당은 막힘, 상온 할당·다른 SKU 출발은 안 막힘, 그 SKU 출발은 막힘
+    String chk = "/internal/operation-restriction-checks";
+    String svc = TestJwt.service("cdc-inventory-service");
+    assertThat(
+            send(
+                    svc,
+                    chk,
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "activity",
+                        "ALLOCATION",
+                        "items",
+                        List.of(Map.of("sku", "E-00000001", "temperatureZone", "CHILLED"))))
+                .body()
+                .path("restricted")
+                .asBoolean())
+        .isTrue();
+    assertThat(
+            send(
+                    svc,
+                    chk,
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "activity",
+                        "ALLOCATION",
+                        "items",
+                        List.of(Map.of("sku", "E-00000001", "temperatureZone", "AMBIENT"))))
+                .body()
+                .path("restricted")
+                .asBoolean())
+        .isFalse();
+    assertThat(
+            send(
+                    svc,
+                    chk,
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "activity",
+                        "DEPARTURE",
+                        "items",
+                        List.of(Map.of("sku", "E-00000002"))))
+                .body()
+                .path("restricted")
+                .asBoolean())
+        .isFalse();
+    JsonNode dep =
+        send(
+                svc,
+                chk,
+                key(),
+                Map.of(
+                    "cdcId",
+                    CENTER,
+                    "activity",
+                    "DEPARTURE",
+                    "items",
+                    List.of(Map.of("sku", "E-00000099"))))
+            .body();
+    assertThat(dep.path("restricted").asBoolean()).isTrue();
+    assertThat(dep.path("matches").get(0).path("restrictionId").asString()).isEqualTo(hid);
+    // 풀기: 본사 부과는 관리자 + 승인 번호, 혼잡은 관리자만
+    assertThat(send(MANAGER, base + "/" + hid + "/lifts", key(), Map.of()).status()).isEqualTo(422);
+    Res lh =
+        send(MANAGER, base + "/" + hid + "/lifts", key(), Map.of("approvalRef", "APV-HQ-OR-2"));
+    assertThat(lh.status()).as(lh.body().toString()).isEqualTo(200);
+    assertThat(lh.body().path("state").asString()).isEqualTo("LIFTED");
+    assertThat(send(MANAGER, base + "/" + cid + "/lifts", key(), Map.of("note", "혼잡 풀림")).status())
+        .isEqualTo(200);
+    assertThat(
+            send(
+                    svc,
+                    chk,
+                    key(),
+                    Map.of(
+                        "cdcId",
+                        CENTER,
+                        "activity",
+                        "DEPARTURE",
+                        "items",
+                        List.of(Map.of("sku", "E-00000099"))))
+                .body()
+                .path("restricted")
+                .asBoolean())
+        .isFalse();
+    assertThat(get(MANAGER, base + "?state=LIFTED").body().path("items").toString())
+        .contains(hid, cid);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM outbox_event WHERE aggregateid = ? AND type IN"
+                    + " ('OperationRestrictionApplied', 'OperationRestrictionLifted')",
+                Integer.class,
+                hid))
+        .isEqualTo(2);
+  }
 }

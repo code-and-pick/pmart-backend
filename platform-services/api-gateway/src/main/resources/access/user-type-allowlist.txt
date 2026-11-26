@@ -83,6 +83,8 @@ GET /api/v1/cdcs/{cdcId}/location-stocks OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations OPERATOR
 GET /api/v1/cdcs/{cdcId}/locations/{locationCode} OPERATOR
 GET /api/v1/cdcs/{cdcId}/lpns OPERATOR
+GET /api/v1/cdcs/{cdcId}/operation-restrictions OPERATOR
+GET /api/v1/cdcs/{cdcId}/operation-restrictions/{restrictionId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/outbound-summary OPERATOR
 GET /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
 GET /api/v1/cdcs/{cdcId}/quality-holds/{holdId} OPERATOR
@@ -484,6 +486,8 @@ POST /api/v1/cdcs/{cdcId}/disposal-approvals/{disposalApprovalId}/decisions OPER
 POST /api/v1/cdcs/{cdcId}/disposal-approvals/{disposalApprovalId}/executions OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations OPERATOR
 POST /api/v1/cdcs/{cdcId}/locations/{locationCode}/state-changes OPERATOR
+POST /api/v1/cdcs/{cdcId}/operation-restrictions OPERATOR
+POST /api/v1/cdcs/{cdcId}/operation-restrictions/{restrictionId}/lifts OPERATOR
 POST /api/v1/cdcs/{cdcId}/quality-holds OPERATOR
 POST /api/v1/cdcs/{cdcId}/quality-holds/{holdId}/release-requests OPERATOR
 POST /api/v1/cdcs/{cdcId}/quality-holds/{holdId}/release-requests/{releaseId}/decisions OPERATOR
@@ -631,7 +635,6 @@ POST /api/v1/move-orders/{moveId}/pickups OPERATOR
 POST /api/v1/obligations/{obligationId}/resolutions OPERATOR
 POST /api/v1/offers/{offerId}/responses RIDER
 POST /api/v1/operation-restrictions OPERATOR
-POST /api/v1/operation-restrictions/{restrictionId}/resumes OPERATOR
 POST /api/v1/order-drafts CUSTOMER
 POST /api/v1/order-drafts/{draftId}/checkouts CUSTOMER
 POST /api/v1/orders/lookups/{orderId}/pii-reveals OPERATOR

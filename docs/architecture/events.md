@@ -107,7 +107,7 @@
 | `OutboundDiscrepancyRaised` | cdc-outbound | case, replenishment | trfId, type(MIXED/MISSING/EXCESS/SEAL), details | 출발 전 불일치 | ② |
 | `HoldRequested` / `HoldReleased` / `DisposalApproved` | cdc-quality | cdc-inventory | sku, lot, qty, reason, approverRef | 품질 판단(실행은 inventory) | ② |
 | `RecallIssued` | cdc-quality(2026-11-26 발행 — cdc-quality 0.3.0, 리콜 발령 때, cdc.quality.v1) | cdc-inventory, cdc-outbound, mfc-quality, replenishment, order(참조), case | recallId, sku, lots[], scope | 리콜 | ② |
-| `OperationRestrictionApplied` / `Lifted` | cdc-quality(CDC) / mfc-capacity(MFC) / rider(라이더) | order, replenishment, transport-planning, delivery-dispatch, approval, backoffice-bff | centerId/riderId, restrictionType(INTAKE_STOP/WORK_STOP/QUALITY/LINEHAUL/RIDER), scope, appliedAt, approvalRef | 종류별 제한 적용·재개(중첩 유지) | ① |
+| `OperationRestrictionApplied` / `Lifted` | cdc-quality(CDC — 2026-11-26 발행, cdc-quality 0.4.0, cdc.quality.v1) / mfc-capacity(MFC) / rider(라이더) | order, replenishment, transport-planning, delivery-dispatch, approval, backoffice-bff | centerId/riderId, restrictionType(INTAKE_STOP/WORK_STOP/QUALITY/LINEHAUL/RIDER), scope, appliedAt, approvalRef | 종류별 제한 적용·재개(중첩 유지) | ① |
 
 ## 5. MFC
 
