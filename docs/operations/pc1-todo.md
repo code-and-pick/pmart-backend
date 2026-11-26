@@ -7,6 +7,7 @@ PC 1(작업 세션) 할 일을 한곳에 모은다. 다른 PC 할 일은 `other-
 - 마지막 갱신: 2026-11-24.
 
 ## 000. 2026-11-26 오후 세션
+- [ ] **칠곡 LAN 위치 전환 R-25(cdc 세션 2026-11-26 — 사용자 승인, 시뮬레이터 세션 전달)** — #532 병합 → cdc-location 0.7.1 LAN 배포 → `python -I deploy/lan/seed/cdc_locations.py --apply --approval-ref <승인>`(43,958칸 22묶음) → `cdc_pick_methods.py --apply`(87통로). ⚠ 넣기 전 사용자 확인: 이 스크립트는 칸을 더하기만 한다 — LAN 의 옛 dd3d185 칸(구역 글자 R-22 전)과 그 칸의 시작 재고를 어떻게 정리할지(비활성·재고 옮기기·새로 시작) 정해야 한다. 끝나면 칸 수·통로 방식 결과를 cdc 세션·시뮬레이터 세션에 알림.
 - [x] 구매 기록 활용 ①·R4·O-13(order 0.24.0·review 0.9.0)·O-12(order 0.25.0)·CU-5·CU-6(customer 0.22.0·auth 0.12.0) — 모두 LAN 배포. 앱·화면은 고객앱 세션(`handoff/clients/customer-app/2026-11-26-request-frequent-items.md`)·PC 2.
 - [ ] **JMeter 부하 시험** — `docs/operations/2026-11-26-jmeter-load-test-plan.md` §6(다른 세션에 시간 알림 → 비회원 토큰 100개 → 1분 확인 → 10·50·100명, 결과 `D:\pmart-perf\jmeter\`). 주문·결제 소량 스크립트는 몇 건인지 사용자 확인 뒤.
 - [ ] (CDC 세션 몫 — 결정만 사용자) DC 부분 출고 승인·수동 할당 — 추천 둘 다 지금처럼.
