@@ -23,9 +23,9 @@ import org.springframework.stereotype.Service;
  * 할당과 cdc-outbound 출발 검증(내부 확인 {@link #check}). 자동 해제 없음, 중첩은 맞는 제한이 하나라도 있으면 막는다.
  *
  * <ul>
- *   <li>CONGESTION: 걸기·풀기 그 센터 CDC_MANAGER.
- *   <li>SAFETY: 걸기 그 센터 운영자 누구나(현장 책임자), 풀기 CDC_MANAGER + 본사 승인 번호.
- *   <li>HQ·QUALITY: 걸기 운영자 + 본사 승인 번호, 풀기 CDC_MANAGER + 본사 승인 번호.
+ *   <li>CONGESTION: 걸기·풀기 그 센터 CDC_SUPERVISOR.
+ *   <li>SAFETY: 걸기 그 센터 운영자 누구나(현장 책임자), 풀기 CDC_SUPERVISOR + 본사 승인 번호.
+ *   <li>HQ·QUALITY: 걸기 운영자 + 본사 승인 번호, 풀기 CDC_SUPERVISOR + 본사 승인 번호.
  * </ul>
  */
 @Service

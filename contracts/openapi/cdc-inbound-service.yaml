@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cdc-inbound-service
-  version: 0.2.0
+  version: 0.2.1
   description: |
+    0.2.1(2026-11-26, 고침): 결정 역할을 직원 권한 정본(docs/architecture/auth/staff-roles.md)의 센터 관리자 `CDC_SUPERVISOR` 로 — 전에는 정본에 없는 `CDC_MANAGER` 를 요구해 LAN 관리자(claude-cdc-sup)도 403 이었다. 경로·모양 변화 없음.
     CDC 적치 지시·내부 이동 MOV·피킹 위치 최소 이하 자동 보충·가상 설비 어댑터 결과 검증의 정본. (docs/architecture/service-map.md §4)
     1~2단계 범위는 적치·MOV·보충. ASN·실수령·검수·입고 차이는 3단계(x-stage 3 자리표시자).
     수량은 cdc-inventory, 공간 예약은 cdc-location, 품질 판정은 cdc-quality가 정본.
@@ -99,7 +100,7 @@ paths:
       tags: [putaway-tasks]
       summary: '[0.2.0] 작업 취소 — 남은 수량만(이미 옮긴 것은 그대로), 남은 공간 예약 해제'
       description: |
-        CDC_MANAGER. DISPATCHED·IN_PROGRESS·PARTIALLY_COMPLETED 만, 반영 중인 결과가 있으면 409 RESULT_IN_FLIGHT(결과가 끝난 뒤). 취소 요청만으로 운반 중 물건이 돌아온 것으로 보지 않는다 — 결과가 나중에 오면 받지 않는다(409).
+        CDC_SUPERVISOR. DISPATCHED·IN_PROGRESS·PARTIALLY_COMPLETED 만, 반영 중인 결과가 있으면 409 RESULT_IN_FLIGHT(결과가 끝난 뒤). 취소 요청만으로 운반 중 물건이 돌아온 것으로 보지 않는다 — 결과가 나중에 오면 받지 않는다(409).
       operationId: cancelPutawayTask
       x-pmart-user-types: [OPERATOR]
       parameters:

@@ -46,9 +46,10 @@ class SkuHandlingFlowIT extends PostgresKafkaContainerSupport {
   static final String TOPIC = "commerce.product.v1";
   static final String CENTER = "CDC01";
   static final String OTHER = "CDC02";
-  static final String OPERATOR = TestJwt.operator("op-1", List.of("CDC_MANAGER"), List.of(CENTER));
+  static final String OPERATOR =
+      TestJwt.operator("op-1", List.of("CDC_SUPERVISOR"), List.of(CENTER));
   static final String OTHER_OPERATOR =
-      TestJwt.operator("op-2", List.of("CDC_MANAGER"), List.of(OTHER));
+      TestJwt.operator("op-2", List.of("CDC_SUPERVISOR"), List.of(OTHER));
   static final String SERVICE = TestJwt.service("cdc-outbound-service");
 
   @LocalServerPort int port;

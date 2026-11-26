@@ -54,7 +54,8 @@ import tools.jackson.databind.ObjectMapper;
 class PutawayFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
-  static final String MANAGER = TestJwt.operator("im-1", List.of("CDC_MANAGER"), List.of(CENTER));
+  static final String MANAGER =
+      TestJwt.operator("im-1", List.of("CDC_SUPERVISOR"), List.of(CENTER));
   static final String SERVICE = TestJwt.service("cdc-simulator");
   static final String RACK = "CDC01-A-5-01-01-2-1";
   static final String SHELF = "CDC01-A-5-61-01-1-1";

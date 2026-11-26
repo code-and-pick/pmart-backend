@@ -39,8 +39,9 @@ import tools.jackson.databind.ObjectMapper;
 class LocationFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
-  static final String OPERATOR = TestJwt.operator("op-1", List.of("CDC_MANAGER"), List.of(CENTER));
-  static final String OTHER = TestJwt.operator("op-2", List.of("CDC_MANAGER"), List.of("CDC02"));
+  static final String OPERATOR =
+      TestJwt.operator("op-1", List.of("CDC_SUPERVISOR"), List.of(CENTER));
+  static final String OTHER = TestJwt.operator("op-2", List.of("CDC_SUPERVISOR"), List.of("CDC02"));
   static final String SERVICE = TestJwt.service("backoffice-bff");
 
   @LocalServerPort int port;

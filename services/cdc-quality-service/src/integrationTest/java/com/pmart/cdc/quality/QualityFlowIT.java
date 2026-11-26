@@ -63,9 +63,11 @@ class QualityFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
   static final String WORKER = TestJwt.operator("qw-1", List.of("CDC_WORKER"), List.of(CENTER));
-  static final String MANAGER = TestJwt.operator("qm-1", List.of("CDC_MANAGER"), List.of(CENTER));
-  static final String MANAGER2 = TestJwt.operator("qm-2", List.of("CDC_MANAGER"), List.of(CENTER));
-  static final String OTHER = TestJwt.operator("qo-9", List.of("CDC_MANAGER"), List.of("CDC02"));
+  static final String MANAGER =
+      TestJwt.operator("qm-1", List.of("CDC_SUPERVISOR"), List.of(CENTER));
+  static final String MANAGER2 =
+      TestJwt.operator("qm-2", List.of("CDC_SUPERVISOR"), List.of(CENTER));
+  static final String OTHER = TestJwt.operator("qo-9", List.of("CDC_SUPERVISOR"), List.of("CDC02"));
   static final String SHELF = "CDC01-A-5-61-01-1-1";
   static final String POSTINGS = "/api/v1/internal/quality-postings";
 

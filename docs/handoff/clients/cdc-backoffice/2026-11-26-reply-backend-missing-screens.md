@@ -16,7 +16,7 @@
   - 줄 = `PutawayTask`(단건 GET 과 같음): taskId·kind·state·sku·lot·qualityState·fromLocationCode·toLocationCode·qty·completedQty·deviceId·createdBy·reason·failureReason·results[]·createdAt·updatedAt.
   - 요청서의 "Q = C + U + K" 분해는 없습니다 — qty(지시)·completedQty(옮긴 것)만. 상품 이름·화면 번호도 아직 없습니다(필요하면 다시 요청 주세요).
 - 상태: CREATED·RESERVED(만드는 중 짧은 상태)·DISPATCHED(설비 대기)·IN_PROGRESS·PARTIALLY_COMPLETED·COMPLETED·FAILED·CANCELLED.
-- 만들기 `POST /cdcs/{cdcId}/putaway-tasks`, 취소 `POST /cdcs/{cdcId}/putaway-tasks/{taskId}/cancellations`(CDC_MANAGER) — 둘 다 `Idempotency-Key`·`X-Source-System` 필수.
+- 만들기 `POST /cdcs/{cdcId}/putaway-tasks`, 취소 `POST /cdcs/{cdcId}/putaway-tasks/{taskId}/cancellations`(CDC_SUPERVISOR) — 둘 다 `Idempotency-Key`·`X-Source-System` 필수.
 - 경로가 이미 `/cdcs/{cdcId}/…` 아래라 센터 권한 검사는 다른 직원 조회와 같습니다.
 
 ## RP-1·2 보충 — 이미 있음(같은 목록의 kind)

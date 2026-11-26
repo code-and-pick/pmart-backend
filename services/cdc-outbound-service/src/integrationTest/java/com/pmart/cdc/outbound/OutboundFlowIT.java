@@ -61,7 +61,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
   static final String SERVICE = TestJwt.service("replenishment-service");
-  static final String OPS = TestJwt.operator("ops-1", List.of("CDC_MANAGER"), List.of(CENTER));
+  static final String OPS = TestJwt.operator("ops-1", List.of("CDC_SUPERVISOR"), List.of(CENTER));
   static final String W1 = TestJwt.operator("w1", List.of("CDC_WORKER"), List.of(CENTER));
   static final String W2 = TestJwt.operator("w2", List.of("CDC_WORKER"), List.of(CENTER));
   static final String W3 = TestJwt.operator("w3", List.of("CDC_WORKER"), List.of(CENTER));
@@ -800,7 +800,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void preDepartureCancellationBeforePicking() {
     String c2 = "CDC02";
-    String ops2 = TestJwt.operator("ops-2", List.of("CDC_MANAGER"), List.of(c2));
+    String ops2 = TestJwt.operator("ops-2", List.of("CDC_SUPERVISOR"), List.of(c2));
     String w9 = TestJwt.operator("w9", List.of("CDC_WORKER"), List.of(c2));
     String trfA = "TRF-" + UUID.randomUUID();
     String trfB = "TRF-" + UUID.randomUUID();
@@ -1001,7 +1001,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void unexplainedQtyBlocksDeparture() {
     String c3 = "CDC03";
-    String ops3 = TestJwt.operator("ops-3", List.of("CDC_MANAGER"), List.of(c3));
+    String ops3 = TestJwt.operator("ops-3", List.of("CDC_SUPERVISOR"), List.of(c3));
     String w8 = TestJwt.operator("w8", List.of("CDC_WORKER"), List.of(c3));
     String trf = "TRF-" + UUID.randomUUID();
     String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
@@ -1156,7 +1156,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void regionAndLineBatchPicking() {
     String c4 = "CDC04";
-    String ops4 = TestJwt.operator("ops-4", List.of("CDC_MANAGER"), List.of(c4));
+    String ops4 = TestJwt.operator("ops-4", List.of("CDC_SUPERVISOR"), List.of(c4));
     String w7 = TestJwt.operator("w7", List.of("CDC_WORKER"), List.of(c4));
     String w6 = TestJwt.operator("w6", List.of("CDC_WORKER"), List.of(c4));
     String early =
@@ -1445,7 +1445,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void wavesSplitDpsPerAisleAndFilterByAisle() {
     String c5 = "CDC05";
-    String ops5 = TestJwt.operator("ops-5", List.of("CDC_MANAGER"), List.of(c5));
+    String ops5 = TestJwt.operator("ops-5", List.of("CDC_SUPERVISOR"), List.of(c5));
     String w5 = TestJwt.operator("w5", List.of("CDC_WORKER"), List.of(c5));
     String trf = "TRF-" + UUID.randomUUID();
     String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
@@ -1786,7 +1786,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void shortageReallocatedIntoNewTask() {
     String c6 = "CDC06";
-    String ops6 = TestJwt.operator("ops-6", List.of("CDC_MANAGER"), List.of(c6));
+    String ops6 = TestJwt.operator("ops-6", List.of("CDC_SUPERVISOR"), List.of(c6));
     String w4 = TestJwt.operator("w4", List.of("CDC_WORKER"), List.of(c6));
     String trf = "TRF-" + UUID.randomUUID();
     String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
@@ -1924,7 +1924,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void transferNewVersionReplacesBeforePicking() {
     String c7 = "CDC07";
-    String ops7 = TestJwt.operator("ops-7", List.of("CDC_MANAGER"), List.of(c7));
+    String ops7 = TestJwt.operator("ops-7", List.of("CDC_SUPERVISOR"), List.of(c7));
     String w3 = TestJwt.operator("w3b", List.of("CDC_WORKER"), List.of(c7));
     String trf = "TRF-" + UUID.randomUUID();
     String a1 = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
@@ -2033,7 +2033,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void pickedStockMovesToStagingSlot() {
     String c8 = "CDC08";
-    String ops8 = TestJwt.operator("ops-8", List.of("CDC_MANAGER"), List.of(c8));
+    String ops8 = TestJwt.operator("ops-8", List.of("CDC_SUPERVISOR"), List.of(c8));
     String w8b = TestJwt.operator("w8b", List.of("CDC_WORKER"), List.of(c8));
     Res reg =
         post(
@@ -2154,7 +2154,7 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
   @Test
   void shortfallFromCountReallocates() {
     String c9 = "CDC09";
-    String ops9 = TestJwt.operator("ops-9", List.of("CDC_MANAGER"), List.of(c9));
+    String ops9 = TestJwt.operator("ops-9", List.of("CDC_SUPERVISOR"), List.of(c9));
     String trf = "TRF-" + UUID.randomUUID();
     String alc = "ALC-" + UUID.randomUUID().toString().substring(0, 8);
     String x = "CDC09-C-5-61-01-1-1";

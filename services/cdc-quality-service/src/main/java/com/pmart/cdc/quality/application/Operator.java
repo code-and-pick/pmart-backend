@@ -5,10 +5,12 @@ import com.pmart.common.security.PmartPrincipal;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
 
-/** 호출 운영자 — 운영자 토큰이고 {@code centers} 클레임에 대상 센터가 있어야 한다(cdc-inventory 와 같다). 결정은 CDC_MANAGER 만. */
+/**
+ * 호출 운영자 — 운영자 토큰이고 {@code centers} 클레임에 대상 센터가 있어야 한다(cdc-inventory 와 같다). 결정은 CDC_SUPERVISOR 만.
+ */
 public record Operator(String id, String sourceSystem, boolean manager) {
 
-  static final String MANAGER = "CDC_MANAGER";
+  static final String MANAGER = "CDC_SUPERVISOR";
 
   public static Operator forCenter(String centerId, String sourceSystem) {
     PmartPrincipal p = principal(centerId);

@@ -70,7 +70,8 @@ import tools.jackson.databind.ObjectMapper;
 class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
 
   static final String CENTER = "CDC01";
-  static final String OPERATOR = TestJwt.operator("op-1", List.of("CDC_MANAGER"), List.of(CENTER));
+  static final String OPERATOR =
+      TestJwt.operator("op-1", List.of("CDC_SUPERVISOR"), List.of(CENTER));
   static final String SERVICE = TestJwt.service("cdc-outbound-service");
   static final String LOC1 = "CDC01-C-5-01-01-1-1";
   static final String LOC2 = "CDC01-C-5-01-02-1-1";
@@ -722,7 +723,7 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     String k2 = "CDC01-C-5-01-22-1-1";
     String cnt1 = TestJwt.operator("cnt-1", List.of("CDC_WORKER"), List.of(CENTER));
     String cnt2 = TestJwt.operator("cnt-2", List.of("CDC_WORKER"), List.of(CENTER));
-    String sup = TestJwt.operator("sup-9", List.of("CDC_MANAGER"), List.of(CENTER));
+    String sup = TestJwt.operator("sup-9", List.of("CDC_SUPERVISOR"), List.of(CENTER));
     assertThat(
             post(
                     SERVICE,
@@ -920,7 +921,7 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     String k3 = "CDC01-C-5-01-31-1-1";
     String cnt1 = TestJwt.operator("cnt-1", List.of("CDC_WORKER"), List.of(CENTER));
     String cnt2 = TestJwt.operator("cnt-2", List.of("CDC_WORKER"), List.of(CENTER));
-    String sup = TestJwt.operator("sup-9", List.of("CDC_MANAGER"), List.of(CENTER));
+    String sup = TestJwt.operator("sup-9", List.of("CDC_SUPERVISOR"), List.of(CENTER));
     post(
         SERVICE,
         "/internal/initial-balances",
