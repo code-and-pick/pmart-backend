@@ -1,8 +1,11 @@
 openapi: 3.1.0
 info:
   title: transport-planning-service
-  version: 0.4.0
+  version: 0.5.0
   description: |
+    0.5.0(2026-11-27, 시뮬레이터 R-28 — 사용자 "정해"): 배차 생성의 출고일 — deadlineMeaning **READY**(MFC 사용 준비 시각) TRF 는 "도착 마감(D+1 07:30 서울) ≤ dueAt" 인 **가장 늦은 출고일 D**
+      (예 준비 11-29 14:00 → D 11-28, 준비 11-29 06:00 → D 11-27). ARRIVAL·HANDOVER 는 그대로 [D 12:00, D+1 12:00). 맞는 출고일의 지시서가 이미 계획완료(또는 그날 지시서가 없음 —
+      지난 날)면 다음 날로 미루지 않고 HELD reason **READY_UNREACHABLE**. 출고일 D 생성은 READY 의 D−1 몫도 함께 본다(늦게 들어온 TRF 를 보이려고). cdc-outbound 0.32.0 feed 의 deadlineMeaning 을 읽는다.
     0.4.0(2026-11-27, DC 백오피스 화면 번호 DN-4): TransportOrder 에 `trfNumbers`(trfIds 순)·`stops[].trfNumbers`(그 정차 trfIds 순) —
       cdc-outbound 화면 번호(T+6) 사본(운송 요청 가져올 때 받은 값, 없으면 빈 문자열). 경로·나머지 모양 그대로.
     0.3.0(2026-11-26, 도크 배정 — DC 백오피스 TR-3/DK-2, 사용자 "계획완료 때 자동"): 계획완료가 fleet 점유 뒤 cdc-location 도크 예약(창 = 상차 시작 ~ 계획 출차, 지시서 온도대)을 잡는다.
@@ -513,7 +516,7 @@ components:
         rtCount: { type: [integer, 'null'], description: 'R/T 수(cdc-outbound RT LPN — 22:00 카운팅 전이면 null, 그동안 V8·적재 초과 검사는 미룬다)' }
         weightKg: { type: number }
         state: { $ref: '#/components/schemas/TransportRequestState' }
-        reason: { type: [string, 'null'], description: '보류·반려 사유: NO_ROUTE·ALLOCATION_PENDING·MIXED_TEMPERATURE·TEMP_UNKNOWN·OVER_VEHICLE_CAPACITY·ORDER_CLOSED·NEWER_VERSION·MISSING_FIELDS·VERSION_AFTER_DEPARTURE·WRONG_ORIGIN' }
+        reason: { type: [string, 'null'], description: '보류·반려 사유: NO_ROUTE·ALLOCATION_PENDING·MIXED_TEMPERATURE·TEMP_UNKNOWN·OVER_VEHICLE_CAPACITY·ORDER_CLOSED·READY_UNREACHABLE(0.5.0)·NEWER_VERSION·MISSING_FIELDS·VERSION_AFTER_DEPARTURE·WRONG_ORIGIN' }
         lateReceipt: { type: boolean, description: 'V7 — 출고일 21:30 뒤 처음 받음(이월 판단은 배차 담당)' }
         orderId: { type: [string, 'null'] }
         receivedAt: { type: string, format: date-time }

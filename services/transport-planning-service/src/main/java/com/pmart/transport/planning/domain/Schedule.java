@@ -68,6 +68,28 @@ public final class Schedule {
         dep.minus(LOADING_LEAD), dep, out, at.plus(Duration.ofMinutes(returnMinutes)), deadline);
   }
 
+  /**
+   * READY(사용 준비 시각) TRF 의 출고일(0.5.0, 시뮬레이터 R-28) — 도착 마감 D+1 07:30 ≤ dueAt 인 가장 늦은 D. 준비 시각이 07:30
+   * 이후면 그 전날, 앞이면 이틀 전.
+   */
+  public static LocalDate readyShipDate(Instant dueAt) {
+    var t = dueAt.atZone(SEOUL);
+    return t.toLocalTime().isBefore(ARRIVAL_DEADLINE)
+        ? t.toLocalDate().minusDays(2)
+        : t.toLocalDate().minusDays(1);
+  }
+
+  /**
+   * 출고일 D 생성이 cdc-outbound 에서 읽는 기한 구간 — ARRIVAL [D 12:00, D+1 12:00) ∪ READY 의 D−1·D 몫 [D 07:30,
+   * D+2 07:30).
+   */
+  public static Instant[] feedWindow(LocalDate shipDate) {
+    return new Instant[] {
+      shipDate.atTime(ARRIVAL_DEADLINE).atZone(SEOUL).toInstant(),
+      shipDate.plusDays(2).atTime(ARRIVAL_DEADLINE).atZone(SEOUL).toInstant()
+    };
+  }
+
   /** 출고일 D 의 이관요청서 기한 구간 [D 12:00, D+1 12:00) Asia/Seoul. */
   public static Instant[] dueWindow(LocalDate shipDate) {
     return new Instant[] {

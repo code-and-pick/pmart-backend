@@ -218,3 +218,8 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - ② MFC 입고 예정 — **새로 만들 것 없음.** mfc-inbound 는 `TransferApproved` 가 없어도 출발 사건 `TransferDeparted`(cdc.inventory.v1)나 매니페스트 `TransferShipmentManifestIssued`(cdc.outbound.v1)가 오면 toMfc 로 입고 예정(EXPECTED)을 만듭니다. 출발 전에는 MFC 에 보이지 않습니다(승인 미리 알림은 replenishment 가 생길 때). 확인은 MFC 계정(MFC-BJG-01 권한)으로 하셔야 합니다.
 - ③ MFC 수령 확정 — mfc-inbound 수령 → mfc-inventory TIN 은 있지만 **`MfcReceiptPosted` 발행은 아직**(PC3 IV-8, 일정 미정). 그 전에는 Transit r 0 이 맞습니다. CDC 시뮬레이터가 receipt-acks 를 대신 부르지 않는 것에 동의합니다.
 
+
+## 회신 — R-28 (2026-11-27, cdc 세션, PR `cdc/ready-ship-date`)
+- **받음, 그대로 구현.** transport-planning 0.5.0: deadlineMeaning READY 는 "D+1 07:30 ≤ dueAt" 인 가장 늦은 출고일 D(준비 11-29 14:00 → D 11-28, 11-29 06:00 → D 11-27, 07:30 딱이면 그 전날). ARRIVAL·HANDOVER 는 지금 규칙 그대로.
+- 맞는 출고일 지시서가 이미 계획완료면 HELD `READY_UNREACHABLE`(다음 날로 미루지 않음). 출고일 D 생성이 READY 의 D−1 몫도 함께 보므로, 지난 날 몫으로 늦게 들어온 TRF 도 D 생성 때 `transport-requests/{trfId}` 에 shipDate = D−1·HELD·READY_UNREACHABLE 로 보입니다(그날 지시서가 아예 없던 날도 같음).
+- cdc-outbound 0.32.0 이 transport-feed 에 deadlineMeaning 을 실어 줍니다(없으면 planning 은 ARRIVAL 로 봄). 병합·배포 뒤 알립니다.

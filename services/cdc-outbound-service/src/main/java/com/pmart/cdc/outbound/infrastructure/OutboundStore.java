@@ -199,7 +199,8 @@ public class OutboundStore {
       String state,
       Instant dueAt,
       Instant createdAt,
-      @Nullable String temperatureZone) {}
+      @Nullable String temperatureZone,
+      String deadlineMeaning) {}
 
   public void setTemperatureZone(String trfId, String zone) {
     jdbc.update("UPDATE transfer SET temperature_zone = ? WHERE trf_id = ?", zone, trfId);
@@ -218,8 +219,8 @@ public class OutboundStore {
   /** 기한 [from, to) 인 이 센터 TRF — 기한·trfId 순, limit 개까지. */
   public List<FeedRow> transfersDue(String cdcId, Instant from, Instant to, int limit) {
     return jdbc.query(
-        "SELECT trf_id, trf_number, trf_version, mfc_id, state, due_at, created_at, temperature_zone"
-            + " FROM transfer"
+        "SELECT trf_id, trf_number, trf_version, mfc_id, state, due_at, created_at, temperature_zone,"
+            + " deadline_meaning FROM transfer"
             + " WHERE cdc_id = ? AND due_at >= ? AND due_at < ? ORDER BY due_at, trf_id LIMIT ?",
         (rs, i) ->
             new FeedRow(
@@ -230,7 +231,8 @@ public class OutboundStore {
                 rs.getString("state"),
                 rs.getTimestamp("due_at").toInstant(),
                 rs.getTimestamp("created_at").toInstant(),
-                rs.getString("temperature_zone")),
+                rs.getString("temperature_zone"),
+                rs.getString("deadline_meaning")),
         cdcId,
         Timestamp.from(from),
         Timestamp.from(to),

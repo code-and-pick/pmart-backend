@@ -216,7 +216,8 @@ public class ReadinessService {
       int boxCount,
       @Nullable Integer rtCount,
       long weightG,
-      Instant receivedAt) {}
+      Instant receivedAt,
+      String deadlineMeaning) {}
 
   public record Feed(Instant asOf, boolean truncated, List<FeedItem> items) {}
 
@@ -260,7 +261,8 @@ public class ReadinessService {
               r.readyLpnCount(),
               rt == 0 ? null : rt,
               r.totalWeightG(),
-              t.createdAt()));
+              t.createdAt(),
+              t.deadlineMeaning()));
     }
     return new Feed(Instant.now(), truncated, items);
   }

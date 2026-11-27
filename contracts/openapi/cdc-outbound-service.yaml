@@ -1,8 +1,9 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.31.0
+  version: 0.32.0
   description: |
+    0.32.0(2026-11-27, 시뮬레이터 R-28): `GET /internal/transport-feed` 줄에 `deadlineMeaning`(인수 때 받은 ARRIVAL·HANDOVER·READY) — transport-planning 이 READY 면 출고일을 따로 정한다.
     0.31.0(2026-11-27, DC 백오피스 화면 번호 DN-1·DN-2): 결품 목록 `GET /cdcs/{cdcId}/shortages` 줄에 `trfNumber`·`waveNumber`·`taskNumber`·`newTaskNumbers`(newTaskIds 순),
       LPN 목록 `GET /cdcs/{cdcId}/lpns` 줄에 `trfNumber`·`waveNumber`·`departureNumber`(출발했으면). 모두 화면 보조값 — 붙이다 실패하면 null.
     0.30.0(2026-11-26, 요청 CO-1·CO-2 — 사용자 "구현해"·"전부 여기서"): ① TRF 응답(TransferSummary·TransferDetail)에 `labelValue` = 송장 라벨 스캔 값 `TRF:{trfId}:{trfVersion}`
@@ -1828,6 +1829,7 @@ paths:
                         rtCount: { type: [integer, 'null'] }
                         weightG: { type: integer }
                         receivedAt: { type: string, format: date-time, description: 이 센터가 TRF 를 인수한 시각 }
+                        deadlineMeaning: { type: string, enum: [ARRIVAL, HANDOVER, READY], description: '(0.32.0) dueAt 의 뜻 — 인수 본문 그대로' }
         '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
 
   /internal/outbound-readiness:

@@ -200,12 +200,14 @@ public class PlanningService {
   public Generation generate(String requestId, String source, String cdcId, LocalDate shipDate) {
     Operator op = Operator.forCenter(cdcId, source).requireSupervisor();
     Instant[] w = Schedule.dueWindow(shipDate);
-    List<Clients.FeedItem> feed = clients.feed(cdcId, w[0], w[1]); // 안 되면 503 — 아무것도 바꾸지 않음
+    Instant[] fw = Schedule.feedWindow(shipDate); // 0.5.0 READY 몫까지
+    List<Clients.FeedItem> feed = clients.feed(cdcId, fw[0], fw[1]); // 안 되면 503 — 아무것도 바꾸지 않음
     Map<String, Integer> counts = new TreeMap<>();
     List<Unplanned> unplanned = new ArrayList<>();
     tx.executeWithoutResult(
         s -> {
           lock("plan:" + cdcId + ":" + shipDate);
+          lock("plan:" + cdcId + ":" + shipDate.minusDays(1)); // READY 의 D−1 몫(늘 새 날 → 지난 날 순)
           List<RouteView> live = routes.routes(cdcId, true);
           // 1) 노선 × 온도대 지시서(정규차가 있는 칸만)
           for (RouteView r : live) {
@@ -222,7 +224,20 @@ public class PlanningService {
           }
           // 2) 이관요청서 반영·검증·연결
           for (Clients.FeedItem f : feed) {
-            String st = upsertRequest(cdcId, shipDate, f, live);
+            boolean ready = "READY".equals(f.deadlineMeaning());
+            LocalDate target;
+            if (ready) {
+              target = Schedule.readyShipDate(f.dueAt());
+              if (target.isAfter(shipDate) || target.isBefore(shipDate.minusDays(1))) {
+                continue;
+              }
+            } else {
+              if (f.dueAt().isBefore(w[0]) || !f.dueAt().isBefore(w[1])) {
+                continue;
+              }
+              target = shipDate;
+            }
+            String st = upsertRequest(cdcId, target, f, live, ready, target.equals(shipDate));
             counts.merge(st, 1, Integer::sum);
           }
         });
@@ -231,7 +246,12 @@ public class PlanningService {
   }
 
   private String upsertRequest(
-      String cdcId, LocalDate shipDate, Clients.FeedItem f, List<RouteView> live) {
+      String cdcId,
+      LocalDate shipDate,
+      Clients.FeedItem f,
+      List<RouteView> live,
+      boolean ready,
+      boolean current) {
     Instant now = clock.instant();
     Optional<RequestView> prior = findRequest(f.trfId());
     if (prior.isPresent()) {
@@ -292,6 +312,13 @@ public class PlanningService {
           reason = "ORDER_CLOSED";
         } else {
           orderId = (String) o.get().get("order_id");
+        }
+        // 0.5.0 R-28: READY 는 다음 날로 미루지 않는다 — 맞는 출고일 지시서가 닫혔거나(지난 날이라) 없으면 READY_UNREACHABLE
+        if (ready
+            && "HELD".equals(state)
+            && ("ORDER_CLOSED".equals(reason)
+                || (!current && "NO_REGULAR_VEHICLE".equals(reason)))) {
+          reason = "READY_UNREACHABLE";
         }
       }
     }

@@ -150,6 +150,17 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
                         + "\",\"active\":true}")));
   }
 
+  static Map<String, Object> ready(Map<String, Object> m, String dueAt) {
+    m.put("deadlineMeaning", "READY");
+    m.put("dueAt", dueAt);
+    return m;
+  }
+
+  static Map<String, Object> due(Map<String, Object> m, String dueAt) {
+    m.put("dueAt", dueAt);
+    return m;
+  }
+
   static Map<String, Object> trf(
       String id,
       int version,
@@ -311,7 +322,19 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
             trf("TRF-006", 1, "MFC-BJG-01", "IN_WAVE", 10, 10, List.of("CHILLED"), 2),
             trf("TRF-007", 1, "MFC-SEJ-01", "IN_WAVE", 10, 10, List.of("AMBIENT"), 25),
             trf("TRF-008", 1, "MFC-SEJ-01", "IN_WAVE", 10, 10, List.of("AMBIENT"), null),
-            trf("TRF-009", 1, "MFC-SEJ-01", "CANCELLED", 10, 0, List.of(), null)));
+            trf("TRF-009", 1, "MFC-SEJ-01", "CANCELLED", 10, 0, List.of(), null),
+            // 0.5.0 R-28 READY: 준비 12-02 14:00 KST → 출고일 12-01(D), 준비 12-02 06:00 KST → 11-30(지난 날
+            // — 도달 불가)
+            ready(
+                trf("TRF-010", 1, "MFC-SEJ-01", "IN_WAVE", 10, 10, List.of("AMBIENT"), null),
+                "2026-12-02T05:00:00Z"),
+            ready(
+                trf("TRF-011", 1, "MFC-SEJ-01", "IN_WAVE", 10, 10, List.of("AMBIENT"), null),
+                "2026-12-01T21:00:00Z"),
+            // ARRIVAL 이 D 구간 밖(12-03 KST)이면 이번 생성에 넣지 않음
+            due(
+                trf("TRF-012", 1, "MFC-SEJ-01", "IN_WAVE", 10, 10, List.of("AMBIENT"), null),
+                "2026-12-02T20:00:00Z")));
     assertThat(
             call(WORKER, "/cdcs/" + CDC + "/transport-orders/generations", Map.of("shipDate", D))
                 .status())
@@ -335,6 +358,15 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
     assertThat(java.time.Instant.parse(o04.path("plannedDepartureAt").asString()))
         .isEqualTo(java.time.Instant.parse("2026-12-01T15:30:00Z"));
     assertThat(o07.path("trfIds").toString()).contains("TRF-008").doesNotContain("TRF-007");
+    // R-28 READY
+    assertThat(o07.path("trfIds").toString())
+        .contains("TRF-010")
+        .doesNotContain("TRF-011", "TRF-012");
+    assertThat(req("TRF-010").path("shipDate").asString()).isEqualTo(D);
+    JsonNode r11 = req("TRF-011");
+    assertThat(r11.path("shipDate").asString()).isEqualTo("2026-11-30");
+    assertThat(r11.path("state").asString()).isEqualTo("HELD");
+    assertThat(r11.path("reason").asString()).isEqualTo("READY_UNREACHABLE");
     assertThat(g.body().path("orders").size()).isEqualTo(2); // 냉장·냉동은 정규차가 없어 만들지 않음
     assertThat(g.body().path("unplannedReasons").toString()).contains("NO_REGULAR_VEHICLE");
     assertThat(req("TRF-002").path("acceptedQty").asInt()).isEqualTo(60);

@@ -310,7 +310,11 @@ public class InternalController implements InternalApi {
                             .boxCount(i.boxCount())
                             .rtCount(i.rtCount())
                             .weightG((int) Math.min(Integer.MAX_VALUE, i.weightG()))
-                            .receivedAt(Dto.time(i.receivedAt())))
+                            .receivedAt(Dto.time(i.receivedAt()))
+                            .deadlineMeaning(
+                                com.pmart.cdc.outbound.api.generated.model
+                                    .GetTransportFeed200ResponseItemsInner.DeadlineMeaningEnum
+                                    .fromValue(i.deadlineMeaning())))
                 .toList()));
     return ResponseEntity.ok(out);
   }

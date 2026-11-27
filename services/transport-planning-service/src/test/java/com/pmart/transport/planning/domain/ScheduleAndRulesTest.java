@@ -95,4 +95,21 @@ class ScheduleAndRulesTest {
                 .state())
         .isEqualTo("ACCEPTED");
   }
+
+  /** 0.5.0 R-28 — READY 출고일 = 도착 마감 D+1 07:30 ≤ 준비 시각인 가장 늦은 D. */
+  @org.junit.jupiter.api.Test
+  void readyShipDate() {
+    org.assertj.core.api.Assertions.assertThat(
+            com.pmart.transport.planning.domain.Schedule.readyShipDate(
+                java.time.Instant.parse("2026-11-29T05:00:00Z"))) // 11-29 14:00 KST
+        .isEqualTo(java.time.LocalDate.parse("2026-11-28"));
+    org.assertj.core.api.Assertions.assertThat(
+            com.pmart.transport.planning.domain.Schedule.readyShipDate(
+                java.time.Instant.parse("2026-11-28T21:00:00Z"))) // 11-29 06:00 KST
+        .isEqualTo(java.time.LocalDate.parse("2026-11-27"));
+    org.assertj.core.api.Assertions.assertThat(
+            com.pmart.transport.planning.domain.Schedule.readyShipDate(
+                java.time.Instant.parse("2026-11-28T22:30:00Z"))) // 11-29 07:30 KST 딱 — 마감과 같으면 됨
+        .isEqualTo(java.time.LocalDate.parse("2026-11-28"));
+  }
 }

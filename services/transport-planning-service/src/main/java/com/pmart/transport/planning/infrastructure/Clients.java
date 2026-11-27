@@ -41,7 +41,8 @@ public class Clients {
       int boxCount,
       @Nullable Integer rtCount,
       long weightG,
-      Instant receivedAt) {}
+      Instant receivedAt,
+      String deadlineMeaning) {}
 
   public record VehicleInfo(
       String vehicleId,
@@ -117,7 +118,8 @@ public class Clients {
               i.path("weightG").asLong(),
               i.path("receivedAt").isString()
                   ? Instant.parse(i.path("receivedAt").asString())
-                  : Instant.now()));
+                  : Instant.now(),
+              i.path("deadlineMeaning").asString("ARRIVAL")));
     }
     return out;
   }
