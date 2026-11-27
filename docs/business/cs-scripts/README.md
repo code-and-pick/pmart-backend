@@ -24,7 +24,7 @@ PMart 고객센터 상담원이 백오피스 정책 질문(운영자 RAG, `ai-as
 
 | 파일 | 주제 |
 |---|---|
-| [01-common-greeting-identity.md](01-common-greeting-identity.md) | 첫 인사, 본인 확인, 주문 확인, 공통 문구, 마무리 |
+| [01-common-greeting-identity.md](01-common-greeting-identity.md) | 첫 인사, 본인 확인, 주문 확인, 공통 문구, 마무리 — §1·§2·§4(본인 확인 원칙·문의 종류별 본인 확인 표·주문 확인 문구)는 2026-11-28 사용자 승인, 운영자 RAG `backoffice/05` 제15조로 옮김 |
 | [02-order-cancel.md](02-order-cancel.md) | 주문 취소 요청 — 주문 단계별 처리, 예약 시간 변경, 주소 변경 문의, 재주문 |
 | [03-refund-partial-cancel.md](03-refund-partial-cancel.md) | 환불·부분 취소 — 지원 범위, 금액 기준, 진행 상태, 소요 기간 |
 | [04-shortage.md](04-shortage.md) | 결품(상품 부족) — 부분 취소·환불 안내 |
