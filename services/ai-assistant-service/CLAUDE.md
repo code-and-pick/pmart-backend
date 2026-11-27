@@ -43,3 +43,4 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 - 검색 평가 `RetrievalEvalIT`: 문서 경로 기준(`expected`) + 절 기준(`sections`, 원문을 읽어 정함). 정답 절은 검색 결과에 맞춰 넓히지 않는다.
 - 1차 구현(2026-11-04, ADR-0036): 기준선(해시 임베딩 + 발췌).
 - **LAN 배포(2026-11-09, ADR-0051)**: pc2(2026-11-10 pc5 로 옮기기로 — 전체 재배포 때), provider=ollama — 임베딩 qwen3-embedding:0.6b(CPU, `/api/embed` 직접 — Spring AI 임베딩 모델이 options 를 빠뜨림), 대화 qwen3:4b(GPU, 생각 끔·JSON). DB 는 `rag-pgvector` 의 `ai_assistant_service`(서비스 계정). 색인은 `lan.sh rag-ingest pc2`(일회 작업 `ai-assistant-ingest`, 2026-11-15 부터 render 를 먼저), Ollama 재시작 뒤 `lan.sh rag-warm pc2`. 확인 `deploy/lan/checks/rag_e2e.py`.
+- **종료 지점 지표(2026-11-27, ES-First 계획 P1 ①)**: `AnswerGenerator.Generated` 의 `exit`·`attempts`·`topSimilarity` → `application/AnswerMetrics`(Prometheus — 종료·시도 결과·검사 규칙·1위 유사도 분포, 질문 원문 없음). 두 RAG 서비스가 같은 규칙 — 한쪽을 고치면 다른 쪽도. 시험 `AnswerExitTest`. 계획 `docs/rag/planning/2026-11-27-es-first-hybrid-plan.md` §8·§9.

@@ -94,8 +94,18 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       List<RetrievedChunk> companions,
       List<PriorTurn> history) {
     if (ranked.isEmpty()) {
-      return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
+      return new Generated(
+          false,
+          Mode.NONE,
+          NO_GROUNDING_TEXT,
+          List.of(),
+          chatModelName,
+          Exit.BELOW_THRESHOLD,
+          List.of(),
+          null);
     }
+    Double top = ranked.get(0).similarity();
+    List<String> attempts = new ArrayList<>();
     Map<String, RetrievedChunk> byTag = new LinkedHashMap<>();
     for (int i = 0; i < ranked.size(); i++) {
       byTag.put("D" + (i + 1), ranked.get(i));
@@ -107,11 +117,21 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
     for (int attempt = 0; attempt < 2; attempt++) {
       Output out = call(question, byTag, feedback, history);
       if (out == null) {
+        attempts.add("JSON_INVALID");
         feedback = "직전 출력이 JSON 형식이 아니었다.";
         continue;
       }
       if (!out.grounded()) {
-        return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
+        attempts.add("UNGROUNDED");
+        return new Generated(
+            false,
+            Mode.NONE,
+            NO_GROUNDING_TEXT,
+            List.of(),
+            chatModelName,
+            Exit.MODEL_UNGROUNDED,
+            List.copyOf(attempts),
+            top);
       }
       CitationVerifier.Result r = verifier.verify(out.answer(), out.usedIds(), evidence);
       if (r.valid()) {
@@ -127,13 +147,32 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
             used.stream().noneMatch(c -> c.authority().isSettled())
                 ? ExtractiveComposer.NO_SETTLED_PREFIX + "\n" + out.answer()
                 : out.answer();
-        return new Generated(true, Mode.GENERATIVE, text, List.copyOf(used), chatModelName);
+        attempts.add("PASS");
+        return new Generated(
+            true,
+            Mode.GENERATIVE,
+            text,
+            List.copyOf(used),
+            chatModelName,
+            attempt == 0 ? Exit.GENERATED_FIRST : Exit.GENERATED_RETRY,
+            List.copyOf(attempts),
+            top);
       }
+      attempts.add(
+          String.join(",", r.violations().stream().map(Enum::name).sorted().distinct().toList()));
       feedback =
           "직전 답변이 인용 검사를 통과하지 못했다: " + r.violations() + ". 근거 문장에 있는 내용만 쓰고 근거 ID 를 정확히 적어라.";
     }
     if (ranked.get(0).similarity() < fallbackMinSimilarity.getAsDouble()) {
-      return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
+      return new Generated(
+          false,
+          Mode.NONE,
+          NO_GROUNDING_TEXT,
+          List.of(),
+          chatModelName,
+          Exit.BELOW_FALLBACK_FLOOR,
+          List.copyOf(attempts),
+          top);
     }
     Generated extractive = fallback.generate(question, ranked, companions);
     return new Generated(
@@ -141,7 +180,10 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
         extractive.mode(),
         extractive.text(),
         extractive.used(),
-        chatModelName);
+        chatModelName,
+        extractive.grounded() ? Exit.EXTRACTIVE_FALLBACK : Exit.NO_GROUNDING,
+        List.copyOf(attempts),
+        top);
   }
 
   record Output(String answer, List<String> usedIds, boolean grounded) {}

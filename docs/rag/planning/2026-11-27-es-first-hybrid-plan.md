@@ -144,3 +144,46 @@ P1·P2 는 ES 없이 지금 할 수 있고, P3 결과에 따라 P4 를 할지 �
 - **두 저장소 어긋남**: ES 와 pgvector 가 다른 스냅숏을 보면 키워드 결과와 벡터 결과가 서로 다른 정책을 가리킨다 — 활성화 동시 전환과 조회 시점 확인으로 막는다.
 - **공유 자원**: PC 2 Ollama 는 RAG·상품 의미 검색·꼬리표 생성이 함께 쓴다. 실험·재색인마다 PC 1 에 알린다.
 - **숫자 없는 기대**: 부하 절감 폭은 우리 질문 분포를 재기 전에는 말하지 않는다.
+
+## 8. 사용자 결정 (2026-11-27, P0)
+
+- **D1 승인 — ES-First**: RAG 는 ES BM25 키워드 검색을 먼저 하고, 결과가 부족하면 지금의 PostgreSQL + pgvector 벡터 검색을 한다.
+  - **적용하지 않는 것**: 앞서 논의한 "ES 가 BM25 와 벡터 검색을 모두 맡는" 구조(PR #558 리뷰 대상) — 벡터는 pgvector 에 그대로 둔다.
+  - 상품 검색은 ADR-0088 그대로. 운영자 RAG(ai-assistant-service)·고객 RAG(customer-assistant-service) 서비스 분리 그대로.
+  - P3 에서 지금 검색과 비교 검증 → 효과가 확인되면 **새 ADR** 을 쓴 뒤 P4 운영 적용. **P3 에서 개선 효과가 없으면 P4 보류.**
+- **D2 조건부 승인 — 고객 승인 FAQ 바로 답**: 고객 질문이 지금 유효한 승인 FAQ 와 **명확히** 일치하면 LLM 없이 그 FAQ 답을 그대로 돌려준다.
+  질문의 조건·맥락이 다르거나 복합 설명이 필요하면 지금의 RAG 검색·생성으로. 근거가 부족하면 FAQ 답을 억지로 돌려주지 않는다.
+- 순서: P1 부터. **검색 종료 판정 기준과 답변 검증 문제를 먼저 측정하고 개선**한다.
+
+### 바뀌는 앞 결정
+
+| 앞 결정 | 바뀐 것 |
+|---|---|
+| 2026-11-19 "RAG 에 ES 개편 안 함"(PR #557 판단 기록 — 적재·청크 통과 모두 하지 않음) | ES BM25 를 **먼저 거치는** 구조로 진행. 단 운영 적용(P4)은 P3 비교에서 효과가 확인되고 새 ADR 을 쓴 뒤에만. 효과가 없으면 11-19 결정대로 남는다 |
+| 2026-11-20 "고객 FAQ 는 목록 화면 전용(AI 답에 안 씀)" | 승인 FAQ 와 **명확히** 일치할 때만 AI 답으로 FAQ 답을 그대로 줌(LLM 없음). 그 밖은 지금처럼 RAG — FAQ 목록 화면은 그대로 |
+| PR #558 리뷰 대상 "ES 가 BM25·kNN 모두" 제안 | 적용하지 않음(사용자 11-27) |
+
+바뀌지 않는 것: ADR-0088(상품 의미 검색 = ES `semanticVector`), 두 RAG 서비스 분리(서비스 경계), 부정 검사 남은 2건(A03·A14) 고치지 않음, C3(모델 재판정) 안 함, 생각 끔.
+
+## 9. P1 진행 (2026-11-27, PC 1)
+
+### ① 종료 지점 기록 — 구현(브랜치 `rag/p1-exit-metrics`, 아직 LAN 아님)
+- 두 서비스 `AnswerGenerator.Generated` 에 `exit`(문서 경로가 끝난 곳)·`attempts`(생성 시도마다 결과)·`topSimilarity`(1위 근거 혼합 유사도)를 싣고, `AnswerMetrics` 가 Prometheus 지표로 센다. 질문 원문·답·본문은 싣지 않는다.
+  - `pmart_assistant_answers_total{exit}` / 고객 `pmart_customer_assistant_answers_total{exit}`: 앞단(REALTIME_DATA_REQUIRED·OUT_OF_SCOPE·(고객) ORDER_STATUS·PRODUCT_INFO·(고객) BLOCKED_WORDS),
+    문서 경로(BELOW_THRESHOLD·MODEL_UNGROUNDED·GENERATED_FIRST·GENERATED_RETRY·EXTRACTIVE_FALLBACK·BELOW_FALLBACK_FLOOR·NO_GROUNDING), 실패(FAILED_<코드>).
+  - `…_generation_attempts_total{result}`: PASS·JSON_INVALID·UNGROUNDED·CHECK_FAILED·(고객) CUSTOMER_CHECK_FAILED.
+  - `…_citation_violations_total{rule}`: NO_CITATION·UNKNOWN_ID·UNSUPPORTED_SENTENCE·NEGATION_MISMATCH·NUMBER_MISMATCH·(고객) ASKS_QUESTION·NUMBER_NOT_WHOLE·TABLE_INCOMPLETE·TERMS_NOT_IN_EVIDENCE.
+  - `…_top_similarity{exit}`: 분포(구간 0.40·0.425·0.45·0.475·0.50·0.55·0.60·0.70) — 임계값·발췌 하한을 LAN 숫자로 맞추는 바탕.
+- 시험: `AnswerExitTest`(두 서비스) — ai 단위 138·IT 43, 고객 단위 144·IT 32, 실패 0.
+
+### ④ 발췌 하한(0.45) — 측정으로 본 것 (설정은 아직 그대로)
+- 11-27 C2 기록(#562, `docs/rag/verification/2026-11-27/c2-citation-measure/records.json`) 1위 점수: 답 있는 질문 0.444~0.675, 답 없는 질문(임계값을 넘은 것) N01 0.451·N07 0.445·N04 0.417.
+  **0.44~0.50 구간에서 두 무리가 겹친다** — 점수 하나로는 가를 수 없다.
+- 발췌 하한은 생성이 두 번 검사에 떨어졌을 때만 쓰인다. 두 번 떨어진 질문은 A17(0.540, #562 로 풀림)·N01(0.451) 둘뿐.
+- 후보: 하한 0.45 → **0.50**. 겹치는 구간에서는 모델 검사 없는 원문 발췌를 내보내지 않고 근거 없음으로(사용자 D2 "근거 부족 시 억지로 답하지 않음"과 같은 방향). 잃는 것: 그 구간의 답 있는 질문이 두 번 떨어지면 발췌 대신 근거 없음.
+  ①의 `top_similarity{exit="EXTRACTIVE_FALLBACK"}` LAN 분포를 본 뒤 정한다.
+
+### 남은 P1
+- ② 평가셋 의도 라벨(찾기·단순 확인·설명/조합·상품·주문·없음) + 질문 추가(찾기형, "라면 반품 기준" 같은 상품 오분류, 고객 FAQ 명확 일치·조건 다름).
+- ③ LAN 운영자 질문 유형 분포(PC 1 — 유형별 개수만, 원문 반출 없음).
+- ① 배포 뒤 LAN 에서 지표 확인, 35문항 재측정(#562 반영 확인 — A17).

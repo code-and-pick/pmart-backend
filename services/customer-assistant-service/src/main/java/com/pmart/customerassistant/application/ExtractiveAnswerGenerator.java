@@ -19,7 +19,15 @@ public class ExtractiveAnswerGenerator implements AnswerGenerator {
   public Generated generate(
       String question, List<RetrievedChunk> ranked, List<RetrievedChunk> companions) {
     if (ranked.isEmpty()) {
-      return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), null);
+      return new Generated(
+          false,
+          Mode.NONE,
+          NO_GROUNDING_TEXT,
+          List.of(),
+          null,
+          Exit.BELOW_THRESHOLD,
+          List.of(),
+          null);
     }
     var c = ExtractiveComposer.compose(ranked, companions, maxChars, maxChunks);
     return new Generated(true, Mode.BASELINE_EXTRACTIVE, c.text(), c.used(), null);

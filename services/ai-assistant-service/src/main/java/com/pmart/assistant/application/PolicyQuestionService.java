@@ -93,6 +93,7 @@ public class PolicyQuestionService {
   private final ObjectMapper json;
   private final Clock clock;
   private final ProductSearchClient products;
+  private final AnswerMetrics metrics;
 
   public PolicyQuestionService(
       AnswerStore answers,
@@ -106,6 +107,35 @@ public class PolicyQuestionService {
       ObjectMapper json,
       Clock clock,
       ProductSearchClient products) {
+    this(
+        answers,
+        snapshots,
+        retriever,
+        generator,
+        embeddings,
+        access,
+        props,
+        executor,
+        json,
+        clock,
+        products,
+        AnswerMetrics.none());
+  }
+
+  public PolicyQuestionService(
+      AnswerStore answers,
+      SnapshotStore snapshots,
+      Retriever retriever,
+      AnswerGenerator generator,
+      DescribedEmbeddingModel embeddings,
+      AccessPolicy access,
+      AssistantProperties props,
+      ExecutorService executor,
+      ObjectMapper json,
+      Clock clock,
+      ProductSearchClient products,
+      AnswerMetrics metrics) {
+    this.metrics = metrics;
     this.answers = answers;
     this.snapshots = snapshots;
     this.retriever = retriever;
@@ -182,6 +212,7 @@ public class PolicyQuestionService {
     Classification cls = QuestionClassifier.classify(question);
     if (cls.intent() != Intent.POLICY) {
       String state = cls.intent().name();
+      metrics.exit(state);
       String text =
           cls.intent() == Intent.REALTIME_DATA_REQUIRED ? REALTIME_TEXT : OUT_OF_SCOPE_TEXT;
       return finish(
@@ -196,6 +227,7 @@ public class PolicyQuestionService {
     // 상품 질문(2026-11-20, ADR-0083): 상품 검색 결과를 정해진 문장으로. 결과가 없거나 검색이 안 되면 문서 검색으로 넘어간다
     Optional<Completion> product = productAnswer(answerId, question, centerId);
     if (product.isPresent()) {
+      metrics.exit("PRODUCT_INFO");
       return finish(p, answerId, attempt, product.get(), started, 0);
     }
 
@@ -270,6 +302,7 @@ public class PolicyQuestionService {
           "검색·모델 의존성 장애입니다. 같은 Idempotency-Key 로 다시 보내세요.");
     }
 
+    metrics.generated(generated);
     List<CitationRecord> citations =
         generated.used().stream().map(c -> CitationRecord.of(c, snapshot)).toList();
     Completion completion =
@@ -341,6 +374,7 @@ public class PolicyQuestionService {
 
   private Outcome failed(
       PmartPrincipal p, String answerId, int attempt, String code, String message) {
+    metrics.exit("FAILED_" + code);
     if (!answers.fail(answerId, attempt, code)) {
       return reread(answerId, p, ReadMode.POST);
     }

@@ -108,6 +108,7 @@ public class CustomerQuestionService {
   private final Clock clock;
   private final OrderClient orders;
   private final ProductSearchClient products;
+  private final AnswerMetrics metrics;
 
   public CustomerQuestionService(
       AnswerStore answers,
@@ -121,7 +122,9 @@ public class CustomerQuestionService {
       ObjectMapper json,
       Clock clock,
       OrderClient orders,
-      ProductSearchClient products) {
+      ProductSearchClient products,
+      AnswerMetrics metrics) {
+    this.metrics = metrics;
     this.answers = answers;
     this.snapshots = snapshots;
     this.retriever = retriever;
@@ -216,6 +219,7 @@ public class CustomerQuestionService {
   private void rejectBlocked(String question) {
     if (ProfanityRules.contains(props.getCustomer().getBlockedWords(), question)) {
       log.info("customer-assistant question rejected reason=blocked_words");
+      metrics.exit("BLOCKED_WORDS");
       throw new PmartException(
           "BLOCKED_WORDS",
           HttpStatus.UNPROCESSABLE_CONTENT,
@@ -255,6 +259,7 @@ public class CustomerQuestionService {
     long started = System.nanoTime();
     Classification cls = QuestionClassifier.classify(question);
     if (cls.intent() == Intent.OUT_OF_SCOPE) {
+      metrics.exit("OUT_OF_SCOPE");
       return finish(
           p,
           answerId,
@@ -265,6 +270,7 @@ public class CustomerQuestionService {
     }
     if (cls.intent() == Intent.REALTIME_DATA_REQUIRED) {
       if (orderId == null) {
+        metrics.exit("REALTIME_DATA_REQUIRED");
         return finish(
             p,
             answerId,
@@ -279,6 +285,7 @@ public class CustomerQuestionService {
         return failed(
             p, answerId, attempt, DEPENDENCY_UNAVAILABLE, "주문을 다시 확인하지 못했습니다. 같은 키로 다시 보내세요.");
       }
+      metrics.exit("ORDER_STATUS");
       return finish(
           p,
           answerId,
@@ -299,6 +306,7 @@ public class CustomerQuestionService {
     // 상품 질문(2026-11-20, ADR-0083): 상품 검색 결과를 정해진 문장으로. 결과가 없거나 검색이 안 되면 안내 문서 검색으로 넘어간다
     Optional<Completion> product = productAnswer(answerId, question);
     if (product.isPresent()) {
+      metrics.exit("PRODUCT_INFO");
       return finish(p, answerId, attempt, product.get(), started, 0);
     }
 
@@ -356,6 +364,7 @@ public class CustomerQuestionService {
         String.format(java.util.Locale.ROOT, "%.3f", top[0]),
         generated.mode(),
         sections[0]);
+    metrics.generated(generated);
     List<CitationRecord> citations =
         generated.used().stream().map(c -> CitationRecord.of(c, snapshot)).toList();
     Completion completion =
@@ -424,6 +433,7 @@ public class CustomerQuestionService {
 
   private Outcome failed(
       PmartPrincipal p, String answerId, int attempt, String code, String message) {
+    metrics.exit("FAILED_" + code);
     if (!answers.fail(answerId, attempt, code)) {
       return reread(answerId, p, ReadMode.POST);
     }

@@ -126,7 +126,9 @@ public class AssistantConfig {
       ExecutorService assistantExecutor,
       ObjectMapper json,
       Clock clock,
-      com.pmart.assistant.infrastructure.ProductSearchClient products) {
+      com.pmart.assistant.infrastructure.ProductSearchClient products,
+      org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry>
+          meters) {
     validate(props);
     return new PolicyQuestionService(
         answers,
@@ -139,7 +141,8 @@ public class AssistantConfig {
         assistantExecutor,
         json,
         clock,
-        products);
+        products,
+        new AnswerMetrics(meters.getIfAvailable()));
   }
 
   @Bean

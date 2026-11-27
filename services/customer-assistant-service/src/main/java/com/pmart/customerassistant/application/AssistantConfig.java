@@ -127,7 +127,9 @@ public class AssistantConfig {
       ObjectMapper json,
       Clock clock,
       com.pmart.customerassistant.infrastructure.OrderClient orders,
-      com.pmart.customerassistant.infrastructure.ProductSearchClient products) {
+      com.pmart.customerassistant.infrastructure.ProductSearchClient products,
+      org.springframework.beans.factory.ObjectProvider<io.micrometer.core.instrument.MeterRegistry>
+          meters) {
     validate(props);
     return new CustomerQuestionService(
         answers,
@@ -141,7 +143,8 @@ public class AssistantConfig {
         json,
         clock,
         orders,
-        products);
+        products,
+        new AnswerMetrics(meters.getIfAvailable()));
   }
 
   @Bean

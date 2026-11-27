@@ -87,8 +87,18 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
   public Generated generate(
       String question, List<RetrievedChunk> ranked, List<RetrievedChunk> companions) {
     if (ranked.isEmpty()) {
-      return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
+      return new Generated(
+          false,
+          Mode.NONE,
+          NO_GROUNDING_TEXT,
+          List.of(),
+          chatModelName,
+          Exit.BELOW_THRESHOLD,
+          List.of(),
+          null);
     }
+    Double top = ranked.get(0).similarity();
+    List<String> attempts = new ArrayList<>();
     Map<String, RetrievedChunk> byTag = new LinkedHashMap<>();
     for (int i = 0; i < ranked.size(); i++) {
       byTag.put("D" + (i + 1), ranked.get(i));
@@ -102,16 +112,28 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
     for (int attempt = 0; attempt < 2; attempt++) {
       Output out = call(question, byTag, feedback);
       if (out == null) {
+        attempts.add("JSON_INVALID");
         feedback = "직전 출력이 JSON 형식이 아니었다.";
         continue;
       }
       if (!out.grounded()) {
-        return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
+        attempts.add("UNGROUNDED");
+        return new Generated(
+            false,
+            Mode.NONE,
+            NO_GROUNDING_TEXT,
+            List.of(),
+            chatModelName,
+            Exit.MODEL_UNGROUNDED,
+            List.copyOf(attempts),
+            top);
       }
       CitationVerifier.Result r = verifier.verify(out.answer(), out.usedIds(), evidence);
-      String customerProblem = r.valid() ? customerCheck(question, out, byTag, evidence) : null;
+      CustomerProblem customerProblem =
+          r.valid() ? customerCheck(question, out, byTag, evidence) : null;
       if (customerProblem != null) {
-        feedback = "직전 답변이 검사를 통과하지 못했다: " + customerProblem;
+        attempts.add("CUSTOMER_" + customerProblem.name());
+        feedback = "직전 답변이 검사를 통과하지 못했다: " + customerProblem.feedback;
         continue;
       }
       if (r.valid()) {
@@ -124,18 +146,32 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
           }
         }
         // 고객용: 지위 머리말을 붙이지 않는다 — 고객 안내 문서는 모두 승인된 공개 안내다(C1)
+        attempts.add("PASS");
         return new Generated(
             true,
             Mode.GENERATIVE,
             CustomerAnswerChecks.dropYesNoLead(out.answer()),
             List.copyOf(used),
-            chatModelName);
+            chatModelName,
+            attempt == 0 ? Exit.GENERATED_FIRST : Exit.GENERATED_RETRY,
+            List.copyOf(attempts),
+            top);
       }
+      attempts.add(
+          String.join(",", r.violations().stream().map(Enum::name).sorted().distinct().toList()));
       feedback =
           "직전 답변이 인용 검사를 통과하지 못했다: " + r.violations() + ". 근거 문장에 있는 내용만 쓰고 근거 ID 를 정확히 적어라.";
     }
     if (ranked.get(0).similarity() < fallbackMinSimilarity.getAsDouble()) {
-      return new Generated(false, Mode.NONE, NO_GROUNDING_TEXT, List.of(), chatModelName);
+      return new Generated(
+          false,
+          Mode.NONE,
+          NO_GROUNDING_TEXT,
+          List.of(),
+          chatModelName,
+          Exit.BELOW_FALLBACK_FLOOR,
+          List.copyOf(attempts),
+          top);
     }
     Generated extractive = fallback.generate(question, ranked, companions);
     return new Generated(
@@ -143,13 +179,30 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
         extractive.mode(),
         extractive.text(),
         extractive.used(),
-        chatModelName);
+        chatModelName,
+        extractive.grounded() ? Exit.EXTRACTIVE_FALLBACK : Exit.NO_GROUNDING,
+        List.copyOf(attempts),
+        top);
   }
 
   record Output(String answer, List<String> usedIds, boolean grounded) {}
 
-  /** 고객 답변 추가 검사(CustomerAnswerChecks). 통과면 null, 아니면 모델에 줄 고칠 점. */
-  static @Nullable String customerCheck(
+  /** 고객 답변 추가 검사에 걸린 것과 모델에 줄 고칠 점(이름은 지표 꼬리표 — 2026-11-27 P1). */
+  enum CustomerProblem {
+    ASKS_QUESTION("답에 질문(물음표)을 쓰지 말고 근거 문장으로 답한다."),
+    NUMBER_NOT_WHOLE("답의 숫자가 근거의 숫자와 다르다. 숫자·금액은 근거에 적힌 그대로 쓴다."),
+    TABLE_INCOMPLETE("근거 표의 경우 중 일부만 썼다. 표의 모든 경우와 값을 함께 쓴다."),
+    TERMS_NOT_IN_EVIDENCE("질문의 대상이 근거에 없다. 근거에 없는 대상은 답하지 말고 grounded=false.");
+
+    final String feedback;
+
+    CustomerProblem(String feedback) {
+      this.feedback = feedback;
+    }
+  }
+
+  /** 고객 답변 추가 검사(CustomerAnswerChecks). 통과면 null, 아니면 걸린 검사. */
+  static @Nullable CustomerProblem customerCheck(
       String question,
       Output out,
       Map<String, RetrievedChunk> byTag,
@@ -157,16 +210,16 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
     String joined = String.join("\n", out.usedIds().stream().map(evidence::get).toList());
     List<String> raw = out.usedIds().stream().map(id -> byTag.get(id).content()).toList();
     if (CustomerAnswerChecks.asksQuestion(out.answer())) {
-      return "답에 질문(물음표)을 쓰지 말고 근거 문장으로 답한다.";
+      return CustomerProblem.ASKS_QUESTION;
     }
     if (!CustomerAnswerChecks.numbersWhole(out.answer(), joined)) {
-      return "답의 숫자가 근거의 숫자와 다르다. 숫자·금액은 근거에 적힌 그대로 쓴다.";
+      return CustomerProblem.NUMBER_NOT_WHOLE;
     }
     if (!CustomerAnswerChecks.tableComplete(out.answer(), raw)) {
-      return "근거 표의 경우 중 일부만 썼다. 표의 모든 경우와 값을 함께 쓴다.";
+      return CustomerProblem.TABLE_INCOMPLETE;
     }
     if (!CustomerAnswerChecks.questionTermsInEvidence(question, out.answer(), joined)) {
-      return "질문의 대상이 근거에 없다. 근거에 없는 대상은 답하지 말고 grounded=false.";
+      return CustomerProblem.TERMS_NOT_IN_EVIDENCE;
     }
     return null;
   }
