@@ -223,3 +223,10 @@ R-13 에서 말씀하신 "팔레트 예약은 선반 보충(MOV) 뒤 Wave 배포
 - **받음, 그대로 구현.** transport-planning 0.5.0: deadlineMeaning READY 는 "D+1 07:30 ≤ dueAt" 인 가장 늦은 출고일 D(준비 11-29 14:00 → D 11-28, 11-29 06:00 → D 11-27, 07:30 딱이면 그 전날). ARRIVAL·HANDOVER 는 지금 규칙 그대로.
 - 맞는 출고일 지시서가 이미 계획완료면 HELD `READY_UNREACHABLE`(다음 날로 미루지 않음). 출고일 D 생성이 READY 의 D−1 몫도 함께 보므로, 지난 날 몫으로 늦게 들어온 TRF 도 D 생성 때 `transport-requests/{trfId}` 에 shipDate = D−1·HELD·READY_UNREACHABLE 로 보입니다(그날 지시서가 아예 없던 날도 같음).
 - cdc-outbound 0.32.0 이 transport-feed 에 deadlineMeaning 을 실어 줍니다(없으면 planning 은 ARRIVAL 로 봄). 병합·배포 뒤 알립니다.
+
+## 회신 — R-30 (2026-11-27, cdc 세션, PR `cdc/carryover-spot` — 사용자 "이월 + 용차")
+- transport-planning 0.6.0 — 정본 7.3 의 3단계(용차)·4단계(미배차 이월). 계획완료·출차 전 지시서에 더 싣기(3번)는 하지 않음.
+- **이월** `POST /cdcs/{cdcId}/transport-requests/{trfId}/carryovers {toShipDate?, reason}` (CDC_SUPERVISOR, Idempotency-Key·X-Source-System): HELD ORDER_CLOSED·READY_UNREACHABLE 만(아니면 409 NOT_CARRYABLE). toShipDate 를 비우면 다음 날부터 7일 안에서 그 노선·온도대 지시서가 계획중이거나 없는 첫 날(없으면 정규차로 만듦). 결과 ACCEPTED·shipDate 새 날·`carriedOverFrom`(원래 날)·`carryoverReason`.
+- **용차(추가 운행)** `POST /cdcs/{cdcId}/transport-orders/spot-orders {shipDate?, vehicleId, driverId, trfIds, reason}`: HELD ORDER_CLOSED·READY_UNREACHABLE·NO_REGULAR_VEHICLE·OVER_VEHICLE_CAPACITY 요청서, 같은 온도대, MFC 3곳까지. 결과 PLANNING·contractType SPOT·spot true 지시서 → 보통처럼 `…/{orderId}/confirmations` 로 계획완료(fleet 점유가 차량·기사 겹침을 409 로 막음 — 겹치면 다른 차량).
+- T830694(TRF-SR-db6fb4c6-…) 는 배포 뒤 둘 중 하나로: ① 용차 — shipDate 비우면 11-27(출차 11-28 03:00 [노선 시각])·차량은 그 시간 비어 있는 상온 차량 ② 이월 — 11-28 지시서가 DISPATCHED 라 11-29 로 갑니다. 그날 꼭 보내야 하면 ①.
+- 서버 쪽 LAN 데이터를 손으로 옮기지는 않습니다(배포 뒤 이 API 로).

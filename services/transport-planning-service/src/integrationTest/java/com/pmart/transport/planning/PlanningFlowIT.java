@@ -571,6 +571,58 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
                     "/cdcs/" + CDC + "/transport-orders")
                 .status())
         .isEqualTo(403);
+
+    // ---- 9) 0.6.0 R-30 — 보류 요청서 용차·이월 ----
+    Res nc =
+        call(SUP, "/cdcs/" + CDC + "/transport-requests/TRF-003/carryovers", Map.of("reason", "x"));
+    assertThat(nc.body().path("code").asString())
+        .as(nc.body().toString())
+        .isEqualTo("NOT_CARRYABLE");
+    // 용차: 지난 날(11-30) READY_UNREACHABLE 요청서 하나만 싣는 추가 운행
+    Map<String, Object> spotBody =
+        Map.of(
+            "vehicleId",
+            "VH-07A",
+            "driverId",
+            "DR-07A",
+            "trfIds",
+            List.of("TRF-011"),
+            "reason",
+            "1호점 추가 운행");
+    assertThat(call(WORKER, "/cdcs/" + CDC + "/transport-orders/spot-orders", spotBody).status())
+        .isEqualTo(403);
+    Res sp = call(SUP, "/cdcs/" + CDC + "/transport-orders/spot-orders", spotBody);
+    assertThat(sp.status()).as(sp.body().toString()).isEqualTo(200);
+    assertThat(sp.body().path("spot").asBoolean()).isTrue();
+    assertThat(sp.body().path("contractType").asString()).isEqualTo("SPOT");
+    assertThat(sp.body().path("state").asString()).isEqualTo("PLANNING");
+    assertThat(sp.body().path("shipDate").asString()).isEqualTo("2026-11-30");
+    assertThat(sp.body().path("trfIds").toString()).contains("TRF-011");
+    assertThat(req("TRF-011").path("state").asString()).isEqualTo("ACCEPTED");
+    assertThat(
+            call(SUP, "/cdcs/" + CDC + "/transport-orders/spot-orders", spotBody)
+                .body()
+                .path("orderId")
+                .asString())
+        .isEqualTo(sp.body().path("orderId").asString());
+    // 이월: D 의 세종 상온 지시서가 닫혀(취소) 새 TRF 가 ORDER_CLOSED → 다음 열린 날(12-02, 지시서를 새로 만듦)
+    feed(List.of(trf("TRF-013", 1, "MFC-SEJ-01", "IN_WAVE", 10, 10, List.of("AMBIENT"), null)));
+    call(SUP, "/cdcs/" + CDC + "/transport-orders/generations", Map.of("shipDate", D));
+    assertThat(req("TRF-013").path("reason").asString()).isEqualTo("ORDER_CLOSED");
+    Res co =
+        call(
+            SUP,
+            "/cdcs/" + CDC + "/transport-requests/TRF-013/carryovers",
+            Map.of("reason", "다음 날 차로"));
+    assertThat(co.status()).as(co.body().toString()).isEqualTo(200);
+    assertThat(co.body().path("state").asString()).isEqualTo("ACCEPTED");
+    assertThat(co.body().path("shipDate").asString()).isEqualTo("2026-12-02");
+    assertThat(co.body().path("carriedOverFrom").asString()).isEqualTo(D);
+    assertThat(co.body().path("carryoverReason").asString()).isEqualTo("다음 날 차로");
+    // 다시 생성해도 원래 출고일로 돌아가지 않음
+    call(SUP, "/cdcs/" + CDC + "/transport-orders/generations", Map.of("shipDate", D));
+    assertThat(req("TRF-013").path("shipDate").asString()).isEqualTo("2026-12-02");
+    assertThat(req("TRF-013").path("state").asString()).isEqualTo("ACCEPTED");
     outbound.stubFor(
         get(urlPathEqualTo("/api/v1/internal/transport-feed"))
             .atPriority(1)

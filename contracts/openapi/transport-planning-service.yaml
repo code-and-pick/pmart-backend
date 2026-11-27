@@ -1,8 +1,15 @@
 openapi: 3.1.0
 info:
   title: transport-planning-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
+    0.6.0(2026-11-27, 시뮬레이터 R-30 — 사용자 "이월 + 용차", TMS 정본 7.3 3·4단계): 보류(HELD) 요청서를 보낼 길 두 가지(CDC_SUPERVISOR, 상태로 멱등).
+      ① 이월 `POST /cdcs/{cdcId}/transport-requests/{trfId}/carryovers {toShipDate?, reason}` — HELD ORDER_CLOSED·READY_UNREACHABLE 만. 그 MFC 노선·온도대의
+        다음 열린 출고일(지금 출고일 다음 날부터 7일, 지시서가 없으면 정규차로 만들고, 계획완료면 건너뜀) 계획중 지시서에 ACCEPTED 로 연결, `carriedOverFrom`(원래 출고일)·`carryoverReason` 표시.
+      ② 용차 `POST /cdcs/{cdcId}/transport-orders/spot-orders {shipDate?, vehicleId, driverId, trfIds, reason}` — HELD ORDER_CLOSED·READY_UNREACHABLE·NO_REGULAR_VEHICLE·OVER_VEHICLE_CAPACITY
+        요청서(같은 온도대, MFC 3곳까지)만 싣는 계획중 지시서(contractType SPOT·spot true, 노선 × 온도대 칸 밖). 정차 = 각 MFC 노선의 구간 분 짧은 순 [가정], 출차 = 든 노선 출차 중 가장 이른 것,
+        07:30 넘으면 409 ROUTE_TIME_INFEASIBLE. 차량은 fleet 사용 중·온도대 일치(정규·용차 모두), 적재 넘으면 409 OVER_CAPACITY. 그 뒤는 보통 계획완료(fleet 점유가 겹침을 막음).
+      이월·용차로 옮긴 요청서는 다시 생성해도 원래 출고일로 돌아가지 않는다. TransportRequest `carriedOverFrom`·`carryoverReason`, TransportOrder `spot`.
     0.5.0(2026-11-27, 시뮬레이터 R-28 — 사용자 "정해"): 배차 생성의 출고일 — deadlineMeaning **READY**(MFC 사용 준비 시각) TRF 는 "도착 마감(D+1 07:30 서울) ≤ dueAt" 인 **가장 늦은 출고일 D**
       (예 준비 11-29 14:00 → D 11-28, 준비 11-29 06:00 → D 11-27). ARRIVAL·HANDOVER 는 그대로 [D 12:00, D+1 12:00). 맞는 출고일의 지시서가 이미 계획완료(또는 그날 지시서가 없음 —
       지난 날)면 다음 날로 미루지 않고 HELD reason **READY_UNREACHABLE**. 출고일 D 생성은 READY 의 D−1 몫도 함께 본다(늦게 들어온 TRF 를 보이려고). cdc-outbound 0.32.0 feed 의 deadlineMeaning 을 읽는다.
@@ -176,6 +183,42 @@ paths:
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
         '404': { $ref: '_common.yaml#/components/responses/NotFound' }
 
+  /cdcs/{cdcId}/transport-requests/{trfId}/carryovers:
+    post:
+      tags: [transport-requests]
+      summary: '[0.6.0] 보류 요청서 이월 — 다음 열린 출고일의 계획중 지시서로 (정본 7.3 4단계)'
+      description: |
+        HELD 이고 reason 이 ORDER_CLOSED·READY_UNREACHABLE 인 요청서만(아니면 409 NOT_CARRYABLE). toShipDate 를 주면 그날(지금 출고일보다 뒤 — 아니면 400, 그날 지시서가 계획완료면 409 ORDER_CLOSED),
+        비우면 지금 출고일 다음 날부터 7일 안에서 그 MFC 노선·온도대 지시서가 계획중이거나 아직 없는 첫 날(없으면 정규차로 만든다 — 정규차가 없으면 409 NO_REGULAR_VEHICLE, 7일 모두 닫혔으면 409 ORDER_CLOSED).
+        요청서 ACCEPTED·shipDate = 그날·orderId·carriedOverFrom = 원래 출고일. 이미 이월된 요청서를 다시 보내면 그대로 돌려준다.
+      operationId: carryOverTransportRequest
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - { name: trfId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                toShipDate: { type: [string, 'null'], format: date }
+                reason: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: 이월한 요청서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportRequest' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+
   /cdcs/{cdcId}/transport-orders/generations:
     post:
       tags: [transport-orders]
@@ -254,6 +297,46 @@ paths:
                   size: { type: integer }
                   hasNext: { type: boolean }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /cdcs/{cdcId}/transport-orders/spot-orders:
+    post:
+      tags: [transport-orders]
+      summary: '[0.6.0] 용차 지시서 — 보류 요청서만 싣는 추가 운행 (정본 7.3 3단계·7.6)'
+      description: |
+        trfIds 는 HELD 이고 reason 이 ORDER_CLOSED·READY_UNREACHABLE·NO_REGULAR_VEHICLE·OVER_VEHICLE_CAPACITY 인 요청서(아니면 409 NOT_CARRYABLE), 같은 온도대(409 TEMP_MISMATCH), MFC 3곳까지(409 TOO_MANY_STOPS),
+        모두 노선에 든 MFC(409 NO_ROUTE). shipDate 를 비우면 요청서 출고일(서로 다르면 400). 차량은 fleet 사용 중·온도대 일치(409 VEHICLE_NOT_ELIGIBLE), 기사 사용 중(409 DRIVER_NOT_ELIGIBLE),
+        적재(R/T·중량)가 차량 최대를 넘으면 409 OVER_CAPACITY. 정차 = 각 MFC 노선의 구간 분 짧은 순 [가정], 출차 = 든 노선 출차 시각 중 가장 이른 것, 마지막 도착이 07:30 을 넘으면 409 ROUTE_TIME_INFEASIBLE.
+        결과는 PLANNING·contractType SPOT·spot true 지시서(노선 = 첫 정차의 노선). 요청서 ACCEPTED·orderId, 출고일이 바뀌면 carriedOverFrom. 같은 요청서들이 이미 한 용차 지시서에 있으면 그것을 돌려준다.
+        그 뒤는 보통 계획완료(fleet 점유 — 같은 시간 차량·기사 겹침은 fleet 가 409).
+      operationId: createSpotTransportOrder
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '#/components/parameters/CdcId'
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleId, driverId, trfIds, reason]
+              properties:
+                shipDate: { type: [string, 'null'], format: date }
+                vehicleId: { type: string }
+                driverId: { type: string }
+                trfIds: { type: array, minItems: 1, maxItems: 20, items: { type: string } }
+                reason: { type: string, minLength: 1, maxLength: 300 }
+      responses:
+        '200':
+          description: 용차 지시서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransportOrder' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
 
   /cdcs/{cdcId}/transport-orders/{orderId}:
     get:
@@ -519,6 +602,8 @@ components:
         reason: { type: [string, 'null'], description: '보류·반려 사유: NO_ROUTE·ALLOCATION_PENDING·MIXED_TEMPERATURE·TEMP_UNKNOWN·OVER_VEHICLE_CAPACITY·ORDER_CLOSED·READY_UNREACHABLE(0.5.0)·NEWER_VERSION·MISSING_FIELDS·VERSION_AFTER_DEPARTURE·WRONG_ORIGIN' }
         lateReceipt: { type: boolean, description: 'V7 — 출고일 21:30 뒤 처음 받음(이월 판단은 배차 담당)' }
         orderId: { type: [string, 'null'] }
+        carriedOverFrom: { type: [string, 'null'], format: date, description: '(0.6.0) 이월·용차로 출고일을 바꿨으면 원래 출고일' }
+        carryoverReason: { type: [string, 'null'], description: '(0.6.0) 이월·용차 사유' }
         receivedAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     TransportOrderState:
@@ -536,6 +621,7 @@ components:
         routeId: { type: string }
         tempClass: { $ref: '#/components/schemas/TempClass' }
         contractType: { type: string, enum: [REGULAR, SPOT] }
+        spot: { type: boolean, description: '(0.6.0) 용차 지시서(노선 × 온도대 칸 밖) — spot-orders 로 만든 것' }
         vehicleId: { type: [string, 'null'] }
         driverId: { type: [string, 'null'] }
         maxRt: { type: integer }

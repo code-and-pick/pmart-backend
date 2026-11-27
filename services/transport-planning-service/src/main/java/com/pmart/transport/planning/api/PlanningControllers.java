@@ -132,6 +132,19 @@ final class PlanningControllers {
     public ResponseEntity<TransportRequest> getTransportRequest(String cdcId, String trfId) {
       return ResponseEntity.ok(Dto.request(planning.request(cdcId, trfId)));
     }
+
+    @Override
+    public ResponseEntity<TransportRequest> carryOverTransportRequest(
+        String cdcId,
+        String trfId,
+        String idempotencyKey,
+        String xSourceSystem,
+        com.pmart.transport.planning.api.generated.model.CarryOverTransportRequestRequest b) {
+      return ResponseEntity.ok(
+          Dto.request(
+              planning.carryOver(
+                  xSourceSystem, cdcId, trfId, b.getToShipDate(), b.getReason().strip())));
+    }
   }
 
   @RestController
@@ -188,6 +201,24 @@ final class PlanningControllers {
               .page(p.page())
               .size(p.size())
               .hasNext(p.hasNext()));
+    }
+
+    @Override
+    public ResponseEntity<TransportOrder> createSpotTransportOrder(
+        String cdcId,
+        String idempotencyKey,
+        String xSourceSystem,
+        com.pmart.transport.planning.api.generated.model.CreateSpotTransportOrderRequest b) {
+      return ResponseEntity.ok(
+          Dto.order(
+              planning.createSpot(
+                  xSourceSystem,
+                  cdcId,
+                  b.getShipDate(),
+                  b.getVehicleId(),
+                  b.getDriverId(),
+                  b.getTrfIds(),
+                  b.getReason().strip())));
     }
 
     @Override

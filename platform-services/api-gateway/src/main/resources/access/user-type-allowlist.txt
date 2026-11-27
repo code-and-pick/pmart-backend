@@ -527,10 +527,12 @@ POST /api/v1/cdcs/{cdcId}/tasks/{taskId}/starts OPERATOR
 POST /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations OPERATOR
 POST /api/v1/cdcs/{cdcId}/transit-losses OPERATOR
 POST /api/v1/cdcs/{cdcId}/transport-orders/generations OPERATOR
+POST /api/v1/cdcs/{cdcId}/transport-orders/spot-orders OPERATOR
 POST /api/v1/cdcs/{cdcId}/transport-orders/{orderId}/cancellations OPERATOR
 POST /api/v1/cdcs/{cdcId}/transport-orders/{orderId}/confirmations OPERATOR
 POST /api/v1/cdcs/{cdcId}/transport-orders/{orderId}/request-moves OPERATOR
 POST /api/v1/cdcs/{cdcId}/transport-orders/{orderId}/skips OPERATOR
+POST /api/v1/cdcs/{cdcId}/transport-requests/{trfId}/carryovers OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/location-scans OPERATOR
 POST /api/v1/cdcs/{cdcId}/workers/{workerId}/next-tasks OPERATOR
 POST /api/v1/change-requests OPERATOR

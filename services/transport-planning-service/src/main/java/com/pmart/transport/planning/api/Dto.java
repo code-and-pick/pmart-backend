@@ -96,7 +96,9 @@ final class Dto {
         .lateReceipt(r.lateReceipt())
         .orderId(r.orderId())
         .receivedAt(time(r.receivedAt()))
-        .updatedAt(time(r.updatedAt()));
+        .updatedAt(time(r.updatedAt()))
+        .carriedOverFrom(r.carriedOverFrom())
+        .carryoverReason(r.carryoverReason());
   }
 
   static TransportOrder order(OrderView o) {
@@ -146,6 +148,7 @@ final class Dto {
         .reservationId(o.reservationId())
         .dockCode(o.dockCode())
         .dockReservationId(o.dockReservationId())
+        .spot(o.spot())
         .tripState(o.tripState())
         .reason(o.reason())
         .version(o.version())

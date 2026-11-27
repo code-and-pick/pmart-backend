@@ -70,7 +70,9 @@ public class PlanningService {
       boolean lateReceipt,
       @Nullable String orderId,
       Instant receivedAt,
-      Instant updatedAt) {}
+      Instant updatedAt,
+      @Nullable LocalDate carriedOverFrom,
+      @Nullable String carryoverReason) {}
 
   public record OrderStop(
       int seq,
@@ -117,7 +119,8 @@ public class PlanningService {
       Instant createdAt,
       Instant updatedAt,
       @Nullable String dockCode,
-      @Nullable String dockReservationId) {}
+      @Nullable String dockReservationId,
+      boolean spot) {}
 
   public record Unplanned(String routeId, String tempClass, String reason) {}
 
@@ -247,13 +250,19 @@ public class PlanningService {
 
   private String upsertRequest(
       String cdcId,
-      LocalDate shipDate,
+      LocalDate shipDateIn,
       Clients.FeedItem f,
       List<RouteView> live,
       boolean ready,
-      boolean current) {
+      boolean currentIn) {
     Instant now = clock.instant();
     Optional<RequestView> prior = findRequest(f.trfId());
+    LocalDate shipDate = shipDateIn;
+    boolean current = currentIn;
+    if (prior.isPresent() && prior.get().carriedOverFrom() != null) {
+      shipDate = prior.get().shipDate(); // 0.6.0 이월·용차 — 원래 출고일로 돌아가지 않음
+      current = true;
+    }
     if (prior.isPresent()) {
       RequestView p = prior.get();
       if (f.trfVersion() < p.trfVersion()) {
@@ -384,7 +393,7 @@ public class PlanningService {
     return jdbc
         .queryForList(
             "SELECT order_id, state FROM transport_order WHERE cdc_id = ? AND ship_date = ?"
-                + " AND route_id = ? AND temp_class = ?",
+                + " AND route_id = ? AND temp_class = ? AND NOT spot",
             cdcId,
             shipDate,
             routeId,
@@ -561,7 +570,264 @@ public class PlanningService {
         ts(o.get("created_at")),
         ts(o.get("updated_at")),
         (String) o.get("dock_code"),
-        (String) o.get("dock_reservation_id"));
+        (String) o.get("dock_reservation_id"),
+        Boolean.TRUE.equals(o.get("spot")));
+  }
+
+  // ======================= 이월·용차 (0.6.0, R-30) =======================
+
+  static final Set<String> CARRYABLE = Set.of("ORDER_CLOSED", "READY_UNREACHABLE");
+  static final Set<String> SPOTTABLE =
+      Set.of("ORDER_CLOSED", "READY_UNREACHABLE", "NO_REGULAR_VEHICLE", "OVER_VEHICLE_CAPACITY");
+  static final int CARRYOVER_DAYS = 7;
+
+  /** 보류 요청서 이월(정본 7.3 4단계) — 다음 열린 출고일의 노선 × 온도대 계획중 지시서로. */
+  public RequestView carryOver(
+      String source, String cdcId, String trfId, @Nullable LocalDate toShipDate, String reason) {
+    Operator op = Operator.forCenter(cdcId, source).requireSupervisor();
+    RequestView r0 = request(cdcId, trfId);
+    if (r0.carriedOverFrom() != null && ON_ORDER.contains(r0.state())) {
+      return r0; // 이미 이월됨(같은 요청 다시)
+    }
+    if (!"HELD".equals(r0.state()) || !CARRYABLE.contains(r0.reason())) {
+      throw RouteService.conflict(
+          "NOT_CARRYABLE",
+          "이월은 HELD ORDER_CLOSED·READY_UNREACHABLE 요청서만 됩니다(지금 "
+              + r0.state()
+              + " "
+              + r0.reason()
+              + ").");
+    }
+    if (toShipDate != null && !toShipDate.isAfter(r0.shipDate())) {
+      throw badRequest("toShipDate 는 지금 출고일 " + r0.shipDate() + " 보다 뒤여야 합니다.");
+    }
+    RouteView route = routeFor(cdcId, r0);
+    VehicleView v =
+        route
+            .vehicle(r0.tempClass())
+            .orElseThrow(
+                () ->
+                    RouteService.conflict(
+                        "NO_REGULAR_VEHICLE",
+                        "노선 "
+                            + route.routeId()
+                            + " 에 "
+                            + r0.tempClass()
+                            + " 정규차가 없습니다 — 용차로 보내세요."));
+    tx.executeWithoutResult(
+        s -> {
+          List<LocalDate> days = new ArrayList<>();
+          if (toShipDate != null) {
+            days.add(toShipDate);
+          } else {
+            for (int i = 1; i <= CARRYOVER_DAYS; i++) {
+              days.add(r0.shipDate().plusDays(i));
+            }
+          }
+          for (LocalDate d : days) {
+            lock("plan:" + cdcId + ":" + d);
+          }
+          RequestView r = findRequest(trfId).orElseThrow();
+          if (!"HELD".equals(r.state())) {
+            return; // 그사이 바뀜 — 아래에서 지금 상태를 돌려줌
+          }
+          for (LocalDate d : days) {
+            Optional<Map<String, Object>> o = slot(cdcId, d, route.routeId(), r.tempClass());
+            if (o.isPresent() && !"PLANNING".equals(o.get().get("state"))) {
+              continue;
+            }
+            if (o.isEmpty()) {
+              createOrder(cdcId, d, route, r.tempClass(), v, op.id());
+              o = slot(cdcId, d, route.routeId(), r.tempClass());
+            }
+            String orderId = (String) o.orElseThrow().get("order_id");
+            attach(trfId, d, orderId, r.shipDate(), reason);
+            bump(
+                orderId,
+                "CARRYOVER_IN",
+                op.id(),
+                trfId + " " + r.shipDate() + " → " + d + " · " + reason);
+            return;
+          }
+          throw RouteService.conflict(
+              "ORDER_CLOSED",
+              (toShipDate != null ? toShipDate + " 지시서" : days.size() + "일 안의 지시서")
+                  + " 가 모두 계획완료입니다 — 용차로 보내세요.");
+        });
+    return request(cdcId, trfId);
+  }
+
+  /** 용차 지시서(정본 7.3 3단계·7.6) — 보류 요청서만 싣는 추가 운행, 계획중으로 만든다. */
+  public OrderView createSpot(
+      String source,
+      String cdcId,
+      @Nullable LocalDate shipDateIn,
+      String vehicleId,
+      String driverId,
+      List<String> trfIds,
+      String reason) {
+    Operator op = Operator.forCenter(cdcId, source).requireSupervisor();
+    List<String> ids = trfIds.stream().distinct().sorted().toList();
+    List<RequestView> rs = new ArrayList<>();
+    for (String id : ids) {
+      rs.add(request(cdcId, id));
+    }
+    // 같은 요청서들이 이미 한 용차 지시서에 있으면 그것(같은 요청 다시)
+    String already = rs.get(0).orderId();
+    if (already != null
+        && rs.stream().allMatch(r -> already.equals(r.orderId()) && ON_ORDER.contains(r.state()))
+        && view(already).spot()) {
+      return view(already);
+    }
+    for (RequestView r : rs) {
+      if (!"HELD".equals(r.state()) || !SPOTTABLE.contains(r.reason()) || r.tempClass() == null) {
+        throw RouteService.conflict(
+            "NOT_CARRYABLE",
+            r.trfId() + " 는 용차로 보낼 수 없습니다(지금 " + r.state() + " " + r.reason() + ").");
+      }
+    }
+    String temp = rs.get(0).tempClass();
+    if (rs.stream().anyMatch(r -> !temp.equals(r.tempClass()))) {
+      throw RouteService.conflict("TEMP_MISMATCH", "용차 한 대에는 온도대 하나만 싣습니다(D-06).");
+    }
+    LocalDate shipDate = shipDateIn;
+    if (shipDate == null) {
+      if (rs.stream().map(RequestView::shipDate).distinct().count() > 1) {
+        throw badRequest("요청서 출고일이 서로 달라 shipDate 를 정해 주세요.");
+      }
+      shipDate = rs.get(0).shipDate();
+    }
+    // 정차 — MFC 마다 그 노선의 구간 분, 짧은 순 [가정]
+    Map<String, RouteView> routeOf = new LinkedHashMap<>();
+    Map<String, Integer> legOf = new LinkedHashMap<>();
+    for (RequestView r : rs) {
+      if (routeOf.containsKey(r.mfcId())) {
+        continue;
+      }
+      RouteView rv = routeFor(cdcId, r);
+      routeOf.put(r.mfcId(), rv);
+      legOf.put(
+          r.mfcId(),
+          rv.stops().stream()
+              .filter(x -> x.mfcId().equals(r.mfcId()))
+              .mapToInt(RouteService.StopView::legMinutes)
+              .findFirst()
+              .orElse(60));
+    }
+    if (legOf.size() > 3) {
+      throw RouteService.conflict("TOO_MANY_STOPS", "정차는 3곳까지입니다(정본 7.4).");
+    }
+    List<Schedule.Leg> legs =
+        legOf.entrySet().stream()
+            .sorted(Map.Entry.comparingByValue())
+            .map(e -> new Schedule.Leg(e.getKey(), e.getValue()))
+            .toList();
+    RouteView first = routeOf.get(legs.get(0).mfcId());
+    final LocalDate day = shipDate;
+    Instant dep =
+        routeOf.values().stream()
+            .map(x -> Schedule.departureAt(day, x.departureTime()))
+            .min(Instant::compareTo)
+            .orElseThrow();
+    int returnMinutes = first.returnMinutes();
+    Schedule.Plan p = Schedule.planFrom(day, dep, legs, returnMinutes);
+    if (!p.feasible()) {
+      throw RouteService.conflict("ROUTE_TIME_INFEASIBLE", "마지막 정차 도착이 07:30 을 넘습니다.");
+    }
+    Clients.VehicleInfo v = clients.vehicle(vehicleId);
+    if (!v.active() || !temp.equals(v.tempClass())) {
+      throw RouteService.conflict(
+          "VEHICLE_NOT_ELIGIBLE", "차량 " + vehicleId + " 은 사용 중인 " + temp + " 차량이 아닙니다.");
+    }
+    Clients.DriverInfo d = clients.driver(driverId);
+    if (!d.active()) {
+      throw RouteService.conflict("DRIVER_NOT_ELIGIBLE", "기사 " + driverId + " 은 사용 중지입니다.");
+    }
+    int rt = rs.stream().mapToInt(r -> r.rtCount() == null ? 0 : r.rtCount()).sum();
+    BigDecimal kg = rs.stream().map(RequestView::weightKg).reduce(BigDecimal.ZERO, BigDecimal::add);
+    if (rt > v.maxRt() || kg.compareTo(BigDecimal.valueOf(v.maxWeightKg())) > 0) {
+      throw RouteService.conflict(
+          "OVER_CAPACITY",
+          "적재 "
+              + rt
+              + " R/T·"
+              + kg
+              + "kg 이 차량 최대 "
+              + v.maxRt()
+              + " R/T·"
+              + v.maxWeightKg()
+              + "kg 을 넘습니다.");
+    }
+    String[] out = new String[1];
+    tx.executeWithoutResult(
+        s -> {
+          lock("plan:" + cdcId + ":" + day);
+          for (String id : ids) {
+            RequestView r = findRequest(id).orElseThrow();
+            if (!"HELD".equals(r.state())) {
+              throw PmartException.invalidState(id + " 가 그사이 바뀌었습니다(지금 " + r.state() + ").");
+            }
+          }
+          Integer n =
+              jdbc.queryForObject(
+                  "SELECT count(*) FROM transport_order WHERE ship_date = ?", Integer.class, day);
+          String orderId =
+              "TO-" + day.format(YMD) + "-" + String.format("%03d", (n == null ? 0 : n) + 1);
+          Instant now = clock.instant();
+          jdbc.update(
+              "INSERT INTO transport_order (order_id, cdc_id, ship_date, route_id, temp_class,"
+                  + " contract_type, vehicle_id, driver_id, plate_no, driver_name, max_rt, max_weight_kg,"
+                  + " return_minutes, planned_loading_start_at, planned_departure_at, planned_return_at,"
+                  + " state, version, created_at, updated_at, spot)"
+                  + " VALUES (?,?,?,?,?,'SPOT',?,?,?,?,?,?,?,?,?,?,'PLANNING',1,?,?,true)",
+              orderId,
+              cdcId,
+              day,
+              first.routeId(),
+              temp,
+              vehicleId,
+              driverId,
+              v.plateNo(),
+              d.displayName(),
+              v.maxRt(),
+              v.maxWeightKg(),
+              returnMinutes,
+              Timestamp.from(p.loadingStart()),
+              Timestamp.from(p.departure()),
+              Timestamp.from(p.returnAt()),
+              Timestamp.from(now),
+              Timestamp.from(now));
+          rewriteStops(orderId, p);
+          history(orderId, "SPOT_CREATED", op.id(), String.join(",", ids) + " · " + reason, 1);
+          for (RequestView r : rs) {
+            attach(r.trfId(), day, orderId, r.shipDate(), reason);
+          }
+          out[0] = orderId;
+        });
+    return view(out[0]);
+  }
+
+  /** 요청서를 지시서에 ACCEPTED 로 — 출고일이 바뀌면 원래 출고일을 남긴다. */
+  private void attach(String trfId, LocalDate day, String orderId, LocalDate from, String reason) {
+    jdbc.update(
+        "UPDATE transport_request SET state = 'ACCEPTED', reason = NULL, order_id = ?, ship_date = ?,"
+            + " carried_over_from = COALESCE(carried_over_from, ?), carryover_reason = ?, updated_at = ?"
+            + " WHERE trf_id = ?",
+        orderId,
+        day,
+        day.equals(from) ? null : from,
+        trim(reason),
+        Timestamp.from(clock.instant()),
+        trfId);
+  }
+
+  private RouteView routeFor(String cdcId, RequestView r) {
+    String routeId =
+        routes
+            .routeOfMfc(cdcId, r.mfcId())
+            .orElseThrow(
+                () -> RouteService.conflict("NO_ROUTE", r.mfcId() + " 은 노선에 없습니다(기준정보 먼저)."));
+    return routes.route(cdcId, routeId);
   }
 
   // ======================= 요청서 옮기기 =======================
@@ -1110,7 +1376,8 @@ public class PlanningService {
   private static final String REQ_SELECT =
       "SELECT trf_id, trf_number, trf_version, cdc_id, mfc_id, ship_date, due_at, temp_classes,"
           + " temp_class, allocation_state, approved_qty, accepted_qty, box_count, rt_count, weight_kg,"
-          + " state, reason, late_receipt, order_id, received_at, updated_at FROM transport_request";
+          + " state, reason, late_receipt, order_id, received_at, updated_at, carried_over_from,"
+          + " carryover_reason FROM transport_request";
 
   private static RequestView request(ResultSet rs) throws SQLException {
     String temps = rs.getString("temp_classes");
@@ -1136,7 +1403,11 @@ public class PlanningService {
         rs.getBoolean("late_receipt"),
         rs.getString("order_id"),
         rs.getTimestamp("received_at").toInstant(),
-        rs.getTimestamp("updated_at").toInstant());
+        rs.getTimestamp("updated_at").toInstant(),
+        rs.getDate("carried_over_from") == null
+            ? null
+            : rs.getDate("carried_over_from").toLocalDate(),
+        rs.getString("carryover_reason"));
   }
 
   static PmartException badRequest(String message) {
