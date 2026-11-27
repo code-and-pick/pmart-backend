@@ -9,6 +9,7 @@ import com.pmart.cdc.outbound.api.generated.model.ListCenterWaves200Response;
 import com.pmart.cdc.outbound.api.generated.model.ListTasks200Response;
 import com.pmart.cdc.outbound.api.generated.model.Task;
 import com.pmart.cdc.outbound.api.generated.model.TransferDetail;
+import com.pmart.cdc.outbound.api.generated.model.TransferIntake;
 import com.pmart.cdc.outbound.api.generated.model.TransferSummary;
 import com.pmart.cdc.outbound.api.generated.model.Wave;
 import com.pmart.cdc.outbound.infrastructure.DisplayNumberStore;
@@ -75,6 +76,10 @@ class Labels implements ResponseBodyAdvice<Object> {
         case TransferSummary s -> summaries(List.of(s));
         case ListCenterTransfers200Response l -> summaries(l.getItems());
         case TransferDetail d -> detail(d);
+        case TransferIntake i -> {
+          i.setTrfNumber(get(numbers.numbers(Kind.TRF, list(i.getTrfId())), i.getTrfId()));
+          i.setWaveNumber(get(numbers.numbers(Kind.WAVE, list(i.getWaveId())), i.getWaveId()));
+        }
         case DepartureValidation d -> departures(List.of(d));
         case ListCenterDepartures200Response l -> departures(l.getItems());
         case ListCenterShortages200Response l -> shortages(l);

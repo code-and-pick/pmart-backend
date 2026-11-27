@@ -78,6 +78,7 @@ public class DepartureService {
   private final TransactionTemplate tx;
   private final Support support;
   private final com.pmart.cdc.outbound.infrastructure.RestrictionClient restrictions;
+  private final com.pmart.cdc.outbound.infrastructure.DisplayNumberStore numbers;
 
   public DepartureService(
       OutboundStore store,
@@ -85,7 +86,9 @@ public class DepartureService {
       InventoryClient inventory,
       TransactionTemplate tx,
       Support support,
-      com.pmart.cdc.outbound.infrastructure.RestrictionClient restrictions) {
+      com.pmart.cdc.outbound.infrastructure.RestrictionClient restrictions,
+      com.pmart.cdc.outbound.infrastructure.DisplayNumberStore numbers) {
+    this.numbers = numbers;
     this.restrictions = restrictions;
     this.store = store;
     this.lpns = lpns;
@@ -568,6 +571,28 @@ public class DepartureService {
     p.put("tripId", cmd.tripId());
     p.put("fromCdc", t.cdcId());
     p.put("toMfc", t.mfcId());
+    // 0.33.0 R-52 — 화면 번호(보조값, mfc-inbound #548 이 읽음)
+    try {
+      p.put(
+          "trfNumber",
+          numbers
+              .numbers(
+                  com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.Kind.TRF,
+                  List.of(t.trfId()))
+              .get(t.trfId()));
+      if (t.waveId() != null) {
+        p.put("waveId", t.waveId());
+        p.put(
+            "waveNumber",
+            numbers
+                .numbers(
+                    com.pmart.cdc.outbound.infrastructure.DisplayNumberStore.Kind.WAVE,
+                    List.of(t.waveId()))
+                .get(t.waveId()));
+      }
+    } catch (RuntimeException e) {
+      log.warn("매니페스트 화면 번호 실패(번호 없이 발행) {}: {}", t.trfId(), e.toString());
+    }
     // CO-2(2026-11-26): 줄의 lpn 은 BOX(수량을 가진 단위) — 박스 바코드 원문 = LPN 값 그대로. 담긴 RT·PLT 는 parentLpn, 그릇
     // 목록은 containers
     List<LpnRow> departed = lpns.departedOfTrf(t.trfId(), cmd.departureId());

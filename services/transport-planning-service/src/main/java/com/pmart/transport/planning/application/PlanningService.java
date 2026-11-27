@@ -1193,6 +1193,15 @@ public class PlanningService {
       x.put("plannedDepartureAt", s.plannedDepartureAt().toString());
       x.put("legMinutes", s.legMinutes());
       x.put("trfIds", s.trfIds());
+      // execution 0.6.0 — TRF 화면 번호 사본(trfIds 순, 모르면 빈 문자열)
+      Map<String, String> nums = new java.util.HashMap<>();
+      jdbc.query(
+          "SELECT trf_id, trf_number FROM transport_request WHERE trf_id = ANY (?) AND trf_number IS NOT NULL",
+          rs -> {
+            nums.put(rs.getString(1), rs.getString(2));
+          },
+          (Object) s.trfIds().toArray(String[]::new));
+      x.put("trfNumbers", s.trfIds().stream().map(id -> nums.getOrDefault(id, "")).toList());
       stops.add(x);
     }
     m.put("stops", stops);

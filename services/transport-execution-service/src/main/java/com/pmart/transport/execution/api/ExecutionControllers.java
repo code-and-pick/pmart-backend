@@ -299,7 +299,8 @@ final class ExecutionControllers {
                                   ? null
                                   : s.getPlannedDepartureAt().toInstant(),
                               s.getLegMinutes(),
-                              Dto.list(s.getTrfIds())))
+                              Dto.list(s.getTrfIds()),
+                              s.getTrfNumbers()))
                   .toList(),
               b.getDockCode(),
               b.getDockReservationId());

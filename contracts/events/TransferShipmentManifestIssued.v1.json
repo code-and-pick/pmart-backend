@@ -83,6 +83,18 @@
               "type": "string",
               "description": "(2026-11-26 CO-1) 송장 라벨 스캔 값 TRF:{trfId}:{trfVersion}"
             },
+            "trfNumber": {
+              "type": ["string", "null"],
+              "description": "(2026-11-27 R-52, cdc-outbound 0.33.0) TRF 화면 번호 T+6"
+            },
+            "waveId": {
+              "type": "string",
+              "description": "(2026-11-27 R-52) 이 TRF 를 담은 Wave"
+            },
+            "waveNumber": {
+              "type": ["string", "null"],
+              "description": "(2026-11-27 R-52) Wave 화면 번호 W+4"
+            },
             "trfVersion": {
               "type": "integer"
             }

@@ -67,7 +67,8 @@ public class TripService {
       Instant plannedArrivalAt,
       @Nullable Instant plannedDepartureAt,
       int legMinutes,
-      List<String> trfIds) {}
+      List<String> trfIds,
+      @Nullable List<String> trfNumbers) {}
 
   public record TripInput(
       String tripId,
@@ -288,12 +289,17 @@ public class TripService {
                 st.legMinutes(),
                 ts(st.plannedArrivalAt()),
                 st.plannedDepartureAt() == null ? null : ts(st.plannedDepartureAt()));
-            for (String trf : st.trfIds()) {
+            for (int k = 0; k < st.trfIds().size(); k++) {
+              String num =
+                  st.trfNumbers() != null && k < st.trfNumbers().size()
+                      ? st.trfNumbers().get(k)
+                      : null;
               jdbc.update(
-                  "INSERT INTO trip_transfer (trip_id, trf_id, stop_seq) VALUES (?,?,?)",
+                  "INSERT INTO trip_transfer (trip_id, trf_id, stop_seq, trf_number) VALUES (?,?,?,?)",
                   in.tripId(),
-                  trf,
-                  st.seq());
+                  st.trfIds().get(k),
+                  st.seq(),
+                  num == null || num.isBlank() ? null : num);
             }
           }
           event(
@@ -1030,6 +1036,10 @@ public class TripService {
       JsonNode res = clients.validateDeparture(depId, body);
       next = "ACKNOWLEDGED";
       result = res.path("overallResult").asString("ACKNOWLEDGED");
+      String depNo = res.path("departureNumber").asString(null);
+      if (depNo != null && !depNo.isBlank()) {
+        jdbc.update("UPDATE trip SET departure_number = ? WHERE trip_id = ?", depNo, tripId);
+      }
     } catch (PmartException e) {
       next = Clients.unknown(e) ? "UNKNOWN_RESULT" : "FAILED";
       result = trim(e.code() + ": " + e.getMessage());

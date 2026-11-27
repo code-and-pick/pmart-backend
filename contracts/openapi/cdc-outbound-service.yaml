@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-outbound-service
-  version: 0.32.0
+  version: 0.33.0
   description: |
+    0.33.0(2026-11-27, MFC 시뮬레이터 R-52 — mfc-inbound #548 이 읽음): `GET /internal/transfer-intakes/{trfId}` 에 `trfNumber`·`waveNumber`(waveId 는 원래 있음),
+      `TransferShipmentManifestIssued` payload 에 `trfNumber`·`waveId`·`waveNumber`. 화면 번호는 보조값(붙이다 실패하면 비움).
     0.32.0(2026-11-27, 시뮬레이터 R-28): `GET /internal/transport-feed` 줄에 `deadlineMeaning`(인수 때 받은 ARRIVAL·HANDOVER·READY) — transport-planning 이 READY 면 출고일을 따로 정한다.
     0.31.0(2026-11-27, DC 백오피스 화면 번호 DN-1·DN-2): 결품 목록 `GET /cdcs/{cdcId}/shortages` 줄에 `trfNumber`·`waveNumber`·`taskNumber`·`newTaskNumbers`(newTaskIds 순),
       LPN 목록 `GET /cdcs/{cdcId}/lpns` 줄에 `trfNumber`·`waveNumber`·`departureNumber`(출발했으면). 모두 화면 보조값 — 붙이다 실패하면 null.
@@ -2111,6 +2113,8 @@ components:
             version: { $ref: '_common.yaml#/components/schemas/Version' }
             allocationId: { type: string }
             waveId: { type: string }
+            trfNumber: { type: [string, 'null'], description: '(0.33.0) TRF 화면 번호' }
+            waveNumber: { type: [string, 'null'], description: '(0.33.0) Wave 화면 번호' }
             tripId: { type: string }
             departureId: { type: string }
             shipmentManifestId: { type: string }

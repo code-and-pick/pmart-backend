@@ -19,3 +19,8 @@
 - LAN cdc-outbound 에서 직접 확인(2026-11-27 09시대, 읽기만): `departureNumber` **S420933**, `transfers[0].trfNumber` **T697148**(TRF-SIM-MWXA84EQ).
 - 시험: `OutboundFlowIT` 에 SIMULATED 출발 목록의 `departureNumber`·`transfers[].trfNumber`, LPN 목록 번호 확인을 넣었고 통과합니다.
 - 그러니 화면이 번호 없는 값을 받았다면 **cdc-outbound 의 `/cdcs/{cdcId}/departures` 가 아닌 다른 응답**일 가능성이 큽니다. 운행(transport-execution trips 의 `departureId`·`transfers[].trfId`)이 그런 모양입니다 — DN-3 로 넣습니다. 그 화면이 어느 주소를 부르는지 알려 주시면 맞춰 보겠습니다.
+
+## 덧붙임 — DN-3 (2026-11-27, PR `cdc/trip-numbers`)
+- transport-execution 0.6.0: Trip(`/cdcs/{cdcId}/trips`·`/trips/{id}`·`/mfcs/{mfcId}/inbound-trips`)에 `departureNumber`, `stops[].trfNumbers`(trfIds 순), `transfers[].trfNumber`.
+- 번호는 사본 — TRF 번호는 계획완료 때 planning 이 넘기고, 출발 번호는 출발 검증 응답에서 받는다. **배포 전에 만든 운행은 비어 있음**(빈 문자열·null) — 앱은 지금처럼 ID 로.
+- DN-5(리콜 상세)는 남음.

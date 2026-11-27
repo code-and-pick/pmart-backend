@@ -217,3 +217,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 - 2026-11-27: DC 백오피스 MF-1 — cdc-inventory 0.22.0 `GET /cdcs/{cdcId}/transits`(출발 × TRF 수령 반영·미정산·입고 종결). PR `cdc/transit-view`, 게이트웨이 라우트 PC1. CS-1 은 이미 0.12.0 에 있었음(DC 화면에 알림).
 - 2026-11-27: 시뮬레이터 R-28 — READY 출고일(transport-planning 0.5.0·cdc-outbound 0.32.0 feed deadlineMeaning). PR `cdc/ready-ship-date`(#544 위). DN-3 은 PC1 R-29(transport-execution) 배포 뒤.
 - 2026-11-27: 시뮬레이터 R-30(사용자 "이월 + 용차") — transport-planning 0.6.0 이월·용차 지시서. PR `cdc/carryover-spot`(#547 위). 이어서 DN-3·R-52(transport-execution 0.6.0·cdc-outbound 0.33.0 — 사용자 "cdc 세션이 둘 다").
+- 2026-11-27: DN-3·R-52(사용자 "cdc 세션이 둘 다") — transport-execution 0.6.0(운행 화면 번호 사본)·cdc-outbound 0.33.0(인수 조회·매니페스트 번호·Wave). PR `cdc/trip-numbers`(#549 위). DN-5(리콜 상세 번호)만 남음.

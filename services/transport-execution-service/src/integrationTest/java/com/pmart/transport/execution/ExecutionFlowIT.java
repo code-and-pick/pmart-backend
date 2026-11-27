@@ -162,7 +162,9 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 "legMinutes",
                 120,
                 "trfIds",
-                List.of("TRF-A", "TRF-B")),
+                List.of("TRF-A", "TRF-B"),
+                "trfNumbers",
+                List.of("T000001", "T000002")),
             Map.of(
                 "seq",
                 2,
@@ -190,6 +192,15 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     assertThat(c.status()).as(c.body().toString()).isEqualTo(200);
     assertThat(c.body().path("state").asString()).isEqualTo("SCHEDULED");
     assertThat(c.body().path("dockCode").asString()).isEqualTo("CDC01-A-6-90-01-0-1"); // 0.3.0 DK-2
+    // 0.6.0 DN-3·R-52 — TRF 화면 번호 사본(planning 이 준 값, 안 준 정차는 빈 문자열)
+    assertThat(c.body().path("stops").get(0).path("trfNumbers").toString())
+        .isEqualTo("[\"T000001\",\"T000002\"]");
+    assertThat(c.body().path("stops").get(1).path("trfNumbers").toString()).isEqualTo("[\"\"]");
+    for (JsonNode x : c.body().path("transfers")) {
+      if ("TRF-A".equals(x.path("trfId").asString())) {
+        assertThat(x.path("trfNumber").asString()).isEqualTo("T000001");
+      }
+    }
     assertThat(call(SERVICE, "/internal/trips", trip(id, 3, ship, dep)).status()).isEqualTo(200);
     Map<String, Object> other = trip(id, 2, ship, dep);
     other.put("vehicleId", "VH-OTHER");
@@ -231,13 +242,14 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
     // 3) 출차 → cdc-outbound 출발 검증(실은 TRF 만)·planning 알림
     outbound.stubFor(
         WireMock.post(urlPathEqualTo("/api/v1/internal/departure-validations"))
-            .willReturn(okJson("{\"overallResult\":\"MATCHED\"}")));
+            .willReturn(okJson("{\"overallResult\":\"MATCHED\",\"departureNumber\":\"S123456\"}")));
     Res d = call(DC, t + "/departures", Map.of("temperatureC", 18.5));
     assertThat(d.body().path("state").asString()).as(d.body().toString()).isEqualTo("DEPARTED");
     String depId = d.body().path("departureId").asString();
     assertThat(depId).startsWith("DEP-");
     assertThat(d.body().path("outboundLinkage").asString()).isEqualTo("ACKNOWLEDGED");
     assertThat(d.body().path("outboundResult").asString()).isEqualTo("MATCHED");
+    assertThat(d.body().path("departureNumber").asString()).isEqualTo("S123456"); // 0.6.0
     var sent =
         outbound.findAll(
             postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-validations")));
@@ -385,6 +397,11 @@ class ExecutionFlowIT extends PostgresKafkaContainerSupport {
                 .path("items")
                 .findValuesAsString("tripId"))
         .contains(id);
+    for (JsonNode x : read(BNG, "/mfcs/MFC-BNG-01/inbound-trips").body().path("items")) {
+      if (id.equals(x.path("tripId").asString())) {
+        assertThat(x.path("departureNumber").asString()).isEqualTo("S123456");
+      }
+    }
   }
 
   @Test

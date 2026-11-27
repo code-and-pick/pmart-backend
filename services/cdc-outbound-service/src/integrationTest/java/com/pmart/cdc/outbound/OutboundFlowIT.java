@@ -473,6 +473,8 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(get(OPS, "/waves/" + waveId).body().path("state").asString()).isEqualTo("WORK_DONE");
     JsonNode done = get(SERVICE, "/internal/transfer-intakes/" + trf1).body();
     assertThat(done.path("state").asString()).isEqualTo("PICKED");
+    assertThat(done.path("trfNumber").asString()).startsWith("T"); // 0.33.0 R-52
+    assertThat(done.path("waveNumber").asString()).startsWith("W");
     int picked = 0;
     for (JsonNode p : done.path("progress")) {
       picked += p.path("pickedQty").asInt();
@@ -848,6 +850,10 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(manEv.path("containers").get(0).path("lpn").asString()).isEqualTo(rt);
     assertThat(manEv.path("containers").get(0).path("unitType").asString()).isEqualTo("RT");
     assertThat(manEv.path("labelValue").asString()).startsWith("TRF:" + trf1 + ":");
+    // 0.33.0 R-52 — 매니페스트에 화면 번호·Wave
+    assertThat(manEv.path("trfNumber").asString()).startsWith("T");
+    assertThat(manEv.path("waveId").asString()).isNotBlank();
+    assertThat(manEv.path("waveNumber").asString()).startsWith("W");
 
     assertThat(residual(dep, trf1)).isEqualTo("PENDING");
     assertThat(t1v.path("residualStatus").asString()).isEqualTo("PENDING");

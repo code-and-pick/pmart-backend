@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: transport-execution-service
-  version: 0.5.0
+  version: 0.6.0
   description: |
+    0.6.0(2026-11-27, DC 백오피스 DN-3·MFC 시뮬레이터 R-52): 화면 번호 사본 — Trip `departureNumber`(cdc-outbound 출발 검증 응답 S+6), `stops[].trfNumbers`(trfIds 순)·`transfers[].trfNumber`(T+6).
+      TRF 번호는 planning 이 운행을 만들 때 TripInput `stops[].trfNumbers` 로 준다(없으면 빈 문자열·null — 옛 운행). `/mfcs/{mfcId}/inbound-trips` 도 같은 Trip.
     0.5.0(2026-11-27, DC 시뮬레이터 R-29 — 사용자 "mfc 에서 하차완료해야 자동으로 운행종료지"): MFC 인계(`…/stops/{seq}/handovers`)가 기록되면 그 정차를 인계 시각으로
       **자동 출발**(DEPARTED), 모든 정차가 출발하면 운행을 **자동 COMPLETED**(endedAt = 마지막 정차 출발 시각). fleet 차량 점유는 노선 복귀 시간(returnMinutes) 뒤에 푼다
       (사용자 결정 "자동 종료 + 복귀 시간 더함") — 그 전에 DC 복귀(`…/physical-ends`)를 등록하면 그때 푼다. 정차 출발 `…/departures` 는 그대로 받는다(이미 출발이면 그대로).
@@ -491,6 +493,7 @@ components:
               plannedDepartureAt: { type: string, format: date-time }
               legMinutes: { type: integer }
               trfIds: { type: array, items: { type: string } }
+              trfNumbers: { type: array, items: { type: string }, description: '(0.6.0) trfIds 와 같은 순서의 TRF 화면 번호 사본(모르면 빈 문자열)' }
     Trip:
       type: object
       required: [tripId, cdcId, shipDate, routeId, tempClass, state, stops, version]
@@ -515,6 +518,7 @@ components:
         departedAt: { type: [string, 'null'], format: date-time }
         endedAt: { type: [string, 'null'], format: date-time }
         departureId: { type: [string, 'null'] }
+        departureNumber: { type: [string, 'null'], description: '(0.6.0) 출발 검증 화면 번호(cdc-outbound 응답 사본)' }
         outboundLinkage: { type: [string, 'null'], enum: [PENDING, ACKNOWLEDGED, FAILED, UNKNOWN_RESULT, null], description: cdc-outbound 출발 검증 전달 상태 }
         outboundResult: { type: [string, 'null'], description: cdc-outbound 출발 검증 결과(MATCHED·PARTIALLY_MATCHED·MISMATCHED) 또는 거절 사유 }
         trfCount: { type: integer }
@@ -529,6 +533,7 @@ components:
               mfcId: { type: string }
               state: { $ref: '#/components/schemas/StopState' }
               trfIds: { type: array, items: { type: string } }
+              trfNumbers: { type: array, items: { type: string }, description: '(0.6.0) trfIds 순 화면 번호(모르면 빈 문자열)' }
               plannedArrivalAt: { type: string, format: date-time }
               estimatedArrivalAt: { type: [string, 'null'], format: date-time, description: 최신 예상(계획을 덮지 않음) }
               arrivedAt: { type: [string, 'null'], format: date-time }
@@ -555,6 +560,7 @@ components:
             type: object
             properties:
               trfId: { type: string }
+              trfNumber: { type: [string, 'null'], description: '(0.6.0) 화면 번호 사본' }
               stopSeq: { type: integer }
               loaded: { type: boolean }
               lpns: { type: array, items: { type: string } }
