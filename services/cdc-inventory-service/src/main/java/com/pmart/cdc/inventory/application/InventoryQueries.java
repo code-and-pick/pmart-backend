@@ -68,6 +68,12 @@ public class InventoryQueries {
 
   public record TransitPage(List<TransitView> items, @Nullable String nextCursor) {}
 
+  /** 운영자 운송 중 재고 한 줄(0.22.0 MF-1). */
+  public record CenterTransitView(TransitView view, LedgerStore.@Nullable ClosureRow closure) {}
+
+  public record CenterTransitPage(
+      List<CenterTransitView> items, int page, int size, boolean hasNext) {}
+
   /** 재고 이동 이력 한 쪽(0.20.0). */
   public record MovementPage(
       Instant from, Instant to, List<CommitView> items, int page, int size, boolean hasNext) {}
@@ -218,6 +224,44 @@ public class InventoryQueries {
               rc.isEmpty() ? null : rc.get(rc.size() - 1).appliedAt()));
     }
     return new TransitPage(items, more ? items.get(items.size() - 1).transit().trfId() : null);
+  }
+
+  /** 운영자 운송 중 재고(0.22.0 — DC 백오피스 MF-1): 자기 센터, 출발 서울 날짜·MFC·상태·TRF, 출발 최신 순. */
+  @Transactional(readOnly = true)
+  public CenterTransitPage centerTransits(
+      String cdcId,
+      @Nullable LocalDate date,
+      @Nullable String mfcId,
+      @Nullable String state,
+      @Nullable String trfId,
+      int page,
+      int size) {
+    Operator.requireCenter(cdcId);
+    Instant from =
+        date == null ? null : date.atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+    Instant to =
+        date == null
+            ? null
+            : date.plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Seoul")).toInstant();
+    List<TransitRow> rows =
+        ledgerStore.centerTransits(cdcId, from, to, mfcId, state, trfId, page * size, size + 1);
+    boolean more = rows.size() > size;
+    List<TransitRow> pageRows = more ? rows.subList(0, size) : rows;
+    var closures = ledgerStore.closures(pageRows.stream().map(TransitRow::trfId).toList());
+    List<CenterTransitView> items = new ArrayList<>();
+    for (TransitRow t : pageRows) {
+      var rc = ledgerStore.appliedReceipts(t.trfId());
+      items.add(
+          new CenterTransitView(
+              new TransitView(
+                  t,
+                  ledgerStore.transitLines(t.trfId()),
+                  rc.stream().map(LedgerStore.ReceiptAt::receiptId).toList(),
+                  rc.isEmpty() ? null : rc.get(0).appliedAt(),
+                  rc.isEmpty() ? null : rc.get(rc.size() - 1).appliedAt()),
+              closures.get(t.trfId())));
+    }
+    return new CenterTransitPage(items, page, size, more);
   }
 
   /**

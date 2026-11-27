@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: cdc-inventory-service
-  version: 0.21.0
+  version: 0.22.0
   description: |
+    0.22.0(2026-11-27, DC 백오피스 MF-1 — 사용자 "재고 이관할 때 mfc랑 재고 연동되는 거 실시간으로 잘 보이게"): 운영자 `GET /cdcs/{cdcId}/transits?date=&mfcId=&state=&trfId=&page=&size=`
+      — 이 센터 출발(TOUT)마다 운송 중 재고(Transit: 줄별 q·r·정상·격리·미판정·l·t, 수령 ID·처음/마지막 수령 시각)와 합계·MFC 입고 종결(closure). 출발 최신 순. 읽기만.
     0.21.0(2026-11-26, DC 백오피스 KP-1 운영 지표 — cdc-outbound 가 읽음): Transit 에 MFC 수령 반영 시각 firstReceiptAt·lastReceiptAt(APPLIED 수령의 처음·마지막),
       receiptIds 를 실제 수령 ID 로 채움(전에는 늘 빈 목록). 읽기만.
     0.20.0(2026-11-26, DC 백오피스 LG-1 재고 이동 이력 — PC 5 요청 pmart-clients docs/handoff/cdc-backoffice/2026-11-26-backend-missing-screens.md, 사용자 "응"):
@@ -1070,6 +1072,39 @@ paths:
                         expiresAt: { type: [string, 'null'], format: date }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  /cdcs/{cdcId}/transits:
+    get:
+      tags: [reconciliation]
+      summary: '[운영자] 운송 중 재고 — 출발 × TRF 별 MFC 수령 반영 (0.22.0 — DC 백오피스 MF-1)'
+      description: |
+        한 줄 = 출발한 TRF 하나(TRF 는 한 번만 출발). transit = 내부 `/internal/transits` 와 같은 모양, totals = 줄 합(q = r + l + t), closure = MFC 입고 종결(MI-5, 없으면 null).
+        date = 출발한 서울 날짜(생략 = 모든 날). 출발 시각 최신 순(같으면 trfId). 쪽 나눔 page 0부터·size ≤ 200·hasNext.
+        화면 번호(trfNumber·departureNumber)는 cdc-outbound 가 정본 — 같은 departureId 로 `GET /cdcs/{cdcId}/departures` 에서. 자기 센터 운영자만.
+      operationId: listCenterTransits
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: cdcId, in: path, required: true, schema: { $ref: '_common.yaml#/components/schemas/CenterId' } }
+        - { name: date, in: query, required: false, schema: { type: string, format: date } }
+        - { name: mfcId, in: query, required: false, schema: { type: string, maxLength: 32 } }
+        - { name: state, in: query, required: false, schema: { $ref: '#/components/schemas/TransitState' } }
+        - { name: trfId, in: query, required: false, schema: { type: string, maxLength: 64 } }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, size, hasNext]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CenterTransit' } }
+                  page: { type: integer }
+                  size: { type: integer }
+                  hasNext: { type: boolean }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
   /cdcs/{cdcId}/stock-movements:
     get:
       tags: [commits]
@@ -1685,6 +1720,30 @@ components:
               pendingQty: { type: integer, description: (0.16.1) 품질 미판정으로 받은 수량 }
               l: { type: integer, description: 승인 손실 }
               t: { type: integer, description: 미정산 }
+    CenterTransit:
+      type: object
+      description: (0.22.0) 운영자 운송 중 재고 한 줄
+      required: [transit, totals]
+      properties:
+        transit: { $ref: '#/components/schemas/Transit' }
+        departureSource: { type: string, enum: [REAL, SIMULATED] }
+        totals:
+          type: object
+          properties:
+            departedQty: { type: integer, description: 줄 q 합 }
+            receivedQty: { type: integer, description: 줄 r 합(정상 + 격리 + 미판정) }
+            receivedNormalQty: { type: integer }
+            quarantinedQty: { type: integer }
+            pendingQty: { type: integer }
+            lossQty: { type: integer }
+            unreconciledQty: { type: integer, description: 줄 t 합 — 0 보다 크면 미정산 }
+        closure:
+          type: [object, 'null']
+          description: MFC 입고 종결(MI-5 — "더 받을 것 없음"). 없으면 null
+          properties:
+            closedAt: { type: string, format: date-time }
+            sourceRef: { type: [string, 'null'] }
+            sourceSystem: { type: string }
     PostingKind:
       type: string
       description: |

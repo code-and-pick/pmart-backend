@@ -6,6 +6,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -303,6 +304,60 @@ public class LedgerStore {
     sql.append(" ORDER BY trf_id LIMIT ?");
     args.add(limit);
     return jdbc.query(sql.toString(), (rs, i) -> transit(rs), args.toArray());
+  }
+
+  /** 운영자 운송 중 재고(0.22.0 MF-1) — 센터·출발 구간·MFC·상태·TRF, 출발 최신 순. */
+  public List<TransitRow> centerTransits(
+      String cdcId,
+      @Nullable Instant from,
+      @Nullable Instant to,
+      @Nullable String mfcId,
+      @Nullable String state,
+      @Nullable String trfId,
+      int offset,
+      int limit) {
+    StringBuilder sql = new StringBuilder(TRANSIT_SELECT + " WHERE cdc_id = ?");
+    List<Object> args = new ArrayList<>(List.of(cdcId));
+    if (from != null && to != null) {
+      sql.append(" AND departed_at >= ? AND departed_at < ?");
+      args.add(Timestamp.from(from));
+      args.add(Timestamp.from(to));
+    }
+    if (mfcId != null) {
+      sql.append(" AND to_mfc_id = ?");
+      args.add(mfcId);
+    }
+    if (state != null) {
+      sql.append(" AND state = ?");
+      args.add(state);
+    }
+    if (trfId != null) {
+      sql.append(" AND trf_id = ?");
+      args.add(trfId);
+    }
+    sql.append(" ORDER BY departed_at DESC, trf_id LIMIT ? OFFSET ?");
+    args.add(limit);
+    args.add(offset);
+    return jdbc.query(sql.toString(), (rs, i) -> transit(rs), args.toArray());
+  }
+
+  /** MFC 입고 종결(MI-5) 한 줄. */
+  public record ClosureRow(Instant closedAt, @Nullable String sourceRef, String sourceSystem) {}
+
+  public Map<String, ClosureRow> closures(List<String> trfIds) {
+    Map<String, ClosureRow> out = new java.util.HashMap<>();
+    if (trfIds.isEmpty()) {
+      return out;
+    }
+    jdbc.query(
+        "SELECT trf_id, closed_at, source_ref, source_system FROM transit_closure WHERE trf_id = ANY (?)",
+        rs -> {
+          out.put(
+              rs.getString(1),
+              new ClosureRow(rs.getTimestamp(2).toInstant(), rs.getString(3), rs.getString(4)));
+        },
+        (Object) trfIds.toArray(String[]::new));
+    return out;
   }
 
   private static final String TRANSIT_SELECT =

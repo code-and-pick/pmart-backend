@@ -170,6 +170,78 @@ public class ReconciliationController implements ReconciliationApi {
     return ResponseEntity.ok(out);
   }
 
+  @Override
+  public ResponseEntity<com.pmart.cdc.inventory.api.generated.model.ListCenterTransits200Response>
+      listCenterTransits(
+          String cdcId,
+          java.time.@Nullable LocalDate date,
+          @Nullable String mfcId,
+          @Nullable TransitState state,
+          @Nullable String trfId,
+          Integer page,
+          Integer size) {
+    var p =
+        queries.centerTransits(
+            cdcId,
+            date,
+            blank(mfcId),
+            state == null ? null : state.getValue(),
+            blank(trfId),
+            page == null ? 0 : page,
+            size == null ? 50 : size);
+    var out = new com.pmart.cdc.inventory.api.generated.model.ListCenterTransits200Response();
+    out.setItems(
+        new java.util.ArrayList<>(
+            p.items().stream().map(ReconciliationController::center).toList()));
+    out.setPage(p.page());
+    out.setSize(p.size());
+    out.setHasNext(p.hasNext());
+    return ResponseEntity.ok(out);
+  }
+
+  static com.pmart.cdc.inventory.api.generated.model.CenterTransit center(
+      InventoryQueries.CenterTransitView c) {
+    Transit t = dto(c.view());
+    int q = 0, r = 0, n = 0, qu = 0, pe = 0, l = 0, u = 0;
+    for (TransitLinesInner x : t.getLines()) {
+      q += x.getQ();
+      r += x.getR();
+      n += x.getNormalQty();
+      qu += x.getQuarantinedQty();
+      pe += x.getPendingQty();
+      l += x.getL();
+      u += x.getT();
+    }
+    var out =
+        new com.pmart.cdc.inventory.api.generated.model.CenterTransit()
+            .transit(t)
+            .departureSource(
+                com.pmart.cdc.inventory.api.generated.model.CenterTransit.DepartureSourceEnum
+                    .fromValue(c.view().transit().departureSource()))
+            .totals(
+                new com.pmart.cdc.inventory.api.generated.model.CenterTransitTotals()
+                    .departedQty(q)
+                    .receivedQty(r)
+                    .receivedNormalQty(n)
+                    .quarantinedQty(qu)
+                    .pendingQty(pe)
+                    .lossQty(l)
+                    .unreconciledQty(u));
+    var cl = c.closure();
+    if (cl != null) {
+      out.setClosure(
+          new com.pmart.cdc.inventory.api.generated.model.CenterTransitClosure()
+              .closedAt(Dto.time(cl.closedAt()))
+              .sourceRef(cl.sourceRef())
+              .sourceSystem(cl.sourceSystem()));
+    }
+    return out;
+  }
+
+  private static @Nullable String blank(@Nullable String v) {
+    return v == null || v.isBlank() ? null : v;
+  }
+
   static Transit dto(TransitView v) {
     var t = v.transit();
     var out = new Transit();

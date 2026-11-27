@@ -1341,6 +1341,29 @@ class StockLedgerFlowIT extends PostgresKafkaContainerSupport {
     assertThat(ok.body().path("lossQty").asInt()).isEqualTo(4);
     assertThat(ok.body().path("unreconciledQty").asInt()).isZero();
     assertThat(ok.body().path("transitState").asString()).isEqualTo("TRANSIT_RECONCILED");
+    // 0.22.0 MF-1 운영자 운송 중 재고 — 합계·종결
+    JsonNode ct =
+        get(OPERATOR, "/cdcs/" + CENTER + "/transits?trfId=" + trf).body().path("items").get(0);
+    assertThat(ct.path("transit").path("departureId").asString()).isEqualTo(depId);
+    assertThat(ct.path("totals").path("lossQty").asInt()).isEqualTo(4);
+    assertThat(ct.path("totals").path("unreconciledQty").asInt()).isZero();
+    assertThat(ct.path("totals").path("departedQty").asInt())
+        .isEqualTo(
+            ct.path("totals").path("receivedQty").asInt()
+                + ct.path("totals").path("lossQty").asInt());
+    assertThat(ct.path("closure").path("closedAt").isMissingNode()).isFalse();
+    assertThat(
+            get(OPERATOR, "/cdcs/" + CENTER + "/transits?date=2000-01-01")
+                .body()
+                .path("items")
+                .size())
+        .isZero();
+    assertThat(
+            get(
+                    TestJwt.operator("x", List.of("CDC_SUPERVISOR"), List.of("CDC99")),
+                    "/cdcs/" + CENTER + "/transits")
+                .status())
+        .isEqualTo(403);
     Res again = post(OPERATOR, base, k, loss);
     assertThat(again.body().path("commitId").asString())
         .isEqualTo(ok.body().path("commitId").asString());

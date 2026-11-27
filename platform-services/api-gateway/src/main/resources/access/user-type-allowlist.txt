@@ -114,6 +114,7 @@ GET /api/v1/cdcs/{cdcId}/transfers OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId}/pre-departure-cancellations/{requestId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/transfers/{trfId}/readiness OPERATOR
+GET /api/v1/cdcs/{cdcId}/transits OPERATOR
 GET /api/v1/cdcs/{cdcId}/transport-orders OPERATOR
 GET /api/v1/cdcs/{cdcId}/transport-orders/{orderId} OPERATOR
 GET /api/v1/cdcs/{cdcId}/transport-requests OPERATOR
