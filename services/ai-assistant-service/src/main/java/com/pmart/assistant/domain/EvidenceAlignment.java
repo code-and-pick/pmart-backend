@@ -25,7 +25,11 @@ public final class EvidenceAlignment {
   private static final Pattern SENTENCE_END = Pattern.compile("(?<=[.!?。])\\s+");
   private static final Pattern LIST_MARK = Pattern.compile("^(?:\\d+\\.|[-*•])\\s+");
   private static final Pattern TABLE_RULE = Pattern.compile(":?-{2,}:?");
-  private static final Pattern CLAUSE_SPLIT = Pattern.compile("(?<!\\d),\\s+|,\\s+(?=\\D)|;\\s*");
+
+  /** 답 구절 나누기 — 근거 조각({@link #SEGMENT_SPLIT})과 같은 연결어미에서도 나눠 양쪽 단위를 맞춘다(2026-11-27). */
+  private static final Pattern CLAUSE_SPLIT =
+      Pattern.compile("(?<!\\d),\\s+|,\\s+(?=\\D)|;\\s*|(?<=[가-힣](?:며|지만|으나|는데))\\s+");
+
   private static final Pattern NUMBER =
       Pattern.compile("(?<![\\d.,])(\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*(만|천)?(?![\\d])");
   private static final Pattern WORD = Pattern.compile("[가-힣A-Za-z0-9]+");
@@ -53,7 +57,13 @@ public final class EvidenceAlignment {
   private static final Pattern VERDICT =
       Pattern.compile("^(?:가능|불가|불가능|허용|금지|예|아니요|아니오|O|X|있음|없음|필요|불필요)$");
 
-  private static final Pattern SEGMENT_SPLIT = Pattern.compile("(?<=[.!?。])\\s+|,\\s+(?=\\D)");
+  /**
+   * 근거 조각 나누기: 문장 끝, ", "(숫자 안 쉼표 제외), 그리고 연결어미(-며·-지만·-으나·-는데) 뒤. 연결어미로 이은 한 문장 안의 부정("…판단하며 배달팁과
+   * 봉투값은 넣지 않습니다")이 앞 구절과 짝지은 조각에 같이 들어가 옳은 답을 부정 뒤집기로 거절하던 것을 막는다(2026-11-27 C2 측정 — 잘못 거절 4건이 모두
+   * 부정 검사). "-고" 는 "재고" 같은 낱말 끝과 겹쳐 나누지 않는다.
+   */
+  private static final Pattern SEGMENT_SPLIT =
+      Pattern.compile("(?<=[.!?。])\\s+|,\\s+(?=\\D)|(?<=[가-힣](?:며|지만|으나|는데))\\s+");
 
   /**
    * 근거 단위. 표 행이면 머리글과 칸 값을 함께 둔다(칸별 긍정·부정을 보려고), 아니면 둘 다 비어 있다.

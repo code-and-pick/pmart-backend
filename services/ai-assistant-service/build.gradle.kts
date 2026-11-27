@@ -22,6 +22,7 @@ dependencies {
     "integrationTestImplementation"(project(":libraries:common-test"))
     "integrationTestImplementation"(platform(libs.spring.ai.bom))
     "integrationTestImplementation"(libs.spring.ai.model)
+    "integrationTestImplementation"(libs.spring.ai.ollama) // GenerationEvalIT 가 LAN 과 같은 채팅 모델을 만든다(OllamaModels.chat)
     "integrationTestImplementation"(libs.spring.boot.starter.jdbc)
 }
 
@@ -34,6 +35,14 @@ tasks.named<Test>("integrationTest") {
     systemProperty("pmart.eval.ollama-model", evalModel.get())
     systemProperty("pmart.eval.ollama-url", evalUrl.get())
     // 검색 가중 조정(-PevalSweep=true) — 같은 색인으로 여러 가중을 비교(retrieval-sweep.md)
+    // 생성·인용 검사 측정(-PevalChatModel=qwen3:4b) — GenerationEvalIT 가 실제 답을 받아 문장별 점수를 기록한다(2026-11-27)
+    val evalChat = providers.gradleProperty("evalChatModel").orElse("")
+    inputs.property("evalChatModel", evalChat)
+    systemProperty("pmart.eval.chat-model", evalChat.get())
+    // 기록으로 기준값만 다시 계산(-PevalGenerationSweep=true) — 모델을 부르지 않는다
+    val evalGenSweep = providers.gradleProperty("evalGenerationSweep").orElse("false")
+    inputs.property("evalGenerationSweep", evalGenSweep)
+    systemProperty("pmart.eval.generation-sweep", evalGenSweep.get())
     val evalSweep = providers.gradleProperty("evalSweep").orElse("false")
     inputs.property("evalSweep", evalSweep)
     systemProperty("pmart.eval.sweep", evalSweep.get())

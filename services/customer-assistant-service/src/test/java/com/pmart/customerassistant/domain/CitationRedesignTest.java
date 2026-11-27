@@ -93,6 +93,25 @@ class CitationRedesignTest {
     assertThat(check("상품을 받은 뒤 반품하도록 안내합니다.", CANCEL)).doesNotContain(Violation.NEGATION_MISMATCH);
   }
 
+  /** 2026-11-27 C2 측정 A17: 연결어미(-며) 뒤의 부정이 앞 구절과 같은 조각에 들어가 옳은 답을 거절하던 것. */
+  static final String MIN_ORDER =
+      """
+      1. 최소 주문금액은 15,000원입니다.
+      2. 최소 주문금액은 상품액(상품 단가 × 수량의 합계에서 기간 할인을 뺀 금액)으로만 판단하며 배달팁과 봉투값은 넣지 않습니다.
+      """;
+
+  @Test
+  void negationAfterConnectiveEndingIsComparedOnlyWithItsOwnPart() {
+    // 옳은 답(측정 A17 그대로) — 앞부분만 말했으므로 뒤의 "넣지 않습니다"와 비교하지 않는다
+    assertThat(check("최소 주문금액은 15,000원이며, 상품액(상품 단가 × 수량의 합계에서 기간 할인을 뺀 금액)으로만 판단합니다.", MIN_ORDER))
+        .doesNotContain(Violation.NEGATION_MISMATCH);
+    // 진짜 뒤집기 — 한 구절에 두 부분을 담아 뒤를 뒤집어도 잡는다(답 쪽도 같은 연결어미에서 나눈다)
+    assertThat(check("최소 주문금액은 상품액으로만 판단하며 배달팁과 봉투값은 넣습니다.", MIN_ORDER))
+        .contains(Violation.NEGATION_MISMATCH);
+    assertThat(EvidenceAlignment.clauses("상품액으로만 판단하며 배달팁과 봉투값은 넣습니다."))
+        .containsExactly("상품액으로만 판단하며", "배달팁과 봉투값은 넣습니다.");
+  }
+
   @Test
   void negationSkipsWhenAlignmentIsAmbiguousAndCatchesClearFlips() {
     assertThat(check("센터가 첫 피킹을 시작하면 고객은 주문을 취소할 수 없습니다.", CANCEL))

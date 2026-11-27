@@ -100,7 +100,86 @@ final class OllamaEvalEmbedding implements DescribedEmbeddingModel {
     return embedRaw(queryPrefix == null ? question : queryPrefix + question);
   }
 
+  /**
+   * 파일 캐시(2026-11-27): 같은 모델·옵션·입력이면 PC 2 Ollama 를 다시 부르지 않는다 — 시험용 DB 가 매번 비어 전체 문서(642청크, 11-27
+   * 652초)를 다시 임베딩하던 것을 줄인다. {@code build/eval-embedding-cache/} 아래(커밋하지 않음).
+   */
+  private final java.util.Map<String, float[]> cache = new java.util.HashMap<>();
+
+  private java.nio.file.@Nullable Path cacheFile;
+
+  private synchronized void loadCache() {
+    if (cacheFile != null) {
+      return;
+    }
+    cacheFile =
+        java.nio.file.Path.of(
+            "build/eval-embedding-cache", model.replaceAll("[^A-Za-z0-9.-]", "_") + ".tsv");
+    try {
+      if (java.nio.file.Files.exists(cacheFile)) {
+        for (String line :
+            java.nio.file.Files.readAllLines(cacheFile, java.nio.charset.StandardCharsets.UTF_8)) {
+          int tab = line.indexOf('\t');
+          if (tab <= 0) {
+            continue;
+          }
+          String[] parts = line.substring(tab + 1).split(",");
+          float[] v = new float[parts.length];
+          for (int i = 0; i < v.length; i++) {
+            v[i] = Float.parseFloat(parts[i]);
+          }
+          cache.put(line.substring(0, tab), v);
+        }
+      }
+    } catch (java.io.IOException ex) {
+      throw new java.io.UncheckedIOException(ex);
+    }
+  }
+
+  private synchronized void store(String key, float[] v) {
+    cache.put(key, v);
+    StringBuilder sb = new StringBuilder(key).append('\t');
+    for (int i = 0; i < v.length; i++) {
+      if (i > 0) {
+        sb.append(',');
+      }
+      sb.append(v[i]);
+    }
+    sb.append('\n');
+    try {
+      java.nio.file.Files.createDirectories(cacheFile.getParent());
+      java.nio.file.Files.writeString(
+          cacheFile,
+          sb,
+          java.nio.charset.StandardCharsets.UTF_8,
+          java.nio.file.StandardOpenOption.CREATE,
+          java.nio.file.StandardOpenOption.APPEND);
+    } catch (java.io.IOException ex) {
+      throw new java.io.UncheckedIOException(ex);
+    }
+  }
+
+  /** 캐시 적중·새 호출 수(보고용). */
+  static int cacheHits;
+
   private float[] embedRaw(String input) {
+    loadCache();
+    String key =
+        com.pmart.assistant.domain.RequestHashing.sha256(model + "|" + OPTIONS + "|" + input);
+    float[] hit;
+    synchronized (this) {
+      hit = cache.get(key);
+    }
+    if (hit != null) {
+      cacheHits++;
+      return hit;
+    }
+    float[] fresh = embedRemote(input);
+    store(key, fresh);
+    return fresh;
+  }
+
+  private float[] embedRemote(String input) {
     long t0 = System.nanoTime();
     JsonNode body =
         http.post()

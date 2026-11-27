@@ -1,0 +1,134 @@
+{
+  "_comment": [
+    "C2 생성·인용 검사 측정 라벨(2026-11-27, PC 4). key = <질문 id>#<시도 번호> — build/reports/eval/generation/records.json 의 기록과 짝.",
+    "OK = 근거로 성립하는 옳은 답, PARTIAL = 옳지만 핵심이 빠지거나 질문에 답하지 않음(인용 검사 대상 아님 — 통과해도 됨으로 셈), WRONG = 근거와 다르거나 지어낸 답.",
+    "모델 답을 근거 문서(records.json 의 evidence)와 대조해 붙임. 기록을 다시 만들면(모델 재호출) 답이 달라지므로 라벨도 다시 붙인다."
+  ],
+  "labels": [
+    {
+      "key": "A01#1",
+      "label": "OK",
+      "why": "봉투값 100원 한 번, 전체 취소 시 환불 — order_claim/01 제7조"
+    },
+    {
+      "key": "A02#1",
+      "label": "OK",
+      "why": "결제 뒤 주소·연락처 변경 불가 — order_claim/02 제7조"
+    },
+    {
+      "key": "A03#1",
+      "label": "OK",
+      "why": "기본 상한 10개 — 옳은 답인데 NEGATION_MISMATCH 로 거절됨"
+    },
+    {
+      "key": "A03#2",
+      "label": "OK",
+      "why": "원문 그대로"
+    },
+    {
+      "key": "A04#1",
+      "label": "OK",
+      "why": "5시간 자동 완료·도움요청 있으면 제외 — rider_app/03 제3조"
+    },
+    {
+      "key": "A05#1",
+      "label": "PARTIAL",
+      "why": "10,000g 만 — '넘으면' 이 빠짐"
+    },
+    {
+      "key": "A06#1",
+      "label": "PARTIAL",
+      "why": "판매 시작 때 기준만 — '지금은 판매하지 않음' 빠짐(제12조 1)"
+    },
+    {
+      "key": "A13#1",
+      "label": "PARTIAL",
+      "why": "근거 문장이지만 질문(주문 처리: 부분 취소·환불)에 답하지 않음"
+    },
+    {
+      "key": "A14#1",
+      "label": "OK",
+      "why": "미배정→지연→부담 고르게 — 옳은 답인데 NEGATION_MISMATCH 로 거절됨"
+    },
+    {
+      "key": "A14#2",
+      "label": "OK",
+      "why": "원문 그대로"
+    },
+    {
+      "key": "A15#1",
+      "label": "PARTIAL",
+      "why": "칠곡·MFC 수 없음, 질문에 답하지 않음"
+    },
+    {
+      "key": "A17#1",
+      "label": "OK",
+      "why": "15,000원·기간 할인 뒤 상품액 — 옳은 답인데 NEGATION_MISMATCH 로 거절됨"
+    },
+    {
+      "key": "A17#2",
+      "label": "OK",
+      "why": "같은 내용 — 다시 NEGATION_MISMATCH 로 거절돼 발췌로 감"
+    },
+    {
+      "key": "A18#1",
+      "label": "OK",
+      "why": "첫 구매 배달팁 0원"
+    },
+    {
+      "key": "A19#1",
+      "label": "OK",
+      "why": "냉장→냉동→상온, 덜 걷는 순서"
+    },
+    {
+      "key": "B01#1",
+      "label": "PARTIAL",
+      "why": "지급일(3영업일)·영업일 정의 없이 다른 조항(지급 표시)만 되풀이"
+    },
+    {
+      "key": "B02#1",
+      "label": "PARTIAL",
+      "why": "10만 원·20개 기준을 말하지 않음"
+    },
+    {
+      "key": "B03#2",
+      "label": "OK",
+      "why": "P연도-다섯 자리"
+    },
+    {
+      "key": "B04#1",
+      "label": "OK",
+      "why": "자기 승인 불가"
+    },
+    {
+      "key": "B05#1",
+      "label": "PARTIAL",
+      "why": "Asia/Seoul·일 단위만 — '1일을 더하지 않음' 빠짐"
+    },
+    {
+      "key": "B06#1",
+      "label": "OK",
+      "why": "최대 10분"
+    },
+    {
+      "key": "B07#1",
+      "label": "OK",
+      "why": "AI 추천·일반 배차모드"
+    },
+    {
+      "key": "N01#1",
+      "label": "WRONG",
+      "why": "연차 25일 — 지어냄(근거 없음)"
+    },
+    {
+      "key": "N01#2",
+      "label": "WRONG",
+      "why": "연차 250일 — 지어냄"
+    },
+    {
+      "key": "N04#1",
+      "label": "WRONG",
+      "why": "와이파이 비밀번호를 공동현관 비밀번호 조항으로 바꿔치기(주체 바꿔치기)"
+    }
+  ]
+}
