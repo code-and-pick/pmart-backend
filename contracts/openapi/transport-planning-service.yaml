@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: transport-planning-service
-  version: 0.3.0
+  version: 0.4.0
   description: |
+    0.4.0(2026-11-27, DC 백오피스 화면 번호 DN-4): TransportOrder 에 `trfNumbers`(trfIds 순)·`stops[].trfNumbers`(그 정차 trfIds 순) —
+      cdc-outbound 화면 번호(T+6) 사본(운송 요청 가져올 때 받은 값, 없으면 빈 문자열). 경로·나머지 모양 그대로.
     0.3.0(2026-11-26, 도크 배정 — DC 백오피스 TR-3/DK-2, 사용자 "계획완료 때 자동"): 계획완료가 fleet 점유 뒤 cdc-location 도크 예약(창 = 상차 시작 ~ 계획 출차, 지시서 온도대)을 잡는다.
       그 온도대 도크 칸이 없으면(409 NO_DOCK — LAN 옛 배치 등) 도크 없이 계획완료(dockCode null, 이력 NO_DOCK), 칸은 있으나 다 차면 409 CAPACITY_EXCEEDED 로 계획완료 거절(이번 점유만 풂).
       출차(운행 DEPARTED 사본)·취소 때 도크 예약을 푼다. TransportOrder·운행 사본에 dockCode·dockReservationId.
@@ -551,9 +553,11 @@ components:
               plannedArrivalAt: { type: string, format: date-time }
               plannedDepartureAt: { type: string, format: date-time }
               trfIds: { type: array, items: { type: string } }
+              trfNumbers: { type: array, items: { type: string }, description: '(0.4.0) trfIds 와 같은 순서의 화면 번호(없으면 빈 문자열)' }
               boxCount: { type: integer }
               rtCount: { type: integer }
         trfIds: { type: array, items: { type: string } }
+        trfNumbers: { type: array, items: { type: string }, description: '(0.4.0) trfIds 와 같은 순서의 화면 번호(없으면 빈 문자열)' }
         cancelCandidate: { type: boolean, description: 물량 0 — 결행 후보(정본 7.1) }
         flags: { type: array, items: { type: string, enum: [OVER_CAPACITY] } }
         state: { $ref: '#/components/schemas/TransportOrderState' }

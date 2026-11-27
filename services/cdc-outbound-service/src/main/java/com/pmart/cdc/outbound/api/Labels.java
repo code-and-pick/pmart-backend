@@ -2,6 +2,8 @@ package com.pmart.cdc.outbound.api;
 
 import com.pmart.cdc.outbound.api.generated.model.DepartureValidation;
 import com.pmart.cdc.outbound.api.generated.model.ListCenterDepartures200Response;
+import com.pmart.cdc.outbound.api.generated.model.ListCenterLpns200Response;
+import com.pmart.cdc.outbound.api.generated.model.ListCenterShortages200Response;
 import com.pmart.cdc.outbound.api.generated.model.ListCenterTransfers200Response;
 import com.pmart.cdc.outbound.api.generated.model.ListCenterWaves200Response;
 import com.pmart.cdc.outbound.api.generated.model.ListTasks200Response;
@@ -75,6 +77,8 @@ class Labels implements ResponseBodyAdvice<Object> {
         case TransferDetail d -> detail(d);
         case DepartureValidation d -> departures(List.of(d));
         case ListCenterDepartures200Response l -> departures(l.getItems());
+        case ListCenterShortages200Response l -> shortages(l);
+        case ListCenterLpns200Response l -> lpns(l);
         case null, default -> {}
       }
     } catch (RuntimeException e) {
@@ -210,6 +214,59 @@ class Labels implements ResponseBodyAdvice<Object> {
       if (d.getTransfers() != null) {
         d.getTransfers().forEach(t -> t.setTrfNumber(get(tr, t.getTrfId())));
       }
+    }
+  }
+
+  /** 0.31.0 DN-1 결품 목록. */
+  void shortages(ListCenterShortages200Response l) {
+    if (l.getItems() == null || l.getItems().isEmpty()) {
+      return;
+    }
+    Set<String> trfIds = new HashSet<>();
+    Set<String> waveIds = new HashSet<>();
+    Set<String> taskIds = new HashSet<>();
+    for (var x : l.getItems()) {
+      add(trfIds, x.getTrfId());
+      add(waveIds, x.getWaveId());
+      add(taskIds, x.getTaskId());
+      if (x.getNewTaskIds() != null) {
+        x.getNewTaskIds().forEach(id -> add(taskIds, id));
+      }
+    }
+    Map<String, String> tr = numbers.numbers(Kind.TRF, trfIds);
+    Map<String, String> wn = numbers.numbers(Kind.WAVE, waveIds);
+    Map<String, String> k = numbers.numbers(Kind.TASK, taskIds);
+    for (var x : l.getItems()) {
+      x.setTrfNumber(get(tr, x.getTrfId()));
+      x.setWaveNumber(get(wn, x.getWaveId()));
+      x.setTaskNumber(get(k, x.getTaskId()));
+      if (x.getNewTaskIds() != null) {
+        x.setNewTaskNumbers(
+            new ArrayList<>(x.getNewTaskIds().stream().map(id -> k.getOrDefault(id, "")).toList()));
+      }
+    }
+  }
+
+  /** 0.31.0 DN-2 LPN 목록. */
+  void lpns(ListCenterLpns200Response l) {
+    if (l.getItems() == null || l.getItems().isEmpty()) {
+      return;
+    }
+    Set<String> trfIds = new HashSet<>();
+    Set<String> waveIds = new HashSet<>();
+    Set<String> depIds = new HashSet<>();
+    for (var x : l.getItems()) {
+      add(trfIds, x.getTrfId());
+      add(waveIds, x.getWaveId());
+      add(depIds, x.getDepartureId());
+    }
+    Map<String, String> tr = numbers.numbers(Kind.TRF, trfIds);
+    Map<String, String> wn = numbers.numbers(Kind.WAVE, waveIds);
+    Map<String, String> dn = numbers.numbers(Kind.DEPARTURE, depIds);
+    for (var x : l.getItems()) {
+      x.setTrfNumber(get(tr, x.getTrfId()));
+      x.setWaveNumber(get(wn, x.getWaveId()));
+      x.setDepartureNumber(get(dn, x.getDepartureId()));
     }
   }
 

@@ -31,3 +31,4 @@
   - `cancel`(출차 전 — DISPATCHED 면 execution 취소 → 점유 해제, 요청서 ACCEPTED·잔여 물량)·`skip`(요청서 없을 때만)·`tripUpdate`(execution 이 알림 — 낮은 tripVersion 무시, DEPARTED·HANDED_OVER 를 요청서에).
   - 이벤트 없음(1단계). 시드 `deploy/lan/seed/tms_routes.py`(RT-04·07·09·10 — 시각 [가정], fleet 시드 뒤).
 - 0.3.0(2026-11-26, 도크 DK-2 — 사용자 "계획완료 때 자동"): 계획완료가 fleet 점유 뒤 cdc-location 도크 예약(창 = 상차 시작 ~ 계획 출차, `pmart.planning.cdc-location-base-url`) — NO_DOCK 이면 도크 없이(이력 NO_DOCK 한 번), CAPACITY_EXCEEDED 면 거절(이번 점유·도크만 풂). 운행 본문에 dockCode·dockReservationId. 취소·운행 DEPARTED 사본 때 도크 해제(실패해도 경고만). Flyway V3 `transport_order.dock_code·dock_reservation_id`.
+- 0.4.0(2026-11-27, DC 백오피스 DN-4): `api/TrfNumberLabels`(ResponseBodyAdvice) — TransportOrder·목록·생성 응답에 `trfNumbers`·`stops[].trfNumbers`(transport_request.trf_number 사본, 없으면 빈 문자열). 경로 그대로.

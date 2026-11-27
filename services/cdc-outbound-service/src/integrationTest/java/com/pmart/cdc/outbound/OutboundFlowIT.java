@@ -466,6 +466,10 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     JsonNode shorts = get(OPS, "/cdcs/CDC01/shortages?size=200").body();
     assertThat(shorts.path("items").findValuesAsString("trfId")).contains(trf1);
     assertThat(shorts.path("items").get(0).path("shortQty").asInt()).isPositive();
+    // DN-1(0.31.0) 결품 줄 화면 번호
+    JsonNode s0 = shorts.path("items").get(0);
+    assertThat(s0.path("trfNumber").asString()).as(s0.toString()).startsWith("T");
+    assertThat(s0.path("taskNumber").asString()).as(s0.toString()).startsWith("K");
     assertThat(get(OPS, "/waves/" + waveId).body().path("state").asString()).isEqualTo("WORK_DONE");
     JsonNode done = get(SERVICE, "/internal/transfer-intakes/" + trf1).body();
     assertThat(done.path("state").asString()).isEqualTo("PICKED");
@@ -802,6 +806,21 @@ class OutboundFlowIT extends PostgresKafkaContainerSupport {
     assertThat(deps.path("items").findValuesAsString("departureId")).contains(dep);
     assertThat(deps.path("items").findValuesAsString("overallResult"))
         .containsOnly("PARTIALLY_MATCHED");
+    // DN-7(0.31.0) 내부 경로(SIMULATED)로 만든 출발·TRF 도 화면 번호가 있다
+    for (JsonNode d : deps.path("items")) {
+      assertThat(d.path("departureNumber").asString()).as(d.toString()).startsWith("S");
+      for (JsonNode t : d.path("transfers")) {
+        assertThat(t.path("trfNumber").asString()).as(t.toString()).startsWith("T");
+      }
+    }
+    JsonNode lp = get(OPS, "/cdcs/" + CENTER + "/lpns?size=200").body();
+    assertThat(lp.path("items").size()).isPositive();
+    for (JsonNode x : lp.path("items")) {
+      assertThat(x.path("trfNumber").asString()).as(x.toString()).startsWith("T");
+      if (!x.path("departureId").isNull() && !x.path("departureId").isMissingNode()) {
+        assertThat(x.path("departureNumber").asString()).as(x.toString()).startsWith("S");
+      }
+    }
     inventory.verify(
         1,
         postRequestedFor(urlPathEqualTo("/api/v1/internal/departure-postings"))

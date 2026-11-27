@@ -321,6 +321,14 @@ class PlanningFlowIT extends PostgresKafkaContainerSupport {
     JsonNode o04 = order(g.body(), "RT-04", "AMBIENT");
     JsonNode o07 = order(g.body(), "RT-07", "AMBIENT");
     assertThat(o04.path("trfIds").toString()).contains("TRF-001", "TRF-002");
+    // DN-4(0.4.0) 화면 번호 — trfIds 와 같은 순서
+    for (int i = 0; i < o04.path("trfIds").size(); i++) {
+      String id = o04.path("trfIds").get(i).asString();
+      assertThat(o04.path("trfNumbers").get(i).asString())
+          .isEqualTo("T" + id.substring(id.length() - 3));
+    }
+    assertThat(o04.path("stops").get(0).path("trfNumbers").size())
+        .isEqualTo(o04.path("stops").get(0).path("trfIds").size());
     assertThat(o04.path("loadRt").asInt()).isEqualTo(8);
     assertThat(o04.path("state").asString()).isEqualTo("PLANNING");
     assertThat(o04.path("orderId").asString()).startsWith("TO-20261201-");
