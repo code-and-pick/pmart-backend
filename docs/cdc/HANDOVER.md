@@ -35,17 +35,17 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
   - 서비스 간 호출은 트랜잭션 밖에서 합니다. 같은 요청 키로 다시 오는 재생에서 앞 검사가 자기 몫 때문에 거절하지 않게 "이미 있으면 그것" 을 먼저 봅니다.
   - LAN 위치는 2026-11-26 부터 **R-25(991c047, 43,958칸)** 입니다(새로 시작). 그래도 구역 글자를 코드에 박지 말고 cdc-location 조회(온도대·유형)로 고릅니다(#505 교훈).
 
-## 1. 서비스 현황 (main·LAN 모두 같음, 2026-11-26 #536 병합·배포 뒤)
+## 1. 서비스 현황 (main·LAN 모두 같음, 2026-11-27 #550·#552 병합·배포 뒤)
 | 서비스 | 판·Flyway | 포트 | 있는 것 |
 |---|---|---|---|
-| cdc-inventory | 0.21.0 · V11 | 8601 | 재고 이동 이력(stock-movements)·Transit 수령 ID·시각·상품 투영·센터 취급·장부(현물·예약·LOT·Transit)·FEFO 할당/추가/해제·TOUT·내부 이동(PICK_MOVE 포함)·스냅샷·칸별 재고·재계수 대기·실사(CNT·승인 관문)·MFC 수령/정정 대사·운송 손실(입고 종결 뒤)·품질 전기(HOLD·RELEASE·DISPOSE, recall)·일일 대사(조회 때 계산)·LOT 추적·운영 제한 확인(새 할당)·상품 이름·실사 번호 |
-| cdc-location | 0.8.0 · V5 | 8602 | 위치 마스터(칠곡 문법 R-22, 오토스토어 C-6·F-7)·도크 예약(계획완료 때 자동)·통로 피킹 방식·일괄 조회·공간 예약·피킹 선반 최소·목표 |
-| cdc-outbound | 0.29.0 · V18 | 8603 | 운송 가져오기 transport-feed·TRF 온도대·일별 출고 집계·작업자 실적·운영 확인 기준 KP-1(잠정)·근무(근무조·배치·출근·현황)·TRF 인수·Wave(묶음 피킹·DPS 통로)·PDA 다음 작업·피킹 실적·부족 재할당·버전 대체·미출발 취소·분류·검품·상차·출발 검증·매니페스트·출고대기 옮겨 적기·실사 부족/품질 보류/리콜 받기(RECALL_HOLD)·운영 제한 확인(출발)·DC 백오피스 조회·작업/Wave 조작·화면 번호·사건 기록 |
+| cdc-inventory | 0.22.0 · V11 | 8601 | 운송 중 재고 직원 조회(transits)·재고 이동 이력(stock-movements)·Transit 수령 ID·시각·상품 투영·센터 취급·장부(현물·예약·LOT·Transit)·FEFO 할당/추가/해제·TOUT·내부 이동(PICK_MOVE 포함)·스냅샷·칸별 재고·재계수 대기·실사(CNT·승인 관문)·MFC 수령/정정 대사·운송 손실(입고 종결 뒤)·품질 전기(HOLD·RELEASE·DISPOSE, recall)·일일 대사(조회 때 계산)·LOT 추적·운영 제한 확인(새 할당)·상품 이름·실사 번호 |
+| cdc-location | 0.9.0 · V5 | 8602 | 위치 마스터(칠곡 문법 R-22, 오토스토어 C-6·F-7)·도크 예약(계획완료 때 자동)·통로 피킹 방식·일괄 조회·공간 예약·피킹 선반 최소·목표(pick-faces 쪽 넘기기) |
+| cdc-outbound | 0.35.0 · V18 | 8603 | 받을 MFC 의 서비스 간 미출발 취소(CO-3 ①, PC1)·다음 작업 waveId·trfId 거르기(0.34.0, PC1)·운송 가져오기 transport-feed(deadlineMeaning)·TRF 온도대·일별 출고 집계·작업자 실적·운영 확인 기준 KP-1(잠정)·근무(근무조·배치·출근·현황)·TRF 인수·Wave(묶음 피킹·DPS 통로)·PDA 다음 작업·피킹 실적·부족 재할당·버전 대체·미출발 취소·분류·검품·상차·출발 검증·매니페스트·출고대기 옮겨 적기·실사 부족/품질 보류/리콜 받기(RECALL_HOLD)·운영 제한 확인(출발)·DC 백오피스 조회·작업/Wave 조작·화면 번호·사건 기록 |
 | cdc-quality | 0.4.1 · V4 | 8604 | (결정 역할 CDC_SUPERVISOR) 보류·해제·폐기(요청·결정·실행)·리콜 발령(RecallIssued·모든 CDC 보류)·운영 제한(걸기·풀기·내부 확인·사건) |
 | cdc-inbound | 0.2.1 · V2 | 8605 | (결정 역할 CDC_SUPERVISOR) 적치 지시·자동 보충(최소 이하, 박스 입수 배수)·가상 설비 claim·결과(재고 이동·예약 소비)·보충 판단 조회 |
 | fleet (TMS) | 0.2.0 · V2 | 8703 | 운송사·차량·기사·점유 예약(차량·기사 따로, 겹침 거절) — LAN pc3, 시드 CR-01·차량 12·기사 12 |
-| transport-planning (TMS) | 0.3.0 · V3 | 8701 | 노선·정규차(RT-04·07·09·10)·운송 요청 가져오기·배차 생성·옮기기·계획완료(fleet 예약 → 도크 예약 → 운행)·취소 — LAN pc3 |
-| transport-execution (TMS) | 0.3.0 · V3 | 8702 | 운행 입차·상차·출차(cdc-outbound 출발 검증)·도착·인계·복귀, MFC 도착 예정 조회 — LAN pc3, 사건 발행 없음 |
+| transport-planning (TMS) | 0.6.0 · V4 | 8701 | 노선·정규차(RT-04·07·09·10)·운송 요청 가져오기(READY 출고일·READY_UNREACHABLE)·배차 생성·옮기기·계획완료(fleet 예약 → 도크 예약 → 운행)·취소·보류 요청서 이월·용차 지시서·화면 번호 trfNumbers — LAN pc3 |
+| transport-execution (TMS) | 0.6.0 · V5 | 8702 | 운행 입차·상차·출차(cdc-outbound 출발 검증)·도착·인계(= 정차 자동 출발, 모두 출발 = 자동 종료, PC1 R-29)·복귀, MFC 도착 예정 조회, `StopArrived` 사건(PC1 TE-1), 화면 번호 사본(출발·TRF 번호) — LAN pc3 |
 
 - 각 서비스의 자세한 규칙은 `services/<서비스>/CLAUDE.md`, 흐름은 `docs/business/flows/cdc-putaway-replenishment.md`(S7), 설계는 `docs/cdc/design/`, DC 백오피스 계획은 `docs/cdc/cdc-backoffice-plan.md` 에 있습니다.
 - 시드 스크립트 `deploy/lan/seed/cdc_*.py`(center·locations·pick_methods·stock·test_workers): 위치 → 통로 방식 → 시작 재고 순입니다. **LAN 위치 전환은 사용자가 "최종 배치"라고 할 때** 합니다.
@@ -54,16 +54,15 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 ## 2. 다른 쪽을 기다리는 것
 | 무엇 | 누가 | 요청서 | 막힌 것 |
 |---|---|---|---|
-| MFC 이관 수령 확정 사건 `MfcReceiptPosted`·`ReceiptCorrectionPosted` | PC3 (mfc-inventory) | `service-requests/mfc-inventory-service.md` IV-8 | 운송 중 재고가 실제로 줄지 않음(복구용 API 로만) |
-| MFC 이관 입고 종결 알림 | PC3 (mfc-inbound) | `mfc-inbound-service.md` MI-5 | 운송 손실 승인은 종결 기록이 있어야 함(복구용 API 로만) |
 | 승인 종류 `CDC_STOCK_ADJUSTMENT`(kind COUNT_ADJUSTMENT·TRANSPORT_LOSS·QUALITY_RELEASE·DISPOSAL, cdc-inventory·cdc-quality) | PC1 (approval) | `approval-service.md` AP-4(덧붙임 2개) | LAN 은 RECORD_ONLY — 결정마다 승인 번호를 **기록만** |
-| 피킹 선반 최소·목표 **규칙**(예: 목표 = 칸 용량, 최소 = 30%) | 사용자(시뮬레이터 세션이 묻는 중) | 시뮬레이터 회신 | 자동 보충이 아무 칸도 돌지 않음 |
+| 피킹 선반 최소·목표 LAN 넣기(× 0.3·× 1.0, 21,846칸 — `cdc_pick_face_settings.py`) | PR 세션·PC1(사용자 승인) | 시뮬레이터 R-26 | 넣기 전엔 자동 보충이 아무 칸도 돌지 않음 |
+| DN-5 리콜 상세 출발 줄 번호(cdc-quality → cdc-outbound 조회, 새 base-url) | 사용자(진행 여부) → PC1(pmart-config) | `docs/handoff/clients/cdc-backoffice/2026-11-27-reply-display-numbers.md` | 리콜 상세에 TRF·출발 번호 없음 |
 | 상품 물류 규격 **박스 입수**(units_per_box) | product 데이터(LAN 상품) | — | 없으면 그 SKU 보충 UNIT_MISSING |
 | 시뮬레이터의 cdc-inbound 연결(claim·work-results), 보충 주체를 "가상 설비"로 | CDC 시뮬레이터(사용자 확인) | 시뮬레이터 회신 | 적치·보충 작업이 실제로 수행되지 않음 |
 | R-25 LAN 결과 확인(실서버 연결 점검) | CDC 시뮬레이터 | 시뮬레이터 회신 끝 | — (LAN 위치 전환은 2026-11-26 끝) |
 
 ## 3. 앞으로 할 일 (추천 순서 — 사용자와 정하세요)
-1. **피킹 선반 최소·목표 시드**: 규칙이 정해지면 `deploy/lan/seed/cdc_pick_face_settings.py` 를 새로 만듭니다.
+1. **피킹 선반 최소·목표 시드**: 규칙은 시뮬레이터 값(× 0.3·× 1.0)으로 정해졌고 `deploy/lan/seed/cdc_pick_face_settings.py` 가 있습니다(#540). LAN 넣기는 승인 뒤 PR 세션입니다.
    - 호출: cdc-location `POST /internal/pick-face-settings`(낱개 단위).
    - 칸 용량은 시뮬레이터 값입니다: 선반 80·야채 레인 120·오토스토어 40·랙 1단 팔레트 유닛.
    - 함께 할 일: LAN 상품의 박스 입수 유무를 확인합니다.
@@ -77,7 +76,7 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
    - 출발 점유: 출발 칸 실물을 잡아 두는 방식 — 합의가 필요합니다.
    - 사건 발행: `PutawayTaskStateChanged`.
    - ASN·실수령·검수는 3단계입니다.
-6. **운송(TMS)** 새 서비스(배차·출발·MFC 도착): 범위·서비스 경계는 사용자·`service-map.md` 를 먼저 봅니다.
+6. **운송(TMS)** 다음: TMS 정본 7.3 의 1·2단계(같은 노선 남은 자리·인접 노선)와 확정된 차에 더 싣기는 넣지 않았습니다(사용자 "이월 + 용차"). 도크 바꾸기 DK-3·운임·온도 이탈은 뒤로.
 7. **반품·폐기·작업자 생산성·KPI 보고**: PC1 이 넘긴 DC 백오피스 6번입니다.
 8. **시뮬레이터로 끝까지 돌리기**: 인수 → 할당 → Wave → 피킹 → 출발 → MFC 수령. LAN 위치 전환 뒤가 좋습니다.
 9. **작은 남은 것**
@@ -218,3 +217,4 @@ CDC WMS 작업을 이어 받는 세션·사람이 **처음 읽는 문서**입니
 - 2026-11-27: 시뮬레이터 R-28 — READY 출고일(transport-planning 0.5.0·cdc-outbound 0.32.0 feed deadlineMeaning). PR `cdc/ready-ship-date`(#544 위). DN-3 은 PC1 R-29(transport-execution) 배포 뒤.
 - 2026-11-27: 시뮬레이터 R-30(사용자 "이월 + 용차") — transport-planning 0.6.0 이월·용차 지시서. PR `cdc/carryover-spot`(#547 위). 이어서 DN-3·R-52(transport-execution 0.6.0·cdc-outbound 0.33.0 — 사용자 "cdc 세션이 둘 다").
 - 2026-11-27: DN-3·R-52(사용자 "cdc 세션이 둘 다") — transport-execution 0.6.0(운행 화면 번호 사본)·cdc-outbound 0.33.0(인수 조회·매니페스트 번호·Wave). PR `cdc/trip-numbers`(#549 위). DN-5(리콜 상세 번호)만 남음.
+- 2026-11-27: #544·#545·#547·#549·#550 모두 병합·LAN 배포(PR 세션 일지 `worklog/platform/2026-11-27.md`). LAN 확인: T830694 는 운행 TO-20261127-016(VH-5T-07A)으로 12:46 출발 → MFC 입고 12:56 → transits TRANSIT_RECONCILED(IV-8 `MfcReceiptPosted` 동작). mfc 시뮬 R-52 확인(번호 없는 정차 trfNumbers 는 `[""]` — trfIds 와 자리 맞춤, 의도). PC1 이 cdc-outbound 0.34.0(K20543)·0.35.0(CO-3 ①)을 넣음. 1·2절 표를 이 상태로 고침. 남은 것: DN-5.
