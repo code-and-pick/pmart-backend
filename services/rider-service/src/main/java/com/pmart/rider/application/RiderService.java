@@ -527,6 +527,75 @@ public class RiderService {
     return get(riderId);
   }
 
+  /**
+   * 직원이 라이더 운행 끄기(0.32.0, 2026-11-27 사용자 "니가 꺼" — 운행을 켠 채 앱을 떠난 라이더가 관제에 "끊김"). 본인 운행 종료와 같은
+   * 결과(OFF_DUTY·신규배차 끔·접속 시간·{@code RiderStateChanged}, actor OPERATOR). 진행 중 배송이 있으면 409
+   * ACTIVE_DELIVERY. 사유는 멱등 본문에만(로그 없음).
+   */
+  @Transactional
+  public Rider endDutyForStaff(
+      String riderId,
+      String requestId,
+      String sourceSystem,
+      @Nullable Integer expectedVersion,
+      String reason) {
+    PmartPrincipal p = requireRestrictionAdmin();
+    if (reason.isBlank()) {
+      throw new PmartException(ErrorCode.VALIDATION_FAILED, "운행을 끄는 사유를 적으세요.");
+    }
+    get(riderId); // 없는 라이더·탈퇴 404 가 먼저
+    if (executions.withdrawalBlockers(riderId).contains("ACTIVE_DELIVERY")) { // 외부 호출 — 잠그기 전
+      throw new PmartException(
+          "ACTIVE_DELIVERY",
+          HttpStatus.CONFLICT,
+          "진행 중인 배송이 있어 운행을 끌 수 없습니다. 배송을 마친 뒤 끄세요.",
+          false,
+          List.of());
+    }
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("riderId", riderId);
+    body.put("reason", reason);
+    body.put("expectedVersion", String.valueOf(expectedVersion));
+    idempotency.execute(
+        new RequestKey(sourceSystem, requestId, "endRiderDutyForStaff", riderId),
+        body,
+        String.class,
+        () -> {
+          Rider r = locked(riderId, expectedVersion);
+          if (r.operatingStatus() != Rider.OperatingStatus.ON_DUTY) {
+            throw PmartException.invalidState("운행 중인 라이더가 아닙니다.");
+          }
+          Instant now = clock.instant();
+          store.updateOperating(
+              riderId,
+              r.version(),
+              Rider.OperatingStatus.OFF_DUTY.name(),
+              false,
+              r.operatingMfcId(),
+              now);
+          store.recordDuty(riderId, true, r.newDispatchEnabled(), false, false, now);
+          Map<String, Object> e = new LinkedHashMap<>();
+          e.put("riderId", riderId);
+          e.put("operatingState", Rider.OperatingStatus.OFF_DUTY.name());
+          e.put("newDispatchEnabled", false);
+          e.put("vehicleType", r.vehicleType());
+          if (r.operatingMfcId() != null) {
+            e.put("mfcId", r.operatingMfcId());
+          }
+          e.put("changedAt", now.toString());
+          events.publish(
+              "RiderStateChanged",
+              1,
+              "Rider",
+              riderId,
+              r.version() + 1L,
+              new EventEnvelope.Actor(EventEnvelope.ActorType.OPERATOR, p.subject()),
+              e);
+          return riderId;
+        });
+    return get(riderId);
+  }
+
   @Transactional
   public Rider setSettings(
       String requestId, String sourceSystem, @Nullable Integer expectedVersion, SettingsChange c) {

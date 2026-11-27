@@ -439,6 +439,68 @@ class RiderWithdrawalIT extends PostgresKafkaContainerSupport {
                             + "}")));
   }
 
+  /** 0.32.0(2026-11-27 사용자 "니가 꺼"): 직원이 라이더 운행 끄기 — 권한·사유·진행 중 배송·운행 중 아님. */
+  @Test
+  void staffEndsRiderDuty() {
+    String rider = "RD-duty-" + UUID.randomUUID();
+    assertThat(signup(rider, phone()).getStatusCode().value()).isEqualTo(201);
+    assertThat(state(rider, "ON_DUTY", "d-1").getStatusCode().value()).isEqualTo(200);
+
+    // 고객 지원(CS_AGENT)은 못 끈다
+    assertThat(endDuty(rider, List.of("CS_AGENT"), "정리", "e-0").getStatusCode().value())
+        .isEqualTo(403);
+    // 사유 없음 400
+    assertThat(endDuty(rider, List.of("RIDER_OPS"), "", "e-1").getStatusCode().value())
+        .isEqualTo(400);
+    // 진행 중 배송이 있으면 409 ACTIVE_DELIVERY
+    blockers(rider, "[\"ACTIVE_DELIVERY\"]");
+    ResponseEntity<String> busy = endDuty(rider, List.of("RIDER_OPS"), "정리", "e-2");
+    assertThat(busy.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(busy).path("code").asString()).isEqualTo("ACTIVE_DELIVERY");
+
+    blockers(rider, "[]");
+    ResponseEntity<String> ok = endDuty(rider, List.of("RIDER_OPS"), "지난 시험 라이더 정리", "e-3");
+    assertThat(ok.getStatusCode().value()).isEqualTo(200);
+    assertThat(json(ok).path("status").asString()).isEqualTo("OFF_DUTY");
+    assertThat(json(ok).path("newDispatchEnabled").asBoolean()).isFalse();
+    assertThat(json(get(rider, "/riders/me/state")).path("status").asString())
+        .isEqualTo("OFF_DUTY");
+    List<String> events =
+        jdbc.queryForList(
+            "SELECT payload::text FROM outbox_event WHERE aggregateid = ? AND type = 'RiderStateChanged'",
+            String.class,
+            rider);
+    assertThat(events)
+        .anySatisfy(
+            p -> {
+              JsonNode ev = mapper.readTree(p);
+              assertThat(ev.path("payload").path("operatingState").asString())
+                  .isEqualTo("OFF_DUTY");
+              assertThat(ev.path("actor").path("type").asString()).isEqualTo("OPERATOR");
+            });
+    // 같은 키 재전송은 같은 결과, 새 키로 또 끄면 409(운행 중 아님)
+    assertThat(endDuty(rider, List.of("RIDER_OPS"), "지난 시험 라이더 정리", "e-3").getStatusCode().value())
+        .isEqualTo(200);
+    ResponseEntity<String> again = endDuty(rider, List.of("OPERATOR_ADMIN"), "정리", "e-4");
+    assertThat(again.getStatusCode().value()).isEqualTo(409);
+    assertThat(json(again).path("code").asString()).isEqualTo("INVALID_STATE");
+  }
+
+  private ResponseEntity<String> endDuty(
+      String rider, List<String> roles, String reason, String key) {
+    return http.post()
+        .uri("/riders/" + rider + "/duty-ends")
+        .headers(
+            h -> {
+              h.setBearerAuth(TestJwt.operator("ro-1", roles, List.of()));
+              h.set("Idempotency-Key", key);
+              h.set("X-Source-System", "rider-backoffice");
+            })
+        .body(Map.of("reason", reason))
+        .retrieve()
+        .toEntity(String.class);
+  }
+
   private void centerIs(String id, String type, String state) {
     center.stubFor(
         WireMock.get(urlPathEqualTo("/api/v1/internal/centers/" + id))

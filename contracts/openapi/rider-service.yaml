@@ -1,8 +1,10 @@
 openapi: 3.1.0
 info:
   title: rider-service
-  version: 0.31.0
+  version: 0.32.0
   description: |
+    0.32.0(2026-11-27, 사용자 "니가 꺼" — 지난 시험에서 운행을 켠 채 둔 라이더가 관제에 "끊김"으로 남음): 직원이 라이더 운행을 끄는 `POST /riders/{riderId}/duty-ends`
+      (OPERATOR_ADMIN·RIDER_OPS, 사유 필수). 본인 운행 종료와 같게 OFF_DUTY·신규배차 끔 + `RiderStateChanged`(actor OPERATOR). 진행 중 배송이 있으면 409 ACTIVE_DELIVERY.
     0.31.0(2026-11-25, 사용자 "프로필 사진도 해줘" — 고객 /me/profile-image 와 같게): 소셜 프로필 사진 사본. 새 `GET /riders/me/profile-image`(본인 토큰, 이미지 바이트),
       `RiderProviderProfile.profileImageUrl`·`RiderProfile.profileImageUrl`(= `/api/v1/riders/me/profile-image?v=…`, 사본이 바뀌면 v 가 바뀐다, 없으면 null). 제공자 주소는 주지 않는다.
       로그인 뒤 서버가 한 번 받아 비공개 저장소에 둔다(구글·카카오(기본 사진 제외)·네이버, 1MB·이미지 형식 확인). 가입 전에도. 탈퇴 때 지운다.
@@ -661,6 +663,39 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /riders/{riderId}/duty-ends:
+    post:
+      tags: [operator]
+      summary: 직원이 라이더 운행 끄기 (0.32.0)
+      x-added-in: '2026-11-27'
+      description: |
+        운행을 켠 채 앱을 떠난 라이더(관제에 "끊김")를 직원이 끈다. OPERATOR_ADMIN·RIDER_OPS. 사유(reason) 필수 — 로그에 남기지 않는다.
+        운행 중(ON_DUTY)이 아니면 409 INVALID_STATE. 진행 중 배송(dispatch ASSIGNED·PICKED_UP)이 있으면 409 ACTIVE_DELIVERY, dispatch 를 못 읽으면 503(끄지 않음).
+        끄면 본인 운행 종료와 같다 — OFF_DUTY·신규배차 끔·접속 시간 기록 + `RiderStateChanged`(actor OPERATOR). 라이더가 앱에서 다시 켤 수 있다.
+      operationId: endRiderDutyForStaff
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - { name: riderId, in: path, required: true, schema: { type: string } }
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - $ref: '_common.yaml#/components/parameters/ExpectedVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiderDutyEndRequest' }
+      responses:
+        '200':
+          description: 끈 뒤 운행 상태
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperatingState' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+        '409': { $ref: '_common.yaml#/components/responses/Conflict' }
+        '503': { $ref: '_common.yaml#/components/responses/DependencyUnavailable' }
 
   /riders/{riderId}/restrictions:
     post:
@@ -1386,6 +1421,12 @@ components:
         activeDeliveryCount: { type: [integer, 'null'], description: '진행 중 배송 수. (0.25.0, 2026-11-23) dispatch 의 배정됐고 끝나지 않은 배송(ASSIGNED·PICKED_UP, 사본 아님) — 본인 GET /riders/me/state 와 직원 상세 GET /riders/{riderId} 에만 채운다(다른 응답은 null). dispatch 를 못 읽으면 null — 0 으로 보지 말 것' }
         changedAt: { type: string, format: date-time }
         version: { type: integer }
+    RiderDutyEndRequest:
+      type: object
+      x-added-in: '2026-11-27'
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 200, description: '끄는 사유(예 "지난 시험 라이더 정리") — 로그에 남기지 않는다' }
     DispatchSettings:
       type: object
       properties:

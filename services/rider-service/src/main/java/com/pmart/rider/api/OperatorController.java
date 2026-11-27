@@ -302,6 +302,20 @@ public class OperatorController implements OperatorApi {
     return ResponseEntity.ok(record(row));
   }
 
+  /** 0.32.0(2026-11-27) 직원이 라이더 운행 끄기 */
+  @Override
+  public ResponseEntity<com.pmart.rider.api.generated.model.OperatingState> endRiderDutyForStaff(
+      String riderId,
+      String idempotencyKey,
+      String xSourceSystem,
+      com.pmart.rider.api.generated.model.RiderDutyEndRequest body,
+      @Nullable Integer xExpectedVersion) {
+    Rider r =
+        riders.endDutyForStaff(
+            riderId, idempotencyKey, xSourceSystem, xExpectedVersion, body.getReason());
+    return ResponseEntity.ok(RiderViews.operating(r));
+  }
+
   @Override
   public ResponseEntity<ListRiderRestrictions200Response> listRiderRestrictions(String riderId) {
     RiderService.Restrictions r = riders.restrictions(riderId);
