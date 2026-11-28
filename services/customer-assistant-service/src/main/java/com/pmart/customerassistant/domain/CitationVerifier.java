@@ -33,7 +33,11 @@ public final class CitationVerifier {
     UNKNOWN_ID,
     UNSUPPORTED_SENTENCE,
     NEGATION_MISMATCH,
-    NUMBER_MISMATCH
+    NUMBER_MISMATCH,
+    /** 근거 한 칸의 번호 항목 중 일부만 씀(2026-11-28 — {@link AnswerCompleteness}). */
+    MISSING_ITEMS,
+    /** 다른 정책·조항을 가리키기만 하고 내용이 없음(2026-11-28). */
+    REFERRAL_ONLY
   }
 
   public record Result(boolean valid, List<Violation> violations) {}
@@ -133,6 +137,13 @@ public final class CitationVerifier {
           add(violations, Violation.NEGATION_MISMATCH);
         }
       }
+    }
+    // 빠진 사실(2026-11-28): 인용 검사는 틀린 말만 막는다 — 빠진 말·참조만 한 답을 따로 본다
+    if (AnswerCompleteness.referralOnly(answer)) {
+      add(violations, Violation.REFERRAL_ONLY);
+    }
+    if (AnswerCompleteness.missingInlineItems(DOC_TAG.matcher(answer).replaceAll(""), evidence)) {
+      add(violations, Violation.MISSING_ITEMS);
     }
     return new Result(violations.isEmpty(), violations);
   }

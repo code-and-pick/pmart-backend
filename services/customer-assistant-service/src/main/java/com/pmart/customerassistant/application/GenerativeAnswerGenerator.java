@@ -40,6 +40,8 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
          근거에 적힌 그대로 쓴다.
       6. 질문과 주제가 맞는 근거만 쓴다. 단어만 비슷하고 다른 주제를 다룬 근거로 답하지 않는다. 맞는 근거가 없으면 grounded=false.
       7. 근거에 경우별(표·목록)로 값이 다르면, 질문이 경우를 정하지 않은 한 모든 경우와 값을 함께 쓴다(하나만 고르지 않는다).
+         근거에 조건·예외("다만", "…뿐", "…만", "…전", "…때")가 붙어 있으면 빼지 말고 함께 쓴다. 근거 칸에 번호 항목(1. 2. 3.)이 함께 있으면 모두
+         쓴다. "…안내에 따라 주세요"처럼 다른 안내를 가리키기만 하지 말고 근거에 적힌 방법·조건을 쓴다.
          무료·예외 조건이 근거에 있으면 같이 쓴다.
       8. 질문이 묻는 대상(기능·서비스·상품 이름)이 근거에 직접 나오지 않으면 grounded=false. 다른 대상에 대한 문장
          (예: "쿠폰 기능이 없어요")을 질문의 대상에 옮겨 쓰지 않는다.
@@ -159,8 +161,7 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
       }
       attempts.add(
           String.join(",", r.violations().stream().map(Enum::name).sorted().distinct().toList()));
-      feedback =
-          "직전 답변이 인용 검사를 통과하지 못했다: " + r.violations() + ". 근거 문장에 있는 내용만 쓰고 근거 ID 를 정확히 적어라.";
+      feedback = feedback(r.violations());
     }
     if (ranked.get(0).similarity() < fallbackMinSimilarity.getAsDouble()) {
       return new Generated(
@@ -183,6 +184,19 @@ public class GenerativeAnswerGenerator implements AnswerGenerator {
         extractive.grounded() ? Exit.EXTRACTIVE_FALLBACK : Exit.NO_GROUNDING,
         List.copyOf(attempts),
         top);
+  }
+
+  /** 다시 생성할 때 알려 줄 말 — 검사 규칙마다(2026-11-28 빠진 사실 검사). */
+  static String feedback(List<CitationVerifier.Violation> violations) {
+    StringBuilder b = new StringBuilder("직전 답변이 인용 검사를 통과하지 못했다: " + violations + ".");
+    if (violations.contains(CitationVerifier.Violation.MISSING_ITEMS)) {
+      b.append(" 근거 칸에 번호로 적힌 항목(1. 2. 3. …)은 하나만 고르지 말고 모두 적어라.");
+    }
+    if (violations.contains(CitationVerifier.Violation.REFERRAL_ONLY)) {
+      b.append(" 다른 정책·조항을 따른다는 말만 하지 말고, 근거 문장에 적힌 실제 내용(조건·방법·값)을 적어라.");
+    }
+    b.append(" 근거 문장에 있는 내용만 쓰고 근거 ID 를 정확히 적어라.");
+    return b.toString();
   }
 
   record Output(String answer, List<String> usedIds, boolean grounded) {}
