@@ -153,6 +153,8 @@ if [ -n "${PMART_VAULT_APPS+x}" ]; then
 else
   VAULT_APPS=" $( [ -f "$VAULT_APPS_FILE" ] && sed -e 's/#.*//' "$VAULT_APPS_FILE" | tr -s ' \t\r\n' ' ' ) "
 fi
+# 공백 정리: 앞뒤를 꼭 한 칸으로(주석 줄이 빈 칸을 남겨 "  all  " 이 되면 아래 all 비교가 빗나간다 — 2026-11-28 전체 전환 때 0 개로 렌더됨)
+VAULT_APPS=" $(echo $VAULT_APPS) "
 VAULT_URI="${PMART_VAULT_URI:-https://192.168.0.34:8200}"
 VAULT_CA=$LAN/tls/pmart-lan-root-ca.crt
 vault_any() { [[ "$VAULT_APPS" =~ [^[:space:]] ]]; }
