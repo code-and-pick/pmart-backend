@@ -25,7 +25,7 @@
 7. **DB·Kafka 없음**. 놓친 웹훅(중계·서비스가 꺼져 있던 동안)은 이번에 다루지 않는다 — 전체 다시 맞추기(GitHub 트리와 비교)는 청킹 서비스와 함께 정한다.
 
 ## 바뀌는 것 · 그대로인 것
-- 지금 두 RAG 서비스의 색인 경로(`lan.sh rag-ingest`·저장소 사본·`MarkdownChunker`·DB 문서 판, ADR-0092·0094)는 **이번에 바꾸지 않는다**. 청킹 서비스와 ES 적재가 생기면 그 단계의 ADR 에서 대체 범위를 정한다.
+- 기존 두 RAG 서비스(ai-assistant·customer-assistant)는 새 RAG 시스템에서 제외한다(ADR-0097, 삭제 안 함) — 그 서비스들의 색인 경로는 바꾸지 않는다.
 - 두 RAG 서비스에 Spring Integration 을 넣지 않는다.
 
 ## 결과

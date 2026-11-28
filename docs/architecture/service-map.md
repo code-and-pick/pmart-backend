@@ -402,6 +402,7 @@
 - **개인정보 열람 기록 구현(2026-11-15, 계약 0.2.0, ADR-0062)**: `POST/GET /internal/pii-access-logs` — 동기 기록(멱등, 추가 전용 트리거). 첫 호출자는 order-service 직원 배송지 원문 열람(`pii-reveals`): 기록이 안 되면 원문을 주지 않는다. 직원용 기록 조회 API·보존기간은 `[결정 필요]`.
 
 ### ai-assistant-service `[3단계 — 1차 앞당김(ADR-0036)]`
+- **(2026-11-28, ADR-0097) 새 ES-First 하이브리드 RAG 에서 제외** — 새 RAG 는 integration-service → chunking-service → … 새 서비스로 짓는다. 이 서비스는 지우지 않고 그대로 둔다.
 - RAG(정책 문서), 정책 설명, 권한 있는 도메인 API 호출(읽기 우선). 비즈니스 문서에 요구 없음.
 - **1차(2026-11-04, ADR-0036)**: 내부 운영자의 정책·업무 절차 질의응답 + 근거 표시만. 실시간 조회·명령 위임은 하지 않는다(`REALTIME_DATA_REQUIRED`·`OUT_OF_SCOPE`).
 - **소유**: 명시 목록 문서의 사본 색인(`index_snapshot`·`doc_chunk`·`embedding_cache`)과 답변 기록(`policy_answer` — 선점·lease·인용). 업무 정본은 없다.
@@ -412,6 +413,7 @@
 - **운영자(백오피스) 전용**(2026-11-09, ADR-0051): 고객앱 질문은 아래 `customer-assistant-service` 가 받는다. DB 는 RAG 전용 pgvector 컨테이너의 `ai_assistant_service`. 모델은 LAN Ollama(ADR-0051 결정 6).
 
 ### customer-assistant-service `[ADR-0051 — 2026-11-09 추가·1차 구현]`
+- **(2026-11-28, ADR-0097) 새 ES-First 하이브리드 RAG 에서 제외** — 새 RAG 는 integration-service → chunking-service → … 새 서비스로 짓는다. 이 서비스는 지우지 않고 그대로 둔다.
 - 고객앱 고객센터 AI 상담(RAG): 승인된 고객 안내 문서(`docs/business/customer-faq/`)로 답하고 근거 표시. 취소·환불 같은 실행은 하지 않는다(OUT_OF_SCOPE → 고객센터 문의 연결).
 - 내 주문 상태(C6): 주문을 고르지 않았으면 최근 주문을 보여 고르게 하고(REALTIME_DATA_REQUIRED), 고른 주문은 order-service 에서 읽은 상태를 **정해진 문장**으로 답한다(ORDER_STATUS — 모델에 주문 정보를 넘기지 않음).
 - **소유**: 고객 안내 문서의 사본 색인과 고객 답변 기록(DB `customer_assistant_service`, RAG 전용 pgvector — 운영자 DB 와 계정 분리). 질문 원문은 저장하지 않는다(C5, 해시만). 업무 정본은 없다.
@@ -423,14 +425,14 @@
 ### integration-service `[ADR-0095 — 2026-11-28 추가·1차 구현]`
 - 문서 저장소 웹훅 흐름(Spring Integration — 이 서비스에만): GitHub `code-and-pick/pmart-all-docs`(private)의 push·delete 웹훅 → 바뀐 파일 확인 → `.md` 를 GitHub API 로 그 커밋 판에서 가져와 내용 추출 → 청킹 서비스로 전달. ES-First 하이브리드 RAG 의 적재 입구.
 - **소유**: 없음(DB·Kafka 없음, 로컬 파일 없음). 웹훅 판정·추출·전달만.
-- **소유하지 않음**: 문서 원본(GitHub 저장소), 청킹·ES·임베딩·pgvector(다음 단계 서비스), RAG 질문·답(ai-assistant·customer-assistant).
+- **소유하지 않음**: 문서 원본(GitHub 저장소), 청킹·ES(chunking-service)·임베딩·pgvector(다음 단계), 질문·답(새 서비스 — ADR-0097).
 - **API**(계약 0.1.0): `POST /internal/docs-webhook`(GitHub 웹훅 — smee 채널 → 같은 PC 의 docs-relay, 서명 확인, 게이트웨이에 없음).
 - **의존(동기)**: GitHub Contents API(읽기 전용 토큰), chunking-service `POST /internal/documents`(설정 `chunking-url` — 없으면 추출 기록만).
 
 ### chunking-service `[ADR-0096 — 2026-11-28 추가·1차 구현]`
 - 추출 문서(integration-service) → Spring AI 청킹(`MarkdownDocumentReader` + 긴 절 `TokenTextSplitter`) → Elasticsearch RAG 색인. ES-First 하이브리드 RAG 의 "청킹 → ES 선 적재".
 - **소유**: ES RAG 색인 `rag-operator`·`rag-customer`(→ `-v1`, es-search, nori — 1 청크 = 1 문서, 삭제는 RETIRED). DB·Kafka 없음.
-- **소유하지 않음**: 문서 원본(GitHub pmart-all-docs), 웹훅·추출(integration-service), 임베딩·pgvector(다음 단계), RAG 질문·답(ai-assistant·customer-assistant).
+- **소유하지 않음**: 문서 원본(GitHub pmart-all-docs), 웹훅·추출(integration-service), 임베딩·pgvector(다음 단계 임베딩 서비스), 질문·답(새 서비스 — ADR-0097, 기존 ai-assistant·customer-assistant 는 새 RAG 에서 제외).
 - **API**(계약 0.1.0): `POST /internal/documents`(integration-service → 이 서비스, PC 2 안).
 - **의존(동기)**: es-search(인프라).
 
