@@ -78,6 +78,8 @@ PostgreSQL + pgvector  rag-pgvector (PC 2) DB embedding_service — chunk_vector
 
 - **ES-First ① E2E(BM25 만)**: 실제 main 전체(.md 88) push → rag-operator 650·rag-customer 197 청크 → 평가셋 88문항. 운영자 기대 문서 1위 69%·3위 안 100%, 고객(안내 또는 같은 주제 FAQ) 1위 90%·3위 안 97%. 점수만으로는 근거 없는 질문을 못 가르고, 1·2위 점수 차(중앙 4.7 vs 0.8)가 더 가른다 — `docs/rag/verification/2026-11-28/es-first-bm25/`.
 
+- **ES-First 2차 검증**(`docs/rag/verification/2026-11-28/es-first-v2/`): 색인 v2(documentType), 운영자 POLICY ×1.5, ES 종료 = 핵심어 비율 ≥0.7·상대 점수 차 ≥0.1 → 상위 3 카드, 넘긴 질문은 BM25+벡터 RRF·벡터 코사인 <0.58 답변 불가. 회귀·dev·final 모두 잘못 끝냄 0(final 종료 운영자 4/12·고객 1/10). 새 문항에서는 벡터가 BM25 보다 강함.
+
 ## 7. 커밋 (로컬, push 전)
 
 - pmart-backend(wt-rag-p1, 브랜치 rag/p1-exit-metrics): 8e8164279 integration · 091287aa2 chunking · 933b0c70b chunking 고침 · 3ee098098 ADR-0097 · e7e80d76b embedding

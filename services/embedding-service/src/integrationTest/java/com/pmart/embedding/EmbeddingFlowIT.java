@@ -61,11 +61,11 @@ class EmbeddingFlowIT {
       byte[] def =
           java.nio.file.Files.readAllBytes(
               java.nio.file.Path.of(
-                  "../chunking-service/src/main/resources/elasticsearch/rag-chunks-v1.json"));
+                  "../chunking-service/src/main/resources/elasticsearch/rag-chunks-v2.json"));
       for (String alias : List.of("rag-operator", "rag-customer")) {
         RestClient.create()
             .put()
-            .uri(esUrl() + "/" + alias + "-v1")
+            .uri(esUrl() + "/" + alias + "-v2")
             .contentType(MediaType.APPLICATION_JSON)
             .body(def)
             .retrieve()
@@ -77,7 +77,7 @@ class EmbeddingFlowIT {
             .body(
                 Map.of(
                     "actions",
-                    List.of(Map.of("add", Map.of("index", alias + "-v1", "alias", alias)))))
+                    List.of(Map.of("add", Map.of("index", alias + "-v2", "alias", alias)))))
             .retrieve()
             .toBodilessEntity();
       }

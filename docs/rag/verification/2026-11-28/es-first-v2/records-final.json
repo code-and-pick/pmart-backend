@@ -1,0 +1,4173 @@
+[
+ {
+  "id": "OG01-1",
+  "set": "final",
+  "role": "operator",
+  "q": "백오피스는 한 번 로그인하면 몇 시간까지 쓸 수 있어요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "operator/backoffice/01-staff-account-login.md"
+  ],
+  "sections": [
+   [
+    "operator/backoffice/01-staff-account-login.md",
+    "제6조 (로그인 유지)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG01",
+  "bm25": [
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제6조 (로그인 유지)",
+    "heading": "제6조 (로그인 유지)",
+    "type": "POLICY",
+    "chunk": "b29cdd872a1f1eded210ade8706738c2",
+    "raw": 27.1712
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제4조 (실시간 배송 현황)",
+    "heading": "제4조 (실시간 배송 현황)",
+    "type": "POLICY",
+    "chunk": "3fd4132fbb3c733f5b008ccb8cbe6e2f",
+    "raw": 23.8689
+   },
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+    "heading": "제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+    "type": "POLICY",
+    "chunk": "5ed4622cb604606b5843cba3cc9d8a5f",
+    "raw": 22.9916
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "heading": "제2조 (장바구니를 쓸 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "raw": 22.9916
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책",
+    "heading": "PMart 백오피스 통합 조회·현황·운영 지표 정책",
+    "type": "POLICY",
+    "chunk": "e8041587cc62c41b374cc127173d65cd",
+    "raw": 22.6784
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제7조 (로그아웃)",
+    "heading": "제7조 (로그아웃)",
+    "type": "POLICY",
+    "chunk": "fa6a88069cbec91efbab13186a0c5454",
+    "raw": 21.9638
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "d0421b072d7032110152b4064c9f646a",
+    "raw": 20.2062
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제3조 (통합 조회)",
+    "heading": "제3조 (통합 조회)",
+    "type": "POLICY",
+    "chunk": "648827b0fee9c5a49b04429b9c474c56",
+    "raw": 19.4977
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제8조 (운영 지표)",
+    "heading": "제8조 (운영 지표)",
+    "type": "POLICY",
+    "chunk": "8d63f89e4b330551fcb450d95736bb7d",
+    "raw": 19.4977
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제8조 (운영 지표)",
+    "heading": "제8조 (운영 지표)",
+    "type": "POLICY",
+    "chunk": "68c35e72e42f145492863c24348529ed",
+    "raw": 19.4977
+   }
+  ],
+  "features": {
+   "top1": 27.1712,
+   "gap": 3.3023,
+   "relGap": 0.1215,
+   "titleMatch": 0.3333,
+   "qTokens": [
+    "로그인",
+    "시간",
+    "피스"
+   ],
+   "coverage": 1.0
+  },
+  "vector": [
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제6조 (로그인 유지)",
+    "chunk": "b29cdd872a1f1eded210ade8706738c2",
+    "cos": 0.7953
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제7조 (로그아웃)",
+    "chunk": "fa6a88069cbec91efbab13186a0c5454",
+    "cos": 0.7027
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제2조 (기본은 가린 값)",
+    "chunk": "404d1ffa6ce9290e72e48e9aaf96240f",
+    "cos": 0.6407
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제1조 (목적)",
+    "chunk": "e649331e2917a7c7520f087f71dcd834",
+    "cos": 0.6227
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제2조 (용어)",
+    "chunk": "1c491771431eba50387ea6d742043183",
+    "cos": 0.611
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제1조 (목적)",
+    "chunk": "02a403bf2400b22ad0e3cd271195096c",
+    "cos": 0.5993
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제1조 (목적)",
+    "chunk": "d0421b072d7032110152b4064c9f646a",
+    "cos": 0.551
+   },
+   {
+    "doc": "operator/backoffice/02-roles-permissions.md",
+    "section": "PMart 직원 역할·권한 정책 > 제1조 (목적)",
+    "chunk": "7bd37c63174c60371de0f81765204933",
+    "cos": 0.5462
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책",
+    "chunk": "e8041587cc62c41b374cc127173d65cd",
+    "cos": 0.5339
+   },
+   {
+    "doc": "operator/backoffice/08-hr-employee-management.md",
+    "section": "PMart 인사 관리 업무 정책 > 제1조 (목적)",
+    "chunk": "3f4c812e4c32cd16c84e8ba865f0dc29",
+    "cos": 0.5276
+   }
+  ],
+  "latency": {
+   "es": 8.5,
+   "embed": 218.2,
+   "pgvector": 52.4
+  }
+ },
+ {
+  "id": "OG01-2",
+  "set": "final",
+  "role": "operator",
+  "q": "백오피스 로그인 유지 시간이 얼마나 돼요?",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "operator/backoffice/01-staff-account-login.md"
+  ],
+  "sections": [
+   [
+    "operator/backoffice/01-staff-account-login.md",
+    "제6조 (로그인 유지)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG01",
+  "bm25": [
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제4조 (실시간 배송 현황)",
+    "heading": "제4조 (실시간 배송 현황)",
+    "type": "POLICY",
+    "chunk": "3fd4132fbb3c733f5b008ccb8cbe6e2f",
+    "raw": 23.8689
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제6조 (로그인 유지)",
+    "heading": "제6조 (로그인 유지)",
+    "type": "POLICY",
+    "chunk": "b29cdd872a1f1eded210ade8706738c2",
+    "raw": 22.8838
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책",
+    "heading": "PMart 백오피스 통합 조회·현황·운영 지표 정책",
+    "type": "POLICY",
+    "chunk": "e8041587cc62c41b374cc127173d65cd",
+    "raw": 22.6784
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "d0421b072d7032110152b4064c9f646a",
+    "raw": 20.2062
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "e649331e2917a7c7520f087f71dcd834",
+    "raw": 20.0795
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제3조 (통합 조회)",
+    "heading": "제3조 (통합 조회)",
+    "type": "POLICY",
+    "chunk": "648827b0fee9c5a49b04429b9c474c56",
+    "raw": 19.4977
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제8조 (운영 지표)",
+    "heading": "제8조 (운영 지표)",
+    "type": "POLICY",
+    "chunk": "8d63f89e4b330551fcb450d95736bb7d",
+    "raw": 19.4977
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제8조 (운영 지표)",
+    "heading": "제8조 (운영 지표)",
+    "type": "POLICY",
+    "chunk": "68c35e72e42f145492863c24348529ed",
+    "raw": 19.4977
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제7조 (로그아웃)",
+    "heading": "제7조 (로그아웃)",
+    "type": "POLICY",
+    "chunk": "fa6a88069cbec91efbab13186a0c5454",
+    "raw": 18.8996
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제2조 (조회 화면의 원칙)",
+    "heading": "제2조 (조회 화면의 원칙)",
+    "type": "POLICY",
+    "chunk": "c79d995cc853775aba9c6c73fa7aac9d",
+    "raw": 18.8372
+   }
+  ],
+  "features": {
+   "top1": 23.8689,
+   "gap": 0.9851,
+   "relGap": 0.0413,
+   "titleMatch": 0.4,
+   "qTokens": [
+    "돼요",
+    "로그인",
+    "시간",
+    "유지",
+    "피스"
+   ],
+   "coverage": 0.4
+  },
+  "vector": [
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제6조 (로그인 유지)",
+    "chunk": "b29cdd872a1f1eded210ade8706738c2",
+    "cos": 0.8351
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제7조 (로그아웃)",
+    "chunk": "fa6a88069cbec91efbab13186a0c5454",
+    "cos": 0.7028
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제1조 (목적)",
+    "chunk": "e649331e2917a7c7520f087f71dcd834",
+    "cos": 0.6391
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제2조 (기본은 가린 값)",
+    "chunk": "404d1ffa6ce9290e72e48e9aaf96240f",
+    "cos": 0.6183
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제2조 (용어)",
+    "chunk": "1c491771431eba50387ea6d742043183",
+    "cos": 0.5946
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제1조 (목적)",
+    "chunk": "02a403bf2400b22ad0e3cd271195096c",
+    "cos": 0.5939
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제8조 (정지·퇴사)",
+    "chunk": "b352b2cd0ae5b3be17cc8867e2bf4df0",
+    "cos": 0.5587
+   },
+   {
+    "doc": "operator/backoffice/08-hr-employee-management.md",
+    "section": "PMart 인사 관리 업무 정책 > 제10조 (인사 현황)",
+    "chunk": "68c0e0e298760e1446aede58dd7d48ac",
+    "cos": 0.5412
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제1조 (목적)",
+    "chunk": "d0421b072d7032110152b4064c9f646a",
+    "cos": 0.5395
+   },
+   {
+    "doc": "operator/backoffice/08-hr-employee-management.md",
+    "section": "PMart 인사 관리 업무 정책 > 제1조 (목적)",
+    "chunk": "3f4c812e4c32cd16c84e8ba865f0dc29",
+    "cos": 0.532
+   }
+  ],
+  "latency": {
+   "es": 28.4,
+   "embed": 254.8,
+   "pgvector": 47.4
+  }
+ },
+ {
+  "id": "OG01-3",
+  "set": "final",
+  "role": "operator",
+  "q": "아침에 로그인했는데 저녁에 다시 로그인하라고 떠요. 왜 그래요?",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "operator/backoffice/01-staff-account-login.md"
+  ],
+  "sections": [
+   [
+    "operator/backoffice/01-staff-account-login.md",
+    "제6조 (로그인 유지)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG01",
+  "bm25": [
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제5조 (로그인)",
+    "heading": "제5조 (로그인)",
+    "type": "POLICY",
+    "chunk": "d87815a38a49ccb06373f46fa86be2ae",
+    "raw": 20.1781
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제3조 (로그인 방법)",
+    "heading": "제3조 (로그인 방법)",
+    "type": "APP_GUIDE",
+    "chunk": "f7a0f0df5d15d23fcfa9200310d05e8c",
+    "raw": 19.5964
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제6조 (로그인 유지)",
+    "heading": "제6조 (로그인 유지)",
+    "type": "POLICY",
+    "chunk": "b29cdd872a1f1eded210ade8706738c2",
+    "raw": 19.5964
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책",
+    "heading": "PMart 회원 가입·로그인 정책",
+    "type": "APP_GUIDE",
+    "chunk": "7b73d6db3f105cf9f0a37eea8d1433bf",
+    "raw": 17.4125
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책",
+    "heading": "PMart 직원 계정·로그인 정책",
+    "type": "POLICY",
+    "chunk": "bd63e36352d33bf9717f9a5b9c63990f",
+    "raw": 17.4125
+   },
+   {
+    "doc": "operator/rider_app/01-signup.md",
+    "section": "PMart 라이더 가입 정책 > 제3조 (로그인)",
+    "heading": "제3조 (로그인)",
+    "type": "POLICY",
+    "chunk": "017e4f02a5b0e261935ef9b3236b3c7f",
+    "raw": 15.7943
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "APP_GUIDE",
+    "chunk": "fd90afcb009871713d9868263b5f1680",
+    "raw": 15.0929
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제2조 (정의)",
+    "heading": "제2조 (정의)",
+    "type": "APP_GUIDE",
+    "chunk": "15b08dfe60bcbc561344a62386ad628f",
+    "raw": 15.0929
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제9조 (문의)",
+    "heading": "제9조 (문의)",
+    "type": "APP_GUIDE",
+    "chunk": "d110999361819bd0e66bbc4b2fd90ef1",
+    "raw": 15.0929
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "e649331e2917a7c7520f087f71dcd834",
+    "raw": 15.0929
+   }
+  ],
+  "features": {
+   "top1": 20.1781,
+   "gap": 0.5817,
+   "relGap": 0.0288,
+   "titleMatch": 0.1667,
+   "qTokens": [
+    "그래요",
+    "그러",
+    "떠요",
+    "로그인",
+    "아침",
+    "저녁"
+   ],
+   "coverage": 0.1667
+  },
+  "vector": [
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제6조 (로그인 유지)",
+    "chunk": "b29cdd872a1f1eded210ade8706738c2",
+    "cos": 0.7167
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제5조 (로그인)",
+    "chunk": "d87815a38a49ccb06373f46fa86be2ae",
+    "cos": 0.6068
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제7조 (로그아웃)",
+    "chunk": "fa6a88069cbec91efbab13186a0c5454",
+    "cos": 0.5987
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제1조 (목적)",
+    "chunk": "e649331e2917a7c7520f087f71dcd834",
+    "cos": 0.5846
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책",
+    "chunk": "bd63e36352d33bf9717f9a5b9c63990f",
+    "cos": 0.5799
+   },
+   {
+    "doc": "operator/backoffice/01-staff-account-login.md",
+    "section": "PMart 직원 계정·로그인 정책 > 제8조 (정지·퇴사)",
+    "chunk": "b352b2cd0ae5b3be17cc8867e2bf4df0",
+    "cos": 0.5794
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제2조 (약관의 재동의)",
+    "chunk": "fdab6021cd56e514e3b838d63970222f",
+    "cos": 0.5726
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제3조 (로그인 방법)",
+    "chunk": "f7a0f0df5d15d23fcfa9200310d05e8c",
+    "cos": 0.5692
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제9조 (문의)",
+    "chunk": "d110999361819bd0e66bbc4b2fd90ef1",
+    "cos": 0.5555
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제5조 (가입을 마치지 않은 경우)",
+    "chunk": "3584ae659b5455bbba6c91ebff0b077a",
+    "cos": 0.5534
+   }
+  ],
+  "latency": {
+   "es": 18.5,
+   "embed": 286.2,
+   "pgvector": 47.6
+  }
+ },
+ {
+  "id": "OG06-1",
+  "set": "final",
+  "role": "operator",
+  "q": "직원이 자기 개인정보 열람 기록을 직접 볼 수 있나요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "operator/backoffice/04-personal-info-access.md"
+  ],
+  "sections": [
+   [
+    "operator/backoffice/04-personal-info-access.md",
+    "제5조 (열람 기록)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG06",
+  "bm25": [
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제5조 (열람 기록)",
+    "heading": "제5조 (열람 기록)",
+    "type": "POLICY",
+    "chunk": "7dad381cf5d0e0e4be17dd95e6454884",
+    "raw": 36.4855
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책",
+    "heading": "PMart 직원 개인정보 조회·열람 정책",
+    "type": "POLICY",
+    "chunk": "3ca5d8ebda30df92bef8415b325140cc",
+    "raw": 31.3597
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제4조 (원문 열람)",
+    "heading": "제4조 (원문 열람)",
+    "type": "POLICY",
+    "chunk": "48dfbf7b879711736df881f47763d4f2",
+    "raw": 29.6285
+   },
+   {
+    "doc": "operator/delivery/06-control-location.md",
+    "section": "PMart 라이더 관제·위치 정보 정책 > 제2조 (관제를 볼 수 있는 사람)",
+    "heading": "제2조 (관제를 볼 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "14bcd5bd59b80a4fdd18a648021249b7",
+    "raw": 29.1679
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제6조 (직원의 의무)",
+    "heading": "제6조 (직원의 의무)",
+    "type": "POLICY",
+    "chunk": "95796fc5b92987ab3ecdfcc27780b4a1",
+    "raw": 28.7499
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "02a403bf2400b22ad0e3cd271195096c",
+    "raw": 27.5229
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제3조 (찾기)",
+    "heading": "제3조 (찾기)",
+    "type": "POLICY",
+    "chunk": "315007b5370dc8cde55b7580648e104d",
+    "raw": 27.5229
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제2조 (기본은 가린 값)",
+    "heading": "제2조 (기본은 가린 값)",
+    "type": "POLICY",
+    "chunk": "404d1ffa6ce9290e72e48e9aaf96240f",
+    "raw": 25.4473
+   },
+   {
+    "doc": "operator/commerce/04-search.md",
+    "section": "PMart 상품 검색 정책 > 제11조 (검색 기록과 개인정보)",
+    "heading": "제11조 (검색 기록과 개인정보)",
+    "type": "POLICY",
+    "chunk": "ea0f361495a3a91e77e8d01a412ca3b5",
+    "raw": 20.0525
+   },
+   {
+    "doc": "operator/delivery/06-control-location.md",
+    "section": "PMart 라이더 관제·위치 정보 정책 > 제4조 (고객 전달지 열람)",
+    "heading": "제4조 (고객 전달지 열람)",
+    "type": "POLICY",
+    "chunk": "439df98ca85de74de1c630c8efe954e8",
+    "raw": 19.1894
+   }
+  ],
+  "features": {
+   "top1": 36.4855,
+   "gap": 5.1258,
+   "relGap": 0.1405,
+   "titleMatch": 0.8333,
+   "qTokens": [
+    "개인",
+    "기록",
+    "열람",
+    "자기",
+    "정보",
+    "직원"
+   ],
+   "coverage": 0.8333
+  },
+  "vector": [
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제6조 (직원의 의무)",
+    "chunk": "95796fc5b92987ab3ecdfcc27780b4a1",
+    "cos": 0.7693
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제5조 (열람 기록)",
+    "chunk": "7dad381cf5d0e0e4be17dd95e6454884",
+    "cos": 0.7516
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제4조 (원문 열람)",
+    "chunk": "48dfbf7b879711736df881f47763d4f2",
+    "cos": 0.737
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제1조 (목적)",
+    "chunk": "02a403bf2400b22ad0e3cd271195096c",
+    "cos": 0.7274
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제9조 (작업자 정보 열람)",
+    "chunk": "b9f0bf3da089011e952305ad4bc92152",
+    "cos": 0.6744
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책 > 제2조 (기본은 가린 값)",
+    "chunk": "404d1ffa6ce9290e72e48e9aaf96240f",
+    "cos": 0.618
+   },
+   {
+    "doc": "operator/backoffice/04-personal-info-access.md",
+    "section": "PMart 직원 개인정보 조회·열람 정책",
+    "chunk": "3ca5d8ebda30df92bef8415b325140cc",
+    "cos": 0.5934
+   },
+   {
+    "doc": "operator/backoffice/07-rider-operations.md",
+    "section": "PMart 라이더 운영 업무 정책 > 제6조 (조치 이력)",
+    "chunk": "1749760258ba8cb16c354d4f34c50688",
+    "cos": 0.5909
+   },
+   {
+    "doc": "operator/backoffice/02-roles-permissions.md",
+    "section": "PMart 직원 역할·권한 정책 > 제9조 (기록)",
+    "chunk": "cd06f2fc33edb70670c965c8dd81d5eb",
+    "cos": 0.572
+   },
+   {
+    "doc": "operator/backoffice/02-roles-permissions.md",
+    "section": "PMart 직원 역할·권한 정책 > 제2조 (권한의 원칙)",
+    "chunk": "2bcb8059a7305d916fb59dfa69ffacdf",
+    "cos": 0.5583
+   }
+  ],
+  "latency": {
+   "es": 23.9,
+   "embed": 252.6,
+   "pgvector": 45.4
+  }
+ },
+ {
+  "id": "OG09-1",
+  "set": "final",
+  "role": "operator",
+  "q": "장바구니에 담은 상품은 며칠 동안 남아 있어요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "operator/commerce/07-cart.md"
+  ],
+  "sections": [
+   [
+    "operator/commerce/07-cart.md",
+    "제3조 (보존 기간)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG09",
+  "bm25": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "heading": "제2조 (장바구니를 쓸 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "raw": 40.3289
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "heading": "제5조 (장바구니에 보이는 정보)",
+    "type": "POLICY",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "heading": "제7조 (주문 뒤 장바구니)",
+    "type": "POLICY",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "heading": "제6조 (비회원 장바구니 옮기기)",
+    "type": "POLICY",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "raw": 33.1694
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책",
+    "heading": "PMart 장바구니 정책",
+    "type": "POLICY",
+    "chunk": "bf6eca55390309d7c70ebec0794174be",
+    "raw": 32.8553
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "raw": 28.2751
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "heading": "제3조 (보존 기간)",
+    "type": "POLICY",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "raw": 27.0195
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제8조 (장바구니 쿠폰)",
+    "heading": "제8조 (장바구니 쿠폰)",
+    "type": "POLICY",
+    "chunk": "ff82d0588b03c6eeb6cf00da04f360cb",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "heading": "제4조 (담기와 수량 변경)",
+    "type": "POLICY",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "heading": "제3조 (장바구니)",
+    "type": "POLICY",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "raw": 25.8707
+   }
+  ],
+  "features": {
+   "top1": 40.3289,
+   "gap": 6.2301,
+   "relGap": 0.1545,
+   "titleMatch": 0.4,
+   "qTokens": [
+    "동안",
+    "며칠",
+    "바구니",
+    "상품",
+    "장바구니"
+   ],
+   "coverage": 0.6
+  },
+  "vector": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "cos": 0.801
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "cos": 0.7089
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "cos": 0.6953
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "cos": 0.6888
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "cos": 0.6872
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "cos": 0.6779
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "cos": 0.6644
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "cos": 0.6631
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제5조 (품절·판매 종료 상품)",
+    "chunk": "c7ef429daf1fa1e1ce8463fdac875717",
+    "cos": 0.6176
+   },
+   {
+    "doc": "operator/mfc/06-inventory-quality.md",
+    "section": "PMart MFC 재고·품질 관리 정책 > 제2조 (LOT 과 소비기한)",
+    "chunk": "6ff402b414241711232afc3837237305",
+    "cos": 0.6137
+   }
+  ],
+  "latency": {
+   "es": 27.8,
+   "embed": 295.3,
+   "pgvector": 47.5
+  }
+ },
+ {
+  "id": "OG09-2",
+  "set": "final",
+  "role": "operator",
+  "q": "장바구니 보존 기간이 어떻게 돼요?",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "operator/commerce/07-cart.md"
+  ],
+  "sections": [
+   [
+    "operator/commerce/07-cart.md",
+    "제3조 (보존 기간)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG09",
+  "bm25": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "heading": "제3조 (보존 기간)",
+    "type": "POLICY",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "raw": 51.128
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "heading": "제5조 (장바구니에 보이는 정보)",
+    "type": "POLICY",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "heading": "제7조 (주문 뒤 장바구니)",
+    "type": "POLICY",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "heading": "제6조 (비회원 장바구니 옮기기)",
+    "type": "POLICY",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "raw": 33.1694
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책",
+    "heading": "PMart 장바구니 정책",
+    "type": "POLICY",
+    "chunk": "bf6eca55390309d7c70ebec0794174be",
+    "raw": 32.8553
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "heading": "제2조 (장바구니를 쓸 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "raw": 32.2893
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "raw": 28.2751
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제8조 (장바구니 쿠폰)",
+    "heading": "제8조 (장바구니 쿠폰)",
+    "type": "POLICY",
+    "chunk": "ff82d0588b03c6eeb6cf00da04f360cb",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "heading": "제4조 (담기와 수량 변경)",
+    "type": "POLICY",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "heading": "제3조 (장바구니)",
+    "type": "POLICY",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "raw": 25.8707
+   }
+  ],
+  "features": {
+   "top1": 51.128,
+   "gap": 17.0292,
+   "relGap": 0.3331,
+   "titleMatch": 0.8,
+   "qTokens": [
+    "기간",
+    "돼요",
+    "바구니",
+    "보존",
+    "장바구니"
+   ],
+   "coverage": 0.8
+  },
+  "vector": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "cos": 0.8216
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "cos": 0.6981
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "cos": 0.687
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "cos": 0.6671
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "cos": 0.665
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "cos": 0.662
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "cos": 0.6601
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "cos": 0.6596
+   },
+   {
+    "doc": "operator/cdc_wms/02-lot-shelf-life.md",
+    "section": "PMart CDC LOT·소비기한 관리 정책 > 제4조 (최소 잔여일수)",
+    "chunk": "53b1b427b2f58f3b14b6f76c52eff7cc",
+    "cos": 0.6023
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제5조 (개인정보 보관 기간)",
+    "chunk": "0de0532a7ba1358fa305135247ff9db4",
+    "cos": 0.598
+   }
+  ],
+  "latency": {
+   "es": 22.1,
+   "embed": 204.2,
+   "pgvector": 49.1
+  }
+ },
+ {
+  "id": "OG09-3",
+  "set": "final",
+  "role": "operator",
+  "q": "고객이 한 달 전에 담아 둔 장바구니가 없어졌다고 해요",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "operator/commerce/07-cart.md"
+  ],
+  "sections": [
+   [
+    "operator/commerce/07-cart.md",
+    "제3조 (보존 기간)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG09",
+  "bm25": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "heading": "제5조 (장바구니에 보이는 정보)",
+    "type": "POLICY",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "heading": "제7조 (주문 뒤 장바구니)",
+    "type": "POLICY",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "heading": "제6조 (비회원 장바구니 옮기기)",
+    "type": "POLICY",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "raw": 33.1694
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책",
+    "heading": "PMart 장바구니 정책",
+    "type": "POLICY",
+    "chunk": "bf6eca55390309d7c70ebec0794174be",
+    "raw": 32.8553
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "heading": "제2조 (장바구니를 쓸 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "raw": 32.2893
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "raw": 28.2751
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "heading": "제3조 (보존 기간)",
+    "type": "POLICY",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "raw": 27.0195
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제8조 (장바구니 쿠폰)",
+    "heading": "제8조 (장바구니 쿠폰)",
+    "type": "POLICY",
+    "chunk": "ff82d0588b03c6eeb6cf00da04f360cb",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "heading": "제4조 (담기와 수량 변경)",
+    "type": "POLICY",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "heading": "제3조 (장바구니)",
+    "type": "POLICY",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "raw": 25.8707
+   }
+  ],
+  "features": {
+   "top1": 34.0988,
+   "gap": 0.0,
+   "relGap": 0.0,
+   "titleMatch": 0.5,
+   "qTokens": [
+    "고객",
+    "바구니",
+    "장바구니",
+    "해요"
+   ],
+   "coverage": 0.75
+  },
+  "vector": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "cos": 0.646
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "cos": 0.6416
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "cos": 0.6269
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "cos": 0.6009
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "cos": 0.5915
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "cos": 0.5886
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "cos": 0.5836
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "cos": 0.5825
+   },
+   {
+    "doc": "customer/customer_app/12-missing-damaged-item.md",
+    "section": "PMart 상품 누락·파손 처리 안내 > 제3조 (주문한 상품이 포장에 없는 경우)",
+    "chunk": "0610369fb094e5e808b437a4a0d01538",
+    "cos": 0.5765
+   },
+   {
+    "doc": "customer/customer_app/11-shortage.md",
+    "section": "PMart 결품 처리 정책 > 제2조 (결품 처리)",
+    "chunk": "b52605ddf94766354e41de126f21fc07",
+    "cos": 0.5752
+   }
+  ],
+  "latency": {
+   "es": 25.8,
+   "embed": 262.0,
+   "pgvector": 46.1
+  }
+ },
+ {
+  "id": "OG10-1",
+  "set": "final",
+  "role": "operator",
+  "q": "장바구니에 담으면 재고가 잡히나요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "operator/commerce/07-cart.md"
+  ],
+  "sections": [
+   [
+    "operator/commerce/07-cart.md",
+    "제4조 (담기와 수량 변경)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG10",
+  "bm25": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "heading": "제5조 (장바구니에 보이는 정보)",
+    "type": "POLICY",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "heading": "제7조 (주문 뒤 장바구니)",
+    "type": "POLICY",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "raw": 34.0988
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "heading": "제6조 (비회원 장바구니 옮기기)",
+    "type": "POLICY",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "raw": 33.1694
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책",
+    "heading": "PMart 장바구니 정책",
+    "type": "POLICY",
+    "chunk": "bf6eca55390309d7c70ebec0794174be",
+    "raw": 32.8553
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "heading": "제2조 (장바구니를 쓸 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "raw": 32.2893
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "raw": 28.2751
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "heading": "제3조 (보존 기간)",
+    "type": "POLICY",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "raw": 27.0195
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제8조 (장바구니 쿠폰)",
+    "heading": "제8조 (장바구니 쿠폰)",
+    "type": "POLICY",
+    "chunk": "ff82d0588b03c6eeb6cf00da04f360cb",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "heading": "제4조 (담기와 수량 변경)",
+    "type": "POLICY",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "raw": 25.8707
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "heading": "제3조 (장바구니)",
+    "type": "POLICY",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "raw": 25.8707
+   }
+  ],
+  "features": {
+   "top1": 34.0988,
+   "gap": 0.0,
+   "relGap": 0.0,
+   "titleMatch": 0.5,
+   "qTokens": [
+    "바구니",
+    "잡히",
+    "장바구니",
+    "재고"
+   ],
+   "coverage": 0.75
+  },
+  "vector": [
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제4조 (담기와 수량 변경)",
+    "chunk": "97feaa443e3b1495961dab21f2dcb501",
+    "cos": 0.7777
+   },
+   {
+    "doc": "operator/mfc/04-picking-packing.md",
+    "section": "PMart MFC 피킹·포장 정책 > 제3조 (장바구니)",
+    "chunk": "8f093ead73c226d478d89e269b102163",
+    "cos": 0.7444
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제6조 (비회원 장바구니 옮기기)",
+    "chunk": "46ea37817d216b7377949fbe4eac1ec7",
+    "cos": 0.7012
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "cos": 0.6891
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제1조 (목적)",
+    "chunk": "fdc670cfe5f5d7ef11b2ad0da768d654",
+    "cos": 0.6864
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제5조 (장바구니에 보이는 정보)",
+    "chunk": "653b252942a7aad2eb778d269a0a9710",
+    "cos": 0.6851
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제7조 (주문 뒤 장바구니)",
+    "chunk": "c1e53597bfa55c105c49b47f79acd0cf",
+    "cos": 0.6746
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제3조 (보존 기간)",
+    "chunk": "b21445e7f721069869f9eca6ff9996ec",
+    "cos": 0.6411
+   },
+   {
+    "doc": "customer/customer_app/11-shortage.md",
+    "section": "PMart 결품 처리 정책 > 제2조 (결품 처리)",
+    "chunk": "b52605ddf94766354e41de126f21fc07",
+    "cos": 0.604
+   },
+   {
+    "doc": "operator/order_claim/02-payment-order-status.md",
+    "section": "PMart 결제·주문 확정·주문 변경 정책 > 제3조 (결제 전 재고 확보)",
+    "chunk": "93c33c4f4f9c616c5a6200909818b9c8",
+    "cos": 0.5929
+   }
+  ],
+  "latency": {
+   "es": 22.2,
+   "embed": 211.6,
+   "pgvector": 48.2
+  }
+ },
+ {
+  "id": "OG12-1",
+  "set": "final",
+  "role": "operator",
+  "q": "한집배달의 배송 약속 시각은 주문 후 몇 분이에요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "operator/delivery/02-arrival-slots-promise.md"
+  ],
+  "sections": [
+   [
+    "operator/delivery/02-arrival-slots-promise.md",
+    "제6조 (배송 약속 시각)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG12",
+  "bm25": [
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제6조 (배송 약속 시각)",
+    "heading": "제6조 (배송 약속 시각)",
+    "type": "POLICY",
+    "chunk": "095068eed73a47725e26f03feb387c68",
+    "raw": 28.4025
+   },
+   {
+    "doc": "operator/delivery/03-dispatch.md",
+    "section": "PMart 배차 운영 정책 > 제5조 (한집배달과 알뜰배달)",
+    "heading": "제5조 (한집배달과 알뜰배달)",
+    "type": "POLICY",
+    "chunk": "16a10a72bb6de744a841279f301091b6",
+    "raw": 22.4046
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책",
+    "heading": "PMart 도착 시간대·배송 약속 정책",
+    "type": "POLICY",
+    "chunk": "241599b5b5841f39ebaa9b93c98a3a05",
+    "raw": 15.0166
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제2조 (정의)",
+    "heading": "제2조 (정의)",
+    "type": "POLICY",
+    "chunk": "c564e68ee167698986ce284419df4f9c",
+    "raw": 14.7995
+   },
+   {
+    "doc": "operator/order_claim/07-misdelivery.md",
+    "section": "PMart 오배송 처리 정책 > 제5조 (실제 집 주소의 기록)",
+    "heading": "제5조 (실제 집 주소의 기록)",
+    "type": "POLICY",
+    "chunk": "5710da768de98a4cfcee9173589dfcc8",
+    "raw": 14.3716
+   },
+   {
+    "doc": "operator/delivery/01-service-area.md",
+    "section": "PMart 배송 권역·배송 가능 지역 정책 > 제6조 (배달 서비스 시간)",
+    "heading": "제6조 (배달 서비스 시간)",
+    "type": "POLICY",
+    "chunk": "aee623e930a6d1932d9350339be35809",
+    "raw": 14.3711
+   },
+   {
+    "doc": "operator/backoffice/09-lookup-status-metrics.md",
+    "section": "PMart 백오피스 통합 조회·현황·운영 지표 정책 > 제8조 (운영 지표)",
+    "heading": "제8조 (운영 지표)",
+    "type": "POLICY",
+    "chunk": "8d63f89e4b330551fcb450d95736bb7d",
+    "raw": 14.03
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제7조 (배차 지연 안내)",
+    "heading": "제7조 (배차 지연 안내)",
+    "type": "POLICY",
+    "chunk": "b229b6f308b67fbfa0a062c72188b75d",
+    "raw": 13.9009
+   },
+   {
+    "doc": "operator/order_claim/08-delivery-issue-consult.md",
+    "section": "PMart 배송 문제 상담 정책 > 제4조 (배송 완료인데 받지 못함)",
+    "heading": "제4조 (배송 완료인데 받지 못함)",
+    "type": "POLICY",
+    "chunk": "8407cc44fb5edfc3ba76483baebbc787",
+    "raw": 13.874
+   },
+   {
+    "doc": "operator/order_claim/07-misdelivery.md",
+    "section": "PMart 오배송 처리 정책 > 제4조 (귀책별 처리)",
+    "heading": "제4조 (귀책별 처리)",
+    "type": "POLICY",
+    "chunk": "95085ccae92f45c917b9cef746c8d108",
+    "raw": 13.8148
+   }
+  ],
+  "features": {
+   "top1": 28.4025,
+   "gap": 5.9979,
+   "relGap": 0.2112,
+   "titleMatch": 0.6,
+   "qTokens": [
+    "배달",
+    "배송",
+    "시각",
+    "약속",
+    "주문"
+   ],
+   "coverage": 1.0
+  },
+  "vector": [
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제6조 (배송 약속 시각)",
+    "chunk": "095068eed73a47725e26f03feb387c68",
+    "cos": 0.838
+   },
+   {
+    "doc": "operator/delivery/03-dispatch.md",
+    "section": "PMart 배차 운영 정책 > 제5조 (한집배달과 알뜰배달)",
+    "chunk": "16a10a72bb6de744a841279f301091b6",
+    "cos": 0.6939
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제2조 (정의)",
+    "chunk": "c564e68ee167698986ce284419df4f9c",
+    "cos": 0.6115
+   },
+   {
+    "doc": "operator/delivery/01-service-area.md",
+    "section": "PMart 배송 권역·배송 가능 지역 정책 > 제6조 (배달 서비스 시간)",
+    "chunk": "aee623e930a6d1932d9350339be35809",
+    "cos": 0.6111
+   },
+   {
+    "doc": "customer/customer_app/06-order-payment-fees.md",
+    "section": "PMart 주문·결제·이용 요금 정책 > 제3조 (배달팁)",
+    "chunk": "7f14deba9a368a4269d25a30e8869b4f",
+    "cos": 0.5936
+   },
+   {
+    "doc": "operator/order_claim/01-order-amount.md",
+    "section": "PMart 주문 조건·결제 금액 정책 > 제11조 (배송 시간)",
+    "chunk": "a6986a4263e4b3d082ff352af089f1db",
+    "cos": 0.5931
+   },
+   {
+    "doc": "operator/delivery/01-service-area.md",
+    "section": "PMart 배송 권역·배송 가능 지역 정책 > 제5조 (배송 조건)",
+    "chunk": "1282a5340705b4d7066be7cb3f449bbf",
+    "cos": 0.5886
+   },
+   {
+    "doc": "operator/order_claim/01-order-amount.md",
+    "section": "PMart 주문 조건·결제 금액 정책 > 제5조 (배달팁)",
+    "chunk": "9c4867280b925c4a088c044548aabedf",
+    "cos": 0.5869
+   },
+   {
+    "doc": "operator/delivery/06-control-location.md",
+    "section": "PMart 라이더 관제·위치 정보 정책 > 제9조 (정시 배송률)",
+    "chunk": "43d2bce6a94f35023903fc891dace883",
+    "cos": 0.578
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제7조 (배차 지연 안내)",
+    "chunk": "b229b6f308b67fbfa0a062c72188b75d",
+    "cos": 0.5742
+   }
+  ],
+  "latency": {
+   "es": 21.3,
+   "embed": 259.6,
+   "pgvector": 5.7
+  }
+ },
+ {
+  "id": "OG12-2",
+  "set": "final",
+  "role": "operator",
+  "q": "알뜰배달은 언제까지 도착해야 약속을 지킨 거예요?",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "operator/delivery/02-arrival-slots-promise.md"
+  ],
+  "sections": [
+   [
+    "operator/delivery/02-arrival-slots-promise.md",
+    "제6조 (배송 약속 시각)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG12",
+  "bm25": [
+   {
+    "doc": "operator/delivery/03-dispatch.md",
+    "section": "PMart 배차 운영 정책 > 제5조 (한집배달과 알뜰배달)",
+    "heading": "제5조 (한집배달과 알뜰배달)",
+    "type": "POLICY",
+    "chunk": "16a10a72bb6de744a841279f301091b6",
+    "raw": 24.0363
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책",
+    "heading": "PMart 도착 시간대·배송 약속 정책",
+    "type": "POLICY",
+    "chunk": "241599b5b5841f39ebaa9b93c98a3a05",
+    "raw": 17.6959
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제6조 (배송 약속 시각)",
+    "heading": "제6조 (배송 약속 시각)",
+    "type": "POLICY",
+    "chunk": "095068eed73a47725e26f03feb387c68",
+    "raw": 17.6341
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제3조 (도착 시간대)",
+    "heading": "제3조 (도착 시간대)",
+    "type": "POLICY",
+    "chunk": "6050015bfa369ff1b8e70f06d544c05d",
+    "raw": 16.9337
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "acf618d53bc8aed0bf77039b29915bf3",
+    "raw": 15.5309
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제2조 (정의)",
+    "heading": "제2조 (정의)",
+    "type": "POLICY",
+    "chunk": "c564e68ee167698986ce284419df4f9c",
+    "raw": 15.5309
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제4조 (정원과 점유)",
+    "heading": "제4조 (정원과 점유)",
+    "type": "POLICY",
+    "chunk": "2793ceafaf217308ffad4012ed8a3cc2",
+    "raw": 14.9223
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제7조 (배차 지연 안내)",
+    "heading": "제7조 (배차 지연 안내)",
+    "type": "POLICY",
+    "chunk": "b229b6f308b67fbfa0a062c72188b75d",
+    "raw": 14.3596
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제5조 (센터 작업 여력이 줄어든 경우)",
+    "heading": "제5조 (센터 작업 여력이 줄어든 경우)",
+    "type": "POLICY",
+    "chunk": "b1dc0b86cb891dc8bd937e1e5c4a11a1",
+    "raw": 13.3526
+   },
+   {
+    "doc": "operator/delivery/01-service-area.md",
+    "section": "PMart 배송 권역·배송 가능 지역 정책 > 제5조 (배송 조건)",
+    "heading": "제5조 (배송 조건)",
+    "type": "POLICY",
+    "chunk": "1282a5340705b4d7066be7cb3f449bbf",
+    "raw": 9.3418
+   }
+  ],
+  "features": {
+   "top1": 24.0363,
+   "gap": 6.3404,
+   "relGap": 0.2638,
+   "titleMatch": 0.25,
+   "qTokens": [
+    "도착",
+    "배달",
+    "알뜰",
+    "약속",
+    "언제",
+    "예요",
+    "지키",
+    "지킨"
+   ],
+   "coverage": 0.375
+  },
+  "vector": [
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제6조 (배송 약속 시각)",
+    "chunk": "095068eed73a47725e26f03feb387c68",
+    "cos": 0.8004
+   },
+   {
+    "doc": "operator/delivery/03-dispatch.md",
+    "section": "PMart 배차 운영 정책 > 제5조 (한집배달과 알뜰배달)",
+    "chunk": "16a10a72bb6de744a841279f301091b6",
+    "cos": 0.6872
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제2조 (정의)",
+    "chunk": "c564e68ee167698986ce284419df4f9c",
+    "cos": 0.6542
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제3조 (도착 시간대)",
+    "chunk": "6050015bfa369ff1b8e70f06d544c05d",
+    "cos": 0.6542
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제7조 (배차 지연 안내)",
+    "chunk": "b229b6f308b67fbfa0a062c72188b75d",
+    "cos": 0.6363
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제1조 (목적)",
+    "chunk": "acf618d53bc8aed0bf77039b29915bf3",
+    "cos": 0.6267
+   },
+   {
+    "doc": "operator/delivery/01-service-area.md",
+    "section": "PMart 배송 권역·배송 가능 지역 정책 > 제6조 (배달 서비스 시간)",
+    "chunk": "aee623e930a6d1932d9350339be35809",
+    "cos": 0.6251
+   },
+   {
+    "doc": "operator/order_claim/01-order-amount.md",
+    "section": "PMart 주문 조건·결제 금액 정책 > 제11조 (배송 시간)",
+    "chunk": "a6986a4263e4b3d082ff352af089f1db",
+    "cos": 0.6124
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제4조 (정원과 점유)",
+    "chunk": "2793ceafaf217308ffad4012ed8a3cc2",
+    "cos": 0.6019
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내 > 제7조 (새 상품의 도착 시간)",
+    "chunk": "54db2937f4226f471e850cba14a1afdb",
+    "cos": 0.6014
+   }
+  ],
+  "latency": {
+   "es": 7.3,
+   "embed": 236.1,
+   "pgvector": 51.8
+  }
+ },
+ {
+  "id": "OG16-1",
+  "set": "final",
+  "role": "operator",
+  "q": "배송이 늦어지면 고객에게 보상 쿠폰을 주나요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "operator/order_claim/08-delivery-issue-consult.md"
+  ],
+  "sections": [
+   [
+    "operator/order_claim/08-delivery-issue-consult.md",
+    "제3조 (배송 지연)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "OG16",
+  "bm25": [
+   {
+    "doc": "operator/order_claim/08-delivery-issue-consult.md",
+    "section": "PMart 배송 문제 상담 정책 > 제3조 (배송 지연)",
+    "heading": "제3조 (배송 지연)",
+    "type": "POLICY",
+    "chunk": "39df29687cd0e62946a5084d89706d81",
+    "raw": 16.1696
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 15.7701
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제5조 (센터 작업 여력이 줄어든 경우)",
+    "heading": "제5조 (센터 작업 여력이 줄어든 경우)",
+    "type": "POLICY",
+    "chunk": "b1dc0b86cb891dc8bd937e1e5c4a11a1",
+    "raw": 13.8838
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제10조 (쿠폰의 사용·해제·복원)",
+    "heading": "제10조 (쿠폰의 사용·해제·복원)",
+    "type": "POLICY",
+    "chunk": "5d154dfade10dc0b3e11dc3a64960c2a",
+    "raw": 12.3646
+   },
+   {
+    "doc": "operator/commerce/06-customer-notifications.md",
+    "section": "PMart 고객 알림 정책 > 제4조 (알림 종류)",
+    "heading": "제4조 (알림 종류)",
+    "type": "POLICY",
+    "chunk": "efaf81fd339d641c799fe2cecc2e0735",
+    "raw": 11.5583
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제3조 (가격이 정해지지 않은 판매 단위)",
+    "heading": "제3조 (가격이 정해지지 않은 판매 단위)",
+    "type": "POLICY",
+    "chunk": "73ee8d20ed869efaedda6ccc276845c1",
+    "raw": 11.2541
+   },
+   {
+    "doc": "operator/delivery/07-earnings-operations.md",
+    "section": "PMart 라이더 수행료 운영 정책 > 제7조 (이의 인정 보상금)",
+    "heading": "제7조 (이의 인정 보상금)",
+    "type": "POLICY",
+    "chunk": "cf247e5b32abce50dc177f61a05d1220",
+    "raw": 11.2541
+   },
+   {
+    "doc": "customer/customer_app/06-order-payment-fees.md",
+    "section": "PMart 주문·결제·이용 요금 정책 > 제5조의2 (할인 행사와 쿠폰)",
+    "heading": "제5조의2 (할인 행사와 쿠폰)",
+    "type": "APP_GUIDE",
+    "chunk": "1cf5c01055d1517c614e63c0bdc14a64",
+    "raw": 11.0609
+   },
+   {
+    "doc": "operator/commerce/02-pricing-promotions.md",
+    "section": "PMart 가격·행사 정책 > 제9조 (쿠폰을 받는 방법)",
+    "heading": "제9조 (쿠폰을 받는 방법)",
+    "type": "POLICY",
+    "chunk": "048aad0227984ff49634e075e07f0d81",
+    "raw": 10.9373
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제3조 (배송 지연)",
+    "heading": "제3조 (배송 지연)",
+    "type": "APP_GUIDE",
+    "chunk": "6a60e20d2a173a6c9a2dca3191d3d569",
+    "raw": 10.4687
+   }
+  ],
+  "features": {
+   "top1": 16.1696,
+   "gap": 0.3995,
+   "relGap": 0.0247,
+   "titleMatch": 0.25,
+   "qTokens": [
+    "고객",
+    "배송",
+    "보상",
+    "쿠폰"
+   ],
+   "coverage": 1.0
+  },
+  "vector": [
+   {
+    "doc": "operator/order_claim/08-delivery-issue-consult.md",
+    "section": "PMart 배송 문제 상담 정책 > 제3조 (배송 지연)",
+    "chunk": "39df29687cd0e62946a5084d89706d81",
+    "cos": 0.6685
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제3조 (배송 지연)",
+    "chunk": "6a60e20d2a173a6c9a2dca3191d3d569",
+    "cos": 0.6481
+   },
+   {
+    "doc": "operator/order_claim/08-delivery-issue-consult.md",
+    "section": "PMart 배송 문제 상담 정책 > 제2조 (공통 원칙)",
+    "chunk": "31afed7d1fc1659038b7f1d372439bcc",
+    "cos": 0.628
+   },
+   {
+    "doc": "operator/rider_app/04-earnings.md",
+    "section": "PMart 라이더 수행료·지급 정책 > 제6조 (전달 실패·사고의 수행료)",
+    "chunk": "1501ce0d2d2c037b8ffed269346eb5cd",
+    "cos": 0.6218
+   },
+   {
+    "doc": "operator/delivery/02-arrival-slots-promise.md",
+    "section": "PMart 도착 시간대·배송 약속 정책 > 제7조 (배차 지연 안내)",
+    "chunk": "b229b6f308b67fbfa0a062c72188b75d",
+    "cos": 0.6086
+   },
+   {
+    "doc": "operator/commerce/06-customer-notifications.md",
+    "section": "PMart 고객 알림 정책 > 제6조 (리뷰 작성 안내 알림)",
+    "chunk": "a028b4c002e1bb3a049573129e528527",
+    "cos": 0.6005
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내 > 제6조 (라이더의 실수나 지도·시스템 오류 등 회사 사유로 잘못 전달된 경우)",
+    "chunk": "6b9a02436bec4cb59419c8d36bad6656",
+    "cos": 0.6
+   },
+   {
+    "doc": "operator/rider_app/04-earnings.md",
+    "section": "PMart 라이더 수행료·지급 정책 > 제8조 (이의 신청)",
+    "chunk": "b18551c4567a57a50d54083afbf06d8d",
+    "cos": 0.5996
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제8조 (배송 중 사고·파손)",
+    "chunk": "5c4815e807d9d319ff6273cc54ce60cf",
+    "cos": 0.5995
+   },
+   {
+    "doc": "operator/delivery/07-earnings-operations.md",
+    "section": "PMart 라이더 수행료 운영 정책 > 제4조 (전달 실패의 수행료)",
+    "chunk": "b8ac4e08c8386482023a8d883a337083",
+    "cos": 0.5965
+   }
+  ],
+  "latency": {
+   "es": 28.3,
+   "embed": 276.1,
+   "pgvector": 5.9
+  }
+ },
+ {
+  "id": "ON02-1",
+  "set": "final",
+  "role": "operator",
+  "q": "센터 야간 근무 수당은 얼마예요?",
+  "label": "NO_GROUNDING",
+  "kind": "HARD_NEGATIVE",
+  "docs": [],
+  "sections": [],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "ON02",
+  "bm25": [
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제7조 (근무)",
+    "heading": "제7조 (근무)",
+    "type": "POLICY",
+    "chunk": "5c4874524d812782bb633e68b3f0fe8d",
+    "raw": 11.0565
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제6조 (작업자 상태와 센터 이동)",
+    "heading": "제6조 (작업자 상태와 센터 이동)",
+    "type": "POLICY",
+    "chunk": "b81c2ea0290536f81e66a0513579e6d0",
+    "raw": 10.8539
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책",
+    "heading": "PMart MFC 작업자 등록·자격·근무 정책",
+    "type": "POLICY",
+    "chunk": "50283eb9ecf87922abcd8bd9ee8f2560",
+    "raw": 9.0065
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "POLICY",
+    "chunk": "e1b732955d3432ac6fb48764923cbbad",
+    "raw": 7.9477
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제2조 (용어)",
+    "heading": "제2조 (용어)",
+    "type": "POLICY",
+    "chunk": "c49a3c6bef2651e42be9bb6fba4d1878",
+    "raw": 7.9477
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제8조 (휴게)",
+    "heading": "제8조 (휴게)",
+    "type": "POLICY",
+    "chunk": "6343757de5b538456cd237934ef0dfac",
+    "raw": 7.9477
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제4조 (고용 형태)",
+    "heading": "제4조 (고용 형태)",
+    "type": "POLICY",
+    "chunk": "a41569007c6b2f6fd3c48510189dd67e",
+    "raw": 7.6481
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제5조 (자격과 업무)",
+    "heading": "제5조 (자격과 업무)",
+    "type": "POLICY",
+    "chunk": "aebb21a30d6065041ff69d13cb9f645f",
+    "raw": 7.6481
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제3조 (작업자 등록)",
+    "heading": "제3조 (작업자 등록)",
+    "type": "POLICY",
+    "chunk": "e7a2050dd8a188a69c93bde69febee20",
+    "raw": 7.3701
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제9조 (작업자 정보 열람)",
+    "heading": "제9조 (작업자 정보 열람)",
+    "type": "POLICY",
+    "chunk": "b9f0bf3da089011e952305ad4bc92152",
+    "raw": 7.1117
+   }
+  ],
+  "features": {
+   "top1": 11.0565,
+   "gap": 0.2026,
+   "relGap": 0.0183,
+   "titleMatch": 0.1667,
+   "qTokens": [
+    "근무",
+    "센터",
+    "수당",
+    "야간",
+    "얼마",
+    "예요"
+   ],
+   "coverage": 0.3333
+  },
+  "vector": [
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제7조 (근무)",
+    "chunk": "5c4874524d812782bb633e68b3f0fe8d",
+    "cos": 0.5623
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제8조 (휴게)",
+    "chunk": "6343757de5b538456cd237934ef0dfac",
+    "cos": 0.5415
+   },
+   {
+    "doc": "operator/mfc/07-supervisor-controls.md",
+    "section": "PMart MFC 센터 관리자 작업 조작·운영 제한 정책 > 제9조 (센터 설정 관리)",
+    "chunk": "2c61c6c548bac839b042348827460c8f",
+    "cos": 0.5411
+   },
+   {
+    "doc": "operator/backoffice/02-roles-permissions.md",
+    "section": "PMart 직원 역할·권한 정책 > 제4조 (센터 지정 역할)",
+    "chunk": "b2013374294acdb03ddc62da4c5502bb",
+    "cos": 0.5299
+   },
+   {
+    "doc": "operator/backoffice/02-roles-permissions.md",
+    "section": "PMart 직원 역할·권한 정책 > 제8조 (소속 변경)",
+    "chunk": "d03b15b10b12090b7edc4aa87c97de83",
+    "cos": 0.528
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제6조 (작업자 상태와 센터 이동)",
+    "chunk": "b81c2ea0290536f81e66a0513579e6d0",
+    "cos": 0.5273
+   },
+   {
+    "doc": "operator/backoffice/08-hr-employee-management.md",
+    "section": "PMart 인사 관리 업무 정책 > 제8조 (소속 변경)",
+    "chunk": "038436ec1e046b7b7815f57b95b83bdc",
+    "cos": 0.527
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제4조 (고용 형태)",
+    "chunk": "a41569007c6b2f6fd3c48510189dd67e",
+    "cos": 0.5216
+   },
+   {
+    "doc": "operator/mfc/01-worker-qualification-shift.md",
+    "section": "PMart MFC 작업자 등록·자격·근무 정책 > 제9조 (작업자 정보 열람)",
+    "chunk": "b9f0bf3da089011e952305ad4bc92152",
+    "cos": 0.5134
+   },
+   {
+    "doc": "operator/mfc/06-inventory-quality.md",
+    "section": "PMart MFC 재고·품질 관리 정책 > 제3조 (실사)",
+    "chunk": "046bf8a7975cc021c1da64d78c76c0cf",
+    "cos": 0.4931
+   }
+  ],
+  "latency": {
+   "es": 24.9,
+   "embed": 225.7,
+   "pgvector": 51.5
+  }
+ },
+ {
+  "id": "ON03-1",
+  "set": "final",
+  "role": "operator",
+  "q": "리뷰에 동영상도 올릴 수 있게 되어 있나요?",
+  "label": "NO_GROUNDING",
+  "kind": "HARD_NEGATIVE",
+  "docs": [],
+  "sections": [],
+  "level": "chunk",
+  "uncertain": true,
+  "group": "ON03",
+  "bm25": [
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+    "heading": "제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+    "type": "POLICY",
+    "chunk": "5ed4622cb604606b5843cba3cc9d8a5f",
+    "raw": 30.8313
+   },
+   {
+    "doc": "customer/customer_app/08-order-cancel.md",
+    "section": "PMart 주문 취소 정책 > 제2조 (취소할 수 있는 시점)",
+    "heading": "제2조 (취소할 수 있는 시점)",
+    "type": "APP_GUIDE",
+    "chunk": "c32eea15958af06ecf2661208ce435cf",
+    "raw": 23.5922
+   },
+   {
+    "doc": "operator/delivery/03-dispatch.md",
+    "section": "PMart 배차 운영 정책 > 제4조 (제안받을 수 있는 라이더)",
+    "heading": "제4조 (제안받을 수 있는 라이더)",
+    "type": "POLICY",
+    "chunk": "b7b49ca69fcb8240c016e4905b689049",
+    "raw": 22.6678
+   },
+   {
+    "doc": "operator/commerce/07-cart.md",
+    "section": "PMart 장바구니 정책 > 제2조 (장바구니를 쓸 수 있는 사람)",
+    "heading": "제2조 (장바구니를 쓸 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "7868d414ece7867e2acebdb8432dee1d",
+    "raw": 21.813
+   },
+   {
+    "doc": "operator/order_claim/01-order-amount.md",
+    "section": "PMart 주문 조건·결제 금액 정책 > 제2조 (주문할 수 있는 고객과 센터)",
+    "heading": "제2조 (주문할 수 있는 고객과 센터)",
+    "type": "POLICY",
+    "chunk": "3291df48973402bfc04224cc3cb8a58b",
+    "raw": 21.0204
+   },
+   {
+    "doc": "operator/delivery/06-control-location.md",
+    "section": "PMart 라이더 관제·위치 정보 정책 > 제2조 (관제를 볼 수 있는 사람)",
+    "heading": "제2조 (관제를 볼 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "14bcd5bd59b80a4fdd18a648021249b7",
+    "raw": 21.0204
+   },
+   {
+    "doc": "operator/mfc/07-supervisor-controls.md",
+    "section": "PMart MFC 센터 관리자 작업 조작·운영 제한 정책 > 제2조 (조작할 수 있는 사람)",
+    "heading": "제2조 (조작할 수 있는 사람)",
+    "type": "POLICY",
+    "chunk": "ab6813d50bc07184326cba7b5ef8f2fb",
+    "raw": 18.9542
+   },
+   {
+    "doc": "customer/customer_app/12-missing-damaged-item.md",
+    "section": "PMart 상품 누락·파손 처리 안내 > 제4조 (주문과 다른 상품·규격이 들어 있는 경우)",
+    "heading": "제4조 (주문과 다른 상품·규격이 들어 있는 경우)",
+    "type": "APP_GUIDE",
+    "chunk": "01ecfcd3795a5e6578a1b572d6c27875",
+    "raw": 14.9517
+   },
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제5조 (리뷰 사진)",
+    "heading": "제5조 (리뷰 사진)",
+    "type": "POLICY",
+    "chunk": "dd26f92a668bef244a15c944e4589d98",
+    "raw": 14.0712
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제5조 (사진)",
+    "heading": "제5조 (사진)",
+    "type": "APP_GUIDE",
+    "chunk": "231891bd2f637c3b01cdf59a4d8655f0",
+    "raw": 13.1909
+   }
+  ],
+  "features": {
+   "top1": 30.8313,
+   "gap": 7.2391,
+   "relGap": 0.2348,
+   "titleMatch": 0.2,
+   "qTokens": [
+    "동영상",
+    "리뷰",
+    "영상",
+    "올리",
+    "올릴"
+   ],
+   "coverage": 0.2
+  },
+  "vector": [
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제5조 (리뷰 사진)",
+    "chunk": "dd26f92a668bef244a15c944e4589d98",
+    "cos": 0.5824
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제5조 (사진)",
+    "chunk": "231891bd2f637c3b01cdf59a4d8655f0",
+    "cos": 0.5755
+   },
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+    "chunk": "5ed4622cb604606b5843cba3cc9d8a5f",
+    "cos": 0.5681
+   },
+   {
+    "doc": "operator/common/02-business-overview.md",
+    "section": "PMart 업무 개요 정책 > 제12조 (리뷰)",
+    "chunk": "66f8a0a9d0a915bac4ad70adafe638db",
+    "cos": 0.5633
+   },
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제3조 (수정)",
+    "chunk": "02983b1ea890f44abbee5a48f17b9dbc",
+    "cos": 0.5372
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제4조 (수정과 삭제)",
+    "chunk": "326150b6eb430564fbe47315270acd21",
+    "cos": 0.5341
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제6조 (반품·환불한 상품의 리뷰)",
+    "chunk": "164fda523421e649b3e93d610e8fda62",
+    "cos": 0.5284
+   },
+   {
+    "doc": "operator/commerce/05-reviews.md",
+    "section": "PMart 상품 리뷰 정책 > 제4조 (삭제와 다시 쓰기)",
+    "chunk": "482d431274749c0f29f44e6b95027213",
+    "cos": 0.5134
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제3조 (작성 기한)",
+    "chunk": "aed003d61d393d22fe600b2335147e2a",
+    "cos": 0.5063
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제2조 (작성 대상)",
+    "chunk": "43c0e47ae95fd470870e577d5e935cb4",
+    "cos": 0.5009
+   }
+  ],
+  "latency": {
+   "es": 24.2,
+   "embed": 391.9,
+   "pgvector": 48.0
+  }
+ },
+ {
+  "id": "CG01-1",
+  "set": "final",
+  "role": "customer",
+  "q": "찜은 몇 개까지 할 수 있어요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "customer/customer_app/03-wishlist.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/03-wishlist.md",
+    "제4조 (찜 개수)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG01",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제4조 (찜 개수)",
+    "heading": "제4조 (찜 개수)",
+    "type": "APP_GUIDE",
+    "chunk": "cd52a04b37230e19f277c524aef43d22",
+    "raw": 15.2688
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "heading": "찜은 어떻게 하나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "raw": 13.0288
+   },
+   {
+    "doc": "customer/faq/08-return-exchange.md",
+    "section": "반품·교환 > 언제까지 신청할 수 있나요? [확정 정책]",
+    "heading": "언제까지 신청할 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "5645dab978cd964d9c45a630a0b326b8",
+    "raw": 11.9082
+   },
+   {
+    "doc": "customer/faq/13-alcohol.md",
+    "section": "주류 구매 > 주류도 살 수 있나요? [확정 정책]",
+    "heading": "주류도 살 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "06705863f362a65260f96bb1830d6c20",
+    "raw": 11.9082
+   },
+   {
+    "doc": "customer/faq/01-customer-center.md",
+    "section": "고객센터 이용 안내 > AI 가 할 수 없는 것 [설계안]",
+    "heading": "AI 가 할 수 없는 것 [설계안]",
+    "type": "FAQ",
+    "chunk": "7c26993d09860bd18554962cf2b8b739",
+    "raw": 11.1281
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 언제까지 문의해야 하나요? [확정 정책]",
+    "heading": "언제까지 문의해야 하나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "145f4d943f62106d55f19caebe168a40",
+    "raw": 11.1181
+   },
+   {
+    "doc": "customer/customer_app/08-order-cancel.md",
+    "section": "PMart 주문 취소 정책 > 제2조 (취소할 수 있는 시점)",
+    "heading": "제2조 (취소할 수 있는 시점)",
+    "type": "APP_GUIDE",
+    "chunk": "c32eea15958af06ecf2661208ce435cf",
+    "raw": 10.9359
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 비회원도 주문할 수 있나요? [채택 설계]",
+    "heading": "비회원도 주문할 수 있나요? [채택 설계]",
+    "type": "FAQ",
+    "chunk": "14b572bf705e93a34830ec96957d72af",
+    "raw": 10.507
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+    "heading": "탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "df65a0bb470710b5f8e34c83b1e0662f",
+    "raw": 10.507
+   },
+   {
+    "doc": "customer/customer_app/05-customer-center.md",
+    "section": "PMart 고객센터 이용 안내 > 제4조 (AI 상담으로 할 수 없는 일)",
+    "heading": "제4조 (AI 상담으로 할 수 없는 일)",
+    "type": "APP_GUIDE",
+    "chunk": "6a09bc4ba58bee103e99d6eaff2a6f97",
+    "raw": 10.3187
+   }
+  ],
+  "features": {
+   "top1": 15.2688,
+   "gap": 2.24,
+   "relGap": 0.1467,
+   "titleMatch": 0,
+   "qTokens": [],
+   "coverage": 0
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제4조 (찜 개수)",
+    "chunk": "cd52a04b37230e19f277c524aef43d22",
+    "cos": 0.7574
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제3조 (이용 대상과 방법)",
+    "chunk": "38427bb8fc14821ccbff46d04dd7de5c",
+    "cos": 0.6443
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "cos": 0.6338
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제6조 (가격과 재고)",
+    "chunk": "75ac2cdf75b1de449c7f2e86aae09c2f",
+    "cos": 0.5307
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제5조 (품절·판매 종료 상품)",
+    "chunk": "c7ef429daf1fa1e1ce8463fdac875717",
+    "cos": 0.507
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제1조 (목적)",
+    "chunk": "9ce3d33564ad5f1cd0f29ad62bce9a5e",
+    "cos": 0.4976
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제2조 (정의)",
+    "chunk": "265acd6d3c03ce6166b74531b8d0ed96",
+    "cos": 0.4868
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 남은 금액이 최소 주문금액보다 적어졌어요 [확정 정책]",
+    "chunk": "aa016953e457071fc0c9709c7425e0a4",
+    "cos": 0.4833
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제7조 (탈퇴와 찜)",
+    "chunk": "f0bab77c9039d48c87532dc763c7f871",
+    "cos": 0.4786
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 한 주문이 여러 번 나눠 와요 [확정 정책]",
+    "chunk": "182fb0447ed9cf5d1da0cd2862b59709",
+    "cos": 0.445
+   }
+  ],
+  "latency": {
+   "es": 5.8,
+   "embed": 262.2,
+   "pgvector": 48.6
+  }
+ },
+ {
+  "id": "CG01-2",
+  "set": "final",
+  "role": "customer",
+  "q": "하트 누른 상품이 너무 많은데 한도가 있나요?",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "customer/customer_app/03-wishlist.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/03-wishlist.md",
+    "제4조 (찜 개수)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG01",
+  "bm25": [
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 주문과 다른 상품·규격이 들어 있어요 [설계안]",
+    "heading": "주문과 다른 상품·규격이 들어 있어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "e87320741c90d259d03d74991ad7049d",
+    "raw": 11.6759
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제3조 (이용 대상과 방법)",
+    "heading": "제3조 (이용 대상과 방법)",
+    "type": "APP_GUIDE",
+    "chunk": "38427bb8fc14821ccbff46d04dd7de5c",
+    "raw": 11.1104
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "heading": "찜은 어떻게 하나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "raw": 10.7528
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 먼저 확인해 주세요 [채택 설계]",
+    "heading": "먼저 확인해 주세요 [채택 설계]",
+    "type": "FAQ",
+    "chunk": "69fe4e15fc65a60610568815116f7b34",
+    "raw": 10.0241
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 비용이 드나요? [확정 정책]",
+    "heading": "비용이 드나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "e14a9dc97844d892c65c67f9ba7bd314",
+    "raw": 10.0241
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 주문한 상품이 포장에 없어요 [설계안]",
+    "heading": "주문한 상품이 포장에 없어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "ad606c30973bf686b41b13c44942ab3b",
+    "raw": 9.9944
+   },
+   {
+    "doc": "customer/faq/02-cancel.md",
+    "section": "주문 취소 > 취소 버튼을 눌렀는데 바로 취소 완료가 아니에요 [채택 설계]",
+    "heading": "취소 버튼을 눌렀는데 바로 취소 완료가 아니에요 [채택 설계]",
+    "type": "FAQ",
+    "chunk": "e2851fbe894f21da6df538f520feb357",
+    "raw": 9.7798
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 언제까지 문의해야 하나요? [확정 정책]",
+    "heading": "언제까지 문의해야 하나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "145f4d943f62106d55f19caebe168a40",
+    "raw": 9.6731
+   },
+   {
+    "doc": "customer/customer_app/12-missing-damaged-item.md",
+    "section": "PMart 상품 누락·파손 처리 안내 > 제4조 (주문과 다른 상품·규격이 들어 있는 경우)",
+    "heading": "제4조 (주문과 다른 상품·규격이 들어 있는 경우)",
+    "type": "APP_GUIDE",
+    "chunk": "01ecfcd3795a5e6578a1b572d6c27875",
+    "raw": 8.4905
+   },
+   {
+    "doc": "customer/customer_app/05-customer-center.md",
+    "section": "PMart 고객센터 이용 안내 > 제2조 (채팅 상담)",
+    "heading": "제2조 (채팅 상담)",
+    "type": "APP_GUIDE",
+    "chunk": "9a98c50f482a24b6bb47644ea487c8f5",
+    "raw": 6.8139
+   }
+  ],
+  "features": {
+   "top1": 11.6759,
+   "gap": 0.5655,
+   "relGap": 0.0484,
+   "titleMatch": 0.2,
+   "qTokens": [
+    "누르",
+    "누른",
+    "상품",
+    "하트",
+    "한도"
+   ],
+   "coverage": 0.2
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제4조 (찜 개수)",
+    "chunk": "cd52a04b37230e19f277c524aef43d22",
+    "cos": 0.6333
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "cos": 0.6308
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 남은 금액이 최소 주문금액보다 적어졌어요 [확정 정책]",
+    "chunk": "aa016953e457071fc0c9709c7425e0a4",
+    "cos": 0.5879
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 장바구니에 담았는데 주문할 때 가격이 달라졌어요 [채택 설계]",
+    "chunk": "e8bb5220a1cb8f076459e02d0399fc3e",
+    "cos": 0.5477
+   },
+   {
+    "doc": "customer/customer_app/11-shortage.md",
+    "section": "PMart 결품 처리 정책 > 제4조 (남은 금액이 최소 주문금액보다 적어진 경우)",
+    "chunk": "7570226bcab05a13595686118ac36da6",
+    "cos": 0.5463
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 한 주문이 여러 번 나눠 와요 [확정 정책]",
+    "chunk": "182fb0447ed9cf5d1da0cd2862b59709",
+    "cos": 0.5446
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 왜 일부 상품만 왔나요? [확정 정책]",
+    "chunk": "2f2be3cd94ea1bc0cb17633793a86404",
+    "cos": 0.5307
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제6조 (가격과 재고)",
+    "chunk": "75ac2cdf75b1de449c7f2e86aae09c2f",
+    "cos": 0.5279
+   },
+   {
+    "doc": "customer/customer_app/06-order-payment-fees.md",
+    "section": "PMart 주문·결제·이용 요금 정책 > 제8조 (주류 구매)",
+    "chunk": "5e80434748e8126eb1813abcf9cc35ad",
+    "cos": 0.5218
+   },
+   {
+    "doc": "customer/customer_app/11-shortage.md",
+    "section": "PMart 결품 처리 정책 > 제2조 (결품 처리)",
+    "chunk": "b52605ddf94766354e41de126f21fc07",
+    "cos": 0.5211
+   }
+  ],
+  "latency": {
+   "es": 5.9,
+   "embed": 316.2,
+   "pgvector": 49.0
+  }
+ },
+ {
+  "id": "CG02-1",
+  "set": "final",
+  "role": "customer",
+  "q": "찜한 상품이 다시 들어오면 알림이 오나요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "customer/customer_app/03-wishlist.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/03-wishlist.md",
+    "제5조 (품절·판매 종료 상품)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG02",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 10.4509
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 10.1492
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "heading": "제4조 (휴대폰 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "raw": 10.1492
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제5조 (품절·판매 종료 상품)",
+    "heading": "제5조 (품절·판매 종료 상품)",
+    "type": "APP_GUIDE",
+    "chunk": "c7ef429daf1fa1e1ce8463fdac875717",
+    "raw": 9.7077
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내",
+    "heading": "PMart 앱 알림 안내",
+    "type": "APP_GUIDE",
+    "chunk": "e0765dab4866e1ba0dd9c74468ef9677",
+    "raw": 9.5058
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 다른 주문의 상품이 왔어요 [설계안]",
+    "heading": "다른 주문의 상품이 왔어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "5654165c007fb2547c9e2fb7dbaffde8",
+    "raw": 9.4493
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제4조 (찜 개수)",
+    "heading": "제4조 (찜 개수)",
+    "type": "APP_GUIDE",
+    "chunk": "cd52a04b37230e19f277c524aef43d22",
+    "raw": 9.1282
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제7조 (탈퇴와 찜)",
+    "heading": "제7조 (탈퇴와 찜)",
+    "type": "APP_GUIDE",
+    "chunk": "f0bab77c9039d48c87532dc763c7f871",
+    "raw": 9.1282
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 왜 일부 상품만 왔나요? [확정 정책]",
+    "heading": "왜 일부 상품만 왔나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "2f2be3cd94ea1bc0cb17633793a86404",
+    "raw": 8.8779
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책",
+    "heading": "PMart 찜 정책",
+    "type": "APP_GUIDE",
+    "chunk": "520a752c5e54c57f1a4b8ce04806aa4d",
+    "raw": 8.5165
+   }
+  ],
+  "features": {
+   "top1": 10.4509,
+   "gap": 0.3017,
+   "relGap": 0.0289,
+   "titleMatch": 0.5,
+   "qTokens": [
+    "들어오",
+    "상품",
+    "알리",
+    "알림"
+   ],
+   "coverage": 1.0
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제5조 (품절·판매 종료 상품)",
+    "chunk": "c7ef429daf1fa1e1ce8463fdac875717",
+    "cos": 0.6125
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "cos": 0.6013
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "cos": 0.5774
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 주문한 상품이 포장에 없어요 [설계안]",
+    "chunk": "ad606c30973bf686b41b13c44942ab3b",
+    "cos": 0.5648
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "cos": 0.562
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제7조 (탈퇴와 찜)",
+    "chunk": "f0bab77c9039d48c87532dc763c7f871",
+    "cos": 0.5564
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "cos": 0.5523
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제6조 (가격과 재고)",
+    "chunk": "75ac2cdf75b1de449c7f2e86aae09c2f",
+    "cos": 0.5336
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "cos": 0.5299
+   },
+   {
+    "doc": "customer/customer_app/12-missing-damaged-item.md",
+    "section": "PMart 상품 누락·파손 처리 안내 > 제4조 (주문과 다른 상품·규격이 들어 있는 경우)",
+    "chunk": "01ecfcd3795a5e6578a1b572d6c27875",
+    "cos": 0.5252
+   }
+  ],
+  "latency": {
+   "es": 33.9,
+   "embed": 273.3,
+   "pgvector": 45.0
+  }
+ },
+ {
+  "id": "CG02-2",
+  "set": "final",
+  "role": "customer",
+  "q": "품절된 찜 상품이 재입고되면 알려 주세요",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "customer/customer_app/03-wishlist.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/03-wishlist.md",
+    "제5조 (품절·판매 종료 상품)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG02",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제5조 (품절·판매 종료 상품)",
+    "heading": "제5조 (품절·판매 종료 상품)",
+    "type": "APP_GUIDE",
+    "chunk": "c7ef429daf1fa1e1ce8463fdac875717",
+    "raw": 18.837
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 먼저 확인해 주세요 [채택 설계]",
+    "heading": "먼저 확인해 주세요 [채택 설계]",
+    "type": "FAQ",
+    "chunk": "69fe4e15fc65a60610568815116f7b34",
+    "raw": 13.6947
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "heading": "다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "26e7069896cd6e9595bc57d62a36fbeb",
+    "raw": 11.8941
+   },
+   {
+    "doc": "customer/customer_app/13-return-exchange.md",
+    "section": "PMart 반품·교환 정책 > 제6조 (교환할 상품이 품절인 경우)",
+    "heading": "제6조 (교환할 상품이 품절인 경우)",
+    "type": "APP_GUIDE",
+    "chunk": "0eaac44e013b373482b8f2494311ed08",
+    "raw": 11.5152
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 10.4509
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 10.1492
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "heading": "제4조 (휴대폰 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "raw": 10.1492
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "heading": "찜은 어떻게 하나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "raw": 9.933
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내",
+    "heading": "PMart 앱 알림 안내",
+    "type": "APP_GUIDE",
+    "chunk": "e0765dab4866e1ba0dd9c74468ef9677",
+    "raw": 9.5058
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제4조 (찜 개수)",
+    "heading": "제4조 (찜 개수)",
+    "type": "APP_GUIDE",
+    "chunk": "cd52a04b37230e19f277c524aef43d22",
+    "raw": 9.1282
+   }
+  ],
+  "features": {
+   "top1": 18.837,
+   "gap": 5.1423,
+   "relGap": 0.273,
+   "titleMatch": 0.4,
+   "qTokens": [
+    "상품",
+    "알려",
+    "알리",
+    "입고",
+    "품절"
+   ],
+   "coverage": 0.8
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제5조 (품절·판매 종료 상품)",
+    "chunk": "c7ef429daf1fa1e1ce8463fdac875717",
+    "cos": 0.6897
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 왜 일부 상품만 왔나요? [확정 정책]",
+    "chunk": "2f2be3cd94ea1bc0cb17633793a86404",
+    "cos": 0.6347
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "chunk": "26e7069896cd6e9595bc57d62a36fbeb",
+    "cos": 0.6239
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "cos": 0.5991
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제6조 (가격과 재고)",
+    "chunk": "75ac2cdf75b1de449c7f2e86aae09c2f",
+    "cos": 0.5895
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 먼저 확인해 주세요 [채택 설계]",
+    "chunk": "69fe4e15fc65a60610568815116f7b34",
+    "cos": 0.5878
+   },
+   {
+    "doc": "customer/customer_app/03-wishlist.md",
+    "section": "PMart 찜 정책 > 제3조 (이용 대상과 방법)",
+    "chunk": "38427bb8fc14821ccbff46d04dd7de5c",
+    "cos": 0.5752
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 주문한 상품이 포장에 없어요 [설계안]",
+    "chunk": "ad606c30973bf686b41b13c44942ab3b",
+    "cos": 0.5708
+   },
+   {
+    "doc": "customer/customer_app/11-shortage.md",
+    "section": "PMart 결품 처리 정책 > 제2조 (결품 처리)",
+    "chunk": "b52605ddf94766354e41de126f21fc07",
+    "cos": 0.5658
+   },
+   {
+    "doc": "customer/faq/06-damage-quality.md",
+    "section": "상품이 파손됐어요 / 품질이 이상해요 > 냉장·냉동 상품의 상태가 이상해요 [확정 정책]",
+    "chunk": "4b09cc8a0e30f746b459cf5fa5c26b81",
+    "cos": 0.5479
+   }
+  ],
+  "latency": {
+   "es": 27.8,
+   "embed": 252.0,
+   "pgvector": 47.6
+  }
+ },
+ {
+  "id": "CG07-1",
+  "set": "final",
+  "role": "customer",
+  "q": "마케팅 알림을 꺼도 주문 알림은 와요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "customer/customer_app/04-consents-privacy.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/04-consents-privacy.md",
+    "제3조 (마케팅 정보 수신)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG07",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 20.9017
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 20.2984
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "heading": "제4조 (휴대폰 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "raw": 20.2984
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내",
+    "heading": "PMart 앱 알림 안내",
+    "type": "APP_GUIDE",
+    "chunk": "e0765dab4866e1ba0dd9c74468ef9677",
+    "raw": 19.0116
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "APP_GUIDE",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "raw": 16.3583
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 한 주문이 여러 번 나눠 와요 [확정 정책]",
+    "heading": "한 주문이 여러 번 나눠 와요 [확정 정책]",
+    "type": "FAQ",
+    "chunk": "182fb0447ed9cf5d1da0cd2862b59709",
+    "raw": 11.9877
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제3조 (마케팅 정보 수신)",
+    "heading": "제3조 (마케팅 정보 수신)",
+    "type": "APP_GUIDE",
+    "chunk": "78137555e6cb02f1fc0a726ff165b592",
+    "raw": 9.4019
+   },
+   {
+    "doc": "customer/customer_app/02-withdrawal.md",
+    "section": "PMart 회원 탈퇴 정책 > 제4조 (탈퇴 철회)",
+    "heading": "제4조 (탈퇴 철회)",
+    "type": "APP_GUIDE",
+    "chunk": "6adc064d496a67de28d1b9391c3688d9",
+    "raw": 6.991
+   },
+   {
+    "doc": "customer/faq/02-cancel.md",
+    "section": "주문 취소 > 센터에서 주문을 취소했어요 [확정 정책]",
+    "heading": "센터에서 주문을 취소했어요 [확정 정책]",
+    "type": "FAQ",
+    "chunk": "16ce097b1371632c000c721dc50199e0",
+    "raw": 6.1769
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 주문한 상품이 포장에 없어요 [설계안]",
+    "heading": "주문한 상품이 포장에 없어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "ad606c30973bf686b41b13c44942ab3b",
+    "raw": 6.0814
+   }
+  ],
+  "features": {
+   "top1": 20.9017,
+   "gap": 0.6033,
+   "relGap": 0.0289,
+   "titleMatch": 0.3333,
+   "qTokens": [
+    "꺼도",
+    "마케팅",
+    "알리",
+    "알림",
+    "와요",
+    "주문"
+   ],
+   "coverage": 0.6667
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "cos": 0.6831
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "cos": 0.6497
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "cos": 0.6329
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "cos": 0.6176
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제3조 (마케팅 정보 수신)",
+    "chunk": "78137555e6cb02f1fc0a726ff165b592",
+    "cos": 0.5574
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내",
+    "chunk": "e0765dab4866e1ba0dd9c74468ef9677",
+    "cos": 0.5471
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 확인이 바로 안 되면요? [설계안]",
+    "chunk": "5b31c0c229431595b120290589613a47",
+    "cos": 0.5355
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제2조 (배송 현황 확인)",
+    "chunk": "228ede25030b94a721d062260107d313",
+    "cos": 0.5344
+   },
+   {
+    "doc": "customer/faq/02-cancel.md",
+    "section": "주문 취소 > 결제가 아직 확인 중이에요 [채택 설계]",
+    "chunk": "4457a166f416dad4e9bcb6fae4e054c8",
+    "cos": 0.5343
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내 > 제2조 (배송 완료로 표시되었으나 상품이 없는 경우)",
+    "chunk": "ad4cdc136cd6621c6db55501b3ebb1c2",
+    "cos": 0.5278
+   }
+  ],
+  "latency": {
+   "es": 31.8,
+   "embed": 253.8,
+   "pgvector": 48.3
+  }
+ },
+ {
+  "id": "CG07-2",
+  "set": "final",
+  "role": "customer",
+  "q": "광고 수신을 거부하면 배송 알림도 안 오나요?",
+  "label": "GROUNDED",
+  "kind": "PARAPHRASE",
+  "docs": [
+   "customer/customer_app/04-consents-privacy.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/04-consents-privacy.md",
+    "제3조 (마케팅 정보 수신)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG07",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 10.4509
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내 > 제4조 (오배송 확인)",
+    "heading": "제4조 (오배송 확인)",
+    "type": "APP_GUIDE",
+    "chunk": "f142bf5af7270b000cda871b40ea6f74",
+    "raw": 10.3803
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 10.1492
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "heading": "제4조 (휴대폰 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "raw": 10.1492
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내",
+    "heading": "PMart 앱 알림 안내",
+    "type": "APP_GUIDE",
+    "chunk": "e0765dab4866e1ba0dd9c74468ef9677",
+    "raw": 9.5058
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 다른 주문의 상품이 왔어요 [설계안]",
+    "heading": "다른 주문의 상품이 왔어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "5654165c007fb2547c9e2fb7dbaffde8",
+    "raw": 9.4493
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내",
+    "heading": "PMart 미수령·오배송 처리 안내",
+    "type": "APP_GUIDE",
+    "chunk": "83688f7f6947a100ba09dfb6402b83d9",
+    "raw": 9.0897
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제3조 (마케팅 정보 수신)",
+    "heading": "제3조 (마케팅 정보 수신)",
+    "type": "APP_GUIDE",
+    "chunk": "78137555e6cb02f1fc0a726ff165b592",
+    "raw": 9.0416
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 배송 완료로 나오는데 상품이 없어요 [설계안]",
+    "heading": "배송 완료로 나오는데 상품이 없어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "622c6a1e5728217309b1d7046bc4d8d3",
+    "raw": 8.3227
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "APP_GUIDE",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "raw": 8.1791
+   }
+  ],
+  "features": {
+   "top1": 10.4509,
+   "gap": 0.0706,
+   "relGap": 0.0068,
+   "titleMatch": 0.3333,
+   "qTokens": [
+    "거부",
+    "광고",
+    "배송",
+    "수신",
+    "알리",
+    "알림"
+   ],
+   "coverage": 0.6667
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "cos": 0.6412
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "cos": 0.6383
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 확인이 바로 안 되면요? [설계안]",
+    "chunk": "5b31c0c229431595b120290589613a47",
+    "cos": 0.6205
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "cos": 0.6026
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제1조 (목적)",
+    "chunk": "66dd6b63638cb862f7a4047d6c2b97b0",
+    "cos": 0.5798
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제3조 (마케팅 정보 수신)",
+    "chunk": "78137555e6cb02f1fc0a726ff165b592",
+    "cos": 0.569
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내 > 제4조 (오배송 확인)",
+    "chunk": "f142bf5af7270b000cda871b40ea6f74",
+    "cos": 0.5686
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "cos": 0.5634
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제6조 (배송 완료 표시)",
+    "chunk": "892d741b98f4d5f840dc452bc4f7460d",
+    "cos": 0.5628
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 배송이 늦어요 [확정 정책]",
+    "chunk": "e3bf14d7e960965c9a8139043e3181d3",
+    "cos": 0.5489
+   }
+  ],
+  "latency": {
+   "es": 17.4,
+   "embed": 219.1,
+   "pgvector": 46.4
+  }
+ },
+ {
+  "id": "CG08-1",
+  "set": "final",
+  "role": "customer",
+  "q": "배송 완료 알림을 끌 수 있나요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "customer/customer_app/15-notifications.md"
+  ],
+  "sections": [
+   [
+    "customer/customer_app/15-notifications.md",
+    "제2조 (앱 알림함)"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG08",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 12.3814
+   },
+   {
+    "doc": "customer/faq/08-return-exchange.md",
+    "section": "반품·교환 > 언제까지 신청할 수 있나요? [확정 정책]",
+    "heading": "언제까지 신청할 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "5645dab978cd964d9c45a630a0b326b8",
+    "raw": 11.9082
+   },
+   {
+    "doc": "customer/faq/13-alcohol.md",
+    "section": "주류 구매 > 주류도 살 수 있나요? [확정 정책]",
+    "heading": "주류도 살 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "06705863f362a65260f96bb1830d6c20",
+    "raw": 11.9082
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 배송 완료로 나오는데 상품이 없어요 [설계안]",
+    "heading": "배송 완료로 나오는데 상품이 없어요 [설계안]",
+    "type": "FAQ",
+    "chunk": "622c6a1e5728217309b1d7046bc4d8d3",
+    "raw": 11.5498
+   },
+   {
+    "doc": "customer/faq/10-address-area.md",
+    "section": "배송지·배송 가능 지역·주소 변경 > 결제 후에 주소나 연락처를 바꿀 수 있나요? [확정 정책]",
+    "heading": "결제 후에 주소나 연락처를 바꿀 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "a36d9ddd84f11b738bdfbe0c0eb3cfd2",
+    "raw": 11.3777
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제6조 (배송 완료 표시)",
+    "heading": "제6조 (배송 완료 표시)",
+    "type": "APP_GUIDE",
+    "chunk": "892d741b98f4d5f840dc452bc4f7460d",
+    "raw": 11.1064
+   },
+   {
+    "doc": "customer/customer_app/08-order-cancel.md",
+    "section": "PMart 주문 취소 정책 > 제2조 (취소할 수 있는 시점)",
+    "heading": "제2조 (취소할 수 있는 시점)",
+    "type": "APP_GUIDE",
+    "chunk": "c32eea15958af06ecf2661208ce435cf",
+    "raw": 10.9359
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 비회원도 주문할 수 있나요? [채택 설계]",
+    "heading": "비회원도 주문할 수 있나요? [채택 설계]",
+    "type": "FAQ",
+    "chunk": "14b572bf705e93a34830ec96957d72af",
+    "raw": 10.507
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+    "heading": "탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "df65a0bb470710b5f8e34c83b1e0662f",
+    "raw": 10.507
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 10.1492
+   }
+  ],
+  "features": {
+   "top1": 12.3814,
+   "gap": 0.4732,
+   "relGap": 0.0382,
+   "titleMatch": 0.5,
+   "qTokens": [
+    "배송",
+    "알리",
+    "알림",
+    "완료"
+   ],
+   "coverage": 1.0
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제6조 (배송 완료 표시)",
+    "chunk": "892d741b98f4d5f840dc452bc4f7460d",
+    "cos": 0.6766
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 확인이 바로 안 되면요? [설계안]",
+    "chunk": "5b31c0c229431595b120290589613a47",
+    "cos": 0.6447
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 배송 완료로 나오는데 상품이 없어요 [설계안]",
+    "chunk": "622c6a1e5728217309b1d7046bc4d8d3",
+    "cos": 0.6237
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제2조 (배송 현황 확인)",
+    "chunk": "228ede25030b94a721d062260107d313",
+    "cos": 0.6094
+   },
+   {
+    "doc": "customer/customer_app/10-not-received-misdelivery.md",
+    "section": "PMart 미수령·오배송 처리 안내 > 제2조 (배송 완료로 표시되었으나 상품이 없는 경우)",
+    "chunk": "ad4cdc136cd6621c6db55501b3ebb1c2",
+    "cos": 0.6014
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "cos": 0.5952
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "cos": 0.5944
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 제가 주문하지 않은 상품을 받았어요 [설계안]",
+    "chunk": "a569039aea915cb335336e332e9fd8c7",
+    "cos": 0.5912
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 다른 주문의 상품이 왔어요 [설계안]",
+    "chunk": "5654165c007fb2547c9e2fb7dbaffde8",
+    "cos": 0.5893
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 시간이 지났는데 배송 완료로 바뀌지 않아요 [확정 정책]",
+    "chunk": "d99cbe8987d6c166c682752bf45619d6",
+    "cos": 0.5893
+   }
+  ],
+  "latency": {
+   "es": 17.9,
+   "embed": 204.2,
+   "pgvector": 46.4
+  }
+ },
+ {
+  "id": "CG11-1",
+  "set": "final",
+  "role": "customer",
+  "q": "앱을 오래 안 쓰면 로그아웃되나요?",
+  "label": "GROUNDED",
+  "kind": "ORIGINAL",
+  "docs": [
+   "customer/faq/12-account.md"
+  ],
+  "sections": [
+   [
+    "customer/faq/12-account.md",
+    "로그인은 어떻게 하나요?"
+   ]
+  ],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG11",
+  "bm25": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 10.4509
+   },
+   {
+    "doc": "customer/faq/11-payment-fees.md",
+    "section": "결제·최소 주문금액·배달팁·봉투값 > 쿠폰은 어떻게 쓰나요? [확정 정책]",
+    "heading": "쿠폰은 어떻게 쓰나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "01f41dc61aa8de6d6a18cd77f0bee6c7",
+    "raw": 9.8635
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내",
+    "heading": "PMart 앱 알림 안내",
+    "type": "APP_GUIDE",
+    "chunk": "e0765dab4866e1ba0dd9c74468ef9677",
+    "raw": 9.5058
+   },
+   {
+    "doc": "customer/faq/11-payment-fees.md",
+    "section": "결제·최소 주문금액·배달팁·봉투값 > 어떤 결제수단을 쓸 수 있나요? [설계안]",
+    "heading": "어떤 결제수단을 쓸 수 있나요? [설계안]",
+    "type": "FAQ",
+    "chunk": "0b22605c6c73dbdf298be1805d96afdc",
+    "raw": 9.1355
+   },
+   {
+    "doc": "customer/faq/07-refund.md",
+    "section": "환불 > 쿠폰을 쓴 주문은요? [확정 정책]",
+    "heading": "쿠폰을 쓴 주문은요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "3ad171f3f8fed998e77aaee1d13edec3",
+    "raw": 9.0586
+   },
+   {
+    "doc": "customer/customer_app/14-refund.md",
+    "section": "PMart 환불 정책 > 제7조 (쿠폰을 쓴 주문)",
+    "heading": "제7조 (쿠폰을 쓴 주문)",
+    "type": "APP_GUIDE",
+    "chunk": "283a75ce41f9242225535ecfbd7b6cb7",
+    "raw": 8.2532
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "APP_GUIDE",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "raw": 8.1791
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 7.4829
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "heading": "제4조 (휴대폰 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "raw": 7.4829
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 로그인은 어떻게 하나요? [확정 정책]",
+    "heading": "로그인은 어떻게 하나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "00a003dab8e731a5a1feabbcbfe52c40",
+    "raw": 4.8565
+   }
+  ],
+  "features": {
+   "top1": 10.4509,
+   "gap": 0.5874,
+   "relGap": 0.0562,
+   "titleMatch": 0.0,
+   "qTokens": [
+    "로그아웃"
+   ],
+   "coverage": 0.0
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/02-withdrawal.md",
+    "section": "PMart 회원 탈퇴 정책 > 제2조 (탈퇴 신청)",
+    "chunk": "eeedff938c07509407895ca1c0700557",
+    "cos": 0.6129
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 로그인은 어떻게 하나요? [확정 정책]",
+    "chunk": "00a003dab8e731a5a1feabbcbfe52c40",
+    "cos": 0.5814
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제2조 (약관의 재동의)",
+    "chunk": "fdab6021cd56e514e3b838d63970222f",
+    "cos": 0.5548
+   },
+   {
+    "doc": "customer/customer_app/04-consents-privacy.md",
+    "section": "PMart 약관 동의·개인정보 이용 안내 > 제5조 (개인정보 보관 기간)",
+    "chunk": "0de0532a7ba1358fa305135247ff9db4",
+    "cos": 0.551
+   },
+   {
+    "doc": "customer/customer_app/02-withdrawal.md",
+    "section": "PMart 회원 탈퇴 정책 > 제6조 (재가입)",
+    "chunk": "094e97ab710c0ab646b7d5d848aa9e18",
+    "cos": 0.5497
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제5조 (가입을 마치지 않은 경우)",
+    "chunk": "3584ae659b5455bbba6c91ebff0b077a",
+    "cos": 0.5409
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제9조 (문의)",
+    "chunk": "d110999361819bd0e66bbc4b2fd90ef1",
+    "cos": 0.539
+   },
+   {
+    "doc": "customer/customer_app/02-withdrawal.md",
+    "section": "PMart 회원 탈퇴 정책 > 제5조 (탈퇴 후 정보 처리)",
+    "chunk": "d74273c40d076a5bd9581eb5b6e1361a",
+    "cos": 0.5371
+   },
+   {
+    "doc": "customer/customer_app/01-signup-login.md",
+    "section": "PMart 회원 가입·로그인 정책 > 제3조 (로그인 방법)",
+    "chunk": "f7a0f0df5d15d23fcfa9200310d05e8c",
+    "cos": 0.5345
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 회원 탈퇴는 어떻게 하나요? [확정 정책]",
+    "chunk": "351d4e145a0a5b7558d71dbbb6dd7daa",
+    "cos": 0.5211
+   }
+  ],
+  "latency": {
+   "es": 16.2,
+   "embed": 304.3,
+   "pgvector": 44.4
+  }
+ },
+ {
+  "id": "CG13-1",
+  "set": "final",
+  "role": "customer",
+  "q": "리뷰 쓰면 적립금 주나요?",
+  "label": "NO_GROUNDING",
+  "kind": "HARD_NEGATIVE",
+  "docs": [],
+  "sections": [],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CG13",
+  "bm25": [
+   {
+    "doc": "customer/faq/11-payment-fees.md",
+    "section": "결제·최소 주문금액·배달팁·봉투값 > 쿠폰은 어떻게 쓰나요? [확정 정책]",
+    "heading": "쿠폰은 어떻게 쓰나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "01f41dc61aa8de6d6a18cd77f0bee6c7",
+    "raw": 9.8635
+   },
+   {
+    "doc": "customer/faq/11-payment-fees.md",
+    "section": "결제·최소 주문금액·배달팁·봉투값 > 어떤 결제수단을 쓸 수 있나요? [설계안]",
+    "heading": "어떤 결제수단을 쓸 수 있나요? [설계안]",
+    "type": "FAQ",
+    "chunk": "0b22605c6c73dbdf298be1805d96afdc",
+    "raw": 9.1355
+   },
+   {
+    "doc": "customer/faq/05-missing-wrong-item.md",
+    "section": "상품이 빠졌어요 / 다른 상품이 들어 있어요 > 먼저 확인해 주세요 [채택 설계]",
+    "heading": "먼저 확인해 주세요 [채택 설계]",
+    "type": "FAQ",
+    "chunk": "69fe4e15fc65a60610568815116f7b34",
+    "raw": 9.1293
+   },
+   {
+    "doc": "customer/faq/07-refund.md",
+    "section": "환불 > 쿠폰을 쓴 주문은요? [확정 정책]",
+    "heading": "쿠폰을 쓴 주문은요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "3ad171f3f8fed998e77aaee1d13edec3",
+    "raw": 9.0586
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제6조 (반품·환불한 상품의 리뷰)",
+    "heading": "제6조 (반품·환불한 상품의 리뷰)",
+    "type": "APP_GUIDE",
+    "chunk": "164fda523421e649b3e93d610e8fda62",
+    "raw": 8.9163
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책",
+    "heading": "PMart 리뷰 정책",
+    "type": "APP_GUIDE",
+    "chunk": "86796a1783186ef1728521fe021eb600",
+    "raw": 8.8284
+   },
+   {
+    "doc": "customer/customer_app/14-refund.md",
+    "section": "PMart 환불 정책 > 제7조 (쿠폰을 쓴 주문)",
+    "heading": "제7조 (쿠폰을 쓴 주문)",
+    "type": "APP_GUIDE",
+    "chunk": "283a75ce41f9242225535ecfbd7b6cb7",
+    "raw": 8.2532
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "heading": "다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "26e7069896cd6e9595bc57d62a36fbeb",
+    "raw": 7.8012
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제1조 (목적)",
+    "heading": "제1조 (목적)",
+    "type": "APP_GUIDE",
+    "chunk": "a792831094af0a642749af49a5f155a2",
+    "raw": 7.5361
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제5조 (사진)",
+    "heading": "제5조 (사진)",
+    "type": "APP_GUIDE",
+    "chunk": "231891bd2f637c3b01cdf59a4d8655f0",
+    "raw": 7.5361
+   }
+  ],
+  "features": {
+   "top1": 9.8635,
+   "gap": 0.728,
+   "relGap": 0.0738,
+   "titleMatch": 0.0,
+   "qTokens": [
+    "리뷰",
+    "적립",
+    "적립금"
+   ],
+   "coverage": 0.0
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제6조 (반품·환불한 상품의 리뷰)",
+    "chunk": "164fda523421e649b3e93d610e8fda62",
+    "cos": 0.5872
+   },
+   {
+    "doc": "customer/faq/11-payment-fees.md",
+    "section": "결제·최소 주문금액·배달팁·봉투값 > 쿠폰은 어떻게 쓰나요? [확정 정책]",
+    "chunk": "01f41dc61aa8de6d6a18cd77f0bee6c7",
+    "cos": 0.5606
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제2조 (작성 대상)",
+    "chunk": "43c0e47ae95fd470870e577d5e935cb4",
+    "cos": 0.555
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제1조 (목적)",
+    "chunk": "a792831094af0a642749af49a5f155a2",
+    "cos": 0.527
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제3조 (작성 기한)",
+    "chunk": "aed003d61d393d22fe600b2335147e2a",
+    "cos": 0.5242
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제4조 (수정과 삭제)",
+    "chunk": "326150b6eb430564fbe47315270acd21",
+    "cos": 0.513
+   },
+   {
+    "doc": "customer/customer_app/16-reviews.md",
+    "section": "PMart 리뷰 정책 > 제7조 (작성자 표시)",
+    "chunk": "744ec5b2d454d34502cc0948a5d9445e",
+    "cos": 0.5093
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 찜은 어떻게 하나요? [확정 정책]",
+    "chunk": "324cb3a82127efd9f7810aae3c60c0c6",
+    "cos": 0.5058
+   },
+   {
+    "doc": "customer/customer_app/11-shortage.md",
+    "section": "PMart 결품 처리 정책 > 제4조 (남은 금액이 최소 주문금액보다 적어진 경우)",
+    "chunk": "7570226bcab05a13595686118ac36da6",
+    "cos": 0.4939
+   },
+   {
+    "doc": "customer/customer_app/06-order-payment-fees.md",
+    "section": "PMart 주문·결제·이용 요금 정책 > 제5조의2 (할인 행사와 쿠폰)",
+    "chunk": "1cf5c01055d1517c614e63c0bdc14a64",
+    "cos": 0.4908
+   }
+  ],
+  "latency": {
+   "es": 23.6,
+   "embed": 220.6,
+   "pgvector": 45.3
+  }
+ },
+ {
+  "id": "CN03-1",
+  "set": "final",
+  "role": "customer",
+  "q": "배송 알림 소리를 바꿀 수 있나요?",
+  "label": "NO_GROUNDING",
+  "kind": "HARD_NEGATIVE",
+  "docs": [],
+  "sections": [],
+  "level": "chunk",
+  "uncertain": false,
+  "group": "CN03",
+  "bm25": [
+   {
+    "doc": "customer/faq/10-address-area.md",
+    "section": "배송지·배송 가능 지역·주소 변경 > 결제 후에 주소나 연락처를 바꿀 수 있나요? [확정 정책]",
+    "heading": "결제 후에 주소나 연락처를 바꿀 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "a36d9ddd84f11b738bdfbe0c0eb3cfd2",
+    "raw": 17.8701
+   },
+   {
+    "doc": "customer/faq/09-shortage.md",
+    "section": "일부 상품이 준비되지 못했어요(결품) > 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "heading": "다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "26e7069896cd6e9595bc57d62a36fbeb",
+    "raw": 12.279
+   },
+   {
+    "doc": "customer/faq/08-return-exchange.md",
+    "section": "반품·교환 > 언제까지 신청할 수 있나요? [확정 정책]",
+    "heading": "언제까지 신청할 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "5645dab978cd964d9c45a630a0b326b8",
+    "raw": 11.9082
+   },
+   {
+    "doc": "customer/faq/13-alcohol.md",
+    "section": "주류 구매 > 주류도 살 수 있나요? [확정 정책]",
+    "heading": "주류도 살 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "06705863f362a65260f96bb1830d6c20",
+    "raw": 11.9082
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 예약 배송 시간을 바꾸고 싶어요 [확정 정책]",
+    "heading": "예약 배송 시간을 바꾸고 싶어요 [확정 정책]",
+    "type": "FAQ",
+    "chunk": "eba7c78a04499c8857732ab627bc71d8",
+    "raw": 11.6742
+   },
+   {
+    "doc": "customer/customer_app/08-order-cancel.md",
+    "section": "PMart 주문 취소 정책 > 제2조 (취소할 수 있는 시점)",
+    "heading": "제2조 (취소할 수 있는 시점)",
+    "type": "APP_GUIDE",
+    "chunk": "c32eea15958af06ecf2661208ce435cf",
+    "raw": 10.9359
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 비회원도 주문할 수 있나요? [채택 설계]",
+    "heading": "비회원도 주문할 수 있나요? [채택 설계]",
+    "type": "FAQ",
+    "chunk": "14b572bf705e93a34830ec96957d72af",
+    "raw": 10.507
+   },
+   {
+    "doc": "customer/faq/12-account.md",
+    "section": "회원·로그인·비회원 > 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+    "heading": "탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+    "type": "FAQ",
+    "chunk": "df65a0bb470710b5f8e34c83b1e0662f",
+    "raw": 10.507
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "heading": "제2조 (앱 알림함)",
+    "type": "APP_GUIDE",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "raw": 10.4509
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제3조 (취소·환불 알림)",
+    "heading": "제3조 (취소·환불 알림)",
+    "type": "APP_GUIDE",
+    "chunk": "5061d63ca61e2b97d092944f150e94cf",
+    "raw": 10.1492
+   }
+  ],
+  "features": {
+   "top1": 17.8701,
+   "gap": 5.5911,
+   "relGap": 0.3129,
+   "titleMatch": 0.5,
+   "qTokens": [
+    "바꾸",
+    "바꿀",
+    "배송",
+    "소리",
+    "알리",
+    "알림"
+   ],
+   "coverage": 0.5
+  },
+  "vector": [
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제4조 (휴대폰 알림)",
+    "chunk": "9ff8ef4c02dbc1cb6ac8f4dd5e20c5da",
+    "cos": 0.5671
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제2조 (앱 알림함)",
+    "chunk": "761a91a5a42f99bf6433128ad9ed60fb",
+    "cos": 0.5345
+   },
+   {
+    "doc": "customer/customer_app/15-notifications.md",
+    "section": "PMart 앱 알림 안내 > 제1조 (목적)",
+    "chunk": "d1f566afd24fcb74f93b632d03b4301d",
+    "cos": 0.521
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 예약 배송 시간을 바꾸고 싶어요 [확정 정책]",
+    "chunk": "eba7c78a04499c8857732ab627bc71d8",
+    "cos": 0.5176
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 배송이 늦어요 [확정 정책]",
+    "chunk": "e3bf14d7e960965c9a8139043e3181d3",
+    "cos": 0.5093
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제1조 (목적)",
+    "chunk": "66dd6b63638cb862f7a4047d6c2b97b0",
+    "cos": 0.5004
+   },
+   {
+    "doc": "customer/customer_app/09-delivery-status.md",
+    "section": "PMart 배송 안내 > 제5조 (예약 배송 시간 변경)",
+    "chunk": "a3507b70f7de01c88ed2a8648ba1670a",
+    "cos": 0.4976
+   },
+   {
+    "doc": "customer/faq/04-not-received.md",
+    "section": "배송 완료인데 못 받았어요 / 다른 주문이 왔어요 > 확인이 바로 안 되면요? [설계안]",
+    "chunk": "5b31c0c229431595b120290589613a47",
+    "cos": 0.4842
+   },
+   {
+    "doc": "customer/faq/03-delivery-status.md",
+    "section": "배송 현황·지연·예약 시간 > 시간이 지났는데 배송 완료로 바뀌지 않아요 [확정 정책]",
+    "chunk": "d99cbe8987d6c166c682752bf45619d6",
+    "cos": 0.4765
+   },
+   {
+    "doc": "customer/faq/10-address-area.md",
+    "section": "배송지·배송 가능 지역·주소 변경 > 결제 후에 주소나 연락처를 바꿀 수 있나요? [확정 정책]",
+    "chunk": "a36d9ddd84f11b738bdfbe0c0eb3cfd2",
+    "cos": 0.4762
+   }
+  ],
+  "latency": {
+   "es": 16.3,
+   "embed": 205.8,
+   "pgvector": 46.8
+  }
+ }
+]

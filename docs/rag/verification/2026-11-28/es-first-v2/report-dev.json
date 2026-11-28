@@ -1,0 +1,92 @@
+{
+ "regression/operator": {
+  "n": 41,
+  "uncertainExcluded": 0,
+  "acceptance": "7/41 (17%)",
+  "precision": "7/7 (100%)",
+  "falseAccept_noGrounding": [],
+  "falseAccept_wrongEvidence": [],
+  "unnecessaryFallback": "13/19 (68%)",
+  "ragRecovery_newEvidence": "2/3 (67%)",
+  "ragRecovery_rankFix": "2/3 (67%)",
+  "noAnswerAccuracy": "12/15 (80%)",
+  "groundedDeclaredNoAnswer": [
+   "P01"
+  ],
+  "evidenceHit@3": "24/26 (92%)",
+  "embeddingCalls": "34/41 (83%)",
+  "generationCalls(est)": "21/41 (51%)",
+  "latencyMs_p50": 262.9,
+  "latencyMs_p95": 328.4,
+  "falseAcceptCount": 0,
+  "acceptCount": 7,
+  "accOk": 7
+ },
+ "regression/customer": {
+  "n": 41,
+  "uncertainExcluded": 0,
+  "acceptance": "18/41 (44%)",
+  "precision": "18/18 (100%)",
+  "falseAccept_noGrounding": [],
+  "falseAccept_wrongEvidence": [],
+  "unnecessaryFallback": "10/12 (83%)",
+  "ragRecovery_newEvidence": "1/1 (100%)",
+  "ragRecovery_rankFix": "1/1 (100%)",
+  "noAnswerAccuracy": "9/11 (82%)",
+  "groundedDeclaredNoAnswer": [
+   "C16"
+  ],
+  "evidenceHit@3": "29/30 (97%)",
+  "embeddingCalls": "23/41 (56%)",
+  "generationCalls(est)": "13/41 (32%)",
+  "latencyMs_p50": 220.1,
+  "latencyMs_p95": 323.1,
+  "falseAcceptCount": 0,
+  "acceptCount": 18,
+  "accOk": 18
+ },
+ "dev/operator": {
+  "n": 18,
+  "uncertainExcluded": 3,
+  "acceptance": "2/18 (11%)",
+  "precision": "2/2 (100%)",
+  "falseAccept_noGrounding": [],
+  "falseAccept_wrongEvidence": [],
+  "unnecessaryFallback": "6/15 (40%)",
+  "ragRecovery_newEvidence": "2/7 (29%)",
+  "ragRecovery_rankFix": "1/2 (50%)",
+  "noAnswerAccuracy": "0/1 (0%)",
+  "groundedDeclaredNoAnswer": [
+   "OG15-2"
+  ],
+  "evidenceHit@3": "12/17 (71%)",
+  "embeddingCalls": "16/18 (89%)",
+  "generationCalls(est)": "15/18 (83%)",
+  "latencyMs_p50": 295.2,
+  "latencyMs_p95": 368.9,
+  "falseAcceptCount": 0,
+  "acceptCount": 2,
+  "accOk": 2
+ },
+ "dev/customer": {
+  "n": 13,
+  "uncertainExcluded": 2,
+  "acceptance": "4/13 (31%)",
+  "precision": "4/4 (100%)",
+  "falseAccept_noGrounding": [],
+  "falseAccept_wrongEvidence": [],
+  "unnecessaryFallback": "2/7 (29%)",
+  "ragRecovery_newEvidence": "2/4 (50%)",
+  "ragRecovery_rankFix": "1/1 (100%)",
+  "noAnswerAccuracy": "1/1 (100%)",
+  "groundedDeclaredNoAnswer": [],
+  "evidenceHit@3": "9/11 (82%)",
+  "embeddingCalls": "9/13 (69%)",
+  "generationCalls(est)": "8/13 (62%)",
+  "latencyMs_p50": 262.5,
+  "latencyMs_p95": 306.4,
+  "falseAcceptCount": 0,
+  "acceptCount": 4,
+  "accOk": 4
+ }
+}

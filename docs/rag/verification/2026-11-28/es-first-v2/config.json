@@ -1,0 +1,7 @@
+{
+ "boost": 1.5,
+ "rule": "cov>=0.7&relGap>=0.1",
+ "tau": 0.58,
+ "cards": 3,
+ "chosenOn": "dev+regression"
+}

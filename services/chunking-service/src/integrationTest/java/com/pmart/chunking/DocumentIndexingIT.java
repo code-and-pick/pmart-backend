@@ -134,7 +134,8 @@ class DocumentIndexingIT {
         search("rag-operator", Map.of("match", Map.of("content", "고객센터 상담원")))
             .path("hits")
             .path("hits");
-    assertThat(hit.get(0).path("_index").asString()).isEqualTo("rag-operator-v1");
+    assertThat(hit.get(0).path("_index").asString()).isEqualTo("rag-operator-v2");
+    assertThat(hit.get(0).path("_source").path("documentType").asString()).isEqualTo("POLICY");
     assertThat(hit.get(0).path("_source").path("sectionPath").asString())
         .isEqualTo("PMart 오배송 처리 정책 > 제2조 (접수)");
 
