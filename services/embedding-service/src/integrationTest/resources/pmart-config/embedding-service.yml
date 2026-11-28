@@ -1,0 +1,14 @@
+# embedding-service 고유 설정(모든 프로필). ES 청크 → Ollama 임베딩 → 자기 pgvector(ADR-0098) — ES-First 하이브리드 RAG 의 "ES → 임베딩 → pgvector". ADR-0029
+# chunking-service 가 POST /api/v1/internal/embedding-jobs 로 알리고, 이 서비스가 ES(rag-operator·rag-customer)의 ACTIVE 청크를 읽어 벡터를 만든다.
+server:
+  port: 8516
+spring:
+  jpa:
+    open-in-view: false
+pmart:
+  embedding:
+    elasticsearch-url: http://localhost:9200
+    provider: fake # fake(시험·로컬 — 뜻 없는 해시 벡터) | ollama(LAN — -lan 에서)
+    dim: 1024 # 스키마 vector(1024) 와 같아야 한다(qwen3-embedding:0.6b = 1024)
+    batch-size: 8
+    reconcile-interval: PT10M # ES 와 pgvector 를 맞춰 보는 주기(놓친 알림·실패 보충)

@@ -20,7 +20,7 @@
    - 실패는 5xx — integration-service 가 다시 시도한다.
 
 ## 아직 아닌 것
-- 스냅숏 단위 활성화(DB ACTIVE 와 별칭 동시 전환, 계획 §1-2 단계 5)와 임베딩·pgvector 적재 — 다음 단계. 지금은 문서 단위로 바로 반영한다.
+- 스냅숏 단위 활성화(DB ACTIVE 와 별칭 동시 전환, 계획 §1-2 단계 5) — 지금은 문서 단위로 바로 반영한다. 임베딩·pgvector 는 embedding-service(ADR-0098) — 문서를 반영한 뒤 `embedding-url` 로 알린다.
 - 질문·답(ES 먼저 → pgvector, 계획 §2-1)은 새 서비스가 맡는다 — 기존 ai-assistant·customer-assistant 는 새 RAG 에서 제외(ADR-0097).
 - 놓친 웹훅을 위한 전체 다시 맞추기.
 

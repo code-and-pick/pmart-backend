@@ -10,10 +10,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param chunkTokens 한 청크 최대 토큰(TokenTextSplitter) — 넘는 절만 더 나눈다
  * @param minChunkChars 나눌 때 한 조각 최소 글자
  * @param timeout ES 호출 시간 제한
+ * @param embeddingUrl 문서를 반영한 뒤 알릴 embedding-service 주소(없으면 알리지 않음, ADR-0098)
  */
 @ConfigurationProperties("pmart.chunking")
 public record ChunkingProperties(
-    String elasticsearchUrl, int chunkTokens, int minChunkChars, Duration timeout) {
+    String elasticsearchUrl,
+    int chunkTokens,
+    int minChunkChars,
+    Duration timeout,
+    @org.jspecify.annotations.Nullable String embeddingUrl) {
 
   public ChunkingProperties {
     if (elasticsearchUrl == null || elasticsearchUrl.isBlank()) {

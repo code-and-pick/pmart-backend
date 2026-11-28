@@ -28,7 +28,7 @@ class MarkdownChunkerTest {
       """;
 
   final MarkdownChunker chunker =
-      new MarkdownChunker(new ChunkingProperties(null, 0, 0, Duration.ofSeconds(1)));
+      new MarkdownChunker(new ChunkingProperties(null, 0, 0, Duration.ofSeconds(1), null));
 
   @Test
   void oneChunkPerHeadingWithSectionPath() {

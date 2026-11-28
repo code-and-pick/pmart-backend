@@ -69,6 +69,7 @@ val services = listOf<String>(
     "customer-assistant-service", // 고객앱 RAG(ADR-0051)
     "integration-service", // 문서 저장소(pmart-all-docs) 웹훅 → 파일 내용 추출 → 청킹 서비스로 전달(Spring Integration, ADR-0095)
     "chunking-service", // 문서 청킹 → Elasticsearch RAG 색인(Spring AI 마크다운 리더, ADR-0096)
+    "embedding-service", // ES 청크 → Ollama qwen3-embedding → 자기 pgvector(ADR-0098)
     "backoffice-bff",
     "audit-service",
     "notification-service",

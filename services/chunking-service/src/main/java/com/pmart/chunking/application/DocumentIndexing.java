@@ -3,6 +3,7 @@ package com.pmart.chunking.application;
 import com.pmart.chunking.domain.AccessScope;
 import com.pmart.chunking.domain.Chunk;
 import com.pmart.chunking.domain.IncomingDocument;
+import com.pmart.chunking.infrastructure.EmbeddingNotifier;
 import com.pmart.chunking.infrastructure.RagIndex;
 import com.pmart.common.web.ErrorCode;
 import com.pmart.common.web.PmartException;
@@ -29,11 +30,14 @@ public class DocumentIndexing {
 
   private final MarkdownChunker chunker;
   private final RagIndex index;
+  private final EmbeddingNotifier embedding;
   private final Clock clock;
 
-  public DocumentIndexing(MarkdownChunker chunker, RagIndex index, Clock clock) {
+  public DocumentIndexing(
+      MarkdownChunker chunker, RagIndex index, EmbeddingNotifier embedding, Clock clock) {
     this.chunker = chunker;
     this.index = index;
+    this.embedding = embedding;
     this.clock = clock;
   }
 
@@ -52,6 +56,7 @@ public class DocumentIndexing {
         n += index.retire(s, doc.path(), at);
       }
       log.info("문서 내림 path={} retiredChunks={} indexes={}", doc.path(), n, aliases);
+      embedding.documentChanged(doc.path(), "REMOVED@" + doc.commit(), aliases);
       return new Result("RETIRED", doc.path(), (int) n, aliases);
     }
     String content = doc.content();
@@ -87,6 +92,7 @@ public class DocumentIndexing {
     if (changed.isEmpty()) {
       return new Result("UNCHANGED", doc.path(), 0, aliases);
     }
+    embedding.documentChanged(doc.path(), hash, changed);
     return new Result("INDEXED", doc.path(), chunks == null ? 0 : chunks.size(), changed);
   }
 }

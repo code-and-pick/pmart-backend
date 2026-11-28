@@ -432,9 +432,16 @@
 ### chunking-service `[ADR-0096 — 2026-11-28 추가·1차 구현]`
 - 추출 문서(integration-service) → Spring AI 청킹(`MarkdownDocumentReader` + 긴 절 `TokenTextSplitter`) → Elasticsearch RAG 색인. ES-First 하이브리드 RAG 의 "청킹 → ES 선 적재".
 - **소유**: ES RAG 색인 `rag-operator`·`rag-customer`(→ `-v1`, es-search, nori — 1 청크 = 1 문서, 삭제는 RETIRED). DB·Kafka 없음.
-- **소유하지 않음**: 문서 원본(GitHub pmart-all-docs), 웹훅·추출(integration-service), 임베딩·pgvector(다음 단계 임베딩 서비스), 질문·답(새 서비스 — ADR-0097, 기존 ai-assistant·customer-assistant 는 새 RAG 에서 제외).
+- **소유하지 않음**: 문서 원본(GitHub pmart-all-docs), 웹훅·추출(integration-service), 임베딩·pgvector(embedding-service — ADR-0098), 질문·답(새 서비스 — ADR-0097, 기존 ai-assistant·customer-assistant 는 새 RAG 에서 제외).
 - **API**(계약 0.1.0): `POST /internal/documents`(integration-service → 이 서비스, PC 2 안).
-- **의존(동기)**: es-search(인프라).
+- **의존(동기)**: es-search(인프라), embedding-service `POST /internal/embedding-jobs`(문서 반영 뒤 알림 — 실패해도 ES 반영은 그대로, 설정 `embedding-url`).
+
+### embedding-service `[ADR-0098 — 2026-11-28 추가·1차 구현]`
+- ES 청크(chunking-service 색인 rag-operator·rag-customer — 읽기만) → Ollama `qwen3-embedding:0.6b`(Spring AI, CPU) → 1024차원 벡터 → 자기 pgvector. ES-First 하이브리드 RAG 의 "ES → 임베딩 → pgvector".
+- **소유**: `chunk_vector`(범위·chunkId — ES 와 같은 ID, is_active)·`embedding_cache`(DB `embedding_service`, rag-pgvector PC 2). Kafka 없음.
+- **소유하지 않음**: ES 색인(chunking-service), 문서 원본(pmart-all-docs), 질문·답(다음 단계 새 서비스), 기존 RAG 두 서비스의 pgvector(ADR-0097).
+- **API**(계약 0.1.0): `POST /internal/embedding-jobs`(chunking-service → 이 서비스, 202 — 일 줄). 놓친 알림은 10분마다 ES 와 맞춰 보기.
+- **의존(동기)**: es-search(읽기), Ollama(인프라).
 
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).

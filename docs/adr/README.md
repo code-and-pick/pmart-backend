@@ -95,3 +95,4 @@
 | [0095](0095-integration-service-docs-webhook.md) | integration-service — 문서 저장소(pmart-all-docs) push·delete 웹훅 → 파일 내용 추출 → 청킹 서비스로 전달(Spring Integration, 로컬 사본 없음) | 승인 (2026-11-28) |
 | [0096](0096-chunking-service-es-rag-index.md) | chunking-service — 추출 문서를 Spring AI 리더로 청킹해 es-search RAG 색인(rag-operator·rag-customer, nori)에 문서 단위 반영(삭제는 RETIRED) | 승인 (2026-11-28) |
 | [0097](0097-new-rag-system-excludes-assistant-services.md) | 새 RAG 시스템은 새 서비스로(integration → chunking → 임베딩 …) — ai-assistant-service·customer-assistant-service 제외, 삭제 안 함 | 승인 (2026-11-28) |
+| [0098](0098-embedding-service-pgvector.md) | embedding-service — ES 청크를 Ollama qwen3-embedding(Spring AI)으로 1024차원 벡터로 바꿔 자기 pgvector(embedding_service)에 같은 chunkId 로(캐시·맞춰 보기) | 승인 (2026-11-28) |
