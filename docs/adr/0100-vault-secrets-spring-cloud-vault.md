@@ -24,7 +24,7 @@
 9. **전환 순서** — ① Vault·데이터·AppRole·코드(완료) → ② render.sh 에 결정 4 의 환경변수·CA 마운트·secret-id 발급(PC 1) → ③ 이미지 재빌드 → ④ 서비스 하나(payment-service) 먼저 → 전체 → ⑤ **그 뒤에만** pmart-config 의 `{cipher}` 줄·signing.keys 목록·서비스 시험 사본 삭제, render.sh 암호화 단계 제거. ⑤ 를 먼저 하면 서비스가 비밀 없이 기동 실패한다.
 
 ## 대안
-- **config-server 를 Git + Vault 복합 백엔드로**(학습 프로젝트 방식): config-server 하나만 바꾸면 되지만 config-server 가 모든 비밀을 읽어 Basic 인증 하나로 내려준다 — ADR-0027 의 약점이 그대로. 사용자: "정석이 아니야".
+- **config-server 를 Git + Vault 복합 백엔드로**(학습 프로젝트 방식 — 정정 2026-11-29: Eum 의 config-server 는 실제로는 Vault 만 본다. → 이 안은 ADR-0101 로 채택): config-server 하나만 바꾸면 되지만 config-server 가 모든 비밀을 읽어 Basic 인증 하나로 내려준다 — ADR-0027 의 약점이 그대로. 사용자: "정석이 아니야".
 - **render.sh 가 Vault 에서 원본을 읽고 {cipher} 유지**(키만 Vault 에): 변경이 가장 작지만 {cipher} 를 없애는 목적과 맞지 않는다.
 - **SOPS 등 암호화 파일을 Git 에**: 서버가 필요 없지만 키 교체·회수·권한 분리·감사가 안 되고 {cipher} 와 같은 성질이다.
 - **PC 마다 로컬 Vault**: "한 곳에서 관리"가 안 된다.

@@ -9,7 +9,8 @@
 
 ## 배경
 - 2026-11-28 ADR-0100 결정 3~6 대로 전체 앱을 Vault 직접 읽기로 배포하자 **pc3·pc4·pc5 의 앱이 모두 AppRole 로그인에 실패**해 재시작을 반복했고(게이트웨이·인증 포함 약 10분), pc2 앱 20개만 남기고 되돌렸다. pc2 의 Docker Desktop 포트 공개가 출발지 IP 를 Docker 게이트웨이(172.20.0.1)로 바꿔, "그 앱 PC IP/32" 묶음(결정 5)이 다른 PC 앱에 맞지 않았다. Docker Desktop 에서는 "Docker 대역 허용"이 곧 "어디서든"이라 묶음으로 고칠 수도 없다.
-- 학습 프로젝트 Eum 은 Vault 를 서비스와 같은 Docker 네트워크에 두고 ① config-server 가 Git + Vault 를 같이 보며 ② 서비스도 공용 루트 토큰으로 직접 읽는다. 우리는 서비스가 PC 5대에 흩어져 ② 의 조건(한 네트워크)이 맞지 않고, 공용 루트 토큰은 최소 권한이 없다. ① 은 우리 구조에도 맞는다 — Vault 에 접속하는 곳이 config-server 하나가 된다.
+- 학습 프로젝트 Eum 은 Vault 를 서비스와 같은 Docker 네트워크에 두고 ① config-server 가 Vault 를 보며(Vault **만** — Git 없음, 일반 설정도 Vault) ② 서비스도 공용 루트 토큰으로 직접 읽는다(같은 데이터를 두 길로). 우리는 서비스가 PC 5대에 흩어져 ② 의 조건(한 네트워크)이 맞지 않고, 공용 루트 토큰은 최소 권한이 없다. ① 의 뜻(Vault 에 접속하는 곳은 config-server 하나)은 우리 구조에도 맞는다. 다만 일반 설정은 Git(pmart-config — 이력·PR 검토·웹훅 → Bus 자동 반영)에 그대로 두고 비밀만 Vault 에서 합친다(Git + Vault 복합) — Eum 과 다른 우리 쪽 설계다.
+- **정정(2026-11-29)**: 결정 때("응 1번이야") PC 1 은 Eum ① 을 "config-server 가 Git + Vault 복합"이라고 잘못 설명했다(실제로는 Vault 만). 정정을 사용자에게 알렸고, 결정 내용(이 ADR 의 결정 1·2)은 그대로다.
 
 ## 결정
 1. **config-server(PC 4)가 Git + Vault 복합 백엔드**(Spring Cloud Config `composite`: `git` + `vault`)로 `/{앱}/{프로필}` 응답에 Vault 비밀을 합쳐 내려준다. **같은 속성은 Vault 가 이긴다**(복합 순서에서 Vault 를 앞에 둔다).
