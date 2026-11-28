@@ -11,10 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/**
- * 운영자 RAG 문서 정본 저장(ADR-0092, V3): 지금 판·판 이력·초안·반영 기록·재색인 요청. 이 서비스 소유 표만 다룬다. 본문은 로그에 남기지
- * 않는다.
- */
+/** 운영자 RAG 문서 정본 저장(ADR-0092, V3): 지금 판·판 이력·초안·반영 기록·재색인 요청. 이 서비스 소유 표만 다룬다. 본문은 로그에 남기지 않는다. */
 @Repository
 public class KnowledgeStore {
 
@@ -128,7 +125,8 @@ public class KnowledgeStore {
               if (n == 0) {
                 return false;
               }
-              insertVersion(documentId, 1, "IMPORT", title, content, sha256, null, null, "IMPORT", at);
+              insertVersion(
+                  documentId, 1, "IMPORT", title, content, sha256, null, null, "IMPORT", at);
               return true;
             });
     return Boolean.TRUE.equals(inserted);
@@ -199,7 +197,8 @@ public class KnowledgeStore {
         SELECT document_id, domain_area, content, content_sha256 FROM knowledge_document
         WHERE NOT retired ORDER BY document_id
         """,
-        (rs, i) -> new ActiveDoc(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)));
+        (rs, i) ->
+            new ActiveDoc(rs.getString(1), rs.getString(2), rs.getString(3), rs.getString(4)));
   }
 
   /** 새 판 저장(트랜잭션 안, {@link #lockDocument} 뒤). 새 문서면 version 1 로 넣는다. */
@@ -355,7 +354,8 @@ public class KnowledgeStore {
   }
 
   /** 반영 결과로 초안을 닫는다(트랜잭션 안). 열린 초안만. */
-  public void closeDraft(String draftId, String state, String approvalId, @Nullable String reason, Instant at) {
+  public void closeDraft(
+      String draftId, String state, String approvalId, @Nullable String reason, Instant at) {
     jdbc.update(
         """
         UPDATE knowledge_draft SET state = ?, approval_id = ?, result_reason = ?, updated_at = ?

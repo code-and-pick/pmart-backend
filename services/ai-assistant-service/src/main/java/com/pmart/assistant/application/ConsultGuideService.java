@@ -85,9 +85,7 @@ public class ConsultGuideService {
           List.of(new PmartException.Detail("orderStatus", "주문 서비스의 상태 이름(대문자·_ 40자 이하)입니다.")));
     }
     SnapshotRow snapshot =
-        snapshots
-            .findActive()
-            .orElseThrow(() -> unavailable("활성 색인이 없습니다.", null));
+        snapshots.findActive().orElseThrow(() -> unavailable("활성 색인이 없습니다.", null));
     Set<String> scopes = access.allowedScopes(p);
     try {
       CitationRecord identity = null;

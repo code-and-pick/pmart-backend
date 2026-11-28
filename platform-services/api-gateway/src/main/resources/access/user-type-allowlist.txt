@@ -1,6 +1,7 @@
 # 생성 파일 — 손으로 고치지 않는다. 정본은 contracts/openapi 의 x-pmart-user-types(ADR-0054 §6.1).
 # 다시 만들기: PMART_WRITE_ALLOWLIST=1 ./gradlew :platform-services:api-gateway:test --tests '*UserTypeAllowlistFileTest'
 DELETE /api/v1/assistant/chat-sessions/{sessionId} OPERATOR
+DELETE /api/v1/assistant/knowledge-drafts/{draftId} OPERATOR
 DELETE /api/v1/carts/{cartId}/items/{itemId} CUSTOMER,GUEST
 DELETE /api/v1/locations/{locationId} OPERATOR
 DELETE /api/v1/me/addresses/{addressId} CUSTOMER
@@ -29,6 +30,12 @@ GET /api/v1/assignments OPERATOR
 GET /api/v1/assignments/history OPERATOR
 GET /api/v1/assistant/chat-sessions OPERATOR
 GET /api/v1/assistant/chat-sessions/{sessionId} OPERATOR
+GET /api/v1/assistant/consult-guides OPERATOR
+GET /api/v1/assistant/knowledge-applications OPERATOR
+GET /api/v1/assistant/knowledge-documents OPERATOR
+GET /api/v1/assistant/knowledge-documents/detail OPERATOR
+GET /api/v1/assistant/knowledge-drafts OPERATOR
+GET /api/v1/assistant/knowledge-drafts/{draftId} OPERATOR
 GET /api/v1/assistant/policy-questions OPERATOR
 GET /api/v1/assistant/policy-questions/{answerId} OPERATOR
 GET /api/v1/assistant/question-history OPERATOR
@@ -464,6 +471,7 @@ POST /api/v1/assignment-plans OPERATOR
 POST /api/v1/assignment-plans/{planId}/commits OPERATOR
 POST /api/v1/assignments OPERATOR
 POST /api/v1/assignments/{taskId}/releases OPERATOR
+POST /api/v1/assistant/knowledge-drafts OPERATOR
 POST /api/v1/assistant/policy-questions OPERATOR
 POST /api/v1/auth/guest-sessions PUBLIC
 POST /api/v1/auth/logouts CUSTOMER,GUEST,OPERATOR
@@ -793,6 +801,7 @@ POST /api/v1/waves/{waveId}/releases OPERATOR
 POST /api/v1/waves/{waveId}/resumptions OPERATOR
 POST /api/v1/waves/{waveId}/splits OPERATOR
 POST /api/v1/webhooks/toss PUBLIC
+PUT /api/v1/assistant/knowledge-drafts/{draftId} OPERATOR
 PUT /api/v1/content-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/hr/departments/{code} OPERATOR

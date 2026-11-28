@@ -106,8 +106,11 @@ class KnowledgeDocumentIT extends AssistantITBase {
     assertThat(indexing.importFromRepo(docsRepo, manifest)).isZero();
     var first = indexing.indexFromDb();
     assertThat(first.fileCount()).isEqualTo(3);
-    assertThat(jdbc.queryForObject(
-            "SELECT source_revision FROM index_snapshot WHERE snapshot_id = ?", String.class, first.snapshotId()))
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT source_revision FROM index_snapshot WHERE snapshot_id = ?",
+                String.class,
+                first.snapshotId()))
         .isEqualTo("db:import");
 
     var list = get(ADMIN, "/api/v1/assistant/knowledge-documents");
@@ -142,7 +145,8 @@ class KnowledgeDocumentIT extends AssistantITBase {
     assertThat(request.path("targetRef").asString()).isEqualTo(draftId);
     assertThat(request.path("targetExpectedVersion").asInt()).isEqualTo(1);
     // 같은 키는 같은 초안
-    assertThat(createDraft(ADMIN, BO, "UPSERT", 1, newBody, key).text("draftId")).isEqualTo(draftId);
+    assertThat(createDraft(ADMIN, BO, "UPSERT", 1, newBody, key).text("draftId"))
+        .isEqualTo(draftId);
     // 승인자(다른 관리자)도 초안과 지금 판을 본다
     var seen = get(ADMIN2, "/api/v1/assistant/knowledge-drafts/" + draftId);
     assertThat(seen.status()).isEqualTo(200);
@@ -155,18 +159,31 @@ class KnowledgeDocumentIT extends AssistantITBase {
     assertThat(detail.body().path("document").path("updatedBy").asString()).isEqualTo("admin-1");
     assertThat(detail.body().path("content").asString()).contains("주문 금액과 시각");
     assertThat(detail.body().path("versions")).hasSize(2);
-    assertThat(get(ADMIN, "/api/v1/assistant/knowledge-documents/detail?documentId=" + BO + "&version=1")
-            .body().path("content").asString())
+    assertThat(
+            get(
+                    ADMIN,
+                    "/api/v1/assistant/knowledge-documents/detail?documentId=" + BO + "&version=1")
+                .body()
+                .path("content")
+                .asString())
         .doesNotContain("주문 금액과 시각");
-    assertThat(get(ADMIN, "/api/v1/assistant/knowledge-drafts/" + draftId).text("state")).isEqualTo("APPLIED");
+    assertThat(get(ADMIN, "/api/v1/assistant/knowledge-drafts/" + draftId).text("state"))
+        .isEqualTo("APPLIED");
     assertThat(receipts.sent).hasSize(1);
-    assertThat(receipts.sent.get(0)).containsEntry("result", "APPLIED").containsEntry("domainRef", BO + "@v2");
-    assertThat(item(get(ADMIN, "/api/v1/assistant/knowledge-documents").body(), BO).path("indexState").asString())
+    assertThat(receipts.sent.get(0))
+        .containsEntry("result", "APPLIED")
+        .containsEntry("domainRef", BO + "@v2");
+    assertThat(
+            item(get(ADMIN, "/api/v1/assistant/knowledge-documents").body(), BO)
+                .path("indexState")
+                .asString())
         .isEqualTo("PENDING");
 
     // 같은 승인을 다시 받으면 판은 그대로, 같은 회신만 다시
     approve("APR-1", request);
-    assertThat(jdbc.queryForObject("SELECT version FROM knowledge_document WHERE document_id = ?", Integer.class, BO))
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT version FROM knowledge_document WHERE document_id = ?", Integer.class, BO))
         .isEqualTo(2);
     assertThat(receipts.sent).hasSize(2);
     assertThat(receipts.sent.get(1)).containsEntry("result", "APPLIED");
@@ -174,14 +191,21 @@ class KnowledgeDocumentIT extends AssistantITBase {
     // 재색인(주기 작업과 같은 길) → INDEXED, 출처 = 마지막 반영 승인
     assertThat(indexing.runRequestedReindex()).isTrue();
     assertThat(indexing.runRequestedReindex()).isFalse(); // 요청이 없으면 하지 않는다
-    assertThat(item(get(ADMIN, "/api/v1/assistant/knowledge-documents").body(), BO).path("indexState").asString())
+    assertThat(
+            item(get(ADMIN, "/api/v1/assistant/knowledge-documents").body(), BO)
+                .path("indexState")
+                .asString())
         .isEqualTo("INDEXED");
-    assertThat(jdbc.queryForObject(
-            "SELECT source_revision FROM index_snapshot WHERE state = 'ACTIVE'", String.class))
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT source_revision FROM index_snapshot WHERE state = 'ACTIVE'", String.class))
         .isEqualTo("db:APR-1");
 
     // 상담 도우미: 새 판의 본인 확인 절 + 문의 종류 근거
-    var guide = get(CS, "/api/v1/assistant/consult-guides?category=ORDER&memberFound=false&orderStatus=CONFIRMED");
+    var guide =
+        get(
+            CS,
+            "/api/v1/assistant/consult-guides?category=ORDER&memberFound=false&orderStatus=CONFIRMED");
     assertThat(guide.status()).isEqualTo(200);
     assertThat(guide.body().path("identity").path("path").asString()).isEqualTo(BO);
     assertThat(guide.body().path("identity").path("excerpt").asString()).contains("주문 금액과 시각");
@@ -190,7 +214,8 @@ class KnowledgeDocumentIT extends AssistantITBase {
     assertThat(policyPaths).contains(OC);
     assertThat(guide.body().path("memberFound").asBoolean(true)).isFalse();
     assertThat(get(MD, "/api/v1/assistant/consult-guides?category=ORDER").status()).isEqualTo(403);
-    assertThat(get(CS, "/api/v1/assistant/consult-guides?category=ORDER&orderStatus=bad-1").status())
+    assertThat(
+            get(CS, "/api/v1/assistant/consult-guides?category=ORDER&orderStatus=bad-1").status())
         .isEqualTo(400);
 
     // 반영 기록
@@ -208,16 +233,22 @@ class KnowledgeDocumentIT extends AssistantITBase {
     approve("APR-A", a.body().path("approvalRequest"));
     // b 는 판 1 기준 — 지금 판 2 → 반영 안 함
     approve("APR-B", b.body().path("approvalRequest"));
-    assertThat(receipts.sent.get(1)).containsEntry("result", "REJECTED").containsEntry("reason", "STALE_VERSION");
-    assertThat(get(ADMIN, "/api/v1/assistant/knowledge-drafts/" + b.text("draftId")).text("resultReason"))
+    assertThat(receipts.sent.get(1))
+        .containsEntry("result", "REJECTED")
+        .containsEntry("reason", "STALE_VERSION");
+    assertThat(
+            get(ADMIN, "/api/v1/assistant/knowledge-drafts/" + b.text("draftId"))
+                .text("resultReason"))
         .isEqualTo("STALE_VERSION");
 
     // 승인 요청 뒤 초안을 고치면 본문 해시가 달라 반영 안 함
     var c = createDraft(ADMIN, OC, "UPSERT", 2, body2);
     JsonNode oldRequest = c.body().path("approvalRequest");
-    var changed = put(ADMIN, "/api/v1/assistant/knowledge-drafts/" + c.text("draftId"), body2 + "\n2. 더.\n");
+    var changed =
+        put(ADMIN, "/api/v1/assistant/knowledge-drafts/" + c.text("draftId"), body2 + "\n2. 더.\n");
     assertThat(changed.status()).isEqualTo(200);
-    assertThat(put(ADMIN2, "/api/v1/assistant/knowledge-drafts/" + c.text("draftId"), body2).status())
+    assertThat(
+            put(ADMIN2, "/api/v1/assistant/knowledge-drafts/" + c.text("draftId"), body2).status())
         .isEqualTo(404); // 남의 초안
     approve("APR-C", oldRequest);
     assertThat(receipts.sent.get(2)).containsEntry("reason", "DRAFT_CHANGED");
@@ -228,18 +259,33 @@ class KnowledgeDocumentIT extends AssistantITBase {
     assertThat(receipts.sent.get(3)).containsEntry("result", "APPLIED");
     indexing.runRequestedReindex();
     String active =
-        jdbc.queryForObject("SELECT snapshot_id FROM index_snapshot WHERE state = 'ACTIVE'", String.class);
-    assertThat(jdbc.queryForList(
-            "SELECT path FROM index_source_file WHERE snapshot_id = ?", String.class, active))
+        jdbc.queryForObject(
+            "SELECT snapshot_id FROM index_snapshot WHERE state = 'ACTIVE'", String.class);
+    assertThat(
+            jdbc.queryForList(
+                "SELECT path FROM index_source_file WHERE snapshot_id = ?", String.class, active))
         .containsExactlyInAnyOrder(BO, CA);
     assertThat(get(ADMIN, "/api/v1/assistant/knowledge-documents").body().path("items")).hasSize(2);
-    assertThat(get(ADMIN, "/api/v1/assistant/knowledge-documents?includeRetired=true").body().path("items"))
+    assertThat(
+            get(ADMIN, "/api/v1/assistant/knowledge-documents?includeRetired=true")
+                .body()
+                .path("items"))
         .hasSize(3);
 
     // 반려·다른 종류·다른 서비스 결정은 아무것도 하지 않는다
     int before = receipts.sent.size();
-    decide("APR-X", c.body().path("approvalRequest"), "REJECTED", "RAG_DOCUMENT", "ai-assistant-service");
-    decide("APR-Y", c.body().path("approvalRequest"), "APPROVED", "SEARCH_SYNONYM", "ai-assistant-service");
+    decide(
+        "APR-X",
+        c.body().path("approvalRequest"),
+        "REJECTED",
+        "RAG_DOCUMENT",
+        "ai-assistant-service");
+    decide(
+        "APR-Y",
+        c.body().path("approvalRequest"),
+        "APPROVED",
+        "SEARCH_SYNONYM",
+        "ai-assistant-service");
     decide("APR-Z", c.body().path("approvalRequest"), "APPROVED", "RAG_DOCUMENT", "search-service");
     assertThat(receipts.sent).hasSize(before);
   }
@@ -250,7 +296,8 @@ class KnowledgeDocumentIT extends AssistantITBase {
     decide(approvalId, request, "APPROVED", "RAG_DOCUMENT", "ai-assistant-service");
   }
 
-  void decide(String approvalId, JsonNode request, String decision, String type, String targetService) {
+  void decide(
+      String approvalId, JsonNode request, String decision, String type, String targetService) {
     Map<String, Object> target = new LinkedHashMap<>();
     target.put("targetType", "KnowledgeDocument");
     target.put("targetId", request.path("targetRef").asString());
@@ -333,6 +380,9 @@ class KnowledgeDocumentIT extends AssistantITBase {
   }
 
   Http http(int status, byte[] bytes) {
-    return new Http(status, bytes.length == 0 ? json.createObjectNode() : json.readTree(bytes), new HttpHeaders());
+    return new Http(
+        status,
+        bytes.length == 0 ? json.createObjectNode() : json.readTree(bytes),
+        new HttpHeaders());
   }
 }

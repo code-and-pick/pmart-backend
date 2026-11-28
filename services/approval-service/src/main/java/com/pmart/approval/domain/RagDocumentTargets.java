@@ -16,8 +16,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>{@code targetService = ai-assistant-service}, {@code targetRef} = 초안 ID({@code KDR-…})
  *   <li>{@code targetExpectedVersion} 필수(0 이상) — 초안의 기준 판(새 문서는 0). 승인 뒤 지금 판이 다르면 정본이 반영하지 않는다
  *   <li>행 정확히 하나: lineKey = 문서 ID({@code docs/rag/rag-docs/<영역>/<이름>.md}), {@code attributes.op}
- *       UPSERT·RETIRE, {@code attributes.draftId} = targetRef, UPSERT 는 {@code attributes.contentSha256}(초안 본문
- *       sha256, 소문자 16진 64자)
+ *       UPSERT·RETIRE, {@code attributes.draftId} = targetRef, UPSERT 는 {@code
+ *       attributes.contentSha256}(초안 본문 sha256, 소문자 16진 64자)
  * </ul>
  *
  * 형식만 본다 — 초안이 있는지·본문이 같은지는 정본이 반영 때 판정하고 회신한다.
@@ -72,8 +72,7 @@ public final class RagDocumentTargets {
     } else {
       Line l = lines.get(0);
       if (l.lineKey() == null || !DOCUMENT_ID.matcher(l.lineKey()).matches()) {
-        bad.add(
-            new Detail("lines[0].lineKey", "문서 ID 는 docs/rag/rag-docs/<영역>/<이름>.md 형식입니다."));
+        bad.add(new Detail("lines[0].lineKey", "문서 ID 는 docs/rag/rag-docs/<영역>/<이름>.md 형식입니다."));
       }
       if (!"UPSERT".equals(l.op()) && !"RETIRE".equals(l.op())) {
         bad.add(new Detail("lines[0].attributes.op", "UPSERT 또는 RETIRE 입니다."));
@@ -84,8 +83,7 @@ public final class RagDocumentTargets {
       if ("UPSERT".equals(l.op())
           && (l.contentSha256() == null || !SHA256.matcher(l.contentSha256()).matches())) {
         bad.add(
-            new Detail(
-                "lines[0].attributes.contentSha256", "초안 본문 sha256(소문자 16진 64자)이 필요합니다."));
+            new Detail("lines[0].attributes.contentSha256", "초안 본문 sha256(소문자 16진 64자)이 필요합니다."));
       }
     }
     if (!bad.isEmpty()) {

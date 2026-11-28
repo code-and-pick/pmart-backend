@@ -39,7 +39,9 @@ class KnowledgeDocumentRulesTest {
     assertThat(KnowledgeDocumentRules.check("docs/business/x.md", "UPSERT", "# 제목"))
         .extracting(Problem::field)
         .containsExactly("documentId");
-    assertThat(KnowledgeDocumentRules.check("docs/rag/rag-docs/customer_app/01-a.md", "UPSERT", "# 제목"))
+    assertThat(
+            KnowledgeDocumentRules.check(
+                "docs/rag/rag-docs/customer_app/01-a.md", "UPSERT", "# 제목"))
         .extracting(Problem::field)
         .containsExactly("documentId");
     assertThat(KnowledgeDocumentRules.check(DOC, "RENAME", "# 제목"))

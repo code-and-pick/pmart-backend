@@ -26,7 +26,11 @@ public class ConsultController implements ConsultApi {
       @Nullable String orderStatus) {
     var g =
         service.guide(
-            PmartPrincipal.current().orElse(null), xSourceSystem, category, memberFound, orderStatus);
+            PmartPrincipal.current().orElse(null),
+            xSourceSystem,
+            category,
+            memberFound,
+            orderStatus);
     return ResponseEntity.ok(
         new ConsultGuide()
             .category(g.category())

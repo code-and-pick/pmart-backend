@@ -65,7 +65,9 @@ class RagDocumentTargetsTest {
                 assertThat(e.details())
                     .extracting(PmartException.Detail::field)
                     .containsExactly(
-                        "lines[0].lineKey", "lines[0].attributes.op", "lines[0].attributes.draftId"));
+                        "lines[0].lineKey",
+                        "lines[0].attributes.op",
+                        "lines[0].attributes.draftId"));
     assertThatThrownBy(
             () ->
                 RagDocumentTargets.validate(

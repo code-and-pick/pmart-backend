@@ -23,8 +23,8 @@ import tools.jackson.databind.ObjectMapper;
  * RAG 문서 승인 반영(ADR-0092 결정 3) — ApprovalDecided 중 {@code RAG_DOCUMENT}·이 서비스 대상·승인된 결정만.
  *
  * <p>멱등은 반영 기록({@code knowledge_application}, 승인 ID): 기록이 있으면 같은 회신만 다시 보낸다. 없으면 한 트랜잭션에서 초안·기준
- * 판·본문 해시를 확인하고 새 판 + 초안 닫기 + 반영 기록 + 재색인 요청을 쓴 뒤, 트랜잭션 밖에서 회신한다. 회신이 실패하면 예외 → 바인더가 다시 주고
- * 기록을 보고 같은 회신을 보낸다(search-service 동의어와 같은 방식 — outbox 를 rag-pgvector 에 두지 않는다).
+ * 판·본문 해시를 확인하고 새 판 + 초안 닫기 + 반영 기록 + 재색인 요청을 쓴 뒤, 트랜잭션 밖에서 회신한다. 회신이 실패하면 예외 → 바인더가 다시 주고 기록을 보고
+ * 같은 회신을 보낸다(search-service 동의어와 같은 방식 — outbox 를 rag-pgvector 에 두지 않는다).
  *
  * <p>반려 결정은 반영 요청이 아니라 회신하지 않고, 초안도 열어 둔다(고쳐서 다시 요청할 수 있게).
  */
@@ -94,7 +94,8 @@ public class KnowledgeApprovals {
     }
     JsonNode target = p.path("targetRef");
     String draftId = target.path("targetId").asString(null);
-    Integer expected = target.hasNonNull("expectedVersion") ? target.get("expectedVersion").asInt() : null;
+    Integer expected =
+        target.hasNonNull("expectedVersion") ? target.get("expectedVersion").asInt() : null;
     String approverId = p.path("approverId").asString(null);
     List<JsonNode> lines = new java.util.ArrayList<>();
     p.path("lines").forEach(lines::add);
@@ -117,7 +118,8 @@ public class KnowledgeApprovals {
         || expected != d.baseVersion()) {
       reject = "DRAFT_MISMATCH";
     } else if ("UPSERT".equals(d.op())
-        && (d.contentSha256() == null || !d.contentSha256().equals(attrs.path("contentSha256").asString(null)))) {
+        && (d.contentSha256() == null
+            || !d.contentSha256().equals(attrs.path("contentSha256").asString(null)))) {
       reject = "DRAFT_CHANGED";
     }
     DocumentSummary current = null;
@@ -175,7 +177,8 @@ public class KnowledgeApprovals {
         at);
     store.closeDraft(d.draftId(), "APPLIED", approvalId, null, at);
     ApplicationRow a =
-        new ApplicationRow(approvalId, d.draftId(), d.documentId(), "APPLIED", null, next, approverId, at);
+        new ApplicationRow(
+            approvalId, d.draftId(), d.documentId(), "APPLIED", null, next, approverId, at);
     store.insertApplication(a);
     store.requestReindex(at);
     return a;

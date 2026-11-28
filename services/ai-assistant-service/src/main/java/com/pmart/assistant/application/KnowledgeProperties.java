@@ -7,8 +7,9 @@ import java.util.Map;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * {@code pmart.assistant.knowledge.*}(ADR-0092 문서 관리)와 {@code pmart.assistant.consult-guide.*}(ADR-0093 상담
- * 도우미). 값의 정본은 설정 저장소 {@code ai-assistant-service.yml}(ADR-0029).
+ * {@code pmart.assistant.knowledge.*}(ADR-0092 문서 관리)와 {@code
+ * pmart.assistant.consult-guide.*}(ADR-0093 상담 도우미). 값의 정본은 설정 저장소 {@code
+ * ai-assistant-service.yml}(ADR-0029).
  */
 @ConfigurationProperties("pmart.assistant")
 public class KnowledgeProperties {
@@ -18,8 +19,8 @@ public class KnowledgeProperties {
 
   public static class Knowledge {
     /**
-     * 색인 원본: {@code files}(저장소 manifest — 예전 그대로, 기본값) | {@code db}(문서 정본 DB, ADR-0092). db 면 색인 작업이 먼저 없는
-     * 문서만 저장소에서 가져오고, 승인 반영 뒤 1분 주기 재색인이 돈다.
+     * 색인 원본: {@code files}(저장소 manifest — 예전 그대로, 기본값) | {@code db}(문서 정본 DB, ADR-0092). db 면 색인
+     * 작업이 먼저 없는 문서만 저장소에서 가져오고, 승인 반영 뒤 1분 주기 재색인이 돈다.
      */
     private String source = "files";
 

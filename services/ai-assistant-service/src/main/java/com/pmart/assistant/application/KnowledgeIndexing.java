@@ -31,8 +31,8 @@ import org.springframework.stereotype.Service;
  * 문서 정본 DB 와 색인 사이(ADR-0092 결정 1·5·8).
  *
  * <ul>
- *   <li>{@link #importFromRepo}: 저장소 manifest 문서 중 DB 에 없는 것만 판 1 로 가져온다(이미 있는 것은 건드리지 않는다 — 가져온 뒤의 정본은
- *       DB).
+ *   <li>{@link #importFromRepo}: 저장소 manifest 문서 중 DB 에 없는 것만 판 1 로 가져온다(이미 있는 것은 건드리지 않는다 — 가져온 뒤의
+ *       정본은 DB).
  *   <li>{@link #indexFromDb}: DB 의 지금 판(내린 문서 제외) 전체로 새 스냅숏. 바뀌지 않은 조각은 임베딩 캐시를 그대로 쓴다.
  *   <li>{@link #reindexIfRequested}: 승인 반영이 남긴 재색인 요청을 1분 주기로 처리({@code source=db} 일 때만).
  * </ul>
@@ -78,7 +78,8 @@ public class KnowledgeIndexing {
       } catch (IOException e) {
         throw new UncheckedIOException(e);
       }
-      String domain = doc.domain() != null ? doc.domain() : KnowledgeDocumentRules.domainOf(doc.path());
+      String domain =
+          doc.domain() != null ? doc.domain() : KnowledgeDocumentRules.domainOf(doc.path());
       String title = KnowledgeDocumentRules.title(content);
       if (store.importIfMissing(
           doc.path(),
@@ -124,7 +125,9 @@ public class KnowledgeIndexing {
             .findFirst()
             .orElse("import");
     return ingestor.ingestDocuments(
-        loaded, RequestHashing.sha256(input.toString().getBytes(StandardCharsets.UTF_8)), "db:" + last);
+        loaded,
+        RequestHashing.sha256(input.toString().getBytes(StandardCharsets.UTF_8)),
+        "db:" + last);
   }
 
   /** 승인 반영 뒤 재색인(1분 주기). 실패하면 다음 주기에 다시 한다. */

@@ -22,8 +22,20 @@ class KnowledgeDocumentServiceTest {
   void approvalRequestMatchesApprovalServiceFormat() {
     var d =
         new DraftRow(
-            "KDR-1", DOC, "UPSERT", 3, "고객센터", "# 고객센터", "a".repeat(64), "admin-1", "rk", "OPEN",
-            null, null, T0, T0);
+            "KDR-1",
+            DOC,
+            "UPSERT",
+            3,
+            "고객센터",
+            "# 고객센터",
+            "a".repeat(64),
+            "admin-1",
+            "rk",
+            "OPEN",
+            null,
+            null,
+            T0,
+            T0);
     Map<String, Object> body = KnowledgeDocumentService.approvalRequest(d).body();
     assertThat(body)
         .containsEntry("type", "RAG_DOCUMENT")
@@ -40,10 +52,13 @@ class KnowledgeDocumentServiceTest {
         .containsEntry("contentSha256", "a".repeat(64));
 
     var retire =
-        new DraftRow("KDR-2", DOC, "RETIRE", 3, "고객센터", null, null, "admin-1", "rk2", "OPEN", null, null, T0, T0);
+        new DraftRow(
+            "KDR-2", DOC, "RETIRE", 3, "고객센터", null, null, "admin-1", "rk2", "OPEN", null, null, T0,
+            T0);
     var attrs =
         (Map<String, Object>)
-            ((List<Map<String, Object>>) KnowledgeDocumentService.approvalRequest(retire).body().get("lines"))
+            ((List<Map<String, Object>>)
+                    KnowledgeDocumentService.approvalRequest(retire).body().get("lines"))
                 .get(0)
                 .get("attributes");
     assertThat(attrs).doesNotContainKey("contentSha256").containsEntry("op", "RETIRE");
@@ -55,12 +70,18 @@ class KnowledgeDocumentServiceTest {
     var none = new ReindexRow(null, null, null, null, null, null);
     var requested = new ReindexRow(T0, null, null, null, null, null);
     var failedAfter = new ReindexRow(T0, T0, T0.plusSeconds(60), "FAILED", null, "down");
-    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(DOC, "h2"), none)).isEqualTo(IndexState.INDEXED);
-    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(), none)).isEqualTo(IndexState.NOT_INDEXED);
-    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(DOC, "h1"), requested)).isEqualTo(IndexState.PENDING);
-    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(DOC, "h1"), failedAfter)).isEqualTo(IndexState.FAILED);
+    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(DOC, "h2"), none))
+        .isEqualTo(IndexState.INDEXED);
+    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(), none))
+        .isEqualTo(IndexState.NOT_INDEXED);
+    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(DOC, "h1"), requested))
+        .isEqualTo(IndexState.PENDING);
+    assertThat(KnowledgeDocumentService.indexState(doc, Map.of(DOC, "h1"), failedAfter))
+        .isEqualTo(IndexState.FAILED);
     var retired = new DocumentSummary(DOC, "backoffice", "t", 3, "h2", true, false, T0, "admin-1");
-    assertThat(KnowledgeDocumentService.indexState(retired, Map.of(), requested)).isEqualTo(IndexState.INDEXED);
-    assertThat(KnowledgeDocumentService.indexState(retired, Map.of(DOC, "h2"), requested)).isEqualTo(IndexState.PENDING);
+    assertThat(KnowledgeDocumentService.indexState(retired, Map.of(), requested))
+        .isEqualTo(IndexState.INDEXED);
+    assertThat(KnowledgeDocumentService.indexState(retired, Map.of(DOC, "h2"), requested))
+        .isEqualTo(IndexState.PENDING);
   }
 }

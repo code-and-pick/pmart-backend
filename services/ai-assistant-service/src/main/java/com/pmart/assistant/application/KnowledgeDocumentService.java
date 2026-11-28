@@ -31,8 +31,8 @@ import org.springframework.stereotype.Service;
 /**
  * 운영자 RAG 문서 보기·초안(ADR-0092). 반영은 승인으로만({@link KnowledgeApprovals}) — 이 서비스는 문서 판을 바꾸지 않는다.
  *
- * <p>보기: 운영자 누구나(X-Source-System 검사). 초안: {@code pmart.assistant.knowledge.editor-roles}. 초안 응답에 approval-service
- * 변경 요청 본문({@link ApprovalRequest})을 실어 화면이 그대로 보낸다.
+ * <p>보기: 운영자 누구나(X-Source-System 검사). 초안: {@code pmart.assistant.knowledge.editor-roles}. 초안 응답에
+ * approval-service 변경 요청 본문({@link ApprovalRequest})을 실어 화면이 그대로 보낸다.
  */
 @Service
 public class KnowledgeDocumentService {
@@ -54,9 +54,7 @@ public class KnowledgeDocumentService {
   public record ApprovalRequest(Map<String, Object> body) {}
 
   public record DraftView(
-      DraftRow draft,
-      @Nullable Document current,
-      ApprovalRequest approvalRequest) {}
+      DraftRow draft, @Nullable Document current, ApprovalRequest approvalRequest) {}
 
   public record Overview(List<DocumentView> documents, ReindexRow reindex, boolean dbSource) {}
 
@@ -75,7 +73,8 @@ public class KnowledgeDocumentService {
 
   // ---- 보기 ----
 
-  public Overview list(@Nullable PmartPrincipal principal, @Nullable String source, boolean includeRetired) {
+  public Overview list(
+      @Nullable PmartPrincipal principal, @Nullable String source, boolean includeRetired) {
     requireOperatorAndSource(principal, source);
     Map<String, String> indexed = indexedHashes();
     ReindexRow reindex = store.reindex();
@@ -96,11 +95,13 @@ public class KnowledgeDocumentService {
     String content = doc.content();
     int shown = doc.summary().version();
     if (version != null && version != shown) {
-      content = store.versionContent(documentId, version).orElseThrow(KnowledgeDocumentService::notFound);
+      content =
+          store.versionContent(documentId, version).orElseThrow(KnowledgeDocumentService::notFound);
       shown = version;
     }
     DocumentView view =
-        new DocumentView(doc.summary(), indexState(doc.summary(), indexedHashes(), store.reindex()));
+        new DocumentView(
+            doc.summary(), indexState(doc.summary(), indexedHashes(), store.reindex()));
     return new DocumentDetail(view, content, shown, store.versions(documentId));
   }
 
@@ -121,7 +122,8 @@ public class KnowledgeDocumentService {
       @Nullable Integer baseVersion,
       @Nullable String content) {
     PmartPrincipal p = requireEditor(principal, source);
-    List<KnowledgeDocumentRules.Problem> problems = KnowledgeDocumentRules.check(documentId, op, content);
+    List<KnowledgeDocumentRules.Problem> problems =
+        KnowledgeDocumentRules.check(documentId, op, content);
     if (!problems.isEmpty()) {
       throw invalid(problems);
     }
@@ -129,7 +131,11 @@ public class KnowledgeDocumentService {
     int now = current.map(d -> d.summary().version()).orElse(0);
     if ("RETIRE".equals(op) && (current.isEmpty() || current.get().summary().retired())) {
       throw new PmartException(
-          ErrorCode.INVALID_STATE.name(), HttpStatus.CONFLICT, "내릴 문서가 없거나 이미 내렸습니다.", false, List.of());
+          ErrorCode.INVALID_STATE.name(),
+          HttpStatus.CONFLICT,
+          "내릴 문서가 없거나 이미 내렸습니다.",
+          false,
+          List.of());
     }
     if (baseVersion != null && baseVersion != now) {
       throw stale(now);
@@ -143,7 +149,9 @@ public class KnowledgeDocumentService {
                 documentId,
                 op,
                 now,
-                content == null ? current.map(d -> d.summary().title()).orElse(null) : KnowledgeDocumentRules.title(content),
+                content == null
+                    ? current.map(d -> d.summary().title()).orElse(null)
+                    : KnowledgeDocumentRules.title(content),
                 content,
                 sha,
                 p.subject(),
@@ -153,7 +161,8 @@ public class KnowledgeDocumentService {
                 null,
                 at,
                 at));
-    if (!made.documentId().equals(documentId) || !made.op().equals(op)
+    if (!made.documentId().equals(documentId)
+        || !made.op().equals(op)
         || !java.util.Objects.equals(made.contentSha256(), sha)) {
       throw new PmartException(
           ErrorCode.IDEMPOTENCY_CONFLICT.name(),
@@ -174,19 +183,30 @@ public class KnowledgeDocumentService {
     }
     if (!"OPEN".equals(d.state())) {
       throw new PmartException(
-          ErrorCode.INVALID_STATE.name(), HttpStatus.CONFLICT, "닫힌 초안은 고칠 수 없습니다: " + d.state(), false, List.of());
+          ErrorCode.INVALID_STATE.name(),
+          HttpStatus.CONFLICT,
+          "닫힌 초안은 고칠 수 없습니다: " + d.state(),
+          false,
+          List.of());
     }
     List<KnowledgeDocumentRules.Problem> problems =
         KnowledgeDocumentRules.check(d.documentId(), d.op(), content);
     if (!problems.isEmpty()) {
       throw invalid(problems);
     }
-    store.updateDraft(draftId, p.subject(), KnowledgeDocumentRules.title(content), content, sha(content), clock.instant());
+    store.updateDraft(
+        draftId,
+        p.subject(),
+        KnowledgeDocumentRules.title(content),
+        content,
+        sha(content),
+        clock.instant());
     return view(store.findDraft(draftId).orElseThrow());
   }
 
   /** 초안 보기 — 승인자도 본다(운영자 누구나). 지금 판을 같이 줘서 화면이 비교한다. */
-  public DraftView getDraft(@Nullable PmartPrincipal principal, @Nullable String source, String draftId) {
+  public DraftView getDraft(
+      @Nullable PmartPrincipal principal, @Nullable String source, String draftId) {
     requireOperatorAndSource(principal, source);
     return view(store.findDraft(draftId).orElseThrow(KnowledgeDocumentService::draftNotFound));
   }
@@ -196,7 +216,8 @@ public class KnowledgeDocumentService {
     return store.openDraftsOf(p.subject()).stream().map(this::view).toList();
   }
 
-  public void discardDraft(@Nullable PmartPrincipal principal, @Nullable String source, String draftId) {
+  public void discardDraft(
+      @Nullable PmartPrincipal principal, @Nullable String source, String draftId) {
     PmartPrincipal p = requireOperatorAndSource(principal, source);
     store.discardDraft(draftId, p.subject(), clock.instant()); // 없거나 남의 것·닫힌 것이어도 204(멱등)
   }
@@ -223,7 +244,9 @@ public class KnowledgeDocumentService {
     body.put("targetExpectedVersion", d.baseVersion());
     body.put("allowedActions", List.of("APPLY_KNOWLEDGE_DOCUMENT"));
     String what =
-        "RETIRE".equals(d.op()) ? "내리기" : d.baseVersion() == 0 ? "새 문서" : "고치기(판 " + d.baseVersion() + " 기준)";
+        "RETIRE".equals(d.op())
+            ? "내리기"
+            : d.baseVersion() == 0 ? "새 문서" : "고치기(판 " + d.baseVersion() + " 기준)";
     String name = d.title() == null ? d.documentId() : d.title();
     String summary = "운영자 RAG 문서 " + what + ": " + name;
     body.put("summary", summary.length() > 500 ? summary.substring(0, 500) : summary);
@@ -274,10 +297,13 @@ public class KnowledgeDocumentService {
     return RequestHashing.sha256(content.getBytes(StandardCharsets.UTF_8));
   }
 
-  private PmartPrincipal requireEditor(@Nullable PmartPrincipal principal, @Nullable String source) {
+  private PmartPrincipal requireEditor(
+      @Nullable PmartPrincipal principal, @Nullable String source) {
     PmartPrincipal p = requireOperatorAndSource(principal, source);
     if (!hasAny(p.roles(), props.getKnowledge().getEditorRoles())) {
-      throw new PmartException(ErrorCode.FORBIDDEN, "운영자 RAG 문서 초안은 " + props.getKnowledge().getEditorRoles() + " 만 만들 수 있습니다.");
+      throw new PmartException(
+          ErrorCode.FORBIDDEN,
+          "운영자 RAG 문서 초안은 " + props.getKnowledge().getEditorRoles() + " 만 만들 수 있습니다.");
     }
     return p;
   }
@@ -286,7 +312,8 @@ public class KnowledgeDocumentService {
     return have.stream().anyMatch(need::contains);
   }
 
-  static PmartPrincipal requireOperatorAndSource(@Nullable PmartPrincipal principal, @Nullable String source) {
+  static PmartPrincipal requireOperatorAndSource(
+      @Nullable PmartPrincipal principal, @Nullable String source) {
     if (principal == null || principal.type() != PmartPrincipal.PrincipalType.OPERATOR) {
       throw new PmartException(ErrorCode.FORBIDDEN, "운영자만 사용할 수 있습니다.");
     }

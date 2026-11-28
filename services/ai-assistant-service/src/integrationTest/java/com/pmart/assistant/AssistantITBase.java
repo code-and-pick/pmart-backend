@@ -132,8 +132,10 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
   }
 
   /** 보낸 승인 회신(승인 ID, 본문). */
-  static class RecordingReceipts implements com.pmart.assistant.application.KnowledgeApprovals.Receipts {
-    final java.util.List<Map<String, Object>> sent = new java.util.concurrent.CopyOnWriteArrayList<>();
+  static class RecordingReceipts
+      implements com.pmart.assistant.application.KnowledgeApprovals.Receipts {
+    final java.util.List<Map<String, Object>> sent =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @Override
     public String sourceSystem() {

@@ -24,7 +24,8 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li>{@code pmart.assistant.ingest.run=true}(Gradle {@code ingestKnowledge -Prepo=…}): 한 번 색인하고
- *       종료. {@code pmart.assistant.knowledge.source=db}(ADR-0092)면 없는 문서만 저장소에서 가져온 뒤 DB 의 지금 판으로 색인.
+ *       종료. {@code pmart.assistant.knowledge.source=db}(ADR-0092)면 없는 문서만 저장소에서 가져온 뒤 DB 의 지금 판으로
+ *       색인.
  *   <li>{@code pmart.assistant.ingest.prune=true}(Gradle {@code pruneSnapshots}): RETIRED·FAILED
  *       스냅숏 정리 한 번 하고 종료.
  *   <li>답변 보존 정리: {@code pmart.assistant.answers.retention} 이 있을 때만(없으면 지우지 않는다).

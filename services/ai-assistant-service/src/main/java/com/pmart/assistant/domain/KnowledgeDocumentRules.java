@@ -12,8 +12,8 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>문서 ID = {@code docs/rag/rag-docs/<영역>/<이름>.md}, 영역은 지금 있는 폴더만
- *   <li>본문: 첫 줄 {@code # 제목}, {@value #MAX_BYTES} 바이트 이하, 금지 표현 없음({@code RealDocumentsIngestTest} 와 같은 기준 —
- *       정해지지 않은 내용을 넣지 않는다)
+ *   <li>본문: 첫 줄 {@code # 제목}, {@value #MAX_BYTES} 바이트 이하, 금지 표현 없음({@code RealDocumentsIngestTest}
+ *       와 같은 기준 — 정해지지 않은 내용을 넣지 않는다)
  *   <li>{@code customer_app} 은 저장소가 정본(고객 RAG 와 같은 파일, 결정 2) — 고치기 막음
  * </ul>
  */
@@ -82,7 +82,8 @@ public final class KnowledgeDocumentRules {
   }
 
   /** 초안 검사 — 문제가 없으면 빈 목록. */
-  public static List<Problem> check(@Nullable String documentId, String op, @Nullable String content) {
+  public static List<Problem> check(
+      @Nullable String documentId, String op, @Nullable String content) {
     List<Problem> bad = new ArrayList<>();
     if (domainOf(documentId) == null) {
       bad.add(
@@ -114,8 +115,7 @@ public final class KnowledgeDocumentRules {
     }
     for (String phrase : FORBIDDEN_PHRASES) {
       if (content.contains(phrase)) {
-        bad.add(
-            new Problem("content", "'" + phrase + "' 표현은 넣지 않습니다 — 정해진 내용만 운영자 RAG 문서에 둡니다."));
+        bad.add(new Problem("content", "'" + phrase + "' 표현은 넣지 않습니다 — 정해진 내용만 운영자 RAG 문서에 둡니다."));
       }
     }
     return bad;
