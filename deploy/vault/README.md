@@ -55,6 +55,9 @@ unset VAULT_TOKEN
 - `vault token create -orphan -policy=pmart-admin -period=768h` 로 만든 **주기 토큰**. Vault 최대 TTL(768h=32일) 때문에 **32일 안에 한 번** 갱신해야 계속 쓴다:
   `read -rsp "관리자 토큰: " VAULT_TOKEN; echo; export VAULT_TOKEN; docker compose exec -e VAULT_TOKEN vault vault token renew; unset VAULT_TOKEN`
 - 갱신을 놓치면 unseal 키로 root 를 다시 만들어(`vault operator generate-root`) 관리자 토큰을 새로 만든다.
+- 갱신 명령(관리자·배포 토큰 둘 다): `./vault.sh renew` — 숨김 입력, 남은 기간을 보여 준다.
+  PC 1(Vault CLI 없음)에서 배포 토큰: `read -rsp "배포 토큰: " T; echo; curl -s --cacert deploy/lan/tls/pmart-lan-root-ca.crt --ssl-revoke-best-effort -H "X-Vault-Token: $T" -X POST https://192.168.0.34:8200/v1/auth/token/renew-self -o /dev/null -w "%{http_code}
+"; unset T` → 200
 
 ## 백업
 

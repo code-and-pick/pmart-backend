@@ -2,7 +2,7 @@
 # =============================================================================
 # service-roles.sh [placement.conf] — 서비스마다 Vault 정책·AppRole 을 만든다({cipher} 제거 3-3).
 #   정책 svc-<앱>  : config/data/<앱> · config/data/<앱>,* 읽기만(자기 비밀만)
-#   AppRole svc-<앱>: 토큰 1h·최대 24h, secret-id 만료 없음, 로그인은 그 앱이 도는 PC IP 에서만
+#   AppRole svc-<앱>: 토큰 1h·최대 24h, secret-id 90일(VAULT_SECRET_ID_TTL), 로그인은 그 앱이 도는 PC IP 에서만
 #                    (secret_id_bound_cidrs·token_bound_cidrs — secret-id 가 새도 다른 PC 에서는 못 쓴다)
 #   Vault 가 도는 PC(인증서 SAN 의 IP)의 앱은 Docker 를 거쳐 들어오므로 Docker 내부 대역도 허용한다
 #   (VAULT_LOCAL_CIDRS, 기본 172.16.0.0/12,192.168.65.0/24).
@@ -12,6 +12,9 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(cd ../.. && pwd)"
 PLACEMENT="${1:-$ROOT/deploy/lan/placement.conf}"
+# 앱 목록(services/·platform-services/)은 placement.conf 가 든 저장소 기준 — 다른 작업 폴더(worktree)의 placement 를 넘기면 그 쪽 앱으로
+APPS_ROOT="$(cd "$(dirname "$PLACEMENT")/../.." && pwd)"
+SECRET_ID_TTL="${VAULT_SECRET_ID_TTL:-2160h}"   # 90일 — 배포마다 새로 발급, 오래된 것은 저절로 만료(그동안 재배포 없으면 재시작 때 로그인 실패)
 LOCAL_CIDRS="${VAULT_LOCAL_CIDRS:-172.16.0.0/12,192.168.65.0/24}"
 [ -f "$PLACEMENT" ] || { echo "[roles] placement.conf 없음: $PLACEMENT" >&2; exit 1; }
 
@@ -30,18 +33,18 @@ export VAULT_TOKEN
 dc exec -T -e VAULT_TOKEN vault vault token lookup >/dev/null 2>&1 </dev/null || { echo "[roles] 토큰이 안 맞거나 Vault 가 sealed" >&2; exit 1; }
 ./vault.sh setup >/dev/null   # 정책 파일(pmart-deployer 등)·approle 을 먼저 맞춘다
 
-ROWS="$(python -I placement-apps.py "$PLACEMENT" "$ROOT" | tr -d '\r' | while read -r app ip; do
+ROWS="$(python -I placement-apps.py "$PLACEMENT" "$APPS_ROOT" | tr -d '\r' | while read -r app ip; do
   c="$ip/32"; [ -n "$HOST_IP" ] && [ "$ip" = "$HOST_IP" ] && c="$c,$LOCAL_CIDRS"
   echo "$app $c"
 done)"
-out="$(printf '%s\n' "$ROWS" | dc exec -T -e VAULT_TOKEN vault sh -c '
+out="$(printf '%s\n' "$ROWS" | dc exec -T -e VAULT_TOKEN -e ttl="$SECRET_ID_TTL" vault sh -c '
   n=0
   while read -r app cidrs; do
     [ -n "$app" ] || continue
     printf "path \"config/data/%s\" {\n  capabilities = [\"read\"]\n}\npath \"config/data/%s,*\" {\n  capabilities = [\"read\"]\n}\n" "$app" "$app" \
       | vault policy write "svc-$app" - >/dev/null || { echo "FAIL policy $app"; continue; }
     vault write "auth/approle/role/svc-$app" token_policies="svc-$app" token_ttl=1h token_max_ttl=24h \
-      secret_id_ttl=0 secret_id_num_uses=0 secret_id_bound_cidrs="$cidrs" token_bound_cidrs="$cidrs" >/dev/null </dev/null \
+      secret_id_ttl="$ttl" secret_id_num_uses=0 secret_id_bound_cidrs="$cidrs" token_bound_cidrs="$cidrs" >/dev/null </dev/null \
       || { echo "FAIL role $app"; continue; }
     n=$((n+1))
   done

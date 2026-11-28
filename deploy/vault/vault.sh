@@ -8,6 +8,7 @@
 #   unseal   봉인 해제(재시작할 때마다). 키를 숨김 입력으로 THRESHOLD 번 받는다
 #   setup    KV v2 마운트(pmart/)·정책·감사 로그 등록. root 또는 관리자 토큰을 숨김 입력으로 받는다
 #   snapshot 백업(Raft 스냅샷) — 관리자 토큰 숨김 입력, 기본 저장 위치 <pmart-project>/pmart-vault-backups/
+#   renew    관리자·배포 토큰 갱신(32일 안에 한 번) — 숨김 입력
 #   deployer-token  PC 1 render.sh 용 배포 토큰(pmart-deployer) — .init/ 파일로만
 #   seed     비밀 파일 묶음(pmart-keys-pc6 구조)을 Vault 로 옮긴다 — seed.sh <폴더>
 #   logs     서버 로그
@@ -139,6 +140,14 @@ case "${1:-}" in
     dc cp vault:/tmp/pmart.snap "$out" >/dev/null
     vexec vault rm -f /tmp/pmart.snap
     echo "[vault] 스냅샷: $out ($(wc -c < "$out") bytes)"
+    ;;
+
+  renew)
+    # 관리자·배포 토큰 갱신(주기 토큰 — 32일 안에 한 번). 숨김 입력, 남은 기간만 보여 준다
+    read -rsp "갱신할 토큰 (입력은 보이지 않음): " VAULT_TOKEN || [ -n "${VAULT_TOKEN:-}" ]; echo
+    export VAULT_TOKEN
+    vexec -e VAULT_TOKEN vault sh -c 'vault token renew >/dev/null && t=$(vault token lookup -format=json | grep -o "\"ttl\": *[0-9]*" | grep -o "[0-9]*$") && n=$(vault token lookup -format=json | grep -o "\"display_name\": *\"[^\"]*" | sed "s/.*\"//") && echo "[vault] 갱신: $n — 남은 기간 $((t/86400))일 $(((t%86400)/3600))시간"'
+    unset VAULT_TOKEN
     ;;
 
   deployer-token)
