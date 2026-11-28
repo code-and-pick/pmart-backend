@@ -105,8 +105,11 @@ Vault 쪽 운영(unseal·토큰 갱신·스냅샷·새 서비스 AppRole)은 `de
   # 확인 뒤 파일을 all 로 → 커밋 → deploy/lan/lan.sh deploy all
   ```
   **배포 토큰**(pmart-deployer — 구글 드라이브)은 ① 셸의 `VAULT_DEPLOYER_TOKEN` ② 파일 `deploy/lan/.secrets/vault-deployer-token`(git 제외,
-  다른 곳이면 `PMART_VAULT_TOKEN_FILE` — 메모장 저장 그대로 써도 BOM·줄바꿈은 뗀다) ③ 숨김 입력 순으로 찾는다. **파일은 배포가 끝나면 지운다**
-  (render 가 지우지 않는다 — render·deploy 를 이어서 돌릴 수 있게). 토큰은 curl 헤더로 표준입력에만 — 명령줄·로그에 남지 않는다.
+  다른 곳이면 `PMART_VAULT_TOKEN_FILE` — 메모장 저장 그대로 써도 BOM·줄바꿈은 뗀다) ③ 숨김 입력 순으로 찾는다. **파일은 PC 1 에 계속 둔다**
+  (2026-11-28 사용자 결정 — Vault 앱을 켜면 render 가 전 PC 를 만들어 **모든 세션의 모든 deploy 가 토큰을 쓴다**. 지우면 다음 배포가 멈춘다).
+  `.secrets/` 의 다른 원본(DB 비밀번호·서명키)과 같은 취급 — git 제외, 다른 PC·메신저로 옮기지 않는다. 배포 토큰은 비밀을 읽지 못하고
+  PC IP 로 묶인 secret-id 발급만 된다. **32일 안에 갱신**(아래 `deploy/vault/README.md` "관리자 토큰"의 curl renew-self), 새로 만들면 파일만 바꾼다.
+  토큰은 curl 헤더로 표준입력에만 — 명령줄·로그에 남지 않는다.
   `< 파일` 로 표준입력을 돌리는 방식은 쓰지 않는다(lan.sh 안의 다른 명령이 표준입력을 먼저 읽을 수 있다).
 - 켠 앱마다 render 가 role-id(compose)·secret-id(`.env`, 배포마다 새로 — PC IP 로 묶여 있고 90일 만료)를 받아
   `SPRING_CONFIG_IMPORT=optional:configserver:,vault://`·`SPRING_CLOUD_VAULT_*` 와 CA 마운트(`./vault-ca.pem`)를 넣는다. config-server 는 대상 아님.
