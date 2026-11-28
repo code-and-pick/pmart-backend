@@ -188,6 +188,11 @@ public class Seed {
     return new Res(r.statusCode(), r.body());
   }
 
+  /** Keycloak 아이디 = 사내 메일 전체(ADR-0056 결정 7, 2026-11-15). 짧게 주면 @pmart.com 을 붙인다 — staff_auth.py kc_username 과 같다. */
+  static String kcUsername(String name) {
+    return name.contains("@") ? name : name + "@pmart.com";
+  }
+
   /** Keycloak 비밀번호 로그인(개발 클라이언트) → employee-auth-service 시험용 교환 → 직원 토큰. */
   String exchange(String username, String password) throws Exception {
     Res kc =
@@ -195,7 +200,15 @@ public class Seed {
             "POST",
             keycloak + "/realms/pmart-staff/protocol/openid-connect/token",
             null,
-            Map.of("grant_type", "password", "client_id", "pmart-dev-cli", "username", username, "password", password),
+            Map.of(
+                "grant_type",
+                "password",
+                "client_id",
+                "pmart-dev-cli",
+                "username",
+                kcUsername(username),
+                "password",
+                password),
             null,
             Map.of());
     kc.expect("Keycloak 로그인 " + username, 200);
@@ -227,7 +240,7 @@ public class Seed {
     adm.expect("Keycloak 관리자 로그인", 200);
     String kcAdmin = str(adm.map(), "access_token");
     Res users =
-        raw("GET", keycloak + "/admin/realms/pmart-staff/users?exact=true&username=" + enc(username), kcAdmin, null, null, Map.of());
+        raw("GET", keycloak + "/admin/realms/pmart-staff/users?exact=true&username=" + enc(kcUsername(username)), kcAdmin, null, null, Map.of());
     users.expect("Keycloak 사용자 " + username, 200);
     @SuppressWarnings("unchecked")
     List<Map<String, Object>> found = (List<Map<String, Object>>) Json.parse(users.body());
