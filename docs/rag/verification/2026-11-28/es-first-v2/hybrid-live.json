@@ -1,0 +1,300 @@
+[
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "A15",
+  "role": "operator",
+  "q": "보충 물량은 어느 CDC에서 몇 곳의 MFC로 운송하나요?",
+  "esTop3": [
+   "03-replenishment-transfe PMart CDC 선반 보충·MFC ",
+   "03-replenishment-transfe 제2조 (피킹 위치 자동 보충)",
+   "03-replenishment-transfe 제1조 (목적)"
+  ],
+  "esOk": false,
+  "exit": "HYBRID",
+  "reason": "coverage 0.6 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.7547800529527753,
+  "evidence": [
+   "03-replenishment-transfe 제1조 (목적)",
+   "03-replenishment-transfe 제3조 (한 요청은 한 번만 출발)",
+   "03-replenishment-transfe 제2조 (피킹 위치 자동 보충)"
+  ],
+  "finalOk": false
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "B04",
+  "role": "operator",
+  "q": "내가 요청한 변경을 내가 승인할 수 있나요?",
+  "esTop3": [
+   "03-approval.md 제2조 (승인이 필요한 변경과 승인자",
+   "03-approval.md PMart 변경 요청·승인 정책",
+   "03-approval.md 제5조 (승인함과 결정)"
+  ],
+  "esOk": false,
+  "exit": "HYBRID",
+  "reason": "relGap 0.0348 < 0.1",
+  "vectorCalls": 1,
+  "cos1": 0.7807683013953859,
+  "evidence": [
+   "03-approval.md 제2조 (승인이 필요한 변경과 승인자",
+   "03-approval.md 제4조 (요청과 제출)",
+   "03-approval.md 제3조 (자기 승인 금지)"
+  ],
+  "finalOk": true
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "P01",
+  "role": "operator",
+  "q": "라면 반품 기준이 뭐야?",
+  "esTop3": [
+   "06-return-exchange.md 제3조 (반품 접수)",
+   "06-return-exchange.md 제7조 (반품 처리 기한)",
+   "06-return-exchange.md 제9조 (검수와 반품 환불)"
+  ],
+  "esOk": false,
+  "exit": "NO_ANSWER",
+  "reason": "coverage 0.3333 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.5581099446553233,
+  "evidence": [],
+  "finalOk": false
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "C16",
+  "role": "customer",
+  "q": "다른 집 주문이 저희 집에 왔어요",
+  "esTop3": [
+   "10-address-area.md 우리 집도 배송되나요? [채택 설계]",
+   "06-order-payment-fees.md 제3조 (배달팁)",
+   "11-payment-fees.md 배달팁은 얼마인가요? [확정 정책]"
+  ],
+  "esOk": false,
+  "exit": "NO_ANSWER",
+  "reason": "coverage 0.3333 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.5743858890576001,
+  "evidence": [],
+  "finalOk": false
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "dev",
+  "id": "OG02-1",
+  "role": "operator",
+  "q": "PDA는 얼마 동안 안 쓰면 다시 로그인해야 하나요?",
+  "esTop3": [
+   "05-reviews.md 제4조 (삭제와 다시 쓰기)",
+   "05-reviews.md 제2조 (리뷰를 쓸 수 있는 고객과 ",
+   "07-cart.md 제2조 (장바구니를 쓸 수 있는 사람"
+  ],
+  "esOk": false,
+  "exit": "HYBRID",
+  "reason": "coverage 0.25 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.6850997110666699,
+  "evidence": [
+   "01-staff-account-login.m 제6조 (로그인 유지)",
+   "01-staff-account-login.m 제7조 (로그아웃)",
+   "01-staff-account-login.m 제5조 (로그인)"
+  ],
+  "finalOk": true
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "dev",
+  "id": "OG02-2",
+  "role": "operator",
+  "q": "현장 작업 단말기 자동 로그아웃 시간이 몇 분이에요?",
+  "esTop3": [
+   "02-task-assignment.md 제6조 (지연·무활동 표시)",
+   "01-staff-account-login.m 제7조 (로그아웃)",
+   "04-picking-packing.md 제6조 (배차 요청)"
+  ],
+  "esOk": false,
+  "exit": "HYBRID",
+  "reason": "coverage 0.4286 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.6477878253017372,
+  "evidence": [
+   "01-staff-account-login.m 제7조 (로그아웃)",
+   "01-worker-qualification- 제8조 (휴게)",
+   "02-task-assignment.md 제6조 (지연·무활동 표시)"
+  ],
+  "finalOk": false
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "A05",
+  "role": "operator",
+  "q": "분할 배송 기준 무게는 얼마인가요?",
+  "esTop3": [
+   "01-service-area.md 제4조 (배송 가능 판정의 기준)",
+   "08-center-zones-throughp PMart MFC 센터 구역·처리 기",
+   "01-order-amount.md 제10조 (나눠 배송)"
+  ],
+  "esOk": true,
+  "exit": "HYBRID",
+  "reason": "coverage 0.3333 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.714545586271787,
+  "evidence": [
+   "01-order-amount.md 제10조 (나눠 배송)",
+   "01-service-area.md 제5조 (배송 조건)",
+   "02-dispatch-planning.md 제3조 (차량 기준)"
+  ],
+  "finalOk": true
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "A19",
+  "role": "operator",
+  "q": "MFC 피킹 방문 순서는 온도대별로 어떻게 정해지나요?",
+  "esTop3": [
+   "02-pricing-promotions.md 제3조 (가격이 정해지지 않은 판매 ",
+   "02-dispatch-planning.md 제7조 (여러 센터 방문)",
+   "04-picking-packing.md 제2조 (피킹 작업)"
+  ],
+  "esOk": true,
+  "exit": "HYBRID",
+  "reason": "coverage 0.2857 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.7155416700492526,
+  "evidence": [
+   "04-picking-packing.md 제2조 (피킹 작업)",
+   "02-dispatch-planning.md 제7조 (여러 센터 방문)",
+   "04-picking-packing.md PMart MFC 피킹·포장 정책"
+  ],
+  "finalOk": true
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "E01",
+  "role": "operator",
+  "q": "쿠폰을 쓴 주문에서 한 상품이 결품되면 환불은 어떻게 계산하고, 쿠폰은 돌려주나요?",
+  "esTop3": [
+   "02-pricing-promotions.md 제10조 (쿠폰의 사용·해제·복원)",
+   "05-refund.md 제3조 (환불 금액 기준)",
+   "14-refund.md 제7조 (쿠폰을 쓴 주문)"
+  ],
+  "esOk": true,
+  "exit": "HYBRID",
+  "reason": "coverage 0.6667 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.7987512353805155,
+  "evidence": [
+   "14-refund.md 제7조 (쿠폰을 쓴 주문)",
+   "02-pricing-promotions.md 제10조 (쿠폰의 사용·해제·복원)",
+   "05-refund.md 제3조 (환불 금액 기준)"
+  ],
+  "finalOk": true
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "C02",
+  "role": "customer",
+  "q": "주문 취소는 언제까지 할 수 있어요?",
+  "esTop3": [
+   "08-return-exchange.md 언제까지 신청할 수 있나요? [확정 ",
+   "08-order-cancel.md 제2조 (취소할 수 있는 시점)",
+   "05-missing-wrong-item.md 언제까지 문의해야 하나요? [확정 정"
+  ],
+  "esOk": true,
+  "exit": "HYBRID",
+  "reason": "coverage 0.6667 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.7133415170515804,
+  "evidence": [
+   "08-order-cancel.md 제2조 (취소할 수 있는 시점)",
+   "02-cancel.md 상품 준비가 시작된 뒤 취소 문의를 ",
+   "02-cancel.md 주문을 취소하고 싶어요 [확정 정책]"
+  ],
+  "finalOk": true
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A08",
+  "role": "operator",
+  "q": "주문 사가는 오케스트레이션인가요 코레오그래피인가요?",
+  "esTop3": [
+   "04-earnings.md 제8조 (이의 신청)",
+   "05-restriction-withdrawa 제4조 (이의 신청)",
+   "07-misdelivery.md 제2조 (오배송 확인)"
+  ],
+  "esOk": null,
+  "exit": "NO_ANSWER",
+  "reason": "coverage 0.1667 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.5307104198007534,
+  "evidence": [],
+  "finalOk": true
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A10",
+  "role": "operator",
+  "q": "컨테이너 이미지는 어느 레지스트리에 올리나요?",
+  "esTop3": [
+   "06-product-display-searc 제7조 (고객용 상품 콘텐츠)",
+   "03-home-display.md 제4조 (배너)",
+   "06-product-display-searc 제8조 (홈 배너·테마 편성)"
+  ],
+  "esOk": null,
+  "exit": "NO_ANSWER",
+  "reason": "coverage 0.25 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.511855200286403,
+  "evidence": [],
+  "finalOk": true
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A11",
+  "role": "operator",
+  "q": "서비스 설정의 정본은 어디에 두나요?",
+  "esTop3": [
+   "06-customer-notification 제5조 (수신 설정)",
+   "01-service-area.md 제6조 (배달 서비스 시간)",
+   "07-supervisor-controls.m 제9조 (센터 설정 관리)"
+  ],
+  "esOk": null,
+  "exit": "NO_ANSWER",
+  "reason": "coverage 0.25 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.48691014672432487,
+  "evidence": [],
+  "finalOk": true
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A12",
+  "role": "operator",
+  "q": "서비스 간 내부 호출에도 인증 토큰이 필요한가요?",
+  "esTop3": [
+   "03-approval.md 제2조 (승인이 필요한 변경과 승인자",
+   "01-service-area.md 제6조 (배달 서비스 시간)",
+   "01-supply-principles.md PMart 센터 간 상품 공급 정책"
+  ],
+  "esOk": null,
+  "exit": "NO_ANSWER",
+  "reason": "coverage 0.1667 < 0.7",
+  "vectorCalls": 1,
+  "cos1": 0.46277037041012736,
+  "evidence": [],
+  "finalOk": true
+ }
+]

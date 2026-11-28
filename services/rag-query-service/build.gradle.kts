@@ -14,6 +14,8 @@ dependencies {
     implementation(project(":libraries:common-web"))
     implementation(project(":libraries:common-observability"))
     implementation(libs.bundles.service.observability)
+
+    "integrationTestImplementation"(libs.wiremock.spring.boot) // embedding-service 벡터 검색 흉내(ES 는 Testcontainers)
 }
 
 jib {

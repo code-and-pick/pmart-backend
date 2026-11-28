@@ -1,0 +1,100 @@
+[
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "A15",
+  "role": "operator",
+  "q": "보충 물량은 어느 CDC에서 몇 곳의 MFC로 운송하나요?"
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "B04",
+  "role": "operator",
+  "q": "내가 요청한 변경을 내가 승인할 수 있나요?"
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "P01",
+  "role": "operator",
+  "q": "라면 반품 기준이 뭐야?"
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "regression",
+  "id": "C16",
+  "role": "customer",
+  "q": "다른 집 주문이 저희 집에 왔어요"
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "dev",
+  "id": "OG02-1",
+  "role": "operator",
+  "q": "PDA는 얼마 동안 안 쓰면 다시 로그인해야 하나요?"
+ },
+ {
+  "kind": "BM25 3위 안에 근거 없음",
+  "set": "dev",
+  "id": "OG02-2",
+  "role": "operator",
+  "q": "현장 작업 단말기 자동 로그아웃 시간이 몇 분이에요?"
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "A05",
+  "role": "operator",
+  "q": "분할 배송 기준 무게는 얼마인가요?"
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "A19",
+  "role": "operator",
+  "q": "MFC 피킹 방문 순서는 온도대별로 어떻게 정해지나요?"
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "E01",
+  "role": "operator",
+  "q": "쿠폰을 쓴 주문에서 한 상품이 결품되면 환불은 어떻게 계산하고, 쿠폰은 돌려주나요?"
+ },
+ {
+  "kind": "BM25 1위 틀림",
+  "set": "regression",
+  "id": "C02",
+  "role": "customer",
+  "q": "주문 취소는 언제까지 할 수 있어요?"
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A08",
+  "role": "operator",
+  "q": "주문 사가는 오케스트레이션인가요 코레오그래피인가요?"
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A10",
+  "role": "operator",
+  "q": "컨테이너 이미지는 어느 레지스트리에 올리나요?"
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A11",
+  "role": "operator",
+  "q": "서비스 설정의 정본은 어디에 두나요?"
+ },
+ {
+  "kind": "근거 없음 질문",
+  "set": "regression",
+  "id": "A12",
+  "role": "operator",
+  "q": "서비스 간 내부 호출에도 인증 토큰이 필요한가요?"
+ }
+]
