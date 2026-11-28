@@ -1,0 +1,10 @@
+# 설정 저장소(pmart-config demo-service-lan.yml) 흉내 — VaultClientLanIT. Vault 가 같은 속성을 덮어야 한다
+spring:
+  datasource:
+    password: from-git
+pmart:
+  auth:
+    signing:
+      keys:
+        - kid: k-git
+          private-key: pk-git

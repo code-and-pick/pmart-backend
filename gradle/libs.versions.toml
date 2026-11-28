@@ -64,6 +64,7 @@ spring-boot-configuration-processor = { module = "org.springframework.boot:sprin
 spring-cloud-starter-gateway = { module = "org.springframework.cloud:spring-cloud-starter-gateway-server-webflux" } # api-gateway
 spring-cloud-config-server = { module = "org.springframework.cloud:spring-cloud-config-server" }  # config-server (ADR-0027)
 spring-cloud-starter-config = { module = "org.springframework.cloud:spring-cloud-starter-config" } # 모든 서비스의 config client (기본 꺼짐, LAN 만 켬)
+spring-cloud-starter-vault-config = { module = "org.springframework.cloud:spring-cloud-starter-vault-config" } # 모든 서비스가 Vault 에서 자기 비밀을 직접 읽음({cipher} 대체). 기본 꺼짐(common-observability), LAN 만 환경변수로 켬
 spring-cloud-starter-eureka-server = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-server" } # eureka-server (ADR-0032)
 spring-cloud-starter-eureka-client = { module = "org.springframework.cloud:spring-cloud-starter-netflix-eureka-client" } # 모든 앱의 Eureka client (기본 꺼짐, LAN 만 켬. LoadBalancer 포함)
 spring-cloud-commons = { module = "org.springframework.cloud:spring-cloud-commons" } # common-web 의 RestClient 로드밸런서 연결(compileOnly)
@@ -109,6 +110,7 @@ mockito-core = { module = "org.mockito:mockito-core" }
 assertj-core = { module = "org.assertj:assertj-core" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 testcontainers-kafka = { module = "org.testcontainers:testcontainers-kafka" }
+testcontainers-vault = { module = "org.testcontainers:testcontainers-vault" } # common-observability 통합 시험 — Vault 클라이언트 LAN 설정(AppRole·TLS·config/<앱>,lan)
 testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
 wiremock-spring-boot = { module = "org.wiremock.integrations:wiremock-spring-boot", version.ref = "wiremock-spring-boot" }
 

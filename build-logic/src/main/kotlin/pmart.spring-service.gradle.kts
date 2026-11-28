@@ -25,6 +25,9 @@ dependencies {
     implementation(libs.springdoc.openapi.webmvc.ui) // 생성 코드의 @Operation 등 + /v3/api-docs
     // Config 서버 클라이언트(ADR-0027). 각 application.yml 이 optional:configserver: + enabled=false 로 기본 꺼 둔다(LAN 만 켬)
     implementation(libs.spring.cloud.starter.config)
+    // Vault 클라이언트(Spring Cloud Vault — 서비스가 자기 비밀을 Vault config/<앱>,lan 에서 직접 읽는다, {cipher} 대체).
+    // common-observability 가 spring.cloud.vault.enabled=false 기본값을 넣고, LAN 만 SPRING_CONFIG_IMPORT·SPRING_CLOUD_VAULT_* 환경변수로 켠다
+    implementation(libs.spring.cloud.starter.vault.config)
     // Eureka 클라이언트 + Spring Cloud LoadBalancer(ADR-0032). 설정 저장소 application.yml 이 기본 끄고 lan 프로필만 켠다
     implementation(libs.spring.cloud.starter.eureka.client)
     // 설정 변경 알림(Spring Cloud Bus, Kafka 토픽 springCloudBus — ADR-0033). common-observability 가 기본 끄고 lan 프로필만 켠다

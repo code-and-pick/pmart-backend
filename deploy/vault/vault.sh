@@ -29,6 +29,11 @@ else
     echo "[vault] TLS 인증서(tls/vault.crt·vault.key) 없이 $VAULT_BIND 에 열 수 없다 — 중단" >&2; exit 1
   fi
 fi
+# 밖에 알리는 주소: TLS 모드면 인증서 SAN 의 첫 IP(예 https://192.168.0.34:8200), 아니면 127.0.0.1
+if [ -z "${VAULT_API_ADDR:-}" ] && [ "$VAULT_LISTENER" = tls ]; then
+  san_ip="$(MSYS2_ARG_CONV_EXCL='*' openssl x509 -in tls/vault.crt -noout -ext subjectAltName 2>/dev/null | grep -oE 'IP Address:[0-9.]+' | head -1 | cut -d: -f2)"
+  [ -n "$san_ip" ] && VAULT_API_ADDR="https://$san_ip:${VAULT_PORT:-8200}"
+fi
 export VAULT_API_ADDR="${VAULT_API_ADDR:-$VAULT_LOCAL_ADDR}"
 
 KEY_SHARES="${VAULT_KEY_SHARES:-3}"
