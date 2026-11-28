@@ -1,0 +1,7 @@
+# 설정 저장소 흉내 — Vault 에는 private-key 만 있다(VaultClientLanIT: 목록이 통째로 바뀌는 것을 보인다)
+pmart:
+  auth:
+    signing:
+      keys:
+        - kid: k-git
+          private-key: pk-git

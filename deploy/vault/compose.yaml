@@ -1,0 +1,47 @@
+# =============================================================================
+# pmart-vault — 팀 공용 Vault 서버(단일 노드, Raft 저장소). 비밀값 정본.
+#
+# 실행은 deploy/vault/vault.sh 로 한다(up·init·unseal·setup·status·down).
+# 바탕: VaultStudy/vault-config-study 의 LAB 08 서버 모드(실행 검증된 구성).
+#
+# 규칙
+#  - 이 파일·설정 파일에 토큰·unseal 키·비밀값을 쓰지 않는다. .env 파일도 쓰지 않는다.
+#  - 데이터는 Docker named volume(pmart-vault_data)에만. down -v 를 하면 모든 비밀이 사라진다.
+#  - 모드는 vault.sh 가 정한다: tls/vault.crt·vault.key 가 있으면 TLS 로 LAN 에(기본 0.0.0.0),
+#    없으면 TLS 없이 127.0.0.1 에만. TLS 없이 LAN 에 여는 것은 vault.sh 가 막는다.
+#    docker compose 를 직접 부르지 말고 vault.sh 로만 띄운다(모드 변수가 빠지면 로컬 모드로 다시 만들어진다).
+# =============================================================================
+name: pmart-vault
+
+services:
+  vault:
+    image: hashicorp/vault:1.21.4
+    # [실행 검증 — 학습 LAB 08] 이미지 entrypoint 가 'server' 에 -config=/vault/config 를 자동으로 붙인다.
+    #   -config 를 또 주면 listener 가 두 번 로드되어 "address already in use" 로 종료된다 → 'server' 만 준다.
+    command: ["server"]
+    environment:
+      VAULT_ADDR: ${VAULT_LOCAL_ADDR:-http://127.0.0.1:8200}   # 컨테이너 안 CLI 가 쓰는 주소(vault.sh 가 모드에 맞춰 준다)
+      VAULT_SKIP_VERIFY: ${VAULT_SKIP_VERIFY:-false}           # TLS 모드에서 컨테이너 안 127.0.0.1 접속만 — 인증서 SAN 에 127.0.0.1 이 없다
+      VAULT_API_ADDR: ${VAULT_API_ADDR:-http://127.0.0.1:8200}   # 밖에서 접속하는 주소(UI 리다이렉트 등)
+      SKIP_SETCAP: "true"                          # disable_mlock=true 이므로 IPC_LOCK setcap 생략
+    volumes:
+      - ./config/vault.hcl:/vault/config/vault.hcl:ro
+      - ./config/listener-${VAULT_LISTENER:-local}.hcl:/vault/config/listener.hcl:ro   # local(TLS 없음) / tls
+      - ./tls:/vault/tls:ro                        # vault.crt·vault.key (Git 제외, LAN 모드에서만)
+      - ./policies:/vault/policies:ro
+      - data:/vault/file
+      - logs:/vault/logs                           # 감사 로그(audit.log)
+    ports:
+      - "${VAULT_BIND:-127.0.0.1}:${VAULT_PORT:-8200}:8200"
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      # sealed 면 vault status 가 exit 2. 1(응답 없음)만 실패로 본다 — "프로세스가 응답 중"인지 확인
+      test: ["CMD-SHELL", "vault status >/dev/null 2>&1; [ $$? -ne 1 ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  data:
+  logs:

@@ -65,3 +65,7 @@ deploy/lan/.reindex.state
 # Python 캐시(2026-11-18 — PR #168·#186·#188 에 .pyc 가 섞여 들어옴). 이미 추적 중인 8개는 따로 뺀다(작업 세션)
 __pycache__/
 *.pyc
+# Vault init 결과(unseal 키·root 토큰) — deploy/vault/vault.sh init. 옮긴 뒤 지운다
+deploy/vault/.init/
+# Vault 서버 TLS 인증서·개인키(PC 1 lan.sh tls-issue 로 발급해 서버 PC 에만 둔다)
+deploy/vault/tls/
