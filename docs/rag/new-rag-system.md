@@ -76,6 +76,8 @@ PostgreSQL + pgvector  rag-pgvector (PC 2) DB embedding_service — chunk_vector
 - 찾아 고친 것: 리더가 인라인 코드 있는 절의 `category` 를 덮어씀(제목 단계는 원문 `#` 개수로), `TokenTextSplitter` 가 5자 미만 조각을 버림(1자로), 나눈 조각의 제목 경로.
 - 남은 제약: 리더가 표·목록 줄바꿈을 한 줄로 붙인다(표 청크 35/650) — BM25 에는 지장 없음, 표 행 근거 표시는 원문 필요.
 
+- **ES-First ① E2E(BM25 만)**: 실제 main 전체(.md 88) push → rag-operator 650·rag-customer 197 청크 → 평가셋 88문항. 운영자 기대 문서 1위 69%·3위 안 100%, 고객(안내 또는 같은 주제 FAQ) 1위 90%·3위 안 97%. 점수만으로는 근거 없는 질문을 못 가르고, 1·2위 점수 차(중앙 4.7 vs 0.8)가 더 가른다 — `docs/rag/verification/2026-11-28/es-first-bm25/`.
+
 ## 7. 커밋 (로컬, push 전)
 
 - pmart-backend(wt-rag-p1, 브랜치 rag/p1-exit-metrics): 8e8164279 integration · 091287aa2 chunking · 933b0c70b chunking 고침 · 3ee098098 ADR-0097 · e7e80d76b embedding
