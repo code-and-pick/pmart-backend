@@ -17,7 +17,7 @@ demos/              # 운영과 따로 도는 독립 Gradle 데모(루트 서비
 
 ## 문서 지도 (설계의 정본, 필요 시 읽을 것)
 - 전체 비즈니스 흐름·확정 정책: `docs/business/overview.md`
-- **서비스 목록(54개 — ADR-0056 employee-auth·hr, ADR-0095 integration-service 포함)과 책임 경계**: `docs/architecture/service-map.md` — 어느 서비스 책임인지 불명확하면 여기를 먼저 확인하고, 그래도 모호하면 질문한다
+- **서비스 목록(55개 — ADR-0056 employee-auth·hr, ADR-0095 integration-service·ADR-0096 chunking-service 포함)과 책임 경계**: `docs/architecture/service-map.md` — 어느 서비스 책임인지 불명확하면 여기를 먼저 확인하고, 그래도 모호하면 질문한다
 - 전체 구조·통신 패턴·사가 목록·단계 계획: `docs/architecture/architecture-design.md`
 - 이벤트 카탈로그(발행자 → 구독자): `docs/architecture/events.md`
 - 사가·보상 흐름: `docs/business/flows/` — 새 saga를 만들거나 수정하면 같은 커밋에서 갱신한다

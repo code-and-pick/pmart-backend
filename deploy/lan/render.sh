@@ -46,7 +46,7 @@ KAFKA_CLUSTER_ID=mQfULla_AX-vG10Mf2a4kw
 # 토픽 크기 지표(ADR-0034)를 재는 노드·PC — 리더 기준이라 한 노드에서 클러스터 전체를 본다
 KAFKA_METRICS_NODE=kafka-1
 
-INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web mfc-backoffice-web rider-backoffice-web cdc-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
+INFRA=" postgres kafka-1 kafka-2 kafka-3 connect redis zipkin s3 es-search es-logs backoffice-web hr-backoffice-web mfc-backoffice-web rider-backoffice-web cdc-backoffice-web prometheus alertmanager grafana kibana logstash-search logstash-logs log-shipper es-init-search es-init-logs host-disk log-janitor config-relay docs-relay es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama keycloak mailserver roundcube "
 # extra_hosts 에서 뺄 구성요소(아래 extra_hosts 설명). 새로 붙이는 보조 구성요소는 여기에 둔다
 # RAG 서비스(ADR-0051): DB 는 같은 PC 의 rag-pgvector(서비스마다 DB·계정), 공용 postgres 에 DB 를 만들지 않는다
 RAG_APPS=" ai-assistant-service customer-assistant-service "
@@ -55,7 +55,7 @@ is_rag() { [[ "$RAG_APPS" == *" $1 "* ]]; }
 # RAG 서비스는 게이트웨이가 Eureka(lb://)로 찾는다 — 이름으로 부르는 다른 PC 가 없어 넣지 않는다(넣으면 다른 PC 컨테이너가 전부 재생성)
 # 사내 메일(ADR-0056 결정 9)·웹메일도 같은 PC(Keycloak·hr-service)만 이름으로 부른다
 # hr-service 는 게이트웨이가 Eureka 로, mail-provisioner 는 같은 PC 의 hr-service 만 이름으로 부른다(ADR-0056 5-5)
-NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service mailserver roundcube hr-service mail-provisioner hr-backoffice-web mfc-backoffice-web rider-backoffice-web cdc-backoffice-web "
+NO_EXTRA_HOST=" es-exporter-search es-exporter-logs kafka-exporter api-docs rag-pgvector ollama ai-assistant-service customer-assistant-service integration-service chunking-service docs-relay mailserver roundcube hr-service mail-provisioner hr-backoffice-web mfc-backoffice-web rider-backoffice-web cdc-backoffice-web "
 ELASTIC=$LAN/elastic
 SEARCH_SVC=services/search-service
 MON=$LAN/monitoring
@@ -99,7 +99,7 @@ if [ -n "${WHERE[integration-service]:-}" ]; then
 fi
 # 위 보조 구성요소가 생긴 뒤 placement 에 더한 구성요소: 그 PC 줄의 맨 뒤(보조 구성요소 뒤)로 옮겨 기존 고정 IP 를 그대로 둔다
 # (2026-11-17 사용자 "보조 컨테이너 안 건드리고 싶은데" — 줄 중간에 끼면 뒤 보조 7개가 다시 만들어진다). 새로 붙일 것도 여기에 이어 적는다
-LATE=" rider-backoffice-web cdc-backoffice-web cdc-quality-service cdc-inbound-service fleet-service transport-planning-service transport-execution-service integration-service docs-relay "
+LATE=" rider-backoffice-web cdc-backoffice-web cdc-quality-service cdc-inbound-service fleet-service transport-planning-service transport-execution-service integration-service chunking-service docs-relay "
 for pc in "${PCS[@]}"; do
   for c in $LATE; do
     if [[ " ${COMPS[$pc]} " == *" $c "* ]]; then

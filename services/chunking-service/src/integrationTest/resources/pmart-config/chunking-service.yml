@@ -1,0 +1,14 @@
+# chunking-service 고유 설정(모든 프로필). 문서 청킹 → Elasticsearch RAG 색인(ADR-0096) — ES-First 하이브리드 RAG 의 "청킹 → ES 선 적재". DB·Kafka 없음. ADR-0029
+# integration-service 가 POST /api/v1/internal/documents 로 추출 내용을 보낸다. 색인 별칭 rag-operator·rag-customer(→ -v1, nori)
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration # DB 없음(시험 클래스패스에 spring-jdbc 가 끌려오면 켜짐)
+server:
+  port: 8515
+pmart:
+  chunking:
+    elasticsearch-url: http://localhost:9200
+    chunk-tokens: 800 # Spring AI TokenTextSplitter — 이보다 긴 절만 더 나눈다
+    min-chunk-chars: 200
+    timeout: 20s

@@ -425,7 +425,14 @@
 - **소유**: 없음(DB·Kafka 없음, 로컬 파일 없음). 웹훅 판정·추출·전달만.
 - **소유하지 않음**: 문서 원본(GitHub 저장소), 청킹·ES·임베딩·pgvector(다음 단계 서비스), RAG 질문·답(ai-assistant·customer-assistant).
 - **API**(계약 0.1.0): `POST /internal/docs-webhook`(GitHub 웹훅 — smee 채널 → 같은 PC 의 docs-relay, 서명 확인, 게이트웨이에 없음).
-- **의존(동기)**: GitHub Contents API(읽기 전용 토큰), 청킹 서비스 `POST <chunking-url>`(설정 — 없으면 추출 기록만).
+- **의존(동기)**: GitHub Contents API(읽기 전용 토큰), chunking-service `POST /internal/documents`(설정 `chunking-url` — 없으면 추출 기록만).
+
+### chunking-service `[ADR-0096 — 2026-11-28 추가·1차 구현]`
+- 추출 문서(integration-service) → Spring AI 청킹(`MarkdownDocumentReader` + 긴 절 `TokenTextSplitter`) → Elasticsearch RAG 색인. ES-First 하이브리드 RAG 의 "청킹 → ES 선 적재".
+- **소유**: ES RAG 색인 `rag-operator`·`rag-customer`(→ `-v1`, es-search, nori — 1 청크 = 1 문서, 삭제는 RETIRED). DB·Kafka 없음.
+- **소유하지 않음**: 문서 원본(GitHub pmart-all-docs), 웹훅·추출(integration-service), 임베딩·pgvector(다음 단계), RAG 질문·답(ai-assistant·customer-assistant).
+- **API**(계약 0.1.0): `POST /internal/documents`(integration-service → 이 서비스, PC 2 안).
+- **의존(동기)**: es-search(인프라).
 
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).

@@ -1,0 +1,52 @@
+openapi: 3.1.0
+info:
+  title: chunking-service
+  version: 0.1.0
+  description: |
+    문서 청킹 → Elasticsearch RAG 색인(ADR-0096, 2026-11-28) — ES-First 하이브리드 RAG 의 "청킹 → ES 선 적재"(계획 §1-2 단계 2).
+    integration-service 가 문서 저장소(pmart-all-docs) 웹훅으로 추출한 파일 내용을 보낸다. Spring AI `MarkdownDocumentReader` 로 제목별로 나누고
+    (긴 절은 `TokenTextSplitter`), 접근 범위별 색인에 문서 단위로 바꿔 넣는다. DB·Kafka 없음.
+    - 색인: 별칭 `rag-operator`·`rag-customer` → `<별칭>-v1`(es-search, nori). 경로로 범위: `operator/**` → 운영자, `customer/customer_app/**` → 고객+운영자,
+      `customer/faq/**` → 고객, 그 밖 → 색인 안 함(IGNORED).
+    - 1 청크 = ES 문서 1개(`chunkId`·`documentId`(=경로)·`commit`·`accessScope`·`title`·`heading`·`sectionPath`·`ordinal`·`content`·`contentSha256`·`status`).
+      `chunkId` 는 (문서 ID, 문서 해시, 순번)으로 정해진다 — 다음 단계(임베딩 → pgvector)가 같은 ID 를 쓴다.
+    - 같은 문서 해시가 이미 ACTIVE 면 UNCHANGED(멱등). 새 판은 넣은 뒤 옛 판 청크를 지운다. 삭제는 청크를 지우지 않고 `status=RETIRED`.
+    서비스 간 경로(게이트웨이에 없음, 사용자 토큰 없음).
+servers:
+  - url: /api/v1
+tags:
+  - { name: documents, description: 문서 청킹·색인 }
+
+paths:
+  /internal/documents:
+    post:
+      tags: [documents]
+      summary: "[integration-service→chunking-service] 추출 문서 하나를 청킹해 ES 에 반영"
+      operationId: indexDocument
+      security: []
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: 'integration-service.yaml#/components/schemas/ExtractedDocument' }
+      responses:
+        '200':
+          description: 반영 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IndexResult' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+
+components:
+  schemas:
+    IndexResult:
+      type: object
+      required: [result, documentId, chunks, indexes]
+      properties:
+        result: { type: string, enum: [INDEXED, UNCHANGED, RETIRED, IGNORED] }
+        documentId: { type: string }
+        chunks: { type: integer, description: 넣은 청크 수(RETIRED 는 내린 청크 수) }
+        indexes: { type: array, items: { type: string }, description: 바뀐(또는 대상) 별칭 }

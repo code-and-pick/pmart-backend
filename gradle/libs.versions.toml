@@ -48,6 +48,7 @@ spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-st
 spring-boot-starter-integration = { module = "org.springframework.boot:spring-boot-starter-integration" } # integration-service 만(ADR-0095 — 문서 저장소 웹훅 흐름)
 spring-integration-http = { module = "org.springframework.integration:spring-integration-http" } # integration-service 만 — 웹훅 HTTP 입구·청킹 서비스로 보내기. 판은 Boot BOM
 spring-integration-test = { module = "org.springframework.integration:spring-integration-test" } # integration-service 시험(MockIntegration)
+spring-ai-markdown-reader = { module = "org.springframework.ai:spring-ai-markdown-document-reader" } # chunking-service 만 — 마크다운 제목별 나누기(ADR-0096, 판은 spring-ai BOM)
 spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }

@@ -14,7 +14,7 @@
 1. **새 서비스 `integration-service`**(services/, 포트 8514, LAN PC 2 — RAG 묶음 옆). ES-First 하이브리드 RAG 의 **적재 입구**다. Spring Integration 은 이 서비스에만 둔다.
 2. **원본 = GitHub `pmart-all-docs`, 로컬 사본 없음.** 웹훅(push·delete)으로 바뀐 것을 알고, 파일 내용은 GitHub Contents API 로 **그 push 의 마지막 커밋 판**에서 읽는다(읽기 전용 fine-grained 토큰, Contents 읽기만).
 3. **첫 번째 일(이번 구현)**: push → 바뀐 파일(커밋들에 걸친 마지막 상태: 추가·수정·삭제) → `.md`(폴더 README 제외)만 내용 추출(BOM 제거·줄바꿈 LF·첫 줄 제목·SHA-256, 마크다운 구조는 그대로) → **청킹 서비스로 전달**(`POST pmart.integration.docs.chunking-url`, 본문 `ExtractedDocument` — 계약 `contracts/openapi/integration-service.yaml`). 삭제는 본문 없이 `REMOVED` 로 전달.
-   - 청킹 서비스는 아직 없다 — 주소가 없으면 추출만 하고 기록(경로·커밋·해시·글자 수, 본문은 로그 금지)을 남긴다.
+   - 청킹 서비스 = chunking-service(ADR-0096, 같은 날) — LAN `chunking-url: http://chunking-service:8515/api/v1/internal/documents`. 주소가 없으면 추출만 하고 기록(경로·커밋·해시·글자 수, 본문은 로그 금지)을 남긴다. 보낼 때 `Idempotency-Key`(커밋·경로·상태에서 정함)·`X-Source-System`.
    - 다음 단계(계획 §1-2): 청킹 → ES 선 적재 → ES 청크로 임베딩 → pgvector → 함께 활성화. 받는 쪽은 (path, contentSha256) 로 멱등이어야 한다.
 4. **흐름(Spring Integration DSL)**: HTTP inbound gateway `POST /api/v1/internal/docs-webhook` → 서명·이벤트·저장소·브랜치 판정(GitHub 에 바로 202) → wireTap 으로 파일 목록 split → 단일 스레드 ExecutorChannel(push 순서대로) → filter(추출 대상) → 추출(GitHub API, 재시도) → 전달(재시도, 지수 대기) → 끝내 실패는 errorChannel 기록.
 5. **웹훅 전달**: GitHub → smee.io 채널(`.secrets/rag-docs-smee-url`) → `docs-relay`(같은 PC 2, smee-client — config-relay 와 같은 방식, 채널은 따로) → integration-service. GitHub 웹훅 id 717905801, 이벤트 push·delete, JSON, Secret = `.secrets/rag-docs-webhook-secret`.

@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "tokenizer": {
+        "rag_nori": {
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed"
+        }
+      },
+      "analyzer": {
+        "rag_nori": {
+          "type": "custom",
+          "tokenizer": "rag_nori",
+          "filter": ["lowercase", "nori_readingform", "nori_part_of_speech"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "chunkId": { "type": "keyword" },
+      "documentId": { "type": "keyword" },
+      "repository": { "type": "keyword" },
+      "commit": { "type": "keyword" },
+      "accessScope": { "type": "keyword" },
+      "title": { "type": "text", "analyzer": "rag_nori", "fields": { "raw": { "type": "keyword", "ignore_above": 512 } } },
+      "heading": { "type": "text", "analyzer": "rag_nori", "fields": { "raw": { "type": "keyword", "ignore_above": 512 } } },
+      "headingLevel": { "type": "integer" },
+      "sectionPath": { "type": "text", "analyzer": "rag_nori", "fields": { "raw": { "type": "keyword", "ignore_above": 1024 } } },
+      "ordinal": { "type": "integer" },
+      "content": { "type": "text", "analyzer": "rag_nori" },
+      "chunkSha256": { "type": "keyword" },
+      "contentSha256": { "type": "keyword" },
+      "status": { "type": "keyword" },
+      "deliveryId": { "type": "keyword" },
+      "indexedAt": { "type": "date" },
+      "retiredAt": { "type": "date" }
+    }
+  }
+}

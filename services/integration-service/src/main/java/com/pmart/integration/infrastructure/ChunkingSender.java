@@ -52,6 +52,8 @@ public class ChunkingSender {
         .uri(props.chunkingUrl())
         .contentType(MediaType.APPLICATION_JSON)
         .header("X-Source-System", "integration-service")
+        // 공통 규칙(common-web): 변경 요청은 Idempotency-Key — 같은 커밋·경로·상태는 같은 키(받는 쪽은 문서 해시로도 멱등)
+        .header("Idempotency-Key", idempotencyKey(doc))
         .body(doc)
         .retrieve()
         .toBodilessEntity();
@@ -62,6 +64,15 @@ public class ChunkingSender {
         shortSha(doc.commit()),
         doc.deliveryId());
     return true;
+  }
+
+  static String idempotencyKey(ExtractedDocument doc) {
+    return java.util
+        .UUID
+        .nameUUIDFromBytes(
+            (doc.commit() + "|" + doc.path() + "|" + doc.status())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8))
+        .toString();
   }
 
   private static String shortSha(String sha) {

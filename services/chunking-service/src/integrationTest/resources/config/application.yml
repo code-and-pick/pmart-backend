@@ -1,0 +1,12 @@
+# 시험 전용(ADR-0029). config-server 없이 pmart-config 사본(pmart-config/)을 읽는다. ES 는 Testcontainers(DocumentIndexingIT).
+spring:
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: "classpath:pmart-config/application.yml,classpath:pmart-config/chunking-service.yml"
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: http://localhost:9411/api/v2/spans
