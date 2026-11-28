@@ -31,6 +31,23 @@ class RagDocumentTargetsTest {
   }
 
   @Test
+  void acceptsCustomerRagAndFaqDocuments() {
+    for (String doc :
+        List.of(
+            "docs/business/customer-faq/02-cancel.md",
+            "docs/rag/rag-docs/customer_app/08-order-cancel.md")) {
+      assertThatCode(
+              () ->
+                  RagDocumentTargets.validate(
+                      "customer-assistant-service",
+                      "KDR-9",
+                      1,
+                      List.of(new Line(doc, "UPSERT", "KDR-9", SHA))))
+          .doesNotThrowAnyException();
+    }
+  }
+
+  @Test
   void rejectsWrongTargetVersionAndLineCount() {
     assertThatThrownBy(
             () ->

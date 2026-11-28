@@ -45,7 +45,9 @@ import tools.jackson.databind.json.JsonMapper;
     properties = {
       "spring.main.banner-mode=off",
       "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks",
-      "pmart.assistant.product-search.base-url=${search.url}"
+      "pmart.assistant.product-search.base-url=${search.url}",
+      // ADR-0094: 같이 쓰는 문서 원본(고객 RAG 내부 API)도 같은 WireMock 으로 — 스텁이 없으면 404 → 맞추지 않음
+      "pmart.assistant.knowledge.shared-source-base-url=${search.url}"
     })
 @Import({TestJwtConfiguration.class, AssistantITBase.TestBeans.class})
 @org.wiremock.spring.EnableWireMock({

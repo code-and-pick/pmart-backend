@@ -89,3 +89,6 @@
 | [0088](0088-semantic-product-search.md) | 상품 검색에 의미 검색 — 벡터(qwen3-embedding) + LLM 꼬리표(qwen3:4b, 검색 전용·고객 비표시)를 키워드 검색과 늘 섞되 키워드 일치를 앞에, search-service 뒤 작업·products-v11 | 승인 (2026-11-25) |
 | [0089](0089-pda-session-idle-shift-length.md) | PDA 앱 무활동 한도 30분 → 근무 길이 12시간(ADR-0056 결정 14 ③ 대체) | 승인 (2026-11-25) |
 | [0091](0091-auto-supply-and-cdc-transfer.md) | 자동 발주 초안(매일, 승인은 사람)과 센터 발주 승인 → 보급 DC 이관(TRF, 온도대별) — SCM 전 임시, DC 시뮬레이터 R-27 | 승인 (2026-11-27) |
+| [0092](0092-rag-documents-managed-in-backoffice.md) | 운영자 RAG 문서를 백오피스에서 관리 — 정본 ai-assistant DB, 초안 → RAG_DOCUMENT 승인 → 반영 → 1분 재색인 (결정 2 는 0094 가 대체) | 승인 (2026-11-28) |
+| [0093](0093-cs-consult-assistant-panel.md) | 상담 도우미 — 상담 접수 화면 옆에서 본인 확인 절·정책 근거(LLM 없음, 저장 안 함) | 승인 (2026-11-28) |
+| [0094](0094-customer-rag-documents-in-db.md) | 고객 RAG 문서도 DB 에서 관리 — 기본 Git, 같은 문서(customer_app)는 원본 하나(고객 RAG DB)로 같이 관리, 운영자 RAG 는 1분마다 맞춤 | 승인 (2026-11-28) |

@@ -3,6 +3,7 @@
 DELETE /api/v1/assistant/chat-sessions/{sessionId} OPERATOR
 DELETE /api/v1/assistant/knowledge-drafts/{draftId} OPERATOR
 DELETE /api/v1/carts/{cartId}/items/{itemId} CUSTOMER,GUEST
+DELETE /api/v1/customer-assistant/knowledge-drafts/{draftId} OPERATOR
 DELETE /api/v1/locations/{locationId} OPERATOR
 DELETE /api/v1/me/addresses/{addressId} CUSTOMER
 DELETE /api/v1/me/profile-image CUSTOMER
@@ -156,6 +157,11 @@ GET /api/v1/cs-intakes/{intakeId} OPERATOR
 GET /api/v1/customer-assistant/faq-feedback OPERATOR
 GET /api/v1/customer-assistant/faqs CUSTOMER
 GET /api/v1/customer-assistant/faqs/{faqId} CUSTOMER
+GET /api/v1/customer-assistant/knowledge-applications OPERATOR
+GET /api/v1/customer-assistant/knowledge-documents OPERATOR
+GET /api/v1/customer-assistant/knowledge-documents/detail OPERATOR
+GET /api/v1/customer-assistant/knowledge-drafts OPERATOR
+GET /api/v1/customer-assistant/knowledge-drafts/{draftId} OPERATOR
 GET /api/v1/customer-assistant/questions CUSTOMER
 GET /api/v1/customer-assistant/questions/{answerId} CUSTOMER
 GET /api/v1/customer-assistant/recent-orders CUSTOMER
@@ -562,6 +568,7 @@ POST /api/v1/content-import-batches/{batchId}/submissions OPERATOR
 POST /api/v1/coupon-campaigns/{promotionId}/downloads CUSTOMER
 POST /api/v1/cs-intakes OPERATOR
 POST /api/v1/customer-assistant/faqs/{faqId}/feedback CUSTOMER
+POST /api/v1/customer-assistant/knowledge-drafts OPERATOR
 POST /api/v1/customer-assistant/questions CUSTOMER
 POST /api/v1/customer-notes OPERATOR
 POST /api/v1/customer-notes/{noteId}/deletions OPERATOR
@@ -803,6 +810,7 @@ POST /api/v1/waves/{waveId}/splits OPERATOR
 POST /api/v1/webhooks/toss PUBLIC
 PUT /api/v1/assistant/knowledge-drafts/{draftId} OPERATOR
 PUT /api/v1/content-drafts/{draftId} OPERATOR
+PUT /api/v1/customer-assistant/knowledge-drafts/{draftId} OPERATOR
 PUT /api/v1/employee-auth/employees/{operatorId} OPERATOR
 PUT /api/v1/hr/departments/{code} OPERATOR
 PUT /api/v1/locations/{locationId} OPERATOR

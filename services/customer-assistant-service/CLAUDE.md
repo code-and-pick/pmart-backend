@@ -9,7 +9,7 @@
 
 ## 계약
 - REST: `contracts/openapi/customer-assistant-service.yaml`(0.4.0) → `com.pmart.customerassistant.api.generated`. `api/CustomerAssistantController` 가 구현, 429 는 `api/RateLimitAdvice`. FAQ 는 `api/FaqsController`(0.2.0).
-- 이벤트: 발행·구독 없음.
+- 이벤트(2026-11-28, ADR-0094): 구독 `ApprovalDecided`(바인딩 `approvalEvents-in-0` — 설정 저장소 -lan 에만, 없으면 빈을 만들지 않는다), 발행 `ApplicationReceiptRecorded`(StreamBridge 로 바로 — outbox·Debezium 없음). common-messaging 은 봉투·스키마 검사·바인딩 기본값만.
 
 ## 운영자용과의 관계
 - `ai-assistant-service` 의 복사본에서 출발했다(2026-11-09). 색인·스냅숏·선점(lease)·인용 검사·Ollama 연결은 같은 코드다. 공용 라이브러리로 빼지 않은 이유: Spring AI 의존성을 `libraries/` 에 두게 되고(gradle-build 규칙), 운영 중인 운영자 RAG 를 함께 바꿔야 해서. 한쪽의 기술 결함을 고치면 **다른 쪽도 같은지 본다**.
@@ -40,6 +40,7 @@ docker compose -f deploy/local/ai-assistant/docker-compose.yml up -d
 로컬 포트 8509. LAN 색인 `deploy/lan/lan.sh rag-ingest-customer pc5`.
 
 ## 상태
+- **고객 RAG 문서 관리(2026-11-28, ADR-0094, 계약 0.6.0, V4)**: ai-assistant-service ADR-0092 와 같은 구조(`KnowledgeStore`·`KnowledgeDocumentService`·`KnowledgeApprovals`·`KnowledgeIndexing`·`ApprovalMessaging` — 운영자 쪽을 패키지만 바꿔 옮긴 것, 한쪽을 고치면 다른 쪽도). 대상 = customer_app 16(domain customer-app) + 고객 FAQ 13(customer-faq, 금지 표현 검사 제외 — 지위 태그 형식). 설정 `pmart.assistant.knowledge.source` files(기본·시험) | db(LAN) — db 면 `ingestKnowledge`(=`lan.sh rag-ingest-customer`)가 없는 문서만 가져오고 DB 지금 판으로 색인(`KnowledgeIngestor.ingestDocuments` — FAQ 목록 `faq_entry` 도 같은 판). 문서 관리 API `/customer-assistant/knowledge-*` 는 **직원(OPERATOR) 토큰·`backoffice-web` 출처만**(고객 토큰 403 — `KnowledgeDocumentService.STAFF_SOURCE`), 초안 역할 `knowledge.editor-roles`(OPERATOR_ADMIN). 승인 = approval `RAG_DOCUMENT`·targetService customer-assistant-service. **같이 쓰는 문서**: 내부 `GET /internal/knowledge-documents/shared`(토큰 없음 — customer_app 지금 판, 내린 것 빼고)를 운영자 RAG 가 1분마다 가져간다. 재색인 지표 `pmart.customer.assistant.knowledge.reindex{result}`. 시험 `KnowledgeDocumentIT`·`KnowledgeDocumentRulesTest`·`KnowledgeDocumentServiceTest`.
 - **상품 질문(2026-11-20, ADR-0083, 계약 0.3.0)**: 운영자용과 같은 `domain/ProductQuestion` 규칙·`ProductSearchClient`(토큰 없이 — 최근 검색어 기록에 안 남음). **센터 없이 전체 기준**(질문 요청에 주소·센터가 없음, 사용자 "취급 여부는 답하지 않음") — `ProductAnswerText.customer` 정해진 문장, `PRODUCT_INFO`·`PRODUCT_TEMPLATE`, handoff 없음. 0건·실패면 안내 문서로. `product-search.base-url` 이 없으면 꺼짐. 시험 `ProductQuestionTest`·`ProductQuestionIT`.
 - 1차 구현 2026-11-09. 남은 결정: 답변 보존 기간(`answers.retention`, 운영자용과 같이 미설정 — 지우지 않음).
 - 평가(2026-11-10, `docs/rag/verification/2026-11-10/customer-eval/`): 37문항 37/37. 확인: `python -I deploy/lan/checks/customer_rag_eval.py`(고객 토큰 필요).

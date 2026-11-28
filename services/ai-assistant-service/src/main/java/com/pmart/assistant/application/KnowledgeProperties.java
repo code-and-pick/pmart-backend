@@ -27,6 +27,12 @@ public class KnowledgeProperties {
     /** 초안을 만들고 고칠 수 있는 역할(결정 4 기본값 OPERATOR_ADMIN). 승인 요청 역할은 approval-service 설정이 따로 본다. */
     private List<String> editorRoles = new ArrayList<>(List.of("OPERATOR_ADMIN"));
 
+    /**
+     * 같이 쓰는 문서(customer_app)의 원본 — 고객 RAG 주소(ADR-0094 결정 3, LAN
+     * http://customer-assistant-service:8509). 비어 있으면 맞추지 않는다(가져온 사본 그대로).
+     */
+    private @org.jspecify.annotations.Nullable String sharedSourceBaseUrl;
+
     public String getSource() {
       return source;
     }
@@ -37,6 +43,14 @@ public class KnowledgeProperties {
 
     public boolean dbSource() {
       return "db".equalsIgnoreCase(source);
+    }
+
+    public @org.jspecify.annotations.Nullable String getSharedSourceBaseUrl() {
+      return sharedSourceBaseUrl;
+    }
+
+    public void setSharedSourceBaseUrl(@org.jspecify.annotations.Nullable String v) {
+      this.sharedSourceBaseUrl = v;
     }
 
     public List<String> getEditorRoles() {

@@ -115,6 +115,30 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
     ControllableEmbedding controllableEmbedding() {
       return new ControllableEmbedding();
     }
+
+    /** 승인 회신(ADR-0094) — Kafka 대신 기록만. */
+    @Bean
+    @Primary
+    RecordingReceipts recordingReceipts() {
+      return new RecordingReceipts();
+    }
+  }
+
+  /** 보낸 승인 회신(본문). */
+  static class RecordingReceipts
+      implements com.pmart.customerassistant.application.KnowledgeApprovals.Receipts {
+    final java.util.List<java.util.Map<String, Object>> sent =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public String sourceSystem() {
+      return "customer-assistant-service";
+    }
+
+    @Override
+    public void send(String approvalId, java.util.Map<String, Object> payload) {
+      sent.add(payload);
+    }
   }
 
   @org.wiremock.spring.InjectWireMock("order")

@@ -14,7 +14,8 @@ import org.jspecify.annotations.Nullable;
  *   <li>문서 ID = {@code docs/rag/rag-docs/<영역>/<이름>.md}, 영역은 지금 있는 폴더만
  *   <li>본문: 첫 줄 {@code # 제목}, {@value #MAX_BYTES} 바이트 이하, 금지 표현 없음({@code RealDocumentsIngestTest}
  *       와 같은 기준 — 정해지지 않은 내용을 넣지 않는다)
- *   <li>{@code customer_app} 은 저장소가 정본(고객 RAG 와 같은 파일, 결정 2) — 고치기 막음
+ *   <li>{@code customer_app} 은 원본이 고객 RAG DB(ADR-0094 결정 3 — 같은 문서는 하나로 같이 관리) — 여기서는 고치기 막음, 1분마다
+ *       맞춘다
  * </ul>
  */
 public final class KnowledgeDocumentRules {
@@ -37,7 +38,7 @@ public final class KnowledgeDocumentRules {
           "scm",
           "tms");
 
-  /** 저장소가 정본인 영역(백오피스에서 읽기만). */
+  /** 원본이 다른 곳(고객 RAG DB)인 영역 — 여기서는 읽기만(ADR-0094). */
   public static final Set<String> READ_ONLY_DOMAINS = Set.of("customer_app");
 
   /** 금지 표현 — 정해지지 않은 내용의 표시(rag-docs 작성 규칙, RealDocumentsIngestTest). */
@@ -91,7 +92,10 @@ public final class KnowledgeDocumentRules {
               "documentId",
               "문서 ID 는 " + PREFIX + "<영역>/<영문·숫자·_- 이름>.md 이고 영역은 " + DOMAINS + " 중 하나입니다."));
     } else if (readOnly(documentId)) {
-      bad.add(new Problem("documentId", "고객 앱 안내 문서(customer_app)는 저장소에서 고칩니다(고객 RAG 와 같은 파일)."));
+      bad.add(
+          new Problem(
+              "documentId",
+              "고객 앱 안내 문서(customer_app)는 고객 RAG 문서 관리에서 고칩니다(같은 문서를 원본 하나로 같이 관리 — ADR-0094)."));
     }
     if (!"UPSERT".equals(op) && !"RETIRE".equals(op)) {
       bad.add(new Problem("op", "UPSERT 또는 RETIRE 입니다."));

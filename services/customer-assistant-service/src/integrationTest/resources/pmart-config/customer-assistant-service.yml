@@ -29,6 +29,11 @@ pmart:
       max-chunk-chars: 1500
       min-sentence-overlap: 0.5
     # 질문 원문은 저장하지 않는다(C5 — 코드에서 고정). 답변 보존 기간 [결정 필요] — answers.retention 이 없으면 지우지 않는다
+    # 고객 RAG 문서 관리(ADR-0094, 2026-11-28 — 사용자 "디폴트는 Git 하고 운영자랑 고객 둘다 DB에"): files(저장소 manifest — 예전 그대로) | db(문서 정본 DB).
+    # db 로 바꾸면 다음 rag-ingest-customer 가 없는 문서만 저장소에서 가져온 뒤 DB 로 색인. customer_app 은 운영자 RAG 도 같은 판을 쓴다(내부 API)
+    knowledge:
+      source: files
+      editor-roles: [OPERATOR_ADMIN] # 초안 역할 — 운영자 문서와 같게(사용자 2026-11-28 "응")
     ingest:
       prune-grace: 1h
     customer:

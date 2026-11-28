@@ -35,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
  * 기동 검사: 하드 타임아웃 &lt; lease, 스냅숏 정리 유예 ≥ lease×2, ollama 는 모델 이름·버전·주소가 있고 호출 시간 제한 &lt; 하드 타임아웃.
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AssistantProperties.class)
+@EnableConfigurationProperties({AssistantProperties.class, KnowledgeProperties.class})
 public class AssistantConfig {
 
   @Bean

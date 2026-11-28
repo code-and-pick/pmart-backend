@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.pmart.local/events/ApplicationReceiptRecorded.v1.json",
   "title": "ApplicationReceiptRecorded",
-  "description": "승인 반영 결과 회신(ApplicationReceipt, ADR-0039). 정본 서비스가 ApprovalDecided(APPROVED·PARTIALLY_APPROVED)를 반영한 같은 트랜잭션에서 발행한다. 발행 pricing(1차; 이후 product, product-content, center-master, delivery-serviceability, mfc-inbound, search(SEARCH_SYNONYM — DB 가 없어 outbox 대신 반영 기록 뒤 Kafka 로 바로), ai-assistant(RAG_DOCUMENT, ADR-0092 — rag-pgvector 에 Debezium 연결을 두지 않아 반영 기록 뒤 Kafka 로 바로) 등 승인 대상 정본). 구독 approval. 토픽 platform.approval-receipt.v1(승인 토픽 platform.approval.v1 과 분리 — 그 구독자에게 가지 않게). 같은 approvalId·receiverService·receiptSeq 재전송은 approval 이 한 번만 반영한다. 단계 ①",
+  "description": "승인 반영 결과 회신(ApplicationReceipt, ADR-0039). 정본 서비스가 ApprovalDecided(APPROVED·PARTIALLY_APPROVED)를 반영한 같은 트랜잭션에서 발행한다. 발행 pricing(1차; 이후 product, product-content, center-master, delivery-serviceability, mfc-inbound, search(SEARCH_SYNONYM — DB 가 없어 outbox 대신 반영 기록 뒤 Kafka 로 바로), ai-assistant·customer-assistant(RAG_DOCUMENT, ADR-0092·0094 — rag-pgvector 에 Debezium 연결을 두지 않아 반영 기록 뒤 Kafka 로 바로) 등 승인 대상 정본). 구독 approval. 토픽 platform.approval-receipt.v1(승인 토픽 platform.approval.v1 과 분리 — 그 구독자에게 가지 않게). 같은 approvalId·receiverService·receiptSeq 재전송은 approval 이 한 번만 반영한다. 단계 ①",
   "allOf": [
     {
       "$ref": "_envelope.v1.json"

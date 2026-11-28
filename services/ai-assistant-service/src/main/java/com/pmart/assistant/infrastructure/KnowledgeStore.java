@@ -280,6 +280,91 @@ public class KnowledgeStore {
         Timestamp.from(at));
   }
 
+  /**
+   * 같이 쓰는 문서의 읽기 전용 사본을 원본 판에 맞춘다(ADR-0094 결정 3, 트랜잭션 안). 본문 해시가 같으면 그대로. 바뀌었으면 새 판(op SYNC), 없으면 판
+   * 1 로 넣는다. 바꿨으면 true.
+   */
+  public boolean syncReadOnly(
+      String documentId, String domain, String title, String content, String sha256, Instant at) {
+    Boolean changed =
+        tx.execute(
+            s -> {
+              var cur = lockDocument(documentId);
+              if (cur.isPresent()
+                  && cur.get().contentSha256().equals(sha256)
+                  && !cur.get().retired()) {
+                return false;
+              }
+              int next = cur.map(d -> d.version() + 1).orElse(1);
+              if (cur.isEmpty()) {
+                jdbc.update(
+                    """
+                    INSERT INTO knowledge_document (document_id, domain_area, title, version, content,
+                        content_sha256, retired, read_only, updated_at, updated_by)
+                    VALUES (?, ?, ?, 1, ?, ?, false, true, ?, 'SYNC')
+                    """,
+                    documentId,
+                    domain,
+                    title,
+                    content,
+                    sha256,
+                    Timestamp.from(at));
+              } else {
+                jdbc.update(
+                    """
+                    UPDATE knowledge_document SET title = ?, version = ?, content = ?, content_sha256 = ?,
+                        retired = false, read_only = true, updated_at = ?, updated_by = 'SYNC'
+                    WHERE document_id = ?
+                    """,
+                    title,
+                    next,
+                    content,
+                    sha256,
+                    Timestamp.from(at),
+                    documentId);
+              }
+              insertVersion(
+                  documentId, next, "SYNC", title, content, sha256, null, null, "SYNC", at);
+              return true;
+            });
+    return Boolean.TRUE.equals(changed);
+  }
+
+  /** 원본에서 빠진 읽기 전용 사본을 내린다(새 판 op RETIRE). 내렸으면 true. */
+  public boolean retireReadOnly(String documentId, Instant at) {
+    Boolean changed =
+        tx.execute(
+            s -> {
+              var cur = lockDocument(documentId);
+              if (cur.isEmpty() || cur.get().retired() || !cur.get().readOnly()) {
+                return false;
+              }
+              var doc = findDocument(documentId).orElseThrow();
+              int next = cur.get().version() + 1;
+              jdbc.update(
+                  """
+                  UPDATE knowledge_document SET version = ?, retired = true, updated_at = ?, updated_by = 'SYNC'
+                  WHERE document_id = ?
+                  """,
+                  next,
+                  Timestamp.from(at),
+                  documentId);
+              insertVersion(
+                  documentId,
+                  next,
+                  "RETIRE",
+                  doc.summary().title(),
+                  doc.content(),
+                  doc.summary().contentSha256(),
+                  null,
+                  null,
+                  "SYNC",
+                  at);
+              return true;
+            });
+    return Boolean.TRUE.equals(changed);
+  }
+
   // ---- 초안 ----
 
   /** 만들기(같은 작성자·요청 ID 는 처음 것을 돌려준다). */

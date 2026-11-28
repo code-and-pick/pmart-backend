@@ -42,6 +42,8 @@ public class KnowledgeJobs implements ApplicationRunner {
   private final AssistantProperties props;
   private final Clock clock;
   private final ConfigurableApplicationContext context;
+  private final KnowledgeIndexing knowledge;
+  private final KnowledgeProperties knowledgeProps;
 
   public KnowledgeJobs(
       KnowledgeIngestor ingestor,
@@ -49,7 +51,11 @@ public class KnowledgeJobs implements ApplicationRunner {
       AnswerStore answers,
       AssistantProperties props,
       Clock clock,
-      ConfigurableApplicationContext context) {
+      ConfigurableApplicationContext context,
+      KnowledgeIndexing knowledge,
+      KnowledgeProperties knowledgeProps) {
+    this.knowledge = knowledge;
+    this.knowledgeProps = knowledgeProps;
     this.ingestor = ingestor;
     this.snapshots = snapshots;
     this.answers = answers;
@@ -70,8 +76,12 @@ public class KnowledgeJobs implements ApplicationRunner {
         if (ingest.getRepo() == null || ingest.getRepo().isBlank()) {
           throw new IllegalArgumentException("pmart.assistant.ingest.repo(-Prepo) 가 필요합니다.");
         }
+        Path repo = Path.of(ingest.getRepo()).toAbsolutePath().normalize();
         var result =
-            ingestor.ingest(Path.of(ingest.getRepo()).toAbsolutePath().normalize(), loadManifest());
+            knowledgeProps.getKnowledge().dbSource()
+                // ADR-0094: 없는 문서만 저장소에서 가져오고 DB 의 지금 판으로 색인(가져온 문서는 정본이 DB)
+                ? importThenIndex(repo)
+                : ingestor.ingest(repo, loadManifest());
         log.info(
             "ingestKnowledge 완료 snapshot={} chunks={} files={}",
             result.snapshotId(),
@@ -88,6 +98,11 @@ public class KnowledgeJobs implements ApplicationRunner {
     }
     int exit = code;
     System.exit(SpringApplication.exit(context, () -> exit));
+  }
+
+  private KnowledgeIngestor.Result importThenIndex(Path repo) {
+    knowledge.importFromRepo(repo, loadManifest());
+    return knowledge.indexFromDb();
   }
 
   public static KnowledgeManifest loadManifest() {

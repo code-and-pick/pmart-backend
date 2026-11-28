@@ -290,6 +290,60 @@ class KnowledgeDocumentIT extends AssistantITBase {
     assertThat(receipts.sent).hasSize(before);
   }
 
+  @Test
+  void sharedCustomerAppDocsFollowTheCustomerRag() throws Exception {
+    // ADR-0094: customer_app 은 원본이 고객 RAG — 운영자 쪽 사본은 읽기 전용, 1분 작업(syncShared)이 원본 판에 맞춘다
+    indexing.importFromRepo(docsRepo, manifest);
+    String newBody = "# 주문 안내\n\n## 주문하기\n1. 앱에서 주문합니다. 고객 RAG 에서 고친 판입니다.\n";
+    String sha =
+        com.pmart.assistant.domain.RequestHashing.sha256(newBody.getBytes(StandardCharsets.UTF_8));
+    var item = new LinkedHashMap<String, Object>();
+    item.put("documentId", CA);
+    item.put("version", 2);
+    item.put("title", "주문 안내");
+    item.put("content", newBody);
+    item.put("contentSha256", sha);
+    search.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                "/api/v1/internal/knowledge-documents/shared")
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    json.writeValueAsString(Map.of("items", List.of(item))))));
+    assertThat(indexing.syncShared()).isEqualTo(1);
+    assertThat(indexing.syncShared()).isZero(); // 같으면 그대로
+    var d = get(ADMIN, "/api/v1/assistant/knowledge-documents/detail?documentId=" + CA);
+    assertThat(d.body().path("document").path("version").asInt()).isEqualTo(2);
+    assertThat(d.body().path("document").path("updatedBy").asString()).isEqualTo("SYNC");
+    assertThat(d.body().path("document").path("readOnly").asBoolean()).isTrue();
+    assertThat(d.body().path("versions").get(0).path("op").asString()).isEqualTo("SYNC");
+    assertThat(d.body().path("content").asString()).contains("고객 RAG 에서 고친 판");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT requested_at IS NOT NULL FROM knowledge_reindex", Boolean.class))
+        .isTrue();
+    // 원본에서 빠지면 내린다(빈 목록이면 원본 쪽 문제일 수 있어 내리지 않는다)
+    var other = new LinkedHashMap<>(item);
+    other.put("documentId", "docs/rag/rag-docs/customer_app/02-other.md");
+    search.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                "/api/v1/internal/knowledge-documents/shared")
+            .willReturn(
+                com.github.tomakehurst.wiremock.client.WireMock.okJson(
+                    json.writeValueAsString(Map.of("items", List.of(other))))));
+    assertThat(indexing.syncShared()).isEqualTo(2); // 새 문서 하나 + 빠진 CA 내림
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT retired FROM knowledge_document WHERE document_id = ?", Boolean.class, CA))
+        .isTrue();
+    // 원본이 응답하지 않으면 지난 사본 그대로
+    search.stubFor(
+        com.github.tomakehurst.wiremock.client.WireMock.get(
+                "/api/v1/internal/knowledge-documents/shared")
+            .willReturn(com.github.tomakehurst.wiremock.client.WireMock.serverError()));
+    assertThat(indexing.syncShared()).isZero();
+    search.resetAll();
+  }
+
   // ---- 승인 흉내(approval-service 가 낼 ApprovalDecided) ----
 
   void approve(String approvalId, JsonNode request) {

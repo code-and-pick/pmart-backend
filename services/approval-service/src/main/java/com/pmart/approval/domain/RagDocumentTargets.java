@@ -9,8 +9,9 @@ import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
- * 운영자 RAG 문서 승인 종류 {@code RAG_DOCUMENT}(ADR-0092, 2026-11-28)의 변경 요청 형식. 정본은 ai-assistant-service —
- * 문서 하나를 초안 하나로 바꾼다(승인 하나 = 문서 하나).
+ * RAG 문서 승인 종류 {@code RAG_DOCUMENT}(ADR-0092·ADR-0094, 2026-11-28)의 변경 요청 형식. 정본에 고객 RAG
+ * customer-assistant-service 도 있다(ADR-0094). 정본은 ai-assistant-service — 문서 하나를 초안 하나로 바꾼다(승인 하나 =
+ * 문서 하나).
  *
  * <ul>
  *   <li>{@code targetService = ai-assistant-service}, {@code targetRef} = 초안 ID({@code KDR-…})
@@ -26,10 +27,15 @@ public final class RagDocumentTargets {
 
   public static final String TYPE = "RAG_DOCUMENT";
   public static final String TARGET_SERVICE = "ai-assistant-service";
+  public static final String CUSTOMER_TARGET_SERVICE = "customer-assistant-service";
+  static final java.util.Set<String> TARGET_SERVICES =
+      java.util.Set.of(TARGET_SERVICE, CUSTOMER_TARGET_SERVICE);
 
   private static final Pattern DRAFT_ID = Pattern.compile("KDR-[A-Za-z0-9-]{1,36}");
   private static final Pattern DOCUMENT_ID =
-      Pattern.compile("docs/rag/rag-docs/[a-z0-9_]{1,40}/[A-Za-z0-9_-]{1,100}\\.md");
+      Pattern.compile(
+          "docs/rag/rag-docs/[a-z0-9_]{1,40}/[A-Za-z0-9_-]{1,100}\\.md"
+              + "|docs/business/customer-faq/[A-Za-z0-9_-]{1,100}\\.md");
   private static final Pattern SHA256 = Pattern.compile("[0-9a-f]{64}");
 
   /** 검사할 행. */
@@ -56,10 +62,10 @@ public final class RagDocumentTargets {
       @Nullable Integer targetExpectedVersion,
       List<Line> lines) {
     List<Detail> bad = new ArrayList<>();
-    if (!TARGET_SERVICE.equals(targetService)) {
+    if (!TARGET_SERVICES.contains(targetService)) {
       bad.add(
           new Detail(
-              "targetService", "RAG 문서 승인의 정본은 " + TARGET_SERVICE + " 입니다: " + targetService));
+              "targetService", "RAG 문서 승인의 정본은 " + TARGET_SERVICES + " 중 하나입니다: " + targetService));
     }
     if (targetRef == null || !DRAFT_ID.matcher(targetRef).matches()) {
       bad.add(new Detail("targetRef", "RAG 문서 승인의 대상은 초안 ID(KDR-…)입니다."));
@@ -72,7 +78,10 @@ public final class RagDocumentTargets {
     } else {
       Line l = lines.get(0);
       if (l.lineKey() == null || !DOCUMENT_ID.matcher(l.lineKey()).matches()) {
-        bad.add(new Detail("lines[0].lineKey", "문서 ID 는 docs/rag/rag-docs/<영역>/<이름>.md 형식입니다."));
+        bad.add(
+            new Detail(
+                "lines[0].lineKey",
+                "문서 ID 는 docs/rag/rag-docs/<영역>/<이름>.md 또는 docs/business/customer-faq/<이름>.md 형식입니다."));
       }
       if (!"UPSERT".equals(l.op()) && !"RETIRE".equals(l.op())) {
         bad.add(new Detail("lines[0].attributes.op", "UPSERT 또는 RETIRE 입니다."));

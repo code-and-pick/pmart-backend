@@ -5,6 +5,7 @@ import com.pmart.assistant.domain.KnowledgeDocumentRules;
 import com.pmart.assistant.domain.RequestHashing;
 import com.pmart.assistant.infrastructure.KnowledgeStore;
 import com.pmart.assistant.infrastructure.KnowledgeStore.ActiveDoc;
+import com.pmart.assistant.infrastructure.SharedKnowledgeClient;
 import com.pmart.assistant.infrastructure.ingest.KnowledgeIngestor;
 import com.pmart.assistant.infrastructure.ingest.KnowledgeIngestor.LoadedDoc;
 import com.pmart.assistant.infrastructure.ingest.KnowledgeManifest;
@@ -50,13 +51,22 @@ public class KnowledgeIndexing {
   private final KnowledgeProperties props;
   private final Clock clock;
   private final @Nullable MeterRegistry meters;
+  private final @Nullable SharedKnowledgeClient shared;
 
   public KnowledgeIndexing(
       KnowledgeStore store,
       KnowledgeIngestor ingestor,
       KnowledgeProperties props,
       Clock clock,
-      ObjectProvider<MeterRegistry> meters) {
+      ObjectProvider<MeterRegistry> meters,
+      ObjectProvider<org.springframework.web.client.RestClient.Builder> http) {
+    this.shared =
+        props.getKnowledge().getSharedSourceBaseUrl() == null
+                || props.getKnowledge().getSharedSourceBaseUrl().isBlank()
+            ? null
+            : new SharedKnowledgeClient(
+                http.getIfAvailable(org.springframework.web.client.RestClient::builder).clone(),
+                props.getKnowledge().getSharedSourceBaseUrl());
     this.store = store;
     this.ingestor = ingestor;
     this.props = props;
@@ -130,6 +140,52 @@ public class KnowledgeIndexing {
         "db:" + last);
   }
 
+  /**
+   * 같이 쓰는 문서(customer_app)를 원본(고객 RAG)의 지금 판에 맞춘다(ADR-0094 결정 3). 바뀐 것이 있으면 재색인을 요청한다. 고객 RAG 가
+   * 응답하지 않으면 지난 사본 그대로(답은 계속 된다). 맞춘 수.
+   */
+  public int syncShared() {
+    if (shared == null) {
+      return 0;
+    }
+    java.util.List<SharedKnowledgeClient.SharedDoc> docs;
+    try {
+      docs = shared.fetch();
+    } catch (RuntimeException e) {
+      log.warn("shared knowledge fetch failed: {}", e.getClass().getSimpleName());
+      return 0;
+    }
+    java.time.Instant at = clock.instant();
+    int n = 0;
+    java.util.Set<String> seen = new java.util.HashSet<>();
+    for (var d : docs) {
+      String domain = KnowledgeDocumentRules.domainOf(d.documentId());
+      if (domain == null || !KnowledgeDocumentRules.readOnly(d.documentId())) {
+        continue; // 같이 쓰기로 한 영역(customer_app)만 받는다
+      }
+      seen.add(d.documentId());
+      if (store.syncReadOnly(
+          d.documentId(), domain, d.title(), d.content(), d.contentSha256(), at)) {
+        n++;
+      }
+    }
+    // 원본에서 빠진(내린) 사본 — 빈 목록이면 원본 쪽 문제일 수 있어 내리지 않는다
+    if (!docs.isEmpty()) {
+      for (var s : store.listDocuments(false)) {
+        if (s.readOnly()
+            && !seen.contains(s.documentId())
+            && store.retireReadOnly(s.documentId(), at)) {
+          n++;
+        }
+      }
+    }
+    if (n > 0) {
+      store.requestReindex(at);
+      log.info("shared knowledge synced changed={}", n);
+    }
+    return n;
+  }
+
   /** 승인 반영 뒤 재색인(1분 주기). 실패하면 다음 주기에 다시 한다. */
   @Scheduled(
       fixedDelayString = "${pmart.assistant.knowledge.reindex-interval:PT1M}",
@@ -138,6 +194,7 @@ public class KnowledgeIndexing {
     if (!props.getKnowledge().dbSource()) {
       return;
     }
+    syncShared();
     runRequestedReindex();
   }
 

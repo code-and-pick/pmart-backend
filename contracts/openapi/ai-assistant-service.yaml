@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ai-assistant-service
-  version: 1.4.0
+  version: 1.5.0
   x-stage: 3
   x-stage-note: 1차(문서 질의응답·근거 표시)를 2026-11-04 앞당겨 구현 — ADR-0036. 도메인 API 호출·명령 위임은 후속.
   description: |
@@ -632,10 +632,10 @@ components:
         version: { type: integer }
         contentSha256: { type: string }
         retired: { type: boolean, description: 내린 문서(색인 안 함) }
-        readOnly: { type: boolean, description: '저장소가 정본(customer_app — 고객 RAG 와 같은 파일). 초안을 만들 수 없다' }
+        readOnly: { type: boolean, description: '(1.5.0) 원본이 고객 RAG DB 인 문서(customer_app — 같은 문서를 하나로 같이 관리, ADR-0094). 여기서는 초안을 만들 수 없고 1분마다 원본 판에 맞춘다' }
         indexState: { $ref: '#/components/schemas/KnowledgeIndexState' }
         updatedAt: { type: string, format: date-time }
-        updatedBy: { type: string, description: '반영한 초안의 작성자(운영자 ID), 가져오기는 IMPORT' }
+        updatedBy: { type: string, description: '반영한 초안의 작성자(운영자 ID), 가져오기는 IMPORT, 원본 맞춤은 SYNC' }
     KnowledgeReindex:
       type: object
       properties:
@@ -655,7 +655,7 @@ components:
       required: [version, op, title, contentSha256, createdBy, createdAt]
       properties:
         version: { type: integer }
-        op: { type: string, enum: [IMPORT, UPSERT, RETIRE] }
+        op: { type: string, enum: [IMPORT, UPSERT, RETIRE, SYNC], description: '(1.5.0) SYNC = 같이 쓰는 문서(customer_app)를 원본(고객 RAG)에 맞춘 판(ADR-0094)' }
         title: { type: string }
         contentSha256: { type: string }
         approvalId: { type: [string, 'null'] }
