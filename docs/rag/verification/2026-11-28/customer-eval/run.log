@@ -1,0 +1,46 @@
+OK   C01 ANSWERED                2.7s 08-order-cancel.md,09-delivery-status.md  | 상품 준비가 시작된 주문은 취소할 수 없습니다.
+OK   C02 ANSWERED                1.6s 08-order-cancel.md                        | 주문의 상품 준비가 시작되기 전까지 앱의 주문 내역에서 직접 주문을 취소할 수 있습니다.
+OK   C03 ANSWERED                1.6s 14-refund.md                              | 봉투값은 주문 전체를 취소한 경우에만 환불됩니다.
+OK   C04 ANSWERED                1.7s 08-order-cancel.md                        | 취소 요청이 접수되면 센터에서 상품 준비를 멈추고 결제 취소가 끝나야 '취소 완료'가 됩니다.
+OK   C05 ANSWERED                2.2s 06-order-payment-fees.md                  | 배달팁은 한집배달 시 4,000원, 알뜰배달·예약배달 시 3,000원입니다. 상품 금액이 30,000원 이상이거나 첫 주문이면 무료입니다.
+OK   C06 ANSWERED                1.6s 06-order-payment-fees.md                  | 상품 금액이 30,000원 이상이거나 첫 주문이면 배달팁은 무료입니다.
+OK   C07 ANSWERED                1.7s 06-order-payment-fees.md                  | 최소 주문금액은 15,000원입니다.
+OK   C08 ANSWERED                1.9s 14-refund.md                              | 결제 취소가 완료되면 앱 알림으로 알려 드립니다. 실제로 카드나 계좌에 반영되기까지는 카드사·결제 수단에 따라 영업일 기준 며칠이 걸릴 수 있습니다.
+OK   C09 ANSWERED                2.4s 14-refund.md                              | 환불 금액은 주문할 때의 가격을 기준으로 합니다. 할인을 받은 주문은 할인 금액을 상품별로 나눈 뒤, 그 상품에 나눈 할인을 뺀 금액을 환불합니다.
+OK   C10 ANSWERED                3.9s 13-return-exchange.md,13-return-exchange.md  | 반품·교환 신청 기한은 상품을 받은 뒤 7일 이내로 일반 반품·교환, 냉장·냉동 등 신선식품은 상품을 받은 뒤 24시간 이내, 상품 하자, 잘못 온 상품, 광고와
+OK   C11 ANSWERED                3.4s 13-return-exchange.md,13-return-exchange.md  | 관련 안내를 그대로 보여 드릴게요.  냉장·냉동 등 신선식품도 제2조의 기한(받은 뒤 24시간 이내) 안에 반품할 수 있으며, 회수한 신선식품은 다시 판매하지 않
+OK   C12 ANSWERED                2.6s 13-return-exchange.md                     | 관련 안내를 그대로 보여 드릴게요.  1. 단순 변심 등 회원 사정으로 반품하는 경우 회수비 9,000원을 회원이 부담합니다. 2. 단순 변심에 의한 교환은 왕복
+FAIL C13 ANSWERED                3.7s 12-missing-damaged-item.md,12-missing-damaged-item.md 빠짐:['재고|빠|환불'] | 주문한 상품이 포장에 없거나, 주문과 다른 상품이 들어 있거나, 상품이 파손되었거나 품질에 문제가 있는 경우에 처리됩니다.
+OK   C14 ANSWERED                7.9s 13-return-exchange.md,11-shortage.md      | 관련 안내를 그대로 보여 드릴게요.  교환할 상품이 품절이면 환불로 바꿀지 회원에게 여쭤봅니다. 다른 상품으로 임의로 바꿔 보내지 않습니다.  회사는 결품된 상품
+FAIL C15 ANSWERED                2.1s 09-delivery-status.md,10-not-received-misdelivery.md 빠짐:['사진|주변|문의'] | 배송 완료로 표시되었으나 상품을 받지 못했다면 'PMart 미수령·오배송 처리 안내'에 따라 고객센터에 알려 주세요.
+OK   C16 ANSWERED                1.7s 10-not-received-misdelivery.md            | 받은 포장의 라벨에 적힌 주문번호와 함께 고객센터에 문의를 남깁니다.
+FAIL C17 ANSWERED               10.6s 12-missing-damaged-item.md               빠짐:['사진|24시간|문의|신청'] | PMart 상품 누락·파손 처리 안내 > 제1조 (목적)에 따라, 주문한 상품이 파손되었을 경우 처리 기준이 적용됩니다.
+OK   C18 ANSWERED                3.5s 12-missing-damaged-item.md,12-missing-damaged-item.md  | 관련 안내를 그대로 보여 드릴게요.  이 안내는 PMart(이하 "회사")에서 받은 포장에 주문한 상품이 빠져 있거나, 주문과 다른 상품이 들어 있거나, 상품이 
+OK   C19 ANSWERED                1.6s 07-delivery-area-address.md               | 결제 뒤에는 주소, 연락처, 요청 사항을 바꿀 수 없습니다.
+OK   C20 ANSWERED                3.2s 07-delivery-area-address.md               | 앱에서 도로명 주소를 검색해 고르면 배송 가능 여부를 확인할 수 있어요.
+OK   C21 ANSWERED                1.6s 09-delivery-status.md                     | 예약 배송은 상품 준비가 시작되기 전까지 배송 시간만 바꿀 수 있습니다. 바꾸려는 시간대에 배송이 가능해야 합니다.
+OK   C22 ANSWERED                1.4s 01-signup-login.md                        | Google·카카오·네이버 소셜 계정으로 로그인할 수 있어요
+OK   C23 ANSWERED                1.4s 01-signup-login.md                        | 비회원은 주문할 수 없습니다.
+FAIL C24 PRODUCT_INFO            1.6s                                          빠짐:['지원하지 않'] | '주류'(으)로 찾은 상품이에요. - 서울의밤 유자&녹차하이볼 5도 500ml · 3,870원 · 판매 중 - 호랑이생막걸리 6도 750ml · 3,060원 · 
+OK   C25 ANSWERED                4.9s 09-delivery-status.md                     | 배송이 늦어졌다는 이유만으로 자동 환불되지는 않습니다.
+OK   C26 ANSWERED                1.5s 06-order-payment-fees.md                  | 첫 주문은 배달팁이 무료입니다.
+OK   N01 NO_GROUNDING            0.3s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N02 NO_GROUNDING            0.2s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N03 NO_GROUNDING            3.3s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N04 NO_GROUNDING            0.3s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N05 NO_GROUNDING            2.9s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N06 NO_GROUNDING            0.2s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N07 NO_GROUNDING            1.4s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   N08 NO_GROUNDING            0.2s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+OK   R01 REALTIME_DATA_REQUIRED  0.2s                                           | 어떤 주문이 궁금하신가요? 아래 최근 주문에서 골라 주시면 그 주문의 상태를 알려 드릴게요.
+OK   O01 OUT_OF_SCOPE            0.0s                                           | 주문 취소·환불·반품은 AI 상담이 직접 처리하지 않아요. 앱의 주문 내역에서 직접 하시거나, 고객센터에 문의를 남겨 주세요.
+OK   O02 OUT_OF_SCOPE            0.0s                                           | 주문 취소·환불·반품은 AI 상담이 직접 처리하지 않아요. 앱의 주문 내역에서 직접 하시거나, 고객센터에 문의를 남겨 주세요.
+FAIL D01 ANSWERED                1.8s 14-refund.md,14-refund.md                빠짐:['환불하지 않|돌려드리지 않|돌려받을 수 없|환불되지 않'] | 결품으로 일부만 취소되면 봉투값은 돌려받지 않습니다.
+OK   D02 ANSWERED                2.7s 14-refund.md                              | 쿠폰은 사용한 것으로 남습니다.
+OK   D03 ANSWERED                2.0s 13-return-exchange.md                     | 냉장·냉동 등 신선식품도 제2조의 기한(받은 뒤 24시간 이내) 안에 반품할 수 있으며, 회수한 신선식품은 다시 판매하지 않습니다.
+OK   D04 ANSWERED                3.0s 06-order-payment-fees.md,06-order-payment-fees.md  | 관련 안내를 그대로 보여 드릴게요.  1. 배달팁은 배송 방식에 따라 다음과 같습니다.  | 배송 방식 | 배달팁 | |---|---| | 한집배달 | 4,000
+FAIL W01 ANSWERED                3.0s 06-order-payment-fees.md,09-delivery-status.md  | 관련 안내를 그대로 보여 드릴게요.  1. 배달팁은 배송 방식에 따라 다음과 같습니다.  | 배송 방식 | 배달팁 | |---|---| | 한집배달 | 4,000
+OK   W02 NO_GROUNDING            0.2s                                           | 이 문의는 지금 바로 답변드리기 어려워요. 고객센터에 문의를 남겨 주시면 담당자가 확인한 뒤 답변드릴게요.
+FAIL W03 ANSWERED                6.9s 06-order-payment-fees.md,14-refund.md     | 관련 안내를 그대로 보여 드릴게요.  1. 할인 행사가 걸린 상품은 상품 목록·상세·장바구니·주문서에 정가와 할인 가격을 함께 표시합니다. 2. 한 상품에 할인 
+---- 기계 채점 37 / 44
+     faq 표시별: EXACT 19/23 · PARAPHRASE 3/3 · NEAR 3/4 · WEAK 1/3 · NONE 11/11
