@@ -1,5 +1,7 @@
 # RAG — ai-assistant-service 문서 모음
 
+> **새 RAG 시스템(2026-11-28 — ES-First 하이브리드, 새 서비스로만)의 구조는 [`new-rag-system.md`](new-rag-system.md)** — integration-service → chunking-service → embedding-service(ADR-0095~0098). 기존 ai-assistant-service·customer-assistant-service 는 새 RAG 에서 제외(ADR-0097, 지우지 않음). 아래는 기존 RAG 기록이다.
+
 > **인수인계·최신 상태는 [`HANDOVER.md`](HANDOVER.md)**(2026-11-13 — 두 RAG 서비스, 색인 문서 경로, LAN PC 5 배치·모델, 명령, 평가, 남은 일). 아래 "현재 상태"는 2026-11-05 기준이다.
 
 - **"RAG"** 는 이 저장소에서 `ai-assistant-service` 의 내부 운영자용 정책·업무 절차 질의응답(검색 증강 답변)을 가리킨다(2026-11-05 사용자 지정).
