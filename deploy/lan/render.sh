@@ -145,7 +145,8 @@ secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
 #   파일을 정본으로 두는 까닭: lan.sh deploy 는 매번 render 한다 — 켠 목록이 셸 변수뿐이면 다른 세션의 배포가 Vault 설정을 빼고,
 #   {cipher} 삭제 뒤에는 비밀 없이 기동 실패한다(2026-11-28 #566 검토). 비면 지금처럼(Vault 를 쓰지 않음). 한 서비스 먼저 → 전체(ADR-0100 결정 9).
 # 켠 앱은 배포마다 secret-id 를 새로 받는다(배포 토큰 pmart-deployer). secret-id 는 .env 에만.
-# config-server 는 대상이 아니다(설정 저장소·자기 비밀은 configtree).
+# config-server 는 all 에 들지 않는다 — 목록에 config-server 를 적으면 config-server 가 Git + Vault 복합 백엔드로 비밀을 내려준다
+#   (ADR-0101: 프로필 git,vault, AppRole config-server 의 role-id·secret-id 를 configtree 파일로, 배포마다 secret-id 새로 발급).
 VAULT_APPS_FILE=$LAN/vault-apps.conf
 if [ -n "${PMART_VAULT_APPS+x}" ]; then
   VAULT_APPS=" $PMART_VAULT_APPS "
@@ -159,6 +160,7 @@ VAULT_URI="${PMART_VAULT_URI:-https://192.168.0.34:8200}"
 VAULT_CA=$LAN/tls/pmart-lan-root-ca.crt
 vault_any() { [[ "$VAULT_APPS" =~ [^[:space:]] ]]; }
 vault_on() { [ "$1" != config-server ] && vault_any && { [ "$VAULT_APPS" = " all " ] || [[ "$VAULT_APPS" == *" $1 "* ]]; }; }
+vault_cs() { [[ "$VAULT_APPS" == *" config-server "* ]]; } # ADR-0101 — config-server 복합 백엔드
 # Vault API — 배포 토큰은 표준입력으로 curl 헤더에(-H @-), 명령줄에 두지 않는다. 실패하면 빈 출력
 vault_api() {
   printf 'X-Vault-Token: %s\n' "$VAULT_DEPLOYER_TOKEN" \
@@ -1053,8 +1055,17 @@ EOF
           # GitHub fetch 는 15초에 한 번만(기본 0 = 요청마다). 앱 35개가 한꺼번에 뜨면 요청마다 fetch(약 10초, 직렬)가 밀려
           # 30초 시간 초과 → 재시작 → 다시 요청이 반복됐다(2026-11-04 배포). 대가: push 뒤 최대 15초는 이전 설정을 줄 수 있다
           echo "      SPRING_CLOUD_CONFIG_SERVER_GIT_REFRESH_RATE: \"15\""
+          if vault_cs; then
+            # Git + Vault 복합 백엔드(ADR-0101): 같은 속성은 Vault 가 이긴다. AppRole role-id·secret-id 는 아래 config-server-secrets 파일
+            vh="${VAULT_URI#*://}"; vh="${vh%%/*}"
+            echo "      SPRING_PROFILES_ACTIVE: git,vault"
+            echo "      PMART_VAULT_HOST: ${vh%%:*}"
+            echo "      PMART_VAULT_PORT: \"$( [[ "$vh" == *:* ]] && echo "${vh##*:}" || echo 8200 )\""
+            cp "$VAULT_CA" "$dir/vault-ca.pem"
+          fi
           echo "    volumes:"
           echo "      - ./config-server-secrets:/run/secrets/config-server:ro"
+          vault_cs && echo "      - ./vault-ca.pem:/etc/pmart-vault/ca.pem:ro # Vault TLS 사설 CA(ADR-0057) — VaultTrustStorePostProcessor 가 PKCS12 로"
           echo
           continue
         fi
@@ -1461,6 +1472,15 @@ EOF
     hk="$(sed -e 's/#.*//' "$LAN/config-server/github-host-key.conf" | grep -v '^[[:space:]]*$' | head -1)"
     printf '%s' "${hk%% *}" > "$d/spring.cloud.config.server.git.host-key-algorithm"
     printf '%s' "${hk#* }" > "$d/spring.cloud.config.server.git.host-key"
+    if vault_cs; then
+      # ADR-0101 결정 4: 배포마다 secret-id 를 새로 받는다(secret-id 90일 — 보관하지 않는다, #569). 값은 이 파일에만
+      rid="$(vault_api GET auth/approle/role/config-server/role-id | json_field role_id)"
+      sid="$(vault_api POST auth/approle/role/config-server/secret-id | json_field secret_id)"
+      [ -n "$rid" ] && [ -n "$sid" ]         || { echo "Vault AppRole config-server 에서 role-id·secret-id 를 못 받음 — pc2 deploy/vault/vault.sh setup" >&2; exit 1; }
+      printf '%s' "$rid" > "$d/spring.cloud.config.server.vault.app-role.role-id"
+      printf '%s' "$sid" > "$d/spring.cloud.config.server.vault.app-role.secret-id"
+      unset sid
+    fi
   fi
 
   echo "$pc ${IP[$pc]} ${SSH[$pc]}" > "$dir/target"
