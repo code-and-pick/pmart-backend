@@ -6,7 +6,7 @@
 - 사용자 결정: "디폴트는 Git 하고 운영자랑 고객 둘다 DB에 넣을래", "문서 동일한거는 같이 관리해", 초안·승인은 운영자 문서와 같게
 결정: **ADR-0094**(`docs/adr/0094-customer-rag-documents-in-db.md`)
 계약: `contracts/openapi/customer-assistant-service.yaml` 0.6.0 태그 `knowledge`, approval-service 0.8.0
-상태: **백엔드 구현·시험 끝, 배포 전**(PC 1). 배포되면 이 파일에 적는다.
+상태: **LAN 배포**(2026-11-28 — pc2 customer-assistant-service·ai-assistant-service, pc4 approval-service·api-gateway, b583a4873. `rag-ingest-customer` 29문서·127청크·FAQ 70). LAN 확인: 고객 문서 목록 29(INDEXED), 고객 토큰 403, FAQ 초안 201·버리기 204.
 먼저 볼 것: 운영자 문서 화면 요청서 `2026-11-28-request-rag-document-admin.md` — **같은 화면·같은 API 모양**이다. 다른 점만 아래에 적는다.
 
 ## 다른 점
