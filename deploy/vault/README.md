@@ -15,7 +15,8 @@
 | `config/listener-local.hcl` · `listener-tls.hcl` | listener. `tls/vault.crt`·`vault.key` 가 있으면 TLS(LAN, 기본 0.0.0.0), 없으면 TLS 없이 127.0.0.1 만 — vault.sh 가 고르고, TLS 없이 LAN 에 여는 것은 막는다 |
 | `tls/` | 서버 인증서·개인키 — **Git 제외**. PC 1 `deploy/lan/lan.sh tls-issue <pc>` 결과를 서버 PC 에 둔다 (TLS 모드는 아직 시험 안 함) |
 | `seed.sh` · `seed-map.conf` | 비밀 파일 묶음 → Vault 이관. 표(경로·필드·원본 파일)만 있고 값은 없다 |
-| `policies/*.hcl` | `pmart-read`(팀원·실행 스크립트, `pmart/shared/**` 읽기), `pmart-ops-read`(운영 비밀), `pmart-admin`(관리자) |
+| `policies/*.hcl` | `pmart-read`(팀원·실행 스크립트, `pmart/shared/**` 읽기), `pmart-ops-read`(운영 비밀), `pmart-admin`(관리자), `config-server-read`(config-server — `config/` 읽기) |
+| `verify/` | `{cipher}` 제거용: 검증(`verify-cipher.sh`)·이관(`migrate-cipher.sh`) — 아래 "{cipher} 제거" |
 | `vault.sh` | 실행기: `up · status · init · unseal · setup · logs · down` |
 | `.init/` | `init` 결과(unseal 키·root 토큰) — **Git 제외**, 옮긴 뒤 지운다 |
 
@@ -96,6 +97,25 @@ unset VAULT_TOKEN
   - `pmart-keys-lan`(PC 1 `.secrets` 98개, PC 1 이 sha256 98/98 확인) + `seed-map-lan.conf`: 11개 경로·83개 필드 일치
     (`shared/lan/{infra,signing,keycloak,service-clients,hash-keys,test-accounts,external}`, `ops/{config-server,tls,registry,alerts}`)
   - 넣지 않음(사용자 결정): `pmart-42b37` Firebase 키, 발급된 토큰(`customer-token`, `.kc-claude-dev-token`). 외부 키 11개는 두 묶음 sha256 이 같아 한 번만 넣었다.
+
+## {cipher} 제거 — config-server 가 Vault 에서 비밀을 읽는다
+
+목적: pmart-config(GitHub)의 `{cipher}` 를 없애고 서비스 비밀은 Vault 에만 둔다(ADR-0027 결정 4·7 대체 — ADR 작성 예정).
+
+| 단계 | 내용 | 상태 |
+|---|---|---|
+| 1 | `verify/verify-cipher.sh` — `{cipher}` 를 풀어 Vault 값과 sha256 비교(값 출력 없음) | 2026-11-28: 79개 중 75 일치, 4개는 형식 차이·원본 없음(이관에 지장 없음) |
+| 2 | `verify/migrate-cipher.sh` — `{cipher}` 를 풀어 `config/<서비스>,lan` 에 Spring 속성 이름 그대로 넣고 sha256 확인. `./vault.sh setup` 을 먼저 돌린다 | 2026-11-28: 44경로·82필드({cipher} 79 + kid 3) 모두 일치 |
+| 3 | config-server 를 Git + Vault 복합 백엔드로(Vault 우선), AppRole 로그인 | 예정 |
+| 4 | config-server PC(pc4)에서 pc2 Vault 접속(TLS 여부 결정) | 예정 |
+| 5 | pmart-config 에서 `{cipher}` 줄·signing.keys 목록 삭제, render.sh 암호화 단계 제거 | 예정(PC 1) |
+| 6 | ADR | 예정 |
+
+- KV v2 마운트 **`config/`** = config-server 가 내려줄 값만. 경로 `config/<spring.application.name>,<프로필>`, 필드 = Spring 속성 이름(목록은 `[n]`).
+- **목록 주의**: Spring 은 목록을 우선순위가 높은 출처 하나에서 통째로 받는다. `signing.keys[0]` 는 `private-key` 와 `kid` 를 **둘 다** Vault 에 둔다(Git 쪽 목록은 5단계에서 지운다).
+- 정책 `config-server-read`(config/data/* 읽기만), AppRole `config-server`(토큰 1h·최대 24h, secret-id 는 배포 때 관리자가 발급).
+- 같은 비밀이 `pmart/shared/lan`(파일 형식)과 `config/`(속성 형식) 두 곳에 있다. **서비스 비밀의 정본은 `config/`**, `pmart/shared/lan` 에는 config-server 를 거치지 않는 것(postgres·Keycloak·config-server 자신 등)만 남기도록 정리한다(3단계 이후).
+- 목록 추출 `verify/list-ciphers.py`, 복호화 `verify/CipherFingerprint.java`(config-server 와 같은 EncryptorFactory, Gradle 캐시 jar).
 
 ## 규칙
 - 토큰·unseal 키·비밀값을 Git·문서·일지·채팅에 넣지 않는다. 확인은 이름·글자 수로만.

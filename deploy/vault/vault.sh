@@ -80,20 +80,36 @@ case "${1:-}" in
     ;;
 
   setup)
-    read -rsp "root 또는 관리자 토큰 (입력은 보이지 않음): " VAULT_TOKEN || [ -n "${VAULT_TOKEN:-}" ]; echo
+    # 토큰: 환경변수 VAULT_TOKEN 이 있으면 그것(migrate-cipher.sh 가 넘긴다), 없으면 숨김 입력
+    if [ -z "${VAULT_TOKEN:-}" ]; then
+      read -rsp "root 또는 관리자 토큰 (입력은 보이지 않음): " VAULT_TOKEN || [ -n "${VAULT_TOKEN:-}" ]; echo
+    fi
     export VAULT_TOKEN
+    # 정책을 먼저 쓴다 — 관리자 토큰으로 돌릴 때 새 권한(config/ 마운트 등)이 바로 적용되게
     vexec -e VAULT_TOKEN vault sh -eu -c '
-      if vault secrets list -format=json | grep -q "\"pmart/\""; then
-        echo "[setup] pmart/ 마운트 이미 있음"
-      else
-        vault secrets enable -path=pmart -version=2 kv >/dev/null
-        echo "[setup] pmart/ (KV v2) 마운트"
-      fi
       for f in /vault/policies/*.hcl; do
         n="$(basename "$f" .hcl)"
         vault policy write "$n" "$f" >/dev/null
         echo "[setup] 정책 등록: $n"
       done
+      for m in pmart config; do   # pmart/ = 팀·운영 비밀, config/ = config-server 가 읽는 서비스 비밀({cipher} 대체)
+        if vault secrets list -format=json | grep -q "\"$m/\""; then
+          echo "[setup] $m/ 마운트 이미 있음"
+        else
+          vault secrets enable -path="$m" -version=2 kv >/dev/null
+          echo "[setup] $m/ (KV v2) 마운트"
+        fi
+      done
+      # config-server 로그인(AppRole). secret-id 는 배포 때 관리자가 발급해 config-server 에만 준다
+      if vault auth list -format=json | grep -q "\"approle/\""; then
+        echo "[setup] approle 인증 이미 켜짐"
+      else
+        vault auth enable approle >/dev/null
+        echo "[setup] approle 인증 켬"
+      fi
+      vault write auth/approle/role/config-server token_policies=config-server-read \
+        token_ttl=1h token_max_ttl=24h secret_id_ttl=0 secret_id_num_uses=0 >/dev/null
+      echo "[setup] AppRole config-server (정책 config-server-read, 토큰 1h·최대 24h)"
       if vault audit list 2>/dev/null | grep -q "^file/"; then
         echo "[setup] 감사 로그 이미 켜짐"
       else
