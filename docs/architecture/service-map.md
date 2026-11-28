@@ -440,8 +440,15 @@
 - ES 청크(chunking-service 색인 rag-operator·rag-customer — 읽기만) → Ollama `qwen3-embedding:0.6b`(Spring AI, CPU) → 1024차원 벡터 → 자기 pgvector. ES-First 하이브리드 RAG 의 "ES → 임베딩 → pgvector".
 - **소유**: `chunk_vector`(범위·chunkId — ES 와 같은 ID, is_active)·`embedding_cache`(DB `embedding_service`, rag-pgvector PC 2). Kafka 없음.
 - **소유하지 않음**: ES 색인(chunking-service), 문서 원본(pmart-all-docs), 질문·답(다음 단계 새 서비스), 기존 RAG 두 서비스의 pgvector(ADR-0097).
-- **API**(계약 0.1.0): `POST /internal/embedding-jobs`(chunking-service → 이 서비스, 202 — 일 줄). 놓친 알림은 10분마다 ES 와 맞춰 보기.
+- **API**(계약 0.2.0): `POST /internal/embedding-jobs`(chunking-service → 이 서비스, 202 — 일 줄; 놓친 알림은 10분마다 ES 와 맞춰 보기), `POST /internal/vector-searches`(rag-query-service → 질문 임베딩·pgvector 검색, ADR-0099).
 - **의존(동기)**: es-search(읽기), Ollama(인프라).
+
+### rag-query-service `[ADR-0099 — 2026-11-28 추가·1차 구현]`
+- 새 RAG 질문 검색(ES-First 계획 §2-1): ES BM25 먼저(운영자 POLICY ×1.5 정렬) → `SearchConfidenceEvaluator`(CPU 규칙 — 핵심어 비율 ≥0.7·상대 점수 차 ≥0.1, 원래 BM25 점수로)가 안전하면 ES 에서 끝(상위 3 카드) → 아니면 embedding-service 벡터 검색과 RRF, 벡터 1위 코사인 <0.58 이면 답변 불가. ③ 생성(LLM)은 아직 없음.
+- **소유**: 없음(DB·Kafka 없음). 판정 규칙·기준값(설정).
+- **소유하지 않음**: ES 색인(chunking-service — 읽기만), 벡터·질문 임베딩(embedding-service), 문서 원본(pmart-all-docs).
+- **API**(계약 0.1.0): `POST /internal/rag-searches`(서비스 간 — 화면 공개는 권한과 함께 따로).
+- **의존(동기)**: es-search(읽기), embedding-service `POST /internal/vector-searches`.
 
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).

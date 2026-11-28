@@ -99,7 +99,7 @@ if [ -n "${WHERE[integration-service]:-}" ]; then
 fi
 # 위 보조 구성요소가 생긴 뒤 placement 에 더한 구성요소: 그 PC 줄의 맨 뒤(보조 구성요소 뒤)로 옮겨 기존 고정 IP 를 그대로 둔다
 # (2026-11-17 사용자 "보조 컨테이너 안 건드리고 싶은데" — 줄 중간에 끼면 뒤 보조 7개가 다시 만들어진다). 새로 붙일 것도 여기에 이어 적는다
-LATE=" rider-backoffice-web cdc-backoffice-web cdc-quality-service cdc-inbound-service fleet-service transport-planning-service transport-execution-service integration-service chunking-service embedding-service docs-relay "
+LATE=" rider-backoffice-web cdc-backoffice-web cdc-quality-service cdc-inbound-service fleet-service transport-planning-service transport-execution-service integration-service chunking-service embedding-service rag-query-service docs-relay "
 for pc in "${PCS[@]}"; do
   for c in $LATE; do
     if [[ " ${COMPS[$pc]} " == *" $c "* ]]; then

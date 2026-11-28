@@ -1,0 +1,12 @@
+# 시험 전용(ADR-0029). config-server 없이 pmart-config 사본(pmart-config/)을 읽는다. ES·embedding-service 는 실제 사슬 확인(PC 1)으로.
+spring:
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: "classpath:pmart-config/application.yml,classpath:pmart-config/rag-query-service.yml"
+management:
+  tracing:
+    export:
+      zipkin:
+        endpoint: http://localhost:9411/api/v2/spans

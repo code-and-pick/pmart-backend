@@ -1,0 +1,1048 @@
+{
+ "_comment": "2차 검증(es-first-v2) 기록의 Python 지표·판정 — rag-query-service SearchConfidenceEvaluator.decide 와 같아야 한다(config cov>=0.7&relGap>=0.1)",
+ "cases": [
+  {
+   "id": "A01",
+   "set": "regression",
+   "coverage": 0.75,
+   "relGap": 0.2166,
+   "pythonAccept": true
+  },
+  {
+   "id": "A02",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.0794,
+   "pythonAccept": false
+  },
+  {
+   "id": "A03",
+   "set": "regression",
+   "coverage": 0.7143,
+   "relGap": 0.18,
+   "pythonAccept": true
+  },
+  {
+   "id": "A04",
+   "set": "regression",
+   "coverage": 0.8333,
+   "relGap": 0.0277,
+   "pythonAccept": false
+  },
+  {
+   "id": "A05",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.3461,
+   "pythonAccept": false
+  },
+  {
+   "id": "A06",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.0958,
+   "pythonAccept": false
+  },
+  {
+   "id": "A08",
+   "set": "regression",
+   "coverage": 0.1667,
+   "relGap": 0.1637,
+   "pythonAccept": false
+  },
+  {
+   "id": "A10",
+   "set": "regression",
+   "coverage": 0.25,
+   "relGap": 0.3045,
+   "pythonAccept": false
+  },
+  {
+   "id": "A11",
+   "set": "regression",
+   "coverage": 0.25,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "A12",
+   "set": "regression",
+   "coverage": 0.1667,
+   "relGap": 0.0365,
+   "pythonAccept": false
+  },
+  {
+   "id": "A13",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.0858,
+   "pythonAccept": false
+  },
+  {
+   "id": "A14",
+   "set": "regression",
+   "coverage": 0.5714,
+   "relGap": 0.3326,
+   "pythonAccept": false
+  },
+  {
+   "id": "A15",
+   "set": "regression",
+   "coverage": 0.6,
+   "relGap": 0.0569,
+   "pythonAccept": false
+  },
+  {
+   "id": "A16",
+   "set": "regression",
+   "coverage": 0.2,
+   "relGap": 0.0841,
+   "pythonAccept": false
+  },
+  {
+   "id": "A17",
+   "set": "regression",
+   "coverage": 0.4286,
+   "relGap": 0.1044,
+   "pythonAccept": false
+  },
+  {
+   "id": "A18",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "A19",
+   "set": "regression",
+   "coverage": 0.2857,
+   "relGap": 0.148,
+   "pythonAccept": false
+  },
+  {
+   "id": "B01",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2107,
+   "pythonAccept": true
+  },
+  {
+   "id": "B02",
+   "set": "regression",
+   "coverage": 0.8571,
+   "relGap": 0.1661,
+   "pythonAccept": true
+  },
+  {
+   "id": "B03",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.4625,
+   "pythonAccept": false
+  },
+  {
+   "id": "B04",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.0348,
+   "pythonAccept": false
+  },
+  {
+   "id": "B05",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2203,
+   "pythonAccept": true
+  },
+  {
+   "id": "B06",
+   "set": "regression",
+   "coverage": 0.875,
+   "relGap": 0.0969,
+   "pythonAccept": false
+  },
+  {
+   "id": "B07",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.1525,
+   "pythonAccept": true
+  },
+  {
+   "id": "A20",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.0678,
+   "pythonAccept": false
+  },
+  {
+   "id": "N01",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "N02",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.0328,
+   "pythonAccept": false
+  },
+  {
+   "id": "N03",
+   "set": "regression",
+   "coverage": 0.2,
+   "relGap": 0.012,
+   "pythonAccept": false
+  },
+  {
+   "id": "N04",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.1052,
+   "pythonAccept": false
+  },
+  {
+   "id": "N05",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.0784,
+   "pythonAccept": false
+  },
+  {
+   "id": "N06",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.073,
+   "pythonAccept": false
+  },
+  {
+   "id": "N07",
+   "set": "regression",
+   "coverage": 0.4,
+   "relGap": 0.0432,
+   "pythonAccept": false
+  },
+  {
+   "id": "N08",
+   "set": "regression",
+   "coverage": 0.1429,
+   "relGap": 0.1146,
+   "pythonAccept": false
+  },
+  {
+   "id": "A21",
+   "set": "regression",
+   "coverage": 0.4,
+   "relGap": 0.3651,
+   "pythonAccept": false
+  },
+  {
+   "id": "A22",
+   "set": "regression",
+   "coverage": 0.1667,
+   "relGap": 0.1215,
+   "pythonAccept": false
+  },
+  {
+   "id": "F01",
+   "set": "regression",
+   "coverage": 0.6,
+   "relGap": 0.0087,
+   "pythonAccept": false
+  },
+  {
+   "id": "F02",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.0186,
+   "pythonAccept": false
+  },
+  {
+   "id": "F03",
+   "set": "regression",
+   "coverage": 0.6,
+   "relGap": 0.2764,
+   "pythonAccept": false
+  },
+  {
+   "id": "P01",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.0288,
+   "pythonAccept": false
+  },
+  {
+   "id": "P02",
+   "set": "regression",
+   "coverage": 0,
+   "relGap": 0,
+   "pythonAccept": false
+  },
+  {
+   "id": "P03",
+   "set": "regression",
+   "coverage": 0,
+   "relGap": 0.1865,
+   "pythonAccept": false
+  },
+  {
+   "id": "E01",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.2579,
+   "pythonAccept": false
+  },
+  {
+   "id": "E02",
+   "set": "regression",
+   "coverage": 0.8889,
+   "relGap": 0.2359,
+   "pythonAccept": true
+  },
+  {
+   "id": "E03",
+   "set": "regression",
+   "coverage": 0.5714,
+   "relGap": 0.0448,
+   "pythonAccept": false
+  },
+  {
+   "id": "C01",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2833,
+   "pythonAccept": true
+  },
+  {
+   "id": "C02",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.0372,
+   "pythonAccept": false
+  },
+  {
+   "id": "C03",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2653,
+   "pythonAccept": true
+  },
+  {
+   "id": "C04",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.5998,
+   "pythonAccept": true
+  },
+  {
+   "id": "C05",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.481,
+   "pythonAccept": true
+  },
+  {
+   "id": "C06",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.0049,
+   "pythonAccept": false
+  },
+  {
+   "id": "C07",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.163,
+   "pythonAccept": true
+  },
+  {
+   "id": "C08",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "C09",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.0365,
+   "pythonAccept": false
+  },
+  {
+   "id": "C10",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.5901,
+   "pythonAccept": true
+  },
+  {
+   "id": "C11",
+   "set": "regression",
+   "coverage": 0.25,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "C12",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2844,
+   "pythonAccept": true
+  },
+  {
+   "id": "C13",
+   "set": "regression",
+   "coverage": 0.6,
+   "relGap": 0.2758,
+   "pythonAccept": false
+  },
+  {
+   "id": "C14",
+   "set": "regression",
+   "coverage": 0.8,
+   "relGap": 0.1609,
+   "pythonAccept": true
+  },
+  {
+   "id": "C15",
+   "set": "regression",
+   "coverage": 0.8,
+   "relGap": 0.2855,
+   "pythonAccept": true
+  },
+  {
+   "id": "C16",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.5372,
+   "pythonAccept": false
+  },
+  {
+   "id": "C17",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.4693,
+   "pythonAccept": false
+  },
+  {
+   "id": "C18",
+   "set": "regression",
+   "coverage": 0.8,
+   "relGap": 0.2542,
+   "pythonAccept": true
+  },
+  {
+   "id": "C19",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.358,
+   "pythonAccept": true
+  },
+  {
+   "id": "C20",
+   "set": "regression",
+   "coverage": 0.6667,
+   "relGap": 0.455,
+   "pythonAccept": false
+  },
+  {
+   "id": "C21",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.4991,
+   "pythonAccept": true
+  },
+  {
+   "id": "C22",
+   "set": "regression",
+   "coverage": 0.5,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "C23",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2498,
+   "pythonAccept": true
+  },
+  {
+   "id": "C24",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.6531,
+   "pythonAccept": true
+  },
+  {
+   "id": "C25",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2203,
+   "pythonAccept": true
+  },
+  {
+   "id": "C26",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.3222,
+   "pythonAccept": true
+  },
+  {
+   "id": "N01",
+   "set": "regression",
+   "coverage": 0.2,
+   "relGap": 0.0889,
+   "pythonAccept": false
+  },
+  {
+   "id": "N02",
+   "set": "regression",
+   "coverage": 0.25,
+   "relGap": 0.5625,
+   "pythonAccept": false
+  },
+  {
+   "id": "N03",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "N04",
+   "set": "regression",
+   "coverage": 0.5,
+   "relGap": 0.0445,
+   "pythonAccept": false
+  },
+  {
+   "id": "N05",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.1237,
+   "pythonAccept": false
+  },
+  {
+   "id": "N06",
+   "set": "regression",
+   "coverage": 0,
+   "relGap": 0,
+   "pythonAccept": false
+  },
+  {
+   "id": "N07",
+   "set": "regression",
+   "coverage": 0.2,
+   "relGap": 0.1404,
+   "pythonAccept": false
+  },
+  {
+   "id": "N08",
+   "set": "regression",
+   "coverage": 0.5,
+   "relGap": 0.0392,
+   "pythonAccept": false
+  },
+  {
+   "id": "R01",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.2162,
+   "pythonAccept": true
+  },
+  {
+   "id": "O01",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.1455,
+   "pythonAccept": true
+  },
+  {
+   "id": "O02",
+   "set": "regression",
+   "coverage": 0.1429,
+   "relGap": 0.1396,
+   "pythonAccept": false
+  },
+  {
+   "id": "D01",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.3293,
+   "pythonAccept": true
+  },
+  {
+   "id": "D02",
+   "set": "regression",
+   "coverage": 0.8,
+   "relGap": 0.0889,
+   "pythonAccept": false
+  },
+  {
+   "id": "D03",
+   "set": "regression",
+   "coverage": 0.3333,
+   "relGap": 0.4285,
+   "pythonAccept": false
+  },
+  {
+   "id": "D04",
+   "set": "regression",
+   "coverage": 1.0,
+   "relGap": 0.1422,
+   "pythonAccept": true
+  },
+  {
+   "id": "W01",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.1361,
+   "pythonAccept": false
+  },
+  {
+   "id": "W02",
+   "set": "regression",
+   "coverage": 0.25,
+   "relGap": 1.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "W03",
+   "set": "regression",
+   "coverage": 0.0,
+   "relGap": 0.1968,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG02-1",
+   "set": "dev",
+   "coverage": 0.25,
+   "relGap": 0.0486,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG02-2",
+   "set": "dev",
+   "coverage": 0.4286,
+   "relGap": 0.0801,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG03-1",
+   "set": "dev",
+   "coverage": 0.7273,
+   "relGap": 0.023,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG03-2",
+   "set": "dev",
+   "coverage": 0.625,
+   "relGap": 0.0197,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG04-1",
+   "set": "dev",
+   "coverage": 0.25,
+   "relGap": 0.109,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG04-2",
+   "set": "dev",
+   "coverage": 0.5,
+   "relGap": 0.0363,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG05-1",
+   "set": "dev",
+   "coverage": 0.8333,
+   "relGap": 0.1366,
+   "pythonAccept": true
+  },
+  {
+   "id": "OG05-2",
+   "set": "dev",
+   "coverage": 0.6667,
+   "relGap": 0.1382,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG07-1",
+   "set": "dev",
+   "coverage": 0.625,
+   "relGap": 0.3122,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG08-1",
+   "set": "dev",
+   "coverage": 0.2,
+   "relGap": 0.2895,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG08-2",
+   "set": "dev",
+   "coverage": 0.25,
+   "relGap": 0.1345,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG11-1",
+   "set": "dev",
+   "coverage": 0.625,
+   "relGap": 0.1236,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG11-2",
+   "set": "dev",
+   "coverage": 0.75,
+   "relGap": 0.1161,
+   "pythonAccept": true
+  },
+  {
+   "id": "OG13-1",
+   "set": "dev",
+   "coverage": 0.4,
+   "relGap": 0.1251,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG14-1",
+   "set": "dev",
+   "coverage": 0.5556,
+   "relGap": 0.0072,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG15-1",
+   "set": "dev",
+   "coverage": 0.5,
+   "relGap": 0.1782,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG15-2",
+   "set": "dev",
+   "coverage": 0.6667,
+   "relGap": 0.2268,
+   "pythonAccept": false
+  },
+  {
+   "id": "ON01-1",
+   "set": "dev",
+   "coverage": 0.2,
+   "relGap": 0.1367,
+   "pythonAccept": false
+  },
+  {
+   "id": "ON04-1",
+   "set": "dev",
+   "coverage": 0.6,
+   "relGap": 0.2597,
+   "pythonAccept": false
+  },
+  {
+   "id": "ON05-1",
+   "set": "dev",
+   "coverage": 1.0,
+   "relGap": 0.1436,
+   "pythonAccept": true
+  },
+  {
+   "id": "OC01-1",
+   "set": "dev",
+   "coverage": 0.75,
+   "relGap": 0.3939,
+   "pythonAccept": true
+  },
+  {
+   "id": "OR01-1",
+   "set": "dev",
+   "coverage": 0.6,
+   "relGap": 0.1332,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG03-1",
+   "set": "dev",
+   "coverage": 0.0,
+   "relGap": 0.0921,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG03-2",
+   "set": "dev",
+   "coverage": 0.25,
+   "relGap": 0.1139,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG04-1",
+   "set": "dev",
+   "coverage": 0.3333,
+   "relGap": 0.0731,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG04-2",
+   "set": "dev",
+   "coverage": 0.0,
+   "relGap": 0.1365,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG05-1",
+   "set": "dev",
+   "coverage": 0.0,
+   "relGap": 0.2256,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG06-1",
+   "set": "dev",
+   "coverage": 1.0,
+   "relGap": 0.1982,
+   "pythonAccept": true
+  },
+  {
+   "id": "CG06-2",
+   "set": "dev",
+   "coverage": 0.25,
+   "relGap": 0.1277,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG09-1",
+   "set": "dev",
+   "coverage": 1.0,
+   "relGap": 0.4984,
+   "pythonAccept": true
+  },
+  {
+   "id": "CG10-1",
+   "set": "dev",
+   "coverage": 1.0,
+   "relGap": 0.3865,
+   "pythonAccept": true
+  },
+  {
+   "id": "CG10-2",
+   "set": "dev",
+   "coverage": 0.5,
+   "relGap": 0.1807,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG12-1",
+   "set": "dev",
+   "coverage": 1.0,
+   "relGap": 0.421,
+   "pythonAccept": true
+  },
+  {
+   "id": "CN01-1",
+   "set": "dev",
+   "coverage": 0.4,
+   "relGap": 0.1902,
+   "pythonAccept": false
+  },
+  {
+   "id": "CN02-1",
+   "set": "dev",
+   "coverage": 0.0,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "CN04-1",
+   "set": "dev",
+   "coverage": 0.0,
+   "relGap": 0.0077,
+   "pythonAccept": false
+  },
+  {
+   "id": "CC01-1",
+   "set": "dev",
+   "coverage": 0.5,
+   "relGap": 0.0445,
+   "pythonAccept": false
+  },
+  {
+   "id": "CR01-1",
+   "set": "dev",
+   "coverage": 0.6667,
+   "relGap": 0.2453,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG01-1",
+   "set": "final",
+   "coverage": 1.0,
+   "relGap": 0.1215,
+   "pythonAccept": true
+  },
+  {
+   "id": "OG01-2",
+   "set": "final",
+   "coverage": 0.4,
+   "relGap": 0.0413,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG01-3",
+   "set": "final",
+   "coverage": 0.1667,
+   "relGap": 0.0288,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG06-1",
+   "set": "final",
+   "coverage": 0.8333,
+   "relGap": 0.1405,
+   "pythonAccept": true
+  },
+  {
+   "id": "OG09-1",
+   "set": "final",
+   "coverage": 0.6,
+   "relGap": 0.1545,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG09-2",
+   "set": "final",
+   "coverage": 0.8,
+   "relGap": 0.3331,
+   "pythonAccept": true
+  },
+  {
+   "id": "OG09-3",
+   "set": "final",
+   "coverage": 0.75,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG10-1",
+   "set": "final",
+   "coverage": 0.75,
+   "relGap": 0.0,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG12-1",
+   "set": "final",
+   "coverage": 1.0,
+   "relGap": 0.2112,
+   "pythonAccept": true
+  },
+  {
+   "id": "OG12-2",
+   "set": "final",
+   "coverage": 0.375,
+   "relGap": 0.2638,
+   "pythonAccept": false
+  },
+  {
+   "id": "OG16-1",
+   "set": "final",
+   "coverage": 1.0,
+   "relGap": 0.0247,
+   "pythonAccept": false
+  },
+  {
+   "id": "ON02-1",
+   "set": "final",
+   "coverage": 0.3333,
+   "relGap": 0.0183,
+   "pythonAccept": false
+  },
+  {
+   "id": "ON03-1",
+   "set": "final",
+   "coverage": 0.2,
+   "relGap": 0.2348,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG01-1",
+   "set": "final",
+   "coverage": 0,
+   "relGap": 0.1467,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG01-2",
+   "set": "final",
+   "coverage": 0.2,
+   "relGap": 0.0484,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG02-1",
+   "set": "final",
+   "coverage": 1.0,
+   "relGap": 0.0289,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG02-2",
+   "set": "final",
+   "coverage": 0.8,
+   "relGap": 0.273,
+   "pythonAccept": true
+  },
+  {
+   "id": "CG07-1",
+   "set": "final",
+   "coverage": 0.6667,
+   "relGap": 0.0289,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG07-2",
+   "set": "final",
+   "coverage": 0.6667,
+   "relGap": 0.0068,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG08-1",
+   "set": "final",
+   "coverage": 1.0,
+   "relGap": 0.0382,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG11-1",
+   "set": "final",
+   "coverage": 0.0,
+   "relGap": 0.0562,
+   "pythonAccept": false
+  },
+  {
+   "id": "CG13-1",
+   "set": "final",
+   "coverage": 0.0,
+   "relGap": 0.0738,
+   "pythonAccept": false
+  },
+  {
+   "id": "CN03-1",
+   "set": "final",
+   "coverage": 0.5,
+   "relGap": 0.3129,
+   "pythonAccept": false
+  }
+ ]
+}

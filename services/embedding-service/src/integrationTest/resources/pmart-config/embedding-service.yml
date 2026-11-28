@@ -12,3 +12,7 @@ pmart:
     dim: 1024 # 스키마 vector(1024) 와 같아야 한다(qwen3-embedding:0.6b = 1024)
     batch-size: 8
     reconcile-interval: PT10M # ES 와 pgvector 를 맞춰 보는 주기(놓친 알림·실패 보충)
+    # 질문 임베딩 지시문(ADR-0099 — 벡터 검색 API). 문서 쪽에는 붙이지 않는다. 바꾸면 2차 검증(docs/rag/verification/2026-11-28/es-first-v2)과 같은 값인지 확인
+    query-instructions:
+      OPERATOR: "Instruct: Given a question about company policy or operating procedures, retrieve the document passages that answer it\nQuery: "
+      CUSTOMER: "Instruct: Given a customer's question to an online grocery store's customer center, retrieve the guide passages that answer it\nQuery: "

@@ -70,6 +70,7 @@ val services = listOf<String>(
     "integration-service", // 문서 저장소(pmart-all-docs) 웹훅 → 파일 내용 추출 → 청킹 서비스로 전달(Spring Integration, ADR-0095)
     "chunking-service", // 문서 청킹 → Elasticsearch RAG 색인(Spring AI 마크다운 리더, ADR-0096)
     "embedding-service", // ES 청크 → Ollama qwen3-embedding → 자기 pgvector(ADR-0098)
+    "rag-query-service", // 새 RAG 질문 검색 — ES 먼저(SearchConfidenceEvaluator) → 벡터(embedding-service) (ADR-0099)
     "backoffice-bff",
     "audit-service",
     "notification-service",

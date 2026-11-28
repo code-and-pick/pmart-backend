@@ -29,7 +29,9 @@ embedding-service (8516)  ── Spring AI Ollama ──  ADR-0098
    ▼
 PostgreSQL + pgvector  rag-pgvector (PC 2) DB embedding_service — chunk_vector(같은 chunkId) · embedding_cache
 
-(다음) 새 질문·답 서비스: ES BM25 먼저 → 부족하면 질문 임베딩 → pgvector → 합치기 → 생성
+rag-query-service (8517) ── SearchConfidenceEvaluator ──  ADR-0099
+   질문 → ES BM25 → 판정(핵심어 비율·상대 점수 차) → ES 에서 끝(상위 3 카드) 또는 embedding-service 벡터 검색 → RRF → 답변 불가 판정
+   (③ 생성은 아직)
 ```
 
 ## 2. 서비스별 역할과 범위
@@ -39,7 +41,7 @@ PostgreSQL + pgvector  rag-pgvector (PC 2) DB embedding_service — chunk_vector
 | **integration-service** (ADR-0095) | 문서 저장소 웹훅을 받아 바뀐 파일(추가·수정·삭제)을 확인하고, `.md` 를 GitHub API 로 그 커밋 판에서 읽어 내용 추출 → chunking-service 로 전달 | **Spring Integration**(이 서비스에만) — HTTP inbound gateway·filter·split·ExecutorChannel·retry advice | 없음(DB·Kafka·로컬 파일 없음) | 청킹·ES·임베딩 |
 | **chunking-service** (ADR-0096) | 추출 내용을 청킹해 ES 에 전달(문서 단위로 바꿔 넣기) | **Spring AI** `MarkdownDocumentReader`(제목별)·`TokenTextSplitter`(긴 절) | ES 색인 rag-operator·rag-customer | 임베딩·pgvector |
 | **embedding-service** (ADR-0098) | ES 에 저장된 청크를 Ollama qwen3-embedding 의 말뭉치로 넘겨 고정 벡터로 바꾸고 pgvector 에 저장 | **Spring AI Ollama**(`OllamaApi` `/api/embed`, 새 RAG 에서 이 서비스에만) | pgvector `chunk_vector`·`embedding_cache`(DB embedding_service) | ES 쓰기(읽기만), 질문·답 |
-| (다음) 질문·답 서비스 | ES 먼저 → pgvector → 생성 | — | — | — |
+| **rag-query-service** (ADR-0099) | 질문을 ES BM25 먼저 → SearchConfidenceEvaluator 판정 → ES 에서 끝(카드 3) 또는 벡터(embedding-service API)·RRF·답변 불가 | CPU 규칙(모델 없음) | 없음(설정만) | ③ 생성(아직), 색인 쓰기 |
 
 ## 3. 데이터
 

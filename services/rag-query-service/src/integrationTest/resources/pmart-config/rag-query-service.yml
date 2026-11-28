@@ -1,0 +1,20 @@
+# rag-query-service 고유 설정(모든 프로필). 새 RAG 질문 검색 — ES 먼저(SearchConfidenceEvaluator) → 벡터(embedding-service)(ADR-0099). DB·Kafka 없음. ADR-0029
+# 기준값은 ES-First 2차 검증에서 dev+회귀로 고정한 값(docs/rag/verification/2026-11-28/es-first-v2/config.json) — 바꾸면 새 dev·final 질문군으로 다시 잰다
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration # DB 없음
+server:
+  port: 8517
+pmart:
+  rag-query:
+    elasticsearch-url: http://localhost:9200
+    embedding-url: http://localhost:8516
+    policy-boost: 1.5 # 운영자 검색 POLICY 문서 점수 곱(정렬에만)
+    candidates: 20
+    min-coverage: 0.7 # ES 종료: 핵심어 비율
+    min-rel-gap: 0.1 # ES 종료: 1·2위 상대 점수 차(원래 BM25 점수)
+    cards: 3 # ES 에서 끝낼 때 상위 3 카드
+    no-answer-cosine: 0.58 # 넘긴 질문: 벡터 1위 코사인이 이보다 낮으면 답변 불가
+    rrf-k: 60
+    timeout: 30s

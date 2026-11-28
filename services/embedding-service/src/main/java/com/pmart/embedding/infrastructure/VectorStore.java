@@ -114,6 +114,23 @@ public class VectorStore {
     return n != null && all != null && n == chunkIds.size() && all == chunkIds.size();
   }
 
+  /** 벡터 검색 결과 한 줄. */
+  public record VectorHit(String chunkId, String documentId, String sectionPath, double cosine) {}
+
+  /** 범위의 ACTIVE 청크 중 질문 벡터와 코사인이 가까운 순(HNSW). */
+  public java.util.List<VectorHit> nearest(Scope scope, float[] query, int size) {
+    String q = literal(query);
+    return jdbc.query(
+        "SELECT chunk_id, document_id, section_path, 1 - (embedding <=> ?::vector) FROM chunk_vector"
+            + " WHERE access_scope = ? AND is_active ORDER BY embedding <=> ?::vector LIMIT ?",
+        (rs, i) ->
+            new VectorHit(rs.getString(1), rs.getString(2), rs.getString(3), rs.getDouble(4)),
+        q,
+        scope.name(),
+        q,
+        size);
+  }
+
   /** 범위의 ACTIVE 문서 → 문서 판 해시(맞춰 보기용). */
   public Map<String, String> activeDocuments(Scope scope) {
     Map<String, String> out = new HashMap<>();

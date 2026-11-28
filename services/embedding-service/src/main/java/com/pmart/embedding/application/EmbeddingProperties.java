@@ -13,6 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param batchSize Ollama 한 번에 보낼 글 수
  * @param reconcileInterval ES 와 pgvector 를 맞춰 보는 주기(놓친 알림 보충)
  * @param ollama Ollama 설정
+ * @param queryInstructions 질문 임베딩 앞에 붙이는 지시문(범위별 OPERATOR·CUSTOMER — Qwen3-Embedding 권장, 문서 쪽에는 붙이지
+ *     않음)
  */
 @ConfigurationProperties("pmart.embedding")
 public record EmbeddingProperties(
@@ -21,7 +23,8 @@ public record EmbeddingProperties(
     int dim,
     int batchSize,
     @Nullable Duration reconcileInterval,
-    @Nullable Ollama ollama) {
+    @Nullable Ollama ollama,
+    java.util.@Nullable Map<String, String> queryInstructions) {
 
   /**
    * @param baseUrl Ollama 주소
@@ -56,6 +59,15 @@ public record EmbeddingProperties(
     if (batchSize <= 0) {
       batchSize = 8;
     }
+  }
+
+  /** 범위의 질문 지시문(없으면 빈 문자열). */
+  public String queryInstruction(String scope) {
+    if (queryInstructions == null) {
+      return "";
+    }
+    String v = queryInstructions.get(scope);
+    return v == null ? "" : v;
   }
 
   public Duration reconcileEvery() {

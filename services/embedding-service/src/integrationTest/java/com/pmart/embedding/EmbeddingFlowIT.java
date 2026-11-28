@@ -220,6 +220,31 @@ class EmbeddingFlowIT {
   }
 
   @Test
+  void vectorSearchReturnsActiveChunksOfThatScopeOnly() throws Exception {
+    String doc = "operator/mfc/vs.md";
+    putChunk("rag-operator", "v0", doc, "vh", 0, "ACTIVE");
+    notifyJob(doc, List.of("rag-operator"));
+    await(() -> active("OPERATOR", doc) == 1);
+    var r =
+        RestClient.create()
+            .post()
+            .uri("http://localhost:" + port + "/api/v1/internal/vector-searches")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Idempotency-Key", UUID.randomUUID().toString())
+            .header("X-Source-System", "rag-query-service")
+            .body(Map.of("scope", "rag-operator", "question", "질문", "size", 50))
+            .retrieve()
+            .body(String.class);
+    var json = tools.jackson.databind.json.JsonMapper.builder().build().readTree(r);
+    assertThat(json.path("model").asString()).isEqualTo("fake");
+    assertThat(json.path("hits").size()).isPositive();
+    for (var h : json.path("hits")) {
+      assertThat(h.path("cosine").isNumber()).isTrue();
+      assertThat(h.path("documentId").asString()).doesNotStartWith("customer/");
+    }
+  }
+
+  @Test
   void reconcileFillsMissedDocumentsPerScope() throws Exception {
     String app = "customer/customer_app/08-order-cancel.md";
     putChunk("rag-customer", "c0", app, "k1", 0, "ACTIVE");

@@ -1,0 +1,4326 @@
+[
+ {
+  "id": "A01",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.75,
+   0.75
+  ],
+  "relGap": [
+   0.2166,
+   0.2166
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/order_claim/01-order-amount.md | 제7조 (봉투값)",
+   "customer/customer_app/14-refund.md | 제4조 (봉투값 환불)",
+   "customer/customer_app/06-order-payment-fees.md | 제4조 (봉투값)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 341
+  },
+  "httpMs": 438.7
+ },
+ {
+  "id": "A02",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0794,
+   0.0794
+  ],
+  "javaCos1": 0.7700055152194261,
+  "pythonCos1": 0.77,
+  "javaEvidence": [
+   "operator/order_claim/02-payment-order-status.md | 제7조 (결제 후 주소·연락처·요청 사항)",
+   "customer/customer_app/07-delivery-area-address.md | 제5조 (결제 뒤 주소·연락처 변경)",
+   "operator/order_claim/02-payment-order-status.md | 제8조 (예약배달 시간 변경)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5714,
+  "millis": {
+   "es": 308,
+   "vector": 258,
+   "embed": 181
+  },
+  "httpMs": 572.3
+ },
+ {
+  "id": "A03",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.7143,
+   0.7143
+  ],
+  "relGap": [
+   0.18,
+   0.18
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/commerce/01-product-sku.md | 제6조 (구매 수량 상한)",
+   "operator/commerce/07-cart.md | 제4조 (담기와 수량 변경)",
+   "operator/order_claim/01-order-amount.md | 제3조 (구매 수량 상한)"
+  ],
+  "phraseMatch": 0.1667,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4286,
+  "millis": {
+   "es": 291
+  },
+  "httpMs": 295.1
+ },
+ {
+  "id": "A04",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.8333,
+   0.8333
+  ],
+  "relGap": [
+   0.0277,
+   0.0277
+  ],
+  "javaCos1": 0.7097131071765324,
+  "pythonCos1": 0.7097,
+  "javaEvidence": [
+   "operator/delivery/04-pickup-completion-failure.md | 제3조 (전달 완료)",
+   "operator/delivery/04-pickup-completion-failure.md | 제2조 (픽업 완료 판정)",
+   "operator/rider_app/03-pickup-delivery.md | 제3조 (고객 도착과 전달 완료)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 304,
+   "vector": 229,
+   "embed": 175
+  },
+  "httpMs": 537.2
+ },
+ {
+  "id": "A05",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.3461,
+   0.3461
+  ],
+  "javaCos1": 0.7158034487787377,
+  "pythonCos1": 0.7163,
+  "javaEvidence": [
+   "operator/order_claim/01-order-amount.md | 제10조 (나눠 배송)",
+   "operator/delivery/01-service-area.md | 제5조 (배송 조건)",
+   "operator/tms/02-dispatch-planning.md | 제3조 (차량 기준)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 309,
+   "vector": 216,
+   "embed": 162
+  },
+  "httpMs": 551.3
+ },
+ {
+  "id": "A06",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0958,
+   0.0958
+  ],
+  "javaCos1": 0.7256457046059207,
+  "pythonCos1": 0.7256,
+  "javaEvidence": [
+   "operator/order_claim/01-order-amount.md | 제12조 (주류)",
+   "customer/customer_app/06-order-payment-fees.md | 제8조 (주류 구매)",
+   "operator/order_claim/02-payment-order-status.md | 제4조 (주문 확정)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 303,
+   "vector": 227,
+   "embed": 176
+  },
+  "httpMs": 535.3
+ },
+ {
+  "id": "A08",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.1667,
+   0.1667
+  ],
+  "relGap": [
+   0.1637,
+   0.1637
+  ],
+  "javaCos1": 0.5307104198007534,
+  "pythonCos1": 0.5307,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1667,
+  "millis": {
+   "es": 289,
+   "vector": 231,
+   "embed": 178
+  },
+  "httpMs": 534.7
+ },
+ {
+  "id": "A10",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.3045,
+   0.3045
+  ],
+  "javaCos1": 0.511855200286403,
+  "pythonCos1": 0.5119,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 306,
+   "vector": 240,
+   "embed": 186
+  },
+  "httpMs": 569.4
+ },
+ {
+  "id": "A11",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.48691014672432487,
+  "pythonCos1": 0.4869,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 295,
+   "vector": 186,
+   "embed": 136
+  },
+  "httpMs": 510.0
+ },
+ {
+  "id": "A12",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.1667,
+   0.1667
+  ],
+  "relGap": [
+   0.0365,
+   0.0365
+  ],
+  "javaCos1": 0.46277037041012736,
+  "pythonCos1": 0.4628,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1667,
+  "millis": {
+   "es": 300,
+   "vector": 199,
+   "embed": 148
+  },
+  "httpMs": 529.2
+ },
+ {
+  "id": "A13",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0858,
+   0.0858
+  ],
+  "javaCos1": 0.7907811375801322,
+  "pythonCos1": 0.7908,
+  "javaEvidence": [
+   "operator/order_claim/04-shortage.md | 제2조 (결품의 범위)",
+   "operator/mfc/04-picking-packing.md | 제4조 (결품 보고)",
+   "operator/mfc/04-picking-packing.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 305,
+   "vector": 183,
+   "embed": 130
+  },
+  "httpMs": 515.4
+ },
+ {
+  "id": "A14",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5714,
+   0.5714
+  ],
+  "relGap": [
+   0.3326,
+   0.3326
+  ],
+  "javaCos1": 0.7757559819657849,
+  "pythonCos1": 0.7758,
+  "javaEvidence": [
+   "operator/mfc/02-task-assignment.md | 제7조 (배정 추천과 작업 시작)",
+   "operator/mfc/02-task-assignment.md | 제2조 (배정 원칙)",
+   "operator/mfc/02-task-assignment.md | PMart MFC 작업 배정 정책"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5714,
+  "millis": {
+   "es": 288,
+   "vector": 257,
+   "embed": 203
+  },
+  "httpMs": 570.4
+ },
+ {
+  "id": "A15",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6,
+   0.6
+  ],
+  "relGap": [
+   0.0569,
+   0.0569
+  ],
+  "javaCos1": 0.753829569081022,
+  "pythonCos1": 0.7538,
+  "javaEvidence": [
+   "operator/cdc_wms/03-replenishment-transfer-departure.md | 제1조 (목적)",
+   "operator/cdc_wms/03-replenishment-transfer-departure.md | 제3조 (한 요청은 한 번만 출발)",
+   "operator/cdc_wms/03-replenishment-transfer-departure.md | 제2조 (피킹 위치 자동 보충)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.6,
+  "millis": {
+   "es": 283,
+   "vector": 229,
+   "embed": 179
+  },
+  "httpMs": 517.7
+ },
+ {
+  "id": "A16",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.0841,
+   0.0841
+  ],
+  "javaCos1": 0.533669455986392,
+  "pythonCos1": 0.5337,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 283,
+   "vector": 221,
+   "embed": 168
+  },
+  "httpMs": 509.5
+ },
+ {
+  "id": "A17",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.4286,
+   0.4286
+  ],
+  "relGap": [
+   0.1044,
+   0.1044
+  ],
+  "javaCos1": 0.6819037361375305,
+  "pythonCos1": 0.6819,
+  "javaEvidence": [
+   "operator/order_claim/01-order-amount.md | 제4조 (최소 주문금액)",
+   "customer/customer_app/06-order-payment-fees.md | 제2조 (최소 주문금액)",
+   "customer/customer_app/11-shortage.md | 제4조 (남은 금액이 최소 주문금액보다 적어진 경우)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4286,
+  "millis": {
+   "es": 311,
+   "vector": 230,
+   "embed": 172
+  },
+  "httpMs": 565.2
+ },
+ {
+  "id": "A18",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.77959801481898,
+  "pythonCos1": 0.7796,
+  "javaEvidence": [
+   "operator/order_claim/01-order-amount.md | 제5조 (배달팁)",
+   "customer/customer_app/06-order-payment-fees.md | 제3조 (배달팁)",
+   "operator/order_claim/01-order-amount.md | 제6조 (첫 구매)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 287,
+   "vector": 218,
+   "embed": 165
+  },
+  "httpMs": 523.7
+ },
+ {
+  "id": "A19",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.2857,
+   0.2857
+  ],
+  "relGap": [
+   0.148,
+   0.148
+  ],
+  "javaCos1": 0.7155416700492526,
+  "pythonCos1": 0.7155,
+  "javaEvidence": [
+   "operator/mfc/04-picking-packing.md | 제2조 (피킹 작업)",
+   "operator/tms/02-dispatch-planning.md | 제7조 (여러 센터 방문)",
+   "operator/mfc/04-picking-packing.md | PMart MFC 피킹·포장 정책"
+  ],
+  "phraseMatch": 0.1667,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2857,
+  "millis": {
+   "es": 299,
+   "vector": 255,
+   "embed": 198
+  },
+  "httpMs": 576.5
+ },
+ {
+  "id": "B01",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2107,
+   0.2107
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/rider_app/04-earnings.md | 제4조 (지급일)",
+   "operator/rider_app/04-earnings.md | PMart 라이더 수행료·지급 정책",
+   "operator/rider_app/04-earnings.md | 제2조 (수행료의 결정)"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.75,
+  "millis": {
+   "es": 284
+  },
+  "httpMs": 309.0
+ },
+ {
+  "id": "B02",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8571,
+   0.8571
+  ],
+  "relGap": [
+   0.1661,
+   0.1661
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/mfc/06-inventory-quality.md | 제6조 (본사 승인 기준)",
+   "operator/backoffice/03-approval.md | 제2조 (승인이 필요한 변경과 승인자)",
+   "operator/mfc/06-inventory-quality.md | 제4조 (재고 정정)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5714,
+  "millis": {
+   "es": 295
+  },
+  "httpMs": 299.6
+ },
+ {
+  "id": "B03",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.4625,
+   0.4625
+  ],
+  "javaCos1": 0.7690928532856353,
+  "pythonCos1": 0.7691,
+  "javaEvidence": [
+   "operator/backoffice/08-hr-employee-management.md | 제4조 (사번)",
+   "operator/backoffice/04-personal-info-access.md | 제6조 (직원의 의무)",
+   "operator/commerce/08-display-numbers.md | 제3조 (화면 번호 형식)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 291,
+   "vector": 191,
+   "embed": 136
+  },
+  "httpMs": 503.3
+ },
+ {
+  "id": "B04",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0348,
+   0.0348
+  ],
+  "javaCos1": 0.7810501382231383,
+  "pythonCos1": 0.7808,
+  "javaEvidence": [
+   "operator/backoffice/03-approval.md | 제2조 (승인이 필요한 변경과 승인자)",
+   "operator/backoffice/03-approval.md | 제4조 (요청과 제출)",
+   "operator/backoffice/03-approval.md | 제3조 (자기 승인 금지)"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 300,
+   "vector": 192,
+   "embed": 137
+  },
+  "httpMs": 520.1
+ },
+ {
+  "id": "B05",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2203,
+   0.2203
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/cdc_wms/02-lot-shelf-life.md | 제3조 (총 소비기간과 잔여일수)",
+   "operator/cdc_wms/02-lot-shelf-life.md | 제4조 (최소 잔여일수)",
+   "operator/cdc_wms/02-lot-shelf-life.md | PMart CDC LOT·소비기한 관리 정책"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5714,
+  "millis": {
+   "es": 289
+  },
+  "httpMs": 309.3
+ },
+ {
+  "id": "B06",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.875,
+   0.875
+  ],
+  "relGap": [
+   0.0969,
+   0.0969
+  ],
+  "javaCos1": 0.7327365792926205,
+  "pythonCos1": 0.7327,
+  "javaEvidence": [
+   "operator/order_claim/01-order-amount.md | 제9조 (가격 유효시간)",
+   "operator/common/02-business-overview.md | 제7조 (시간 기준)",
+   "operator/commerce/02-pricing-promotions.md | 제12조 (행사 만들기와 승인)"
+  ],
+  "phraseMatch": 0.7143,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 291,
+   "vector": 246,
+   "embed": 191
+  },
+  "httpMs": 557.8
+ },
+ {
+  "id": "B07",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.1525,
+   0.1525
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/rider_app/02-operation-dispatch.md | 제3조 (배차 방식)",
+   "operator/delivery/03-dispatch.md | 제3조 (배차 방식)",
+   "operator/delivery/03-dispatch.md | 제4조 (제안받을 수 있는 라이더)"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 296
+  },
+  "httpMs": 315.1
+ },
+ {
+  "id": "A20",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0678,
+   0.0678
+  ],
+  "javaCos1": 0.6076141648637573,
+  "pythonCos1": 0.6076,
+  "javaEvidence": [
+   "operator/backoffice/09-lookup-status-metrics.md | 제6조 (지금 할 일 건수)",
+   "operator/mfc/01-worker-qualification-shift.md | 제8조 (휴게)",
+   "operator/rider_app/04-earnings.md | 제8조 (이의 신청)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 282,
+   "vector": 218,
+   "embed": 155
+  },
+  "httpMs": 515.9
+ },
+ {
+  "id": "N01",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.5844755227165781,
+  "pythonCos1": 0.5197,
+  "javaEvidence": [
+   "operator/commerce/05-reviews.md | 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+   "operator/cdc_wms/02-lot-shelf-life.md | 제3조 (총 소비기간과 잔여일수)",
+   "operator/commerce/07-cart.md | 제2조 (장바구니를 쓸 수 있는 사람)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 259,
+   "vector": 259,
+   "embed": 206
+  },
+  "httpMs": 545.1
+ },
+ {
+  "id": "N02",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0328,
+   0.0328
+  ],
+  "javaCos1": 0.49195641375113186,
+  "pythonCos1": 0.5336,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 276,
+   "vector": 203,
+   "embed": 152
+  },
+  "httpMs": 503.6
+ },
+ {
+  "id": "N03",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.012,
+   0.012
+  ],
+  "javaCos1": 0.5214883633879785,
+  "pythonCos1": 0.5231,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 291,
+   "vector": 198,
+   "embed": 146
+  },
+  "httpMs": 508.2
+ },
+ {
+  "id": "N04",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.1052,
+   0.1052
+  ],
+  "javaCos1": 0.5712541086957107,
+  "pythonCos1": 0.5114,
+  "javaEvidence": [],
+  "phraseMatch": 0.2,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 284,
+   "vector": 222,
+   "embed": 173
+  },
+  "httpMs": 511.0
+ },
+ {
+  "id": "N05",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0784,
+   0.0784
+  ],
+  "javaCos1": 0.4428339928340319,
+  "pythonCos1": 0.5224,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 285,
+   "vector": 206,
+   "embed": 152
+  },
+  "httpMs": 511.7
+ },
+ {
+  "id": "N06",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.073,
+   0.073
+  ],
+  "javaCos1": 0.5196382596049117,
+  "pythonCos1": 0.4847,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 277,
+   "vector": 208,
+   "embed": 156
+  },
+  "httpMs": 505.2
+ },
+ {
+  "id": "N07",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.4,
+   0.4
+  ],
+  "relGap": [
+   0.0432,
+   0.0432
+  ],
+  "javaCos1": 0.5759784617244936,
+  "pythonCos1": 0.5468,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 272,
+   "vector": 266,
+   "embed": 215
+  },
+  "httpMs": 566.7
+ },
+ {
+  "id": "N08",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.1429,
+   0.1429
+  ],
+  "relGap": [
+   0.1146,
+   0.1146
+  ],
+  "javaCos1": 0.5657917959119714,
+  "pythonCos1": 0.5592,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1429,
+  "millis": {
+   "es": 290,
+   "vector": 282,
+   "embed": 229
+  },
+  "httpMs": 592.0
+ },
+ {
+  "id": "A22",
+  "set": "regression",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.1667,
+   0.1667
+  ],
+  "relGap": [
+   0.1215,
+   0.1215
+  ],
+  "javaCos1": 0.5909103642808998,
+  "pythonCos1": 0.5909,
+  "javaEvidence": [
+   "operator/commerce/08-display-numbers.md | 제2조 (화면 번호와 시스템 번호)",
+   "operator/tms/02-dispatch-planning.md | 제10조 (운송지시서)",
+   "operator/common/02-business-overview.md | 제13조 (업무 처리의 기본 원칙)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1667,
+  "millis": {
+   "es": 291,
+   "vector": 227,
+   "embed": 176
+  },
+  "httpMs": 532.5
+ },
+ {
+  "id": "F01",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6,
+   0.6
+  ],
+  "relGap": [
+   0.0087,
+   0.0087
+  ],
+  "javaCos1": 0.7558320854351831,
+  "pythonCos1": 0.7558,
+  "javaEvidence": [
+   "operator/order_claim/07-misdelivery.md | 제2조 (오배송 확인)",
+   "operator/order_claim/07-misdelivery.md | 제1조 (목적)",
+   "operator/order_claim/07-misdelivery.md | 제3조 (귀책 기록)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.6,
+  "millis": {
+   "es": 287,
+   "vector": 202,
+   "embed": 150
+  },
+  "httpMs": 515.7
+ },
+ {
+  "id": "F02",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0186,
+   0.0186
+  ],
+  "javaCos1": 0.7087089109707742,
+  "pythonCos1": 0.7087,
+  "javaEvidence": [
+   "operator/order_claim/06-return-exchange.md | 제8조 (반품 취소 때 낸 회수비)",
+   "operator/order_claim/06-return-exchange.md | 제4조 (회수비)",
+   "operator/delivery/05-incidents-help-recovery.md | 제5조 (고객 반품 회수 배송)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 299,
+   "vector": 165,
+   "embed": 113
+  },
+  "httpMs": 487.8
+ },
+ {
+  "id": "F03",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6,
+   0.6
+  ],
+  "relGap": [
+   0.2764,
+   0.2764
+  ],
+  "javaCos1": 0.7384473048770877,
+  "pythonCos1": 0.7372,
+  "javaEvidence": [
+   "operator/backoffice/04-personal-info-access.md | 제4조 (원문 열람)",
+   "operator/backoffice/04-personal-info-access.md | 제6조 (직원의 의무)",
+   "operator/backoffice/04-personal-info-access.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.2222,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 280,
+   "vector": 215,
+   "embed": 164
+  },
+  "httpMs": 516.3
+ },
+ {
+  "id": "P01",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0288,
+   0.0288
+  ],
+  "javaCos1": 0.5581099446553233,
+  "pythonCos1": 0.5581,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 297,
+   "vector": 191,
+   "embed": 139
+  },
+  "httpMs": 492.5
+ },
+ {
+  "id": "E01",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.2579,
+   0.2579
+  ],
+  "javaCos1": 0.7986598016830471,
+  "pythonCos1": 0.7987,
+  "javaEvidence": [
+   "customer/customer_app/14-refund.md | 제7조 (쿠폰을 쓴 주문)",
+   "operator/commerce/02-pricing-promotions.md | 제10조 (쿠폰의 사용·해제·복원)",
+   "operator/order_claim/05-refund.md | 제3조 (환불 금액 기준)"
+  ],
+  "phraseMatch": 0.1667,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 288,
+   "vector": 303,
+   "embed": 247
+  },
+  "httpMs": 614.2
+ },
+ {
+  "id": "E02",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8889,
+   0.8889
+  ],
+  "relGap": [
+   0.2359,
+   0.2359
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/backoffice/05-customer-center-cases.md | 제15조 (상담 본인 확인과 주문 확인)",
+   "operator/backoffice/05-customer-center-cases.md | 제15조 (상담 본인 확인과 주문 확인)",
+   "operator/backoffice/09-lookup-status-metrics.md | 제3조 (통합 조회)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2222,
+  "millis": {
+   "es": 284
+  },
+  "httpMs": 308.9
+ },
+ {
+  "id": "E03",
+  "set": "regression",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5714,
+   0.5714
+  ],
+  "relGap": [
+   0.0448,
+   0.0448
+  ],
+  "javaCos1": 0.6811002061128318,
+  "pythonCos1": 0.6811,
+  "javaEvidence": [
+   "operator/order_claim/03-cancel.md | 제2조 (취소 가능 시점)",
+   "operator/order_claim/03-cancel.md | 제3조 (고객센터 대리 취소)",
+   "operator/mfc/07-supervisor-controls.md | 제7조 (관리자 판단 주문 취소)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2857,
+  "millis": {
+   "es": 293,
+   "vector": 272,
+   "embed": 216
+  },
+  "httpMs": 568.9
+ },
+ {
+  "id": "C01",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2833,
+   0.2833
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/02-cancel.md | 상품 준비가 시작된 뒤 취소 문의를 하면요? [확정 정책]",
+   "customer/customer_app/08-order-cancel.md | 제2조 (취소할 수 있는 시점)",
+   "customer/faq/09-shortage.md | 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.5,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 291
+  },
+  "httpMs": 309.2
+ },
+ {
+  "id": "C02",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.0372,
+   0.0372
+  ],
+  "javaCos1": 0.7133415170515804,
+  "pythonCos1": 0.7133,
+  "javaEvidence": [
+   "customer/customer_app/08-order-cancel.md | 제2조 (취소할 수 있는 시점)",
+   "customer/faq/02-cancel.md | 상품 준비가 시작된 뒤 취소 문의를 하면요? [확정 정책]",
+   "customer/faq/02-cancel.md | 주문을 취소하고 싶어요 [확정 정책]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1667,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 302,
+   "vector": 185,
+   "embed": 133
+  },
+  "httpMs": 507.3
+ },
+ {
+  "id": "C03",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2653,
+   0.2653
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/customer_app/14-refund.md | 제4조 (봉투값 환불)",
+   "customer/faq/11-payment-fees.md | 봉투값이 뭔가요? [확정 정책]",
+   "customer/faq/02-cancel.md | 취소하면 봉투값도 돌려받나요? [확정 정책]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 299
+  },
+  "httpMs": 302.1
+ },
+ {
+  "id": "C04",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.5998,
+   0.5998
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/02-cancel.md | 취소 버튼을 눌렀는데 바로 취소 완료가 아니에요 [채택 설계]",
+   "customer/customer_app/08-order-cancel.md | 제3조 (취소 절차)",
+   "customer/faq/02-cancel.md | 주문을 취소하고 싶어요 [확정 정책]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.5556,
+  "titleMatch": 0.8333,
+  "millis": {
+   "es": 281
+  },
+  "httpMs": 284.2
+ },
+ {
+  "id": "C05",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.481,
+   0.481
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/11-payment-fees.md | 배달팁은 얼마인가요? [확정 정책]",
+   "customer/customer_app/06-order-payment-fees.md | 제3조 (배달팁)",
+   "customer/faq/11-payment-fees.md | 쿠폰은 어떻게 쓰나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.3333,
+  "titleMatch": 0.6667,
+  "millis": {
+   "es": 287
+  },
+  "httpMs": 312.9
+ },
+ {
+  "id": "C06",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.0049,
+   0.0049
+  ],
+  "javaCos1": 0.7509680088874798,
+  "pythonCos1": 0.7512,
+  "javaEvidence": [
+   "customer/faq/11-payment-fees.md | 배달팁은 얼마인가요? [확정 정책]",
+   "customer/faq/11-payment-fees.md | 최소 주문금액이 있나요? [확정 정책]",
+   "customer/customer_app/06-order-payment-fees.md | 제3조 (배달팁)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.1429,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 298,
+   "vector": 178,
+   "embed": 122
+  },
+  "httpMs": 495.6
+ },
+ {
+  "id": "C07",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.163,
+   0.163
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/11-payment-fees.md | 배달팁은 얼마인가요? [확정 정책]",
+   "customer/faq/11-payment-fees.md | 최소 주문금액이 있나요? [확정 정책]",
+   "customer/customer_app/06-order-payment-fees.md | 제2조 (최소 주문금액)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.1111,
+  "titleMatch": 0.8,
+  "millis": {
+   "es": 290
+  },
+  "httpMs": 312.7
+ },
+ {
+  "id": "C08",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.710065226585973,
+  "pythonCos1": 0.71,
+  "javaEvidence": [
+   "customer/faq/07-refund.md | 환불은 언제 되나요? [확정 정책]",
+   "customer/faq/07-refund.md | 어떤 경우에 환불되나요? [확정 정책]",
+   "customer/customer_app/14-refund.md | 제5조 (환불 시기)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1667,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 298,
+   "vector": 185,
+   "embed": 132
+  },
+  "httpMs": 489.2
+ },
+ {
+  "id": "C09",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.0365,
+   0.0365
+  ],
+  "javaCos1": 0.7627898596054413,
+  "pythonCos1": 0.7629,
+  "javaEvidence": [
+   "customer/faq/07-refund.md | 환불 금액은 어떻게 정해지나요? [확정 정책]",
+   "customer/customer_app/14-refund.md | 제3조 (환불 금액 산정)",
+   "customer/customer_app/11-shortage.md | 제5조 (결품 환불 금액)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.2857,
+  "titleMatch": 0.6667,
+  "millis": {
+   "es": 285,
+   "vector": 204,
+   "embed": 156
+  },
+  "httpMs": 505.7
+ },
+ {
+  "id": "C10",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.5901,
+   0.5901
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/08-return-exchange.md | 언제까지 신청할 수 있나요? [확정 정책]",
+   "customer/faq/05-missing-wrong-item.md | 언제까지 문의해야 하나요? [확정 정책]",
+   "customer/faq/08-return-exchange.md | 어떻게 신청하나요? [채택 설계]"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.4,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 285
+  },
+  "httpMs": 307.5
+ },
+ {
+  "id": "C11",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.7726029930049889,
+  "pythonCos1": 0.7714,
+  "javaEvidence": [
+   "customer/faq/08-return-exchange.md | 냉장·냉동 상품도 반품되나요? [확정 정책]",
+   "customer/customer_app/13-return-exchange.md | 제7조 (신선식품의 반품)",
+   "customer/customer_app/13-return-exchange.md | 제2조 (신청 기한)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 294,
+   "vector": 156,
+   "embed": 102
+  },
+  "httpMs": 476.6
+ },
+ {
+  "id": "C12",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2844,
+   0.2844
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/08-return-exchange.md | 비용이 드나요? [확정 정책]",
+   "customer/faq/05-missing-wrong-item.md | 비용이 드나요? [확정 정책]",
+   "customer/faq/06-damage-quality.md | 비용이 드나요? [확정 정책]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.1667,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 275
+  },
+  "httpMs": 291.3
+ },
+ {
+  "id": "C13",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6,
+   0.6
+  ],
+  "relGap": [
+   0.2758,
+   0.2758
+  ],
+  "javaCos1": 0.758650950314028,
+  "pythonCos1": 0.7586,
+  "javaEvidence": [
+   "customer/faq/09-shortage.md | 왜 일부 상품만 왔나요? [확정 정책]",
+   "customer/faq/04-not-received.md | 다른 주문의 상품이 왔어요 [설계안]",
+   "customer/faq/09-shortage.md | 남은 금액이 최소 주문금액보다 적어졌어요 [확정 정책]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.2857,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 279,
+   "vector": 228,
+   "embed": 179
+  },
+  "httpMs": 512.4
+ },
+ {
+  "id": "C14",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8,
+   0.8
+  ],
+  "relGap": [
+   0.1609,
+   0.1609
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/09-shortage.md | 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]",
+   "customer/faq/05-missing-wrong-item.md | 먼저 확인해 주세요 [채택 설계]",
+   "customer/faq/05-missing-wrong-item.md | 주문과 다른 상품·규격이 들어 있어요 [설계안]"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.4286,
+  "titleMatch": 0.6,
+  "millis": {
+   "es": 280
+  },
+  "httpMs": 298.8
+ },
+ {
+  "id": "C15",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8,
+   0.8
+  ],
+  "relGap": [
+   0.2855,
+   0.2855
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/04-not-received.md | 배송 완료로 나오는데 상품이 없어요 [설계안]",
+   "customer/faq/04-not-received.md | 새 상품은 언제 도착하나요? [확정 정책]",
+   "customer/faq/04-not-received.md | 제가 주문하지 않은 상품을 받았어요 [설계안]"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.5714,
+  "titleMatch": 0.8,
+  "millis": {
+   "es": 291
+  },
+  "httpMs": 310.8
+ },
+ {
+  "id": "C16",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.5372,
+   0.5372
+  ],
+  "javaCos1": 0.5743858890576001,
+  "pythonCos1": 0.5744,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 295,
+   "vector": 176,
+   "embed": 126
+  },
+  "httpMs": 490.1
+ },
+ {
+  "id": "C17",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.4693,
+   0.4693
+  ],
+  "javaCos1": 0.5816803866674064,
+  "pythonCos1": 0.5817,
+  "javaEvidence": [
+   "customer/faq/06-damage-quality.md | 받은 상품이 깨졌거나 샜어요 [설계안]",
+   "customer/customer_app/12-missing-damaged-item.md | 제5조 (상품이 깨지거나 새는 등 파손된 경우)",
+   "customer/faq/04-not-received.md | 다른 주문의 상품이 왔어요 [설계안]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1429,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 287,
+   "vector": 183,
+   "embed": 136
+  },
+  "httpMs": 496.6
+ },
+ {
+  "id": "C18",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8,
+   0.8
+  ],
+  "relGap": [
+   0.2542,
+   0.2542
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/05-missing-wrong-item.md | 주문한 상품이 포장에 없어요 [설계안]",
+   "customer/faq/05-missing-wrong-item.md | 주문과 다른 상품·규격이 들어 있어요 [설계안]",
+   "customer/faq/05-missing-wrong-item.md | 먼저 확인해 주세요 [채택 설계]"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.4286,
+  "titleMatch": 0.8,
+  "millis": {
+   "es": 292
+  },
+  "httpMs": 322.1
+ },
+ {
+  "id": "C19",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.358,
+   0.358
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/10-address-area.md | 결제 후에 주소나 연락처를 바꿀 수 있나요? [확정 정책]",
+   "customer/customer_app/07-delivery-area-address.md | 제5조 (결제 뒤 주소·연락처 변경)",
+   "customer/faq/12-account.md | 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.4444,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 285
+  },
+  "httpMs": 300.3
+ },
+ {
+  "id": "C20",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.455,
+   0.455
+  ],
+  "javaCos1": 0.6553247385830046,
+  "pythonCos1": 0.6553,
+  "javaEvidence": [
+   "customer/faq/10-address-area.md | 우리 집도 배송되나요? [채택 설계]",
+   "customer/customer_app/09-delivery-status.md | 제2조 (배송 현황 확인)",
+   "customer/customer_app/09-delivery-status.md | 제7조 (나눠 보내는 배송)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.4,
+  "titleMatch": 0.6667,
+  "millis": {
+   "es": 298,
+   "vector": 172,
+   "embed": 117
+  },
+  "httpMs": 497.0
+ },
+ {
+  "id": "C21",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.4991,
+   0.4991
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/03-delivery-status.md | 예약 배송 시간을 바꾸고 싶어요 [확정 정책]",
+   "customer/faq/03-delivery-status.md | 배송이 늦어요 [확정 정책]",
+   "customer/customer_app/09-delivery-status.md | 제5조 (예약 배송 시간 변경)"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.6667,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 279
+  },
+  "httpMs": 306.4
+ },
+ {
+  "id": "C22",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.6439378604741176,
+  "pythonCos1": 0.6453,
+  "javaEvidence": [
+   "customer/faq/12-account.md | 로그인은 어떻게 하나요? [확정 정책]",
+   "customer/faq/12-account.md | 비회원도 주문할 수 있나요? [채택 설계]",
+   "customer/faq/12-account.md | 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 280,
+   "vector": 176,
+   "embed": 128
+  },
+  "httpMs": 473.1
+ },
+ {
+  "id": "C23",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2498,
+   0.2498
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/12-account.md | 비회원도 주문할 수 있나요? [채택 설계]",
+   "customer/faq/12-account.md | 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+   "customer/faq/12-account.md | 로그인은 어떻게 하나요? [확정 정책]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.6,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 276
+  },
+  "httpMs": 279.7
+ },
+ {
+  "id": "C24",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.6531,
+   0.6531
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/13-alcohol.md | 주류도 살 수 있나요? [확정 정책]",
+   "customer/faq/08-return-exchange.md | 언제까지 신청할 수 있나요? [확정 정책]",
+   "customer/customer_app/08-order-cancel.md | 제2조 (취소할 수 있는 시점)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.3333,
+  "titleMatch": 1.0,
+  "millis": {
+   "es": 289
+  },
+  "httpMs": 311.3
+ },
+ {
+  "id": "C25",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2203,
+   0.2203
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/03-delivery-status.md | 배송이 늦어요 [확정 정책]",
+   "customer/faq/03-delivery-status.md | 냉장·냉동 상품이 늦게 와서 걱정돼요 [채택 설계]",
+   "customer/customer_app/09-delivery-status.md | 제3조 (배송 지연)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.2,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 293
+  },
+  "httpMs": 315.3
+ },
+ {
+  "id": "C26",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.3222,
+   0.3222
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/11-payment-fees.md | 첫 주문 혜택이 뭔가요? [확정 정책]",
+   "customer/customer_app/06-order-payment-fees.md | 제5조 (첫 주문 혜택)",
+   "customer/faq/11-payment-fees.md | 봉투값이 뭔가요? [확정 정책]"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.3333,
+  "titleMatch": 0.6667,
+  "millis": {
+   "es": 289
+  },
+  "httpMs": 292.3
+ },
+ {
+  "id": "N01",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.0889,
+   0.0889
+  ],
+  "javaCos1": 0.5198304629528008,
+  "pythonCos1": 0.5197,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.125,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 284,
+   "vector": 221,
+   "embed": 171
+  },
+  "httpMs": 508.8
+ },
+ {
+  "id": "N02",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.5625,
+   0.5625
+  ],
+  "javaCos1": 0.5335653662266682,
+  "pythonCos1": 0.5336,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1111,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 277,
+   "vector": 260,
+   "embed": 213
+  },
+  "httpMs": 559.8
+ },
+ {
+  "id": "N03",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.5231122970581091,
+  "pythonCos1": 0.5231,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 286,
+   "vector": 246,
+   "embed": 199
+  },
+  "httpMs": 536.8
+ },
+ {
+  "id": "N04",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.0445,
+   0.0445
+  ],
+  "javaCos1": 0.511448476150186,
+  "pythonCos1": 0.5114,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 284,
+   "vector": 255,
+   "embed": 208
+  },
+  "httpMs": 567.0
+ },
+ {
+  "id": "N05",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.1237,
+   0.1237
+  ],
+  "javaCos1": 0.5212529666338319,
+  "pythonCos1": 0.5224,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 275,
+   "vector": 212,
+   "embed": 163
+  },
+  "httpMs": 507.7
+ },
+ {
+  "id": "N06",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0
+  ],
+  "relGap": [
+   0.0,
+   0
+  ],
+  "javaCos1": 0.484697482721841,
+  "pythonCos1": 0.4847,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 48,
+   "vector": 227,
+   "embed": 181
+  },
+  "httpMs": 304.2
+ },
+ {
+  "id": "N07",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.1404,
+   0.1404
+  ],
+  "javaCos1": 0.5468139322511474,
+  "pythonCos1": 0.5468,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 282,
+   "vector": 202,
+   "embed": 150
+  },
+  "httpMs": 487.6
+ },
+ {
+  "id": "N08",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.0392,
+   0.0392
+  ],
+  "javaCos1": 0.5592450903496318,
+  "pythonCos1": 0.5592,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 282,
+   "vector": 197,
+   "embed": 149
+  },
+  "httpMs": 504.8
+ },
+ {
+  "id": "D01",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.3293,
+   0.3293
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/02-cancel.md | 취소하면 봉투값도 돌려받나요? [확정 정책]",
+   "customer/faq/09-shortage.md | 왜 일부 상품만 왔나요? [확정 정책]",
+   "customer/faq/09-shortage.md | 환불은 얼마나 되나요? [확정 정책]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.5,
+  "titleMatch": 0.75,
+  "millis": {
+   "es": 280
+  },
+  "httpMs": 298.0
+ },
+ {
+  "id": "D02",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.8,
+   0.8
+  ],
+  "relGap": [
+   0.0889,
+   0.0889
+  ],
+  "javaCos1": 0.885323058439209,
+  "pythonCos1": 0.8855,
+  "javaEvidence": [
+   "customer/faq/07-refund.md | 쿠폰을 쓴 주문은요? [확정 정책]",
+   "customer/customer_app/14-refund.md | 제7조 (쿠폰을 쓴 주문)",
+   "customer/faq/11-payment-fees.md | 쿠폰은 어떻게 쓰나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.6,
+  "faqQuestionMatch": 0.2857,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 288,
+   "vector": 311,
+   "embed": 259
+  },
+  "httpMs": 615.7
+ },
+ {
+  "id": "D03",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.4285,
+   0.4285
+  ],
+  "javaCos1": 0.7021863251273316,
+  "pythonCos1": 0.7019,
+  "javaEvidence": [
+   "customer/faq/08-return-exchange.md | 냉장·냉동 상품도 반품되나요? [확정 정책]",
+   "customer/customer_app/13-return-exchange.md | 제7조 (신선식품의 반품)",
+   "customer/faq/06-damage-quality.md | 냉장·냉동 상품의 상태가 이상해요 [확정 정책]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.2,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 276,
+   "vector": 223,
+   "embed": 171
+  },
+  "httpMs": 521.1
+ },
+ {
+  "id": "D04",
+  "set": "regression",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.1422,
+   0.1422
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/11-payment-fees.md | 배달팁은 얼마인가요? [확정 정책]",
+   "customer/customer_app/06-order-payment-fees.md | 제2조 (최소 주문금액)",
+   "customer/faq/11-payment-fees.md | 쿠폰은 어떻게 쓰나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.1667,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 291
+  },
+  "httpMs": 320.7
+ },
+ {
+  "id": "W01",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.1361,
+   0.1361
+  ],
+  "javaCos1": 0.6463826087942224,
+  "pythonCos1": 0.6464,
+  "javaEvidence": [
+   "customer/customer_app/06-order-payment-fees.md | 제3조 (배달팁)",
+   "customer/faq/11-payment-fees.md | 배달팁은 얼마인가요? [확정 정책]",
+   "customer/faq/11-payment-fees.md | 결제가 됐는지 모르겠어요 [채택 설계]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 294,
+   "vector": 233,
+   "embed": 185
+  },
+  "httpMs": 547.5
+ },
+ {
+  "id": "W02",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   1.0,
+   1.0
+  ],
+  "javaCos1": 0.5340199314439248,
+  "pythonCos1": 0.534,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 281,
+   "vector": 201,
+   "embed": 153
+  },
+  "httpMs": 497.6
+ },
+ {
+  "id": "W03",
+  "set": "regression",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.1968,
+   0.1968
+  ],
+  "javaCos1": 0.6646097095173341,
+  "pythonCos1": 0.6646,
+  "javaEvidence": [
+   "customer/customer_app/06-order-payment-fees.md | 제5조의2 (할인 행사와 쿠폰)",
+   "customer/customer_app/14-refund.md | 제7조 (쿠폰을 쓴 주문)",
+   "customer/faq/07-refund.md | 쿠폰을 쓴 주문은요? [확정 정책]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 293,
+   "vector": 293,
+   "embed": 243
+  },
+  "httpMs": 603.6
+ },
+ {
+  "id": "OG02-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.0486,
+   0.0486
+  ],
+  "javaCos1": 0.6844246480318216,
+  "pythonCos1": 0.6855,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)",
+   "operator/backoffice/01-staff-account-login.md | 제7조 (로그아웃)",
+   "operator/backoffice/01-staff-account-login.md | 제5조 (로그인)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 281,
+   "vector": 223,
+   "embed": 173
+  },
+  "httpMs": 520.5
+ },
+ {
+  "id": "OG02-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.4286,
+   0.4286
+  ],
+  "relGap": [
+   0.0801,
+   0.0801
+  ],
+  "javaCos1": 0.6477878253017372,
+  "pythonCos1": 0.6478,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제7조 (로그아웃)",
+   "operator/mfc/01-worker-qualification-shift.md | 제8조 (휴게)",
+   "operator/mfc/02-task-assignment.md | 제6조 (지연·무활동 표시)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1429,
+  "millis": {
+   "es": 288,
+   "vector": 203,
+   "embed": 153
+  },
+  "httpMs": 515.8
+ },
+ {
+  "id": "OG03-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.7273,
+   0.7273
+  ],
+  "relGap": [
+   0.023,
+   0.023
+  ],
+  "javaCos1": 0.700470799123533,
+  "pythonCos1": 0.7005,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제4조 (회사 메일)",
+   "operator/backoffice/01-staff-account-login.md | 제3조 (계정 발급)",
+   "operator/backoffice/08-hr-employee-management.md | 제6조 (메일함 처음 비밀번호)"
+  ],
+  "phraseMatch": 0.3,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0909,
+  "millis": {
+   "es": 272,
+   "vector": 267,
+   "embed": 216
+  },
+  "httpMs": 559.9
+ },
+ {
+  "id": "OG03-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.625,
+   0.625
+  ],
+  "relGap": [
+   0.0197,
+   0.0197
+  ],
+  "javaCos1": 0.5904704741100009,
+  "pythonCos1": 0.5908,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제3조 (계정 발급)",
+   "operator/backoffice/08-hr-employee-management.md | 제6조 (메일함 처음 비밀번호)",
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)"
+  ],
+  "phraseMatch": 0.2857,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 282,
+   "vector": 286,
+   "embed": 236
+  },
+  "httpMs": 584.3
+ },
+ {
+  "id": "OG04-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.109,
+   0.109
+  ],
+  "javaCos1": 0.6804487502441331,
+  "pythonCos1": 0.6775,
+  "javaEvidence": [
+   "operator/backoffice/09-lookup-status-metrics.md | 제1조 (목적)",
+   "operator/backoffice/09-lookup-status-metrics.md | 제3조 (통합 조회)",
+   "operator/backoffice/09-lookup-status-metrics.md | 제2조 (조회 화면의 원칙)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 280,
+   "vector": 236,
+   "embed": 183
+  },
+  "httpMs": 520.7
+ },
+ {
+  "id": "OG04-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.0363,
+   0.0363
+  ],
+  "javaCos1": 0.7152676582336426,
+  "pythonCos1": 0.7154,
+  "javaEvidence": [
+   "operator/backoffice/09-lookup-status-metrics.md | 제3조 (통합 조회)",
+   "operator/backoffice/04-personal-info-access.md | 제3조 (찾기)",
+   "operator/commerce/05-reviews.md | 제2조 (리뷰를 쓸 수 있는 고객과 상품)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 288,
+   "vector": 204,
+   "embed": 153
+  },
+  "httpMs": 519.9
+ },
+ {
+  "id": "OG05-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8333,
+   0.8333
+  ],
+  "relGap": [
+   0.1366,
+   0.1366
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/backoffice/04-personal-info-access.md | 제4조 (원문 열람)",
+   "operator/backoffice/04-personal-info-access.md | 제5조 (열람 기록)",
+   "operator/backoffice/04-personal-info-access.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.8,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.6667,
+  "millis": {
+   "es": 281
+  },
+  "httpMs": 295.5
+ },
+ {
+  "id": "OG05-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.1382,
+   0.1382
+  ],
+  "javaCos1": 0.7349700270620045,
+  "pythonCos1": 0.7333,
+  "javaEvidence": [
+   "operator/backoffice/04-personal-info-access.md | 제4조 (원문 열람)",
+   "operator/backoffice/04-personal-info-access.md | 제5조 (열람 기록)",
+   "operator/backoffice/04-personal-info-access.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.4,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 276,
+   "vector": 247,
+   "embed": 192
+  },
+  "httpMs": 527.4
+ },
+ {
+  "id": "OG07-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.625,
+   0.625
+  ],
+  "relGap": [
+   0.3122,
+   0.3122
+  ],
+  "javaCos1": 0.7869683484685972,
+  "pythonCos1": 0.7849,
+  "javaEvidence": [
+   "operator/backoffice/04-personal-info-access.md | 제4조 (원문 열람)",
+   "operator/backoffice/04-personal-info-access.md | 제5조 (열람 기록)",
+   "operator/backoffice/04-personal-info-access.md | PMart 직원 개인정보 조회·열람 정책"
+  ],
+  "phraseMatch": 0.5714,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 290,
+   "vector": 211,
+   "embed": 163
+  },
+  "httpMs": 531.4
+ },
+ {
+  "id": "OG08-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.2895,
+   0.2895
+  ],
+  "javaCos1": 0.6295577254495996,
+  "pythonCos1": 0.6296,
+  "javaEvidence": [
+   "operator/commerce/05-reviews.md | 제8조 (직원의 리뷰 처리)",
+   "operator/commerce/05-reviews.md | 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+   "operator/commerce/05-reviews.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 282,
+   "vector": 219,
+   "embed": 160
+  },
+  "httpMs": 528.0
+ },
+ {
+  "id": "OG08-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.1345,
+   0.1345
+  ],
+  "javaCos1": 0.6822264804446897,
+  "pythonCos1": 0.6822,
+  "javaEvidence": [
+   "operator/commerce/05-reviews.md | 제1조 (목적)",
+   "operator/commerce/05-reviews.md | 제4조 (삭제와 다시 쓰기)",
+   "operator/commerce/03-home-display.md | 제7조 (별점 점수)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 284,
+   "vector": 271,
+   "embed": 219
+  },
+  "httpMs": 584.2
+ },
+ {
+  "id": "OG11-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.625,
+   0.625
+  ],
+  "relGap": [
+   0.1236,
+   0.1236
+  ],
+  "javaCos1": 0.6910135833073998,
+  "pythonCos1": 0.691,
+  "javaEvidence": [
+   "operator/delivery/02-arrival-slots-promise.md | 제4조 (정원과 점유)",
+   "operator/delivery/02-arrival-slots-promise.md | 제6조 (배송 약속 시각)",
+   "operator/delivery/02-arrival-slots-promise.md | 제3조 (도착 시간대)"
+  ],
+  "phraseMatch": 0.2857,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 288,
+   "vector": 284,
+   "embed": 234
+  },
+  "httpMs": 588.8
+ },
+ {
+  "id": "OG11-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.75,
+   0.75
+  ],
+  "relGap": [
+   0.1161,
+   0.1161
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/delivery/02-arrival-slots-promise.md | 제4조 (정원과 점유)",
+   "operator/order_claim/02-payment-order-status.md | 제3조 (결제 전 재고 확보)",
+   "operator/delivery/02-arrival-slots-promise.md | 제3조 (도착 시간대)"
+  ],
+  "phraseMatch": 0.2857,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 280
+  },
+  "httpMs": 283.5
+ },
+ {
+  "id": "OG13-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.4,
+   0.4
+  ],
+  "relGap": [
+   0.1251,
+   0.1251
+  ],
+  "javaCos1": 0.7293317591347614,
+  "pythonCos1": 0.7293,
+  "javaEvidence": [
+   "operator/delivery/02-arrival-slots-promise.md | 제7조 (배차 지연 안내)",
+   "operator/tms/03-loading-departure-monitoring.md | 제5조 (지연과 정보 지연)",
+   "operator/mfc/04-picking-packing.md | 제6조 (배차 요청)"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 285,
+   "vector": 238,
+   "embed": 188
+  },
+  "httpMs": 527.0
+ },
+ {
+  "id": "OG14-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5556,
+   0.5556
+  ],
+  "relGap": [
+   0.0072,
+   0.0072
+  ],
+  "javaCos1": 0.7429819073591002,
+  "pythonCos1": 0.743,
+  "javaEvidence": [
+   "operator/delivery/02-arrival-slots-promise.md | 제3조 (도착 시간대)",
+   "operator/order_claim/01-order-amount.md | 제11조 (배송 시간)",
+   "operator/delivery/02-arrival-slots-promise.md | 제6조 (배송 약속 시각)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 283,
+   "vector": 219,
+   "embed": 170
+  },
+  "httpMs": 532.5
+ },
+ {
+  "id": "OG15-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.1782,
+   0.1782
+  ],
+  "javaCos1": 0.6642800573802187,
+  "pythonCos1": 0.6643,
+  "javaEvidence": [
+   "operator/commerce/05-reviews.md | 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+   "operator/commerce/05-reviews.md | 제4조 (삭제와 다시 쓰기)",
+   "operator/commerce/05-reviews.md | 제6조 (작성자 표시)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 274,
+   "vector": 219,
+   "embed": 168
+  },
+  "httpMs": 515.6
+ },
+ {
+  "id": "OG15-2",
+  "set": "dev",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.2268,
+   0.2268
+  ],
+  "javaCos1": 0.5016300080263748,
+  "pythonCos1": 0.5016,
+  "javaEvidence": [],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 273,
+   "vector": 198,
+   "embed": 147
+  },
+  "httpMs": 490.7
+ },
+ {
+  "id": "ON01-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.1367,
+   0.1367
+  ],
+  "javaCos1": 0.7103346162835308,
+  "pythonCos1": 0.7109,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)",
+   "operator/backoffice/09-lookup-status-metrics.md | 제1조 (목적)",
+   "operator/backoffice/09-lookup-status-metrics.md | 제6조 (지금 할 일 건수)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 284,
+   "vector": 247,
+   "embed": 198
+  },
+  "httpMs": 556.8
+ },
+ {
+  "id": "ON04-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6,
+   0.6
+  ],
+  "relGap": [
+   0.2597,
+   0.2597
+  ],
+  "javaCos1": 0.7801029753931397,
+  "pythonCos1": 0.7801,
+  "javaEvidence": [
+   "operator/commerce/07-cart.md | 제2조 (장바구니를 쓸 수 있는 사람)",
+   "operator/commerce/07-cart.md | 제5조 (장바구니에 보이는 정보)",
+   "operator/commerce/07-cart.md | 제4조 (담기와 수량 변경)"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 278,
+   "vector": 223,
+   "embed": 171
+  },
+  "httpMs": 529.5
+ },
+ {
+  "id": "ON05-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.1436,
+   0.1436
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/order_claim/02-payment-order-status.md | 제8조 (예약배달 시간 변경)",
+   "operator/delivery/02-arrival-slots-promise.md | 제4조 (정원과 점유)",
+   "operator/delivery/01-service-area.md | 제6조 (배달 서비스 시간)"
+  ],
+  "phraseMatch": 0.75,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.75,
+  "millis": {
+   "es": 278
+  },
+  "httpMs": 299.2
+ },
+ {
+  "id": "OC01-1",
+  "set": "dev",
+  "role": "operator",
+  "label": "NEEDS_CLARIFICATION",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.75,
+   0.75
+  ],
+  "relGap": [
+   0.3939,
+   0.3939
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)",
+   "operator/backoffice/01-staff-account-login.md | 제5조 (로그인)",
+   "operator/backoffice/01-staff-account-login.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 277
+  },
+  "httpMs": 291.9
+ },
+ {
+  "id": "CG03-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0921,
+   0.0921
+  ],
+  "javaCos1": 0.7292489781681843,
+  "pythonCos1": 0.7292,
+  "javaEvidence": [
+   "customer/customer_app/16-reviews.md | 제3조 (작성 기한)",
+   "customer/customer_app/16-reviews.md | 제6조 (반품·환불한 상품의 리뷰)",
+   "customer/faq/04-not-received.md | 제가 주문하지 않은 상품을 받았어요 [설계안]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 280,
+   "vector": 237,
+   "embed": 184
+  },
+  "httpMs": 521.1
+ },
+ {
+  "id": "CG03-2",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.1139,
+   0.1139
+  ],
+  "javaCos1": 0.6626789986233906,
+  "pythonCos1": 0.6627,
+  "javaEvidence": [
+   "customer/faq/08-return-exchange.md | 언제까지 신청할 수 있나요? [확정 정책]",
+   "customer/faq/06-damage-quality.md | 받은 상품이 깨졌거나 샜어요 [설계안]",
+   "customer/faq/05-missing-wrong-item.md | 먼저 확인해 주세요 [채택 설계]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 278,
+   "vector": 276,
+   "embed": 226
+  },
+  "httpMs": 575.9
+ },
+ {
+  "id": "CG04-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0731,
+   0.0731
+  ],
+  "javaCos1": 0.7042029718384877,
+  "pythonCos1": 0.7042,
+  "javaEvidence": [
+   "customer/customer_app/16-reviews.md | 제4조 (수정과 삭제)",
+   "customer/faq/08-return-exchange.md | 언제까지 신청할 수 있나요? [확정 정책]",
+   "customer/customer_app/16-reviews.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1667,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 279,
+   "vector": 224,
+   "embed": 175
+  },
+  "httpMs": 523.7
+ },
+ {
+  "id": "CG04-2",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.1365,
+   0.1365
+  ],
+  "javaCos1": 0.590380695922193,
+  "pythonCos1": 0.5904,
+  "javaEvidence": [
+   "customer/customer_app/05-customer-center.md | 제4조 (AI 상담으로 할 수 없는 일)",
+   "customer/faq/06-damage-quality.md | 냉장·냉동 상품의 상태가 이상해요 [확정 정책]",
+   "customer/faq/08-return-exchange.md | 언제까지 신청할 수 있나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 274,
+   "vector": 260,
+   "embed": 212
+  },
+  "httpMs": 559.5
+ },
+ {
+  "id": "CG05-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.2256,
+   0.2256
+  ],
+  "javaCos1": 0.6873803511405012,
+  "pythonCos1": 0.6874,
+  "javaEvidence": [
+   "customer/customer_app/16-reviews.md | 제6조 (반품·환불한 상품의 리뷰)",
+   "customer/faq/11-payment-fees.md | 어떤 결제수단을 쓸 수 있나요? [설계안]",
+   "customer/customer_app/16-reviews.md | 제4조 (수정과 삭제)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 280,
+   "vector": 226,
+   "embed": 175
+  },
+  "httpMs": 530.1
+ },
+ {
+  "id": "CG06-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.1982,
+   0.1982
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/customer_app/16-reviews.md | 제5조 (사진)",
+   "customer/faq/01-customer-center.md | 사진을 보내야 하나요? [채택 설계]",
+   "customer/customer_app/05-customer-center.md | 제5조 (사진 제출)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 287
+  },
+  "httpMs": 309.5
+ },
+ {
+  "id": "CG06-2",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.25,
+   0.25
+  ],
+  "relGap": [
+   0.1277,
+   0.1277
+  ],
+  "javaCos1": 0.6955067645295228,
+  "pythonCos1": 0.6955,
+  "javaEvidence": [
+   "customer/customer_app/16-reviews.md | 제5조 (사진)",
+   "customer/faq/01-customer-center.md | 사진을 보내야 하나요? [채택 설계]",
+   "customer/customer_app/05-customer-center.md | 제5조 (사진 제출)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 277,
+   "vector": 216,
+   "embed": 158
+  },
+  "httpMs": 520.7
+ },
+ {
+  "id": "CG09-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.4984,
+   0.4984
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/customer_app/04-consents-privacy.md | 제4조 (위치 정보)",
+   "customer/customer_app/01-signup-login.md | 제4조 (가입 절차)",
+   "customer/faq/10-address-area.md | 우리 집도 배송되나요? [채택 설계]"
+  ],
+  "phraseMatch": 0.6667,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 277
+  },
+  "httpMs": 281.8
+ },
+ {
+  "id": "CG10-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.3865,
+   0.3865
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/faq/12-account.md | 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+   "customer/customer_app/02-withdrawal.md | 제6조 (재가입)",
+   "customer/customer_app/01-signup-login.md | 제7조 (한 번호 한 계정)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.4,
+  "titleMatch": 0.6667,
+  "millis": {
+   "es": 275
+  },
+  "httpMs": 282.0
+ },
+ {
+  "id": "CG10-2",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.1807,
+   0.1807
+  ],
+  "javaCos1": 0.7724134165667892,
+  "pythonCos1": 0.7725,
+  "javaEvidence": [
+   "customer/faq/12-account.md | 탈퇴한 뒤 다시 가입할 수 있나요? [확정 정책]",
+   "customer/customer_app/02-withdrawal.md | 제6조 (재가입)",
+   "customer/customer_app/02-withdrawal.md | 제2조 (탈퇴 신청)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 286,
+   "vector": 208,
+   "embed": 155
+  },
+  "httpMs": 522.1
+ },
+ {
+  "id": "CG12-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.421,
+   0.421
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/customer_app/15-notifications.md | 제4조 (휴대폰 알림)",
+   "customer/customer_app/15-notifications.md | 제2조 (앱 알림함)",
+   "customer/customer_app/10-not-received-misdelivery.md | 제4조 (오배송 확인)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 278
+  },
+  "httpMs": 295.8
+ },
+ {
+  "id": "CN01-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.4,
+   0.4
+  ],
+  "relGap": [
+   0.1902,
+   0.1902
+  ],
+  "javaCos1": 0.680763026498654,
+  "pythonCos1": 0.6808,
+  "javaEvidence": [
+   "customer/customer_app/03-wishlist.md | 제6조 (가격과 재고)",
+   "customer/customer_app/03-wishlist.md | 제5조 (품절·판매 종료 상품)",
+   "customer/faq/05-missing-wrong-item.md | 먼저 확인해 주세요 [채택 설계]"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 293,
+   "vector": 189,
+   "embed": 141
+  },
+  "httpMs": 501.6
+ },
+ {
+  "id": "CN02-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.5675900675087976,
+  "pythonCos1": 0.5676,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 279,
+   "vector": 209,
+   "embed": 160
+  },
+  "httpMs": 503.8
+ },
+ {
+  "id": "CN04-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0078,
+   0.0077
+  ],
+  "javaCos1": 0.5648463291113024,
+  "pythonCos1": 0.5651,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 283,
+   "vector": 220,
+   "embed": 162
+  },
+  "httpMs": 507.2
+ },
+ {
+  "id": "CC01-1",
+  "set": "dev",
+  "role": "customer",
+  "label": "NEEDS_CLARIFICATION",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.0445,
+   0.0445
+  ],
+  "javaCos1": 0.6204939895721701,
+  "pythonCos1": 0.6219,
+  "javaEvidence": [
+   "customer/customer_app/13-return-exchange.md | 제2조 (신청 기한)",
+   "customer/customer_app/16-reviews.md | 제3조 (작성 기한)",
+   "customer/customer_app/12-missing-damaged-item.md | 제8조 (신청 기한과 비용)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 275,
+   "vector": 245,
+   "embed": 196
+  },
+  "httpMs": 537.1
+ },
+ {
+  "id": "OG01-1",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.1215,
+   0.1215
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)",
+   "operator/backoffice/09-lookup-status-metrics.md | 제4조 (실시간 배송 현황)",
+   "operator/commerce/05-reviews.md | 제2조 (리뷰를 쓸 수 있는 고객과 상품)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 286
+  },
+  "httpMs": 310.5
+ },
+ {
+  "id": "OG01-2",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.4,
+   0.4
+  ],
+  "relGap": [
+   0.0413,
+   0.0413
+  ],
+  "javaCos1": 0.8340688297050136,
+  "pythonCos1": 0.8351,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)",
+   "operator/backoffice/01-staff-account-login.md | 제1조 (목적)",
+   "operator/backoffice/01-staff-account-login.md | 제7조 (로그아웃)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 305,
+   "vector": 260,
+   "embed": 207
+  },
+  "httpMs": 588.9
+ },
+ {
+  "id": "OG01-3",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.1667,
+   0.1667
+  ],
+  "relGap": [
+   0.0288,
+   0.0288
+  ],
+  "javaCos1": 0.7162320694370156,
+  "pythonCos1": 0.7167,
+  "javaEvidence": [
+   "operator/backoffice/01-staff-account-login.md | 제5조 (로그인)",
+   "operator/backoffice/01-staff-account-login.md | 제6조 (로그인 유지)",
+   "operator/backoffice/01-staff-account-login.md | PMart 직원 계정·로그인 정책"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1667,
+  "millis": {
+   "es": 267,
+   "vector": 266,
+   "embed": 215
+  },
+  "httpMs": 537.6
+ },
+ {
+  "id": "OG06-1",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8333,
+   0.8333
+  ],
+  "relGap": [
+   0.1405,
+   0.1405
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/backoffice/04-personal-info-access.md | 제5조 (열람 기록)",
+   "operator/backoffice/04-personal-info-access.md | PMart 직원 개인정보 조회·열람 정책",
+   "operator/backoffice/04-personal-info-access.md | 제4조 (원문 열람)"
+  ],
+  "phraseMatch": 0.4,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.8333,
+  "millis": {
+   "es": 295
+  },
+  "httpMs": 314.9
+ },
+ {
+  "id": "OG09-1",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6,
+   0.6
+  ],
+  "relGap": [
+   0.1545,
+   0.1545
+  ],
+  "javaCos1": 0.8010401245212166,
+  "pythonCos1": 0.801,
+  "javaEvidence": [
+   "operator/commerce/07-cart.md | 제5조 (장바구니에 보이는 정보)",
+   "operator/commerce/07-cart.md | 제3조 (보존 기간)",
+   "operator/commerce/07-cart.md | 제7조 (주문 뒤 장바구니)"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 280,
+   "vector": 269,
+   "embed": 211
+  },
+  "httpMs": 554.0
+ },
+ {
+  "id": "OG09-2",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8,
+   0.8
+  ],
+  "relGap": [
+   0.3331,
+   0.3331
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/commerce/07-cart.md | 제3조 (보존 기간)",
+   "operator/commerce/07-cart.md | 제5조 (장바구니에 보이는 정보)",
+   "operator/commerce/07-cart.md | 제7조 (주문 뒤 장바구니)"
+  ],
+  "phraseMatch": 0.5,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.8,
+  "millis": {
+   "es": 270
+  },
+  "httpMs": 287.9
+ },
+ {
+  "id": "OG09-3",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.75,
+   0.75
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.645975301730795,
+  "pythonCos1": 0.646,
+  "javaEvidence": [
+   "operator/commerce/07-cart.md | 제5조 (장바구니에 보이는 정보)",
+   "operator/commerce/07-cart.md | 제6조 (비회원 장바구니 옮기기)",
+   "operator/commerce/07-cart.md | 제3조 (보존 기간)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 292,
+   "vector": 239,
+   "embed": 189
+  },
+  "httpMs": 535.0
+ },
+ {
+  "id": "OG10-1",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.75,
+   0.75
+  ],
+  "relGap": [
+   0.0,
+   0.0
+  ],
+  "javaCos1": 0.7777422335264811,
+  "pythonCos1": 0.7777,
+  "javaEvidence": [
+   "operator/commerce/07-cart.md | 제6조 (비회원 장바구니 옮기기)",
+   "operator/commerce/07-cart.md | 제5조 (장바구니에 보이는 정보)",
+   "operator/commerce/07-cart.md | 제7조 (주문 뒤 장바구니)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 285,
+   "vector": 279,
+   "embed": 226
+  },
+  "httpMs": 580.1
+ },
+ {
+  "id": "OG12-1",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.2112,
+   0.2112
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "operator/delivery/02-arrival-slots-promise.md | 제6조 (배송 약속 시각)",
+   "operator/delivery/03-dispatch.md | 제5조 (한집배달과 알뜰배달)",
+   "operator/delivery/02-arrival-slots-promise.md | PMart 도착 시간대·배송 약속 정책"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.6,
+  "millis": {
+   "es": 273
+  },
+  "httpMs": 296.1
+ },
+ {
+  "id": "OG12-2",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.375,
+   0.375
+  ],
+  "relGap": [
+   0.2638,
+   0.2638
+  ],
+  "javaCos1": 0.8004005790474218,
+  "pythonCos1": 0.8004,
+  "javaEvidence": [
+   "operator/delivery/03-dispatch.md | 제5조 (한집배달과 알뜰배달)",
+   "operator/delivery/02-arrival-slots-promise.md | 제6조 (배송 약속 시각)",
+   "operator/delivery/02-arrival-slots-promise.md | 제3조 (도착 시간대)"
+  ],
+  "phraseMatch": 0.1429,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 274,
+   "vector": 235,
+   "embed": 184
+  },
+  "httpMs": 532.8
+ },
+ {
+  "id": "OG16-1",
+  "set": "final",
+  "role": "operator",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0247,
+   0.0247
+  ],
+  "javaCos1": 0.6684690913102,
+  "pythonCos1": 0.6685,
+  "javaEvidence": [
+   "operator/order_claim/08-delivery-issue-consult.md | 제3조 (배송 지연)",
+   "operator/rider_app/04-earnings.md | 제8조 (이의 신청)",
+   "operator/delivery/02-arrival-slots-promise.md | 제5조 (센터 작업 여력이 줄어든 경우)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.25,
+  "millis": {
+   "es": 287,
+   "vector": 273,
+   "embed": 216
+  },
+  "httpMs": 564.0
+ },
+ {
+  "id": "ON02-1",
+  "set": "final",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.3333,
+   0.3333
+  ],
+  "relGap": [
+   0.0183,
+   0.0183
+  ],
+  "javaCos1": 0.5623411797082211,
+  "pythonCos1": 0.5623,
+  "javaEvidence": [],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.1667,
+  "millis": {
+   "es": 268,
+   "vector": 208,
+   "embed": 156
+  },
+  "httpMs": 503.7
+ },
+ {
+  "id": "ON03-1",
+  "set": "final",
+  "role": "operator",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.2348,
+   0.2348
+  ],
+  "javaCos1": 0.5824145668134016,
+  "pythonCos1": 0.5824,
+  "javaEvidence": [
+   "operator/commerce/05-reviews.md | 제2조 (리뷰를 쓸 수 있는 고객과 상품)",
+   "operator/commerce/05-reviews.md | 제5조 (리뷰 사진)",
+   "operator/delivery/03-dispatch.md | 제4조 (제안받을 수 있는 라이더)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 280,
+   "vector": 207,
+   "embed": 159
+  },
+  "httpMs": 507.3
+ },
+ {
+  "id": "CG01-1",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0
+  ],
+  "relGap": [
+   0.1467,
+   0.1467
+  ],
+  "javaCos1": 0.7573819252273437,
+  "pythonCos1": 0.7574,
+  "javaEvidence": [
+   "customer/customer_app/03-wishlist.md | 제4조 (찜 개수)",
+   "customer/faq/12-account.md | 찜은 어떻게 하나요? [확정 정책]",
+   "customer/customer_app/03-wishlist.md | 제3조 (이용 대상과 방법)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 276,
+   "vector": 229,
+   "embed": 176
+  },
+  "httpMs": 509.1
+ },
+ {
+  "id": "CG01-2",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.2,
+   0.2
+  ],
+  "relGap": [
+   0.0484,
+   0.0484
+  ],
+  "javaCos1": 0.6332784096727494,
+  "pythonCos1": 0.6333,
+  "javaEvidence": [
+   "customer/faq/12-account.md | 찜은 어떻게 하나요? [확정 정책]",
+   "customer/faq/05-missing-wrong-item.md | 주문과 다른 상품·규격이 들어 있어요 [설계안]",
+   "customer/customer_app/03-wishlist.md | 제4조 (찜 개수)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.1111,
+  "titleMatch": 0.2,
+  "millis": {
+   "es": 271,
+   "vector": 228,
+   "embed": 181
+  },
+  "httpMs": 523.5
+ },
+ {
+  "id": "CG02-1",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0289,
+   0.0289
+  ],
+  "javaCos1": 0.612468533236667,
+  "pythonCos1": 0.6125,
+  "javaEvidence": [
+   "customer/customer_app/15-notifications.md | 제2조 (앱 알림함)",
+   "customer/customer_app/03-wishlist.md | 제5조 (품절·판매 종료 상품)",
+   "customer/customer_app/15-notifications.md | 제4조 (휴대폰 알림)"
+  ],
+  "phraseMatch": 0.3333,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 274,
+   "vector": 265,
+   "embed": 213
+  },
+  "httpMs": 568.8
+ },
+ {
+  "id": "CG02-2",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "ES",
+  "pythonExit": "ES",
+  "coverage": [
+   0.8,
+   0.8
+  ],
+  "relGap": [
+   0.273,
+   0.273
+  ],
+  "javaCos1": null,
+  "pythonCos1": null,
+  "javaEvidence": [
+   "customer/customer_app/03-wishlist.md | 제5조 (품절·판매 종료 상품)",
+   "customer/faq/05-missing-wrong-item.md | 먼저 확인해 주세요 [채택 설계]",
+   "customer/faq/09-shortage.md | 다른 상품으로 바꿔 줄 수 없나요? [확정 정책]"
+  ],
+  "phraseMatch": 0.25,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.4,
+  "millis": {
+   "es": 275
+  },
+  "httpMs": 291.2
+ },
+ {
+  "id": "CG07-1",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.0289,
+   0.0289
+  ],
+  "javaCos1": 0.6852029937263929,
+  "pythonCos1": 0.6831,
+  "javaEvidence": [
+   "customer/customer_app/15-notifications.md | 제2조 (앱 알림함)",
+   "customer/customer_app/15-notifications.md | 제3조 (취소·환불 알림)",
+   "customer/customer_app/15-notifications.md | 제4조 (휴대폰 알림)"
+  ],
+  "phraseMatch": 0.2857,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 284,
+   "vector": 240,
+   "embed": 192
+  },
+  "httpMs": 543.6
+ },
+ {
+  "id": "CG07-2",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.6667,
+   0.6667
+  ],
+  "relGap": [
+   0.0068,
+   0.0068
+  ],
+  "javaCos1": 0.6431883190162094,
+  "pythonCos1": 0.6412,
+  "javaEvidence": [
+   "customer/customer_app/15-notifications.md | 제2조 (앱 알림함)",
+   "customer/customer_app/15-notifications.md | 제4조 (휴대폰 알림)",
+   "customer/customer_app/10-not-received-misdelivery.md | 제4조 (오배송 확인)"
+  ],
+  "phraseMatch": 0.2,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.3333,
+  "millis": {
+   "es": 284,
+   "vector": 267,
+   "embed": 219
+  },
+  "httpMs": 569.3
+ },
+ {
+  "id": "CG08-1",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   1.0,
+   1.0
+  ],
+  "relGap": [
+   0.0382,
+   0.0382
+  ],
+  "javaCos1": 0.6747329852758932,
+  "pythonCos1": 0.6766,
+  "javaEvidence": [
+   "customer/customer_app/15-notifications.md | 제2조 (앱 알림함)",
+   "customer/customer_app/09-delivery-status.md | 제6조 (배송 완료 표시)",
+   "customer/faq/04-not-received.md | 배송 완료로 나오는데 상품이 없어요 [설계안]"
+  ],
+  "phraseMatch": 1.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 293,
+   "vector": 265,
+   "embed": 205
+  },
+  "httpMs": 583.7
+ },
+ {
+  "id": "CG11-1",
+  "set": "final",
+  "role": "customer",
+  "label": "GROUNDED",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0562,
+   0.0562
+  ],
+  "javaCos1": 0.6128627427138631,
+  "pythonCos1": 0.6129,
+  "javaEvidence": [
+   "customer/faq/12-account.md | 로그인은 어떻게 하나요? [확정 정책]",
+   "customer/customer_app/15-notifications.md | 제2조 (앱 알림함)",
+   "customer/customer_app/02-withdrawal.md | 제2조 (탈퇴 신청)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 290,
+   "vector": 247,
+   "embed": 192
+  },
+  "httpMs": 554.5
+ },
+ {
+  "id": "CG13-1",
+  "set": "final",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "HYBRID",
+  "pythonExit": "HYBRID",
+  "coverage": [
+   0.0,
+   0.0
+  ],
+  "relGap": [
+   0.0738,
+   0.0738
+  ],
+  "javaCos1": 0.587180379338942,
+  "pythonCos1": 0.5872,
+  "javaEvidence": [
+   "customer/faq/11-payment-fees.md | 쿠폰은 어떻게 쓰나요? [확정 정책]",
+   "customer/customer_app/16-reviews.md | 제6조 (반품·환불한 상품의 리뷰)",
+   "customer/customer_app/16-reviews.md | 제1조 (목적)"
+  ],
+  "phraseMatch": 0.0,
+  "faqQuestionMatch": 0.0,
+  "titleMatch": 0.0,
+  "millis": {
+   "es": 290,
+   "vector": 238,
+   "embed": 185
+  },
+  "httpMs": 546.1
+ },
+ {
+  "id": "CN03-1",
+  "set": "final",
+  "role": "customer",
+  "label": "NO_GROUNDING",
+  "javaExit": "NO_ANSWER",
+  "pythonExit": "NO_ANSWER",
+  "coverage": [
+   0.5,
+   0.5
+  ],
+  "relGap": [
+   0.3129,
+   0.3129
+  ],
+  "javaCos1": 0.5671021413243899,
+  "pythonCos1": 0.5671,
+  "javaEvidence": [],
+  "phraseMatch": 0.2,
+  "faqQuestionMatch": 0.1667,
+  "titleMatch": 0.5,
+  "millis": {
+   "es": 279,
+   "vector": 212,
+   "embed": 161
+  },
+  "httpMs": 505.5
+ }
+]
