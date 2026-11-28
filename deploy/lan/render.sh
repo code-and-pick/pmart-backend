@@ -141,10 +141,18 @@ fi
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
 
 # ---- Vault(ADR-0100): 서비스가 자기 비밀을 pc2 Vault 의 config/<앱>,lan 에서 직접 읽는다(Spring Cloud Vault, 서비스별 AppRole) ----
-# PMART_VAULT_APPS = 켤 앱(공백 구분) 또는 all. 비우면 지금처럼(Vault 를 쓰지 않음). 한 서비스 먼저 → 전체(ADR-0100 결정 9).
-# 켠 앱은 배포마다 secret-id 를 새로 받는다(배포 토큰 pmart-deployer — 숨김 입력, 명령줄·파일에 두지 않는다). secret-id 는 .env 에만.
+# 켤 앱 = deploy/lan/vault-apps.conf(git 추적 — 한 줄에 앱 이름 또는 all, # 주석). 셸의 PMART_VAULT_APPS 가 있으면 그것이 이긴다(시험용).
+#   파일을 정본으로 두는 까닭: lan.sh deploy 는 매번 render 한다 — 켠 목록이 셸 변수뿐이면 다른 세션의 배포가 Vault 설정을 빼고,
+#   {cipher} 삭제 뒤에는 비밀 없이 기동 실패한다(2026-11-28 #566 검토). 비면 지금처럼(Vault 를 쓰지 않음). 한 서비스 먼저 → 전체(ADR-0100 결정 9).
+# 켠 앱은 배포마다 secret-id 를 새로 받는다(배포 토큰 pmart-deployer). secret-id 는 .env 에만.
 # config-server 는 대상이 아니다(설정 저장소·자기 비밀은 configtree).
-VAULT_APPS=" ${PMART_VAULT_APPS:-} "
+VAULT_APPS_FILE=$LAN/vault-apps.conf
+if [ -n "${PMART_VAULT_APPS+x}" ]; then
+  VAULT_APPS=" $PMART_VAULT_APPS "
+  [ -f "$VAULT_APPS_FILE" ] && echo "Vault: PMART_VAULT_APPS 가 $VAULT_APPS_FILE 보다 우선(셸 값:${VAULT_APPS% })" >&2
+else
+  VAULT_APPS=" $( [ -f "$VAULT_APPS_FILE" ] && sed -e 's/#.*//' "$VAULT_APPS_FILE" | tr -s ' \t\r\n' ' ' ) "
+fi
 VAULT_URI="${PMART_VAULT_URI:-https://192.168.0.34:8200}"
 VAULT_CA=$LAN/tls/pmart-lan-root-ca.crt
 vault_any() { [[ "$VAULT_APPS" =~ [^[:space:]] ]]; }

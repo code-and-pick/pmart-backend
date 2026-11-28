@@ -96,10 +96,13 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
 서비스 비밀은 pc2 Vault(`https://192.168.0.34:8200`)의 `config/<앱>,lan` 에 있고, 서비스가 Spring Cloud Vault(서비스별 AppRole)로 직접 읽는다.
 Vault 쪽 운영(unseal·토큰 갱신·스냅샷·새 서비스 AppRole)은 `deploy/vault/README.md`.
 
-- **켜기**: `PMART_VAULT_APPS` 에 앱 이름(공백 구분) 또는 `all`. 비우면 지금처럼(Vault 안 씀).
+- **켜기**: `deploy/lan/vault-apps.conf`(git 추적)에 앱 이름(한 줄에 하나) 또는 `all` 을 넣고 **커밋**한다. 비면 지금처럼(Vault 안 씀).
+  `lan.sh deploy` 는 매번 render 하므로 켠 목록은 이 파일이 정본이다 — 셸 변수로만 켜면 다른 세션의 배포가 Vault 설정을 빼고,
+  `{cipher}` 삭제 뒤에는 비밀 없이 기동 실패한다. 셸의 `PMART_VAULT_APPS` 는 파일보다 우선(시험용, 배포에 쓰지 않는다).
   ```bash
-  PMART_VAULT_APPS=payment-service deploy/lan/lan.sh deploy pc2   # 한 서비스 먼저(ADR-0100 결정 9)
-  PMART_VAULT_APPS=all deploy/lan/lan.sh deploy all               # 확인 뒤 전체
+  echo payment-service >> deploy/lan/vault-apps.conf && git commit ...   # 한 서비스 먼저(ADR-0100 결정 9)
+  deploy/lan/lan.sh deploy pc2
+  # 확인 뒤 파일을 all 로 → 커밋 → deploy/lan/lan.sh deploy all
   ```
   **배포 토큰**(pmart-deployer — 구글 드라이브)은 ① 셸의 `VAULT_DEPLOYER_TOKEN` ② 파일 `deploy/lan/.secrets/vault-deployer-token`(git 제외,
   다른 곳이면 `PMART_VAULT_TOKEN_FILE` — 메모장 저장 그대로 써도 BOM·줄바꿈은 뗀다) ③ 숨김 입력 순으로 찾는다. **파일은 배포가 끝나면 지운다**
