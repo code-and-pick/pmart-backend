@@ -71,6 +71,24 @@ class MarkdownChunkerTest {
   }
 
   @Test
+  void sectionWithInlineCodeKeepsItsLevelAndPath() {
+    // 리더는 인라인 코드가 있는 절의 category 를 code_inline 으로 바꾼다(실제 backoffice/05 제15조)
+    String doc =
+        """
+        # 정책
+
+        ## 제1조 (가)
+        본문
+
+        ## 제2조 (나)
+        설정 `x.y` 를 씁니다.
+        """;
+    var chunks = chunker.chunk("d.md", "h", doc, "정책");
+    assertThat(chunks).extracting(Chunk::headingLevel).containsExactly(2, 2);
+    assertThat(chunks.get(1).sectionPath()).isEqualTo("정책 > 제2조 (나)");
+  }
+
+  @Test
   void accessScopeByPath() {
     assertThat(AccessScope.of("operator/mfc/01-a.md")).containsExactly(AccessScope.OPERATOR);
     assertThat(AccessScope.of("customer/customer_app/08-order-cancel.md"))

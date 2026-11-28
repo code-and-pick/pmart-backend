@@ -26,5 +26,8 @@
 
 ## 확인한 것 (2026-11-28)
 - 실제 문서(`docs/rag/rag-docs` 운영자 75개): 청크 650개, 가장 긴 청크 935자. 처음에는 `TokenTextSplitter` 로 나눈 조각(backoffice/05 제15조)에서 제목 경로가 빠졌다 — 절마다 나누고 절의 메타를 쓰도록 고침.
+- 리더는 절 안에 인라인 코드(백틱)가 있으면 메타 `category` 를 `header_N` 대신 `code_inline` 으로 덮어쓴다(backoffice/05 제15조) — 제목 단계는 `header_N` 이 아니면 원문 제목 줄의 `#` 개수로 정한다.
+- `TokenTextSplitter` 기본값은 5자 미만 조각을 버린다 — 짧은 절이 조용히 빠지지 않게 1자로(`withMinChunkLengthToEmbed(1)`).
+- **두 서비스 실제로 이어서 확인(PC 1, 2026-11-28)**: ES 8.18 + nori 컨테이너 + 두 서비스 jar, 실제 `pmart-all-docs` 커밋 1725acb 로 서명한 push 웹훅(파일 4 — README 하나) → integration-service 가 GitHub 에서 실제 파일 3개를 읽어 보냄 → chunking-service 색인: rag-operator 24(backoffice/05 17 + customer_app/08 7), rag-customer 14(customer_app/08 7 + faq/02 7). 삭제 push → faq/02 7청크 RETIRED. nori 검색 "전화한 고객 본인 확인" → 제15조·제5조. (smee 중계는 LAN 배포 때 확인)
 - **리더가 표·목록 줄바꿈을 한 줄로 붙인다**(Spring AI `MarkdownDocumentReader` 의 동작 — 예: 제9조 표가 `| 접수 건 종류 | 담당 팀 | … |---|…` 한 줄). 표가 든 청크 35개. BM25 낱말 검색에는 지장이 없지만, 표 행 단위로 근거를 보이는 쪽(인용 검사의 표 행 판단)은 원문을 써야 한다.
 - 시험: 단위 4(제목별 청크·경로·순번, chunkId 안정성, 긴 절 나눔, 범위) + 통합 2(ES 8.18 + nori Testcontainers: 색인·별칭 생성, 운영자·고객 나눔, customer_app 두 색인, FAQ 고객만, UNCHANGED, 새 판이 옛 판 지움, 삭제 RETIRED, nori 검색).

@@ -56,13 +56,22 @@ public class MarkdownChunker {
             .withChunkSize(props.chunkTokens())
             .withMinChunkSizeChars(props.minChunkChars())
             .withKeepSeparator(true)
+            // 기본값(5자 미만 조각 버림)은 짧은 절을 조용히 빼 버린다 — 빈 것만 버린다
+            .withMinChunkLengthToEmbed(1)
             .build();
     String docTitle = title == null || title.isBlank() ? null : title.strip();
+    java.util.Map<String, Integer> headingLevels = headingLevels(content);
     List<Chunk> out = new ArrayList<>();
     for (Document section : sections) {
       // 제목·단계는 절(리더 결과)의 메타에서 — 나눈 조각에는 남지 않는다(2026-11-28 실제 문서 확인: backoffice/05 제15조)
       String heading = str(section.getMetadata().get("title"));
+      // 단계: 리더는 절에 인라인 코드가 있으면 category 를 header_N 대신 code_inline 으로 덮어쓴다(2026-11-28 backoffice/05
+      // 제15조)
+      // — header_N 이 아니면 원문 제목 줄의 # 개수로
       int level = level(str(section.getMetadata().get("category")));
+      if (level == 0) {
+        level = headingLevels.getOrDefault(heading, 0);
+      }
       if (level == 1 && docTitle == null) {
         docTitle = heading;
       }
@@ -89,6 +98,21 @@ public class MarkdownChunker {
       }
     }
     return out;
+  }
+
+  /** 원문 제목 줄(# … ######) → 단계. 같은 제목이 여럿이면 처음 것. */
+  static java.util.Map<String, Integer> headingLevels(String content) {
+    java.util.Map<String, Integer> m = new java.util.HashMap<>();
+    for (String line : content.lines().toList()) {
+      int n = 0;
+      while (n < line.length() && n < 6 && line.charAt(n) == '#') {
+        n++;
+      }
+      if (n > 0 && n < line.length() && line.charAt(n) == ' ') {
+        m.putIfAbsent(line.substring(n + 1).strip(), n);
+      }
+    }
+    return m;
   }
 
   private static String str(@Nullable Object o) {
