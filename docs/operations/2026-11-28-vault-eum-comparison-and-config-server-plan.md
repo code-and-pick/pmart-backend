@@ -53,6 +53,8 @@
 ## 6. 할 일 (순서)
 1. **새 ADR**: ADR-0100 결정 3·4·5·6(서비스 직접 읽기·AppRole·서비스별 secret-id)을 대체. 사용자가 전에 이 방식(학습 프로젝트식 복합 백엔드)을 "정석이 아니야"라 했던 것을 이번 결정("1번")으로 바꾼다는 점을 적는다.
 2. **config-server**: Git + Vault 복합 백엔드(Vault 는 AppRole 하나, kv-v2 `config`, 프로필 구분자 `,`, 사설 CA trust store). 같은 속성이 양쪽에 있으면 Vault 가 이기게 순서를 정한다. 통합 시험(Vault 컨테이너 + 시험 Git 저장소)으로 확인.
-3. **Vault 쪽(관리자 토큰 필요 — pc2 Vault 세션, 사용자 데스크톱 작업 때)**: config-server AppRole 의 IP 묶음 — PC 4 → pc2 접속에도 같은 출발지 IP 문제(172.20.0.1)가 있으니 이 역할 하나만 Docker 대역을 허용.
+3. **Vault 쪽 — 할 일 없음**(pc2 Vault 세션 확인 2026-11-28): AppRole `config-server`(정책 `config-server-read` — `config/data/*` 읽기만)는 처음부터 **IP 묶음 없이** 만들어져(token_ttl 1h·최대 24h, secret_id_ttl 0) PC 4 → pc2 가 172.20.0.1 로 보여도 로그인된다. Docker Desktop 이 출발지를 모두 게이트웨이로 바꾸므로 "Docker 대역 허용"은 "어디서든"과 같아 넣을 뜻이 없다. 서비스별 `svc-*` AppRole·secret-id 는 필요 없어져 관리자 토큰 작업 때 정리한다.
+   - config-server 설정에 쓸 값: 마운트 kv-v2 `config`, 경로 `config/<앱>,lan`(profileSeparator `,`), 필드 = Spring 속성 이름(목록은 `[n]` — `signing.keys[0]` 는 kid 까지 Vault 에 있다. Git 쪽 목록과 섞이면 한 출처의 목록으로 통째로 바뀌는 점 주의), `application` 경로는 없으니 defaultKey 는 404 무시 또는 끔, CA `deploy/lan/tls/pmart-lan-root-ca.crt`(PEM), 주소 `https://192.168.0.34:8200`.
+   - role-id: `auth/approle/role/config-server/role-id`. secret-id: 배포 토큰(pmart-deployer)으로 `auth/approle/role/config-server/secret-id` 에서 발급(정책 `+/secret-id`) — 값은 화면·로그·Git 에 두지 않고 config-server 비밀 디렉터리 파일로.
 4. **LAN 적용**: config-server 먼저 배포 → 앱 하나가 config-server 를 거쳐 비밀을 받는지 확인 → `vault-apps.conf` 를 비워 pc2 앱 20개도 config-server 경로로 돌림.
 5. **그 뒤에** pmart-config 의 `{cipher}` 줄 삭제(ADR-0100 결정 9 ⑤와 같은 원칙 — 전체가 동작한 뒤에만).
