@@ -58,7 +58,7 @@ rag-query-service (8517) ── SearchConfidenceEvaluator ──  ADR-0099
   - 알림을 빼면 chunking-service 는 ES 전달까지만 하고, embedding-service 가 ES 를 직접 보고(맞춰 보기 주기를 짧게) 새 청크를 가져온다.
 - 사용자 답을 받으면 이 절과 ADR-0096·0098 을 고친다.
 
-## 5. LAN 배치 (PC 2, 아직 배포 안 함)
+## 5. LAN 배치 (PC 2 — 2026-11-28 첫 배포: integration·chunking·embedding·rag-query·docs-relay, rag-pgvector embedding_service, es-search rag-*-v2)
 
 | 구성요소 | 포트 | 비고 |
 |---|---|---|
