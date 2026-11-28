@@ -19,7 +19,7 @@ paths:
 
 ## 비밀정보·로그
 - 비밀정보를 Git, `application.yml`, 컨테이너 이미지에 저장하지 않는다 (Vault 또는 Cloud Secret Manager).
-  - LAN(ADR-0100): 서비스 비밀은 Vault(pc2 `https://192.168.0.34:8200`)의 `config/<앱>,lan` — 서비스가 Spring Cloud Vault(서비스별 AppRole)로 직접 읽는다. 기본 꺼짐, LAN 컨테이너만 환경변수로 켠다(application.yml 에 `vault://` 를 넣지 않는다). 비밀을 바꾸면 Vault 를 고치고 그 앱을 재시작한다. 토큰·unseal 키·secret-id 를 Git·문서·로그에 넣지 않는다.
+  - LAN(ADR-0100): 서비스 비밀은 Vault(pc2 `https://192.168.0.34:8200`)의 `config/<앱>,lan` — **config-server 가 Git + Vault 복합 백엔드로 내려준다(ADR-0101)**, 서비스는 Vault 를 직접 읽지 않는다(서비스 Spring Cloud Vault 는 기본 꺼짐 그대로, application.yml 에 `vault://` 를 넣지 않는다). 비밀을 바꾸면 Vault 를 고치고 그 앱을 재시작한다. 전환 중(ADR-0101 결정 7): pc2 앱 20개는 아직 Vault 직접 읽기(`deploy/lan/vault-apps.conf`). 토큰·unseal 키·secret-id 를 Git·문서·로그에 넣지 않는다.
   - 전환 중 예외(ADR-0027 → ADR-0100 결정 9): {cipher} 삭제가 끝날 때까지 `pmart-config` 에 `{cipher}` 암호문이 남는다. 새 비밀을 {cipher} 로 더하지 말고 Vault 에 넣는다. 암호화 키·salt 는 Git·이미지·application.yml 밖(`deploy/lan/.secrets/`, config-server 컨테이너, Vault `pmart/ops/config-server`). 키가 새면 키와 비밀값을 함께 바꾼다.
 - 개인정보, 인증 토큰, PG 자격증명을 로그에 남기지 않는다.
 

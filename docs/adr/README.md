@@ -97,4 +97,5 @@
 | [0097](0097-new-rag-system-excludes-assistant-services.md) | 새 RAG 시스템은 새 서비스로(integration → chunking → 임베딩 …) — ai-assistant-service·customer-assistant-service 제외, 삭제 안 함 | 승인 (2026-11-28) |
 | [0098](0098-embedding-service-pgvector.md) | embedding-service — ES 청크를 Ollama qwen3-embedding(Spring AI)으로 1024차원 벡터로 바꿔 자기 pgvector(embedding_service)에 같은 chunkId 로(캐시·맞춰 보기) | 승인 (2026-11-28) |
 | [0099](0099-rag-query-service-search-confidence.md) | rag-query-service — ES-First 질문 검색: ES BM25 → SearchConfidenceEvaluator(핵심어 비율·상대 점수 차) → 끝(상위 3 카드) 또는 embedding-service 벡터·RRF·답변 불가 | 승인 (2026-11-28) |
-| [0100](0100-vault-secrets-spring-cloud-vault.md) | LAN 서비스 비밀은 Vault(pc2, TLS)에 두고 서비스가 Spring Cloud Vault 로 직접 읽는다(서비스별 AppRole, 기본 꺼짐·LAN 환경변수로 켬) — pmart-config {cipher} 제거. ADR-0027 결정 4 대체 | 승인 (2026-11-28, LAN 연결·{cipher} 삭제는 후속) |
+| [0100](0100-vault-secrets-spring-cloud-vault.md) | LAN 서비스 비밀은 Vault(pc2, TLS)에 두고 서비스가 Spring Cloud Vault 로 직접 읽는다(서비스별 AppRole, 기본 꺼짐·LAN 환경변수로 켬) — pmart-config {cipher} 제거. ADR-0027 결정 4 대체 | 승인 (2026-11-28; 결정 3·4·5·6 은 ADR-0101 로 대체) |
+| [0101](0101-config-server-vault-composite.md) | LAN 서비스 비밀은 config-server 가 Git + Vault 복합 백엔드로 내려준다(AppRole config-server 하나) — 서비스는 Vault 를 직접 읽지 않는다. ADR-0100 결정 3·4·5·6 대체 | 승인 (2026-11-28, 구현 전) |

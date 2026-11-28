@@ -1,5 +1,6 @@
 # ADR-0100 LAN 서비스 비밀은 Vault 에 두고 서비스가 Spring Cloud Vault 로 직접 읽는다 — pmart-config 의 {cipher} 를 없앤다
 
+- **결정 3·4·5·6 은 ADR-0101 로 대체**(2026-11-28 — 서비스 직접 읽기 대신 config-server 가 Git + Vault 복합 백엔드로 내려준다. 전체 전환 때 pc3·4·5 앱의 AppRole IP 묶음 로그인 실패). 결정 1·2·7·8·9 ⑤ 는 유지.
 - 상태: 승인 (2026-11-28, 사용자 결정 — "cipher를 없애려고 지금 vault 서버를 운용하려는건데", "서비스가 vault에서 직접 읽어야지", "이왕하는거면 tls 바로 하는게 낫지 않아?", 서버 위치 "pc2에서 그대로"). 구현: Vault 서버·데이터·클라이언트 코드는 끝(PR #564, 기본 꺼짐). LAN 연결(render.sh)·{cipher} 삭제는 후속(아래 결정 9).
 - 대체: ADR-0027 결정 4(비밀은 pmart-config 에 `{cipher}`, config-server 가 복호화) — 결정 9 의 5단계가 끝나면. 결정 7(config-server 자신의 비밀 configtree)은 유지하되 `encrypt.key`·`encrypt.salt` 는 {cipher} 가 없어지면 필요 없다. `tech-stack.md` "비밀정보: Vault 또는 Cloud Secret Manager" 중 **LAN 은 Vault**.
 - 범위: LAN(docker compose 5대). 운영(ADR-0029 — AWS EC2, GraalVM Native)·Kubernetes 는 이 ADR 밖 — 같은 구조(서비스가 Vault 에서 직접)로 이어 갈 수 있지만 인증 방식(EC2·Kubernetes 인증)과 Native 동작은 따로 정한다.
