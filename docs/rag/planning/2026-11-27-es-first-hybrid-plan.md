@@ -192,3 +192,10 @@ P1·P2 는 ES 없이 지금 할 수 있고, P3 결과에 따라 P4 를 할지 �
 - **ADR-0092 문서 관리**(사용자 "rag 문서를 백오피스에서 관리하고 수정"): 운영자 RAG 문서 정본이 서비스 DB 로 옮겨 간다(LAN `knowledge.source=db` 뒤). P2~P4 의 ES 색인을 만들 때 원본은 저장소 파일이 아니라 **DB 의 지금 판**(`KnowledgeIndexing.indexFromDb` 와 같은 입력) — P3 비교 시험은 지금처럼 저장소 사본으로 돌려도 된다(가져온 직후에는 같다).
 - **ADR-0093 상담 도우미**: `GET /assistant/consult-guides` 는 LLM 없이 검색만 쓴다 — ES-First 로 검색 경로가 바뀌면 도우미도 같이 바뀐다(P3 비교에 도우미 검색어도 넣는다).
 - 상담 본인 확인·주문 확인(사용자 승인 2026-11-28)이 운영자 RAG `backoffice/05` 제15조로 들어감 — ② 평가셋에 "고객이 전화하면 본인 확인은?" 같은 질문을 넣을 수 있다.
+
+## 11. P1 ⑤ 다시 잼 + ② 의도 라벨 (2026-11-28, PC 1 — LAN, #562·P1 ① 이미지 e165be86, 문서 DB 색인 643 청크)
+- 결과 `docs/rag/verification/2026-11-28/answers-eval-intent/`: **26/35**(근거 질문 11/19, 근거 적중 18/19, 주제 이탈 1 — B01). 11-27 은 27/35.
+- 유형별: CHECK·EXPLAIN 으로 나눠 보면 틀린 8개 중 EXPLAIN 4(A06·A13·B01·B02), CHECK 4(A05·A15·A17·B05). NONE 은 N01 하나만 틀림(발췌로 답함, 1위 0.451 — 하한 0.50 이면 걸러짐).
+- **A17**: 11-27 은 발췌로 정답(원문 전체가 보여 "쿠폰 전"이 들어감), 이번에는 첫 생성이 검사를 통과했지만 "장바구니 쿠폰 전" 판정 기준을 빼먹어 오답 — 생성 경로가 열린 대신 사실 누락. 검사(인용 검사)는 틀린 말만 막고 빠진 말은 못 막는다.
+- 지표(Prometheus, 평가 35문항 + e2e): GENERATED_FIRST 19 · GENERATED_RETRY 4 · BELOW_THRESHOLD 13 · EXTRACTIVE_FALLBACK 1 · MODEL_UNGROUNDED 1 · REALTIME 2 · OUT_OF_SCOPE 1, 걸린 규칙 NEGATION_MISMATCH 3.
+- ② 라벨: 기존 35문항에 `intent`(CHECK 12 · EXPLAIN 7 · NONE 15 · ORDER 1). `rag_answer_eval.py` 에 expect FIND·PRODUCT 채점과 유형별 정답 줄. 새 질문은 사용자 확인 뒤 넣는다.

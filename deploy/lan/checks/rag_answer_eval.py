@@ -73,6 +73,11 @@ def grade(q, st, r):
         ok = mode in ("GENERATIVE", "BASELINE_EXTRACTIVE") and bool(cites) and not missing and not bad
     elif q["expect"] == "NONE":
         ok = mode == "NONE" and not bad
+    elif q["expect"] == "FIND":  # 문서 찾기(2026-11-28 P1 ②): 찾는 문서를 인용하면 정답 — 문서 카드(P2) 전 기준선
+        ok = mode in ("GENERATIVE", "BASELINE_EXTRACTIVE") and any(
+            p.startswith(s) for p in paths for s in q.get("sources", [])) and not bad
+    elif q["expect"] == "PRODUCT":  # 상품 가격·판매(ADR-0083): 상품 검색 답이면 정답
+        ok = r.get("state") == "PRODUCT_INFO" and not bad
     else:  # REALTIME
         ok = mode == "NONE" and r.get("retrievalMode") in (None, "NONE") and not bad
     src_hit = any(p.startswith(s) for p in paths for s in q.get("sources", []))
@@ -119,12 +124,16 @@ lines = [
     f"- 질문 정의: `services/ai-assistant-service/src/integrationTest/resources/eval/answers.json` (정답 사실은 원문을 읽고 먼저 정함)",
     f"- **전체 정답 {correct}/{n}** · 근거로 답해야 하는 질문 {ans_correct}/{len(ans)} · 근거 적중 {src}/{len(ans)} · 주제 이탈 {off}",
     f"- 답 방식(근거 질문): 생성 {gen} · 발췌로 전환 {ext} · 그 밖 {len(ans) - gen - ext}",
-    f"- 응답 시간: 중앙 {secs[n // 2]:.1f}초 · 최대 {secs[-1]:.1f}초", "",
-    "| id | 결과 | 시간 | 답 방식 | 근거 적중 | 빠진 사실 · 금지 표현 | 질문 |", "|---|---|---|---|---|---|---|",
+    f"- 응답 시간: 중앙 {secs[n // 2]:.1f}초 · 최대 {secs[-1]:.1f}초",
+    "- 유형별 정답(intent, 2026-11-28 P1 ②): " + " · ".join(
+        f"{it} {sum(1 for x in rows if x[0].get('intent') == it and x[1])}/{sum(1 for x in rows if x[0].get('intent') == it)}"
+        for it in ["FIND", "CHECK", "EXPLAIN", "PRODUCT", "ORDER", "NONE"]
+        if any(x[0].get("intent") == it for x in rows)), "",
+    "| id | 유형 | 결과 | 시간 | 답 방식 | 근거 적중 | 빠진 사실 · 금지 표현 | 질문 |", "|---|---|---|---|---|---|---|---|",
 ]
 for q, ok, missing, bad, src_hit, off_topic, mode, s, st in rows:
     note = "; ".join(["빠짐 " + "/".join(g) for g in missing] + ["금지 " + x for x in bad]) or ""
-    lines.append(f"| {q['id']} | {'정답' if ok else '**오답**'} | {s:.1f}s | {mode or f'HTTP {st}'} | "
+    lines.append(f"| {q['id']} | {q.get('intent', '-')} | {'정답' if ok else '**오답**'} | {s:.1f}s | {mode or f'HTTP {st}'} | "
                  f"{'Y' if src_hit else ('주제 이탈' if off_topic else '-')} | {note} | {q['q']} |")
 lines += ["", "## 오답 상세", ""]
 for (q, ok, missing, bad, src_hit, off_topic, mode, s, st), r in zip(rows, raw):
