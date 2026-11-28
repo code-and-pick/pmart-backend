@@ -1,6 +1,6 @@
 # ADR-0027 LAN 설정은 Spring Cloud Config Server(GitHub 저장소, {cipher})로 부팅 때 받는다
 
-- 상태: 승인, 결정 2·3·5 는 ADR-0029, 결정 6 은 ADR-0033(웹훅 + Bus 실행 중 갱신)으로 대체 (2026-11-02, 사용자 결정 "configuration 서버 바로 만들어줘" — 저장소 GitHub, 전체 서비스, 비밀은 {cipher}, 부팅 때만 읽음)
+- 상태: 승인, 결정 2·3·5 는 ADR-0029, 결정 6 은 ADR-0033(웹훅 + Bus 실행 중 갱신), 결정 4({cipher})는 ADR-0100(Vault — 서비스가 직접 읽음, 전환 순서 끝나면)으로 대체 (2026-11-02, 사용자 결정 "configuration 서버 바로 만들어줘" — 저장소 GitHub, 전체 서비스, 비밀은 {cipher}, 부팅 때만 읽음)
 - 대체: `docs/architecture/tech-stack.md`·`service-map.md` 의 "Spring Cloud Config/Eureka 서비스는 두지 않는다"(2026-10-23) 중 **Config 부분, LAN(compose) 환경에 한해**. Eureka(서비스 검색)는 계속 두지 않는다.
 - 관련: `.claude/rules/security-config.md`(설정·서비스 검색, 비밀정보), `deploy/lan/render.sh`·`lan.sh`, ADR-0012(이미지 공개), ADR-0026
 
