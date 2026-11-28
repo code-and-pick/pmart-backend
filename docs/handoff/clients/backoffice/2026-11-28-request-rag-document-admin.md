@@ -5,7 +5,7 @@
 작성: pmart-backend PC 1, 2026-11-28 — 사용자 "rag 문서를 관리하는곳이 백오피스쪽에서도 관리하고 수정할수있어야하는것같아" → "다 해줘"
 결정: **ADR-0092**(`docs/adr/0092-rag-documents-managed-in-backoffice.md`)
 계약: `contracts/openapi/ai-assistant-service.yaml` 1.4.0 태그 `knowledge`, `contracts/openapi/approval-service.yaml` 0.7.0 종류 `RAG_DOCUMENT`
-상태: **백엔드 구현·시험 전**(PC 1 로컬 — push·배포 안 함). 배포되면 이 파일에 적는다.
+상태: **LAN 배포**(2026-11-28 — pc2 ai-assistant-service e165be86·pc4 approval-service ca0b4f4d·pc4 api-gateway 1454a781, pmart-config 4079458, `rag-ingest pc2` 문서 75개 가져오기·643 청크). 화면은 이 요청서대로 만들면 된다.
 
 ## 무엇이 바뀌나
 - 운영 도우미(운영자 RAG)가 답할 때 쓰는 문서를 **백오피스에서 보고, 고치고, 승인받아 바로 반영**한다. 지금은 저장소 파일을 고쳐 배포해야 했다.

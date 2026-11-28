@@ -5,7 +5,7 @@
 작성: pmart-backend PC 1, 2026-11-28 — 사용자 "백오피스 운영도우미에서 고객쪽 인입이 왔을때 해당 상담사를 돕는쪽이 필요한것같아 … 클라이언트 작업도 먼가 달라져야할것같고" → "다 해줘"
 결정: **ADR-0093**(`docs/adr/0093-cs-consult-assistant-panel.md`), 본인 확인 정책 = 운영자 RAG `docs/rag/rag-docs/backoffice/05-customer-center-cases.md` **제15조**(사용자 승인 2026-11-28)
 계약: `contracts/openapi/ai-assistant-service.yaml` 1.4.0 `GET /assistant/consult-guides`(태그 `consult`)
-상태: **백엔드 구현·시험 전**(PC 1 로컬 — push·배포 안 함). 배포되면 이 파일에 적는다.
+상태: **LAN 배포**(2026-11-28 — pc2 ai-assistant-service e165be86·pc4 approval-service ca0b4f4d·pc4 api-gateway 1454a781, pmart-config 4079458, `rag-ingest pc2` 문서 75개 가져오기·643 청크). 화면은 이 요청서대로 만들면 된다.
 
 ## 무엇이 바뀌나
 - 지금 운영 도우미는 상담원이 질문을 써야 한다. 전화·채팅을 받는 중에는 그럴 틈이 없다.
