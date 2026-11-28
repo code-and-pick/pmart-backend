@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# =============================================================================
+# pmart-vault 실행기 — deploy/vault/vault.sh <명령>
+#
+#   up       Vault 서버 기동(처음엔 sealed·미초기화 상태로 뜬다)
+#   status   상태(초기화·봉인 여부)
+#   init     최초 1회: unseal 키·root 토큰 생성 → .init/ 파일로만 저장(화면 출력 없음)
+#   unseal   봉인 해제(재시작할 때마다). 키를 숨김 입력으로 THRESHOLD 번 받는다
+#   setup    KV v2 마운트(pmart/)·정책·감사 로그 등록. root 또는 관리자 토큰을 숨김 입력으로 받는다
+#   snapshot 백업(Raft 스냅샷) — 관리자 토큰 숨김 입력, 기본 저장 위치 <pmart-project>/pmart-vault-backups/
+#   seed     비밀 파일 묶음(pmart-keys-pc6 구조)을 Vault 로 옮긴다 — seed.sh <폴더>
+#   logs     서버 로그
+#   down     중지(데이터 유지). 데이터까지 지우는 명령은 일부러 두지 않는다
+#
+# 비밀(토큰·unseal 키)은 명령줄 인자·파일·.env 에 넣지 않는다. 숨김 입력 → 환경변수 → exec -e 로만 넘긴다.
+# Windows: Git Bash(Windows Terminal 권장 — mintty 는 숨김 입력이 안 될 수 있다) 또는 PowerShell 에서 "bash vault.sh <명령>".
+# =============================================================================
+set -euo pipefail
+cd "$(dirname "$0")"
+
+# 모드: tls/ 에 인증서가 있으면 TLS(LAN), 없으면 로컬(127.0.0.1, TLS 없음)
+if [ -f tls/vault.crt ] && [ -f tls/vault.key ]; then
+  export VAULT_LISTENER=tls VAULT_LOCAL_ADDR=https://127.0.0.1:8200 VAULT_SKIP_VERIFY=true
+  export VAULT_BIND="${VAULT_BIND:-0.0.0.0}"
+else
+  export VAULT_LISTENER=local VAULT_LOCAL_ADDR=http://127.0.0.1:8200 VAULT_SKIP_VERIFY=false
+  export VAULT_BIND="${VAULT_BIND:-127.0.0.1}"
+  if [ "$VAULT_BIND" != "127.0.0.1" ]; then
+    echo "[vault] TLS 인증서(tls/vault.crt·vault.key) 없이 $VAULT_BIND 에 열 수 없다 — 중단" >&2; exit 1
+  fi
+fi
+export VAULT_API_ADDR="${VAULT_API_ADDR:-$VAULT_LOCAL_ADDR}"
+
+KEY_SHARES="${VAULT_KEY_SHARES:-3}"
+KEY_THRESHOLD="${VAULT_KEY_THRESHOLD:-2}"
+dc() { docker compose -f compose.yaml "$@"; }
+vexec() { dc exec -T "$@" </dev/null; }   # 표준입력을 막아 숨김 입력과 섞이지 않게
+
+# vault operator init -status: 0 = 초기화됨, 2 = 안 됨, 1 = 오류
+init_state() { set +e; vexec vault vault operator init -status >/dev/null 2>&1; local rc=$?; set -e; echo "$rc"; }
+
+case "${1:-}" in
+  up)
+    dc up -d --wait
+    echo "[vault] 기동(모드 $VAULT_LISTENER, $VAULT_BIND:${VAULT_PORT:-8200}). 다음: ./vault.sh status"
+    ;;
+
+  status)
+    set +e; vexec vault vault status; rc=$?; set -e
+    case "$rc" in
+      0) echo "[vault] unsealed — 사용 가능" ;;
+      2) echo "[vault] sealed 또는 미초기화 — init(최초 1회) 또는 unseal 필요" ;;
+      *) echo "[vault] 응답 없음 — ./vault.sh up / logs 확인"; exit 1 ;;
+    esac
+    ;;
+
+  init)
+    st="$(init_state)"
+    [ "$st" = "2" ] || { echo "[vault] 이미 초기화됐거나 응답 없음(init -status=$st) — 중단"; exit 1; }
+    umask 077; mkdir -p .init
+    out=".init/init-$(date +%Y%m%d-%H%M%S).json"
+    vexec vault vault operator init -key-shares="$KEY_SHARES" -key-threshold="$KEY_THRESHOLD" -format=json > "$out"
+    echo "[vault] 초기화 완료. unseal 키 ${KEY_SHARES}개(해제에 ${KEY_THRESHOLD}개)·root 토큰을 아래 파일에만 저장했다:"
+    echo "        $(pwd)/$out"
+    echo "  1) 키 조각을 관리자마다 하나씩 구글 드라이브(본인만 접근) 등 안전한 곳에 옮긴다"
+    echo "  2) ./vault.sh unseal → ./vault.sh setup"
+    echo "  3) 관리자 토큰을 만든 뒤 root 토큰을 폐기하고(vault token revoke), 이 파일을 지운다"
+    ;;
+
+  unseal)
+    for ((i = 1; i <= KEY_THRESHOLD; i++)); do
+      set +e; vexec vault vault status >/dev/null 2>&1; rc=$?; set -e
+      [ "$rc" = "0" ] && break
+      read -rsp "unseal 키 $i/$KEY_THRESHOLD (입력은 보이지 않음): " VAULT_UNSEAL_KEY || [ -n "${VAULT_UNSEAL_KEY:-}" ]; echo
+      export VAULT_UNSEAL_KEY
+      vexec -e VAULT_UNSEAL_KEY vault sh -c 'vault operator unseal "$VAULT_UNSEAL_KEY" >/dev/null'
+      unset VAULT_UNSEAL_KEY
+    done
+    "$0" status
+    ;;
+
+  setup)
+    read -rsp "root 또는 관리자 토큰 (입력은 보이지 않음): " VAULT_TOKEN || [ -n "${VAULT_TOKEN:-}" ]; echo
+    export VAULT_TOKEN
+    vexec -e VAULT_TOKEN vault sh -eu -c '
+      if vault secrets list -format=json | grep -q "\"pmart/\""; then
+        echo "[setup] pmart/ 마운트 이미 있음"
+      else
+        vault secrets enable -path=pmart -version=2 kv >/dev/null
+        echo "[setup] pmart/ (KV v2) 마운트"
+      fi
+      for f in /vault/policies/*.hcl; do
+        n="$(basename "$f" .hcl)"
+        vault policy write "$n" "$f" >/dev/null
+        echo "[setup] 정책 등록: $n"
+      done
+      if vault audit list 2>/dev/null | grep -q "^file/"; then
+        echo "[setup] 감사 로그 이미 켜짐"
+      else
+        vault audit enable file file_path=/vault/logs/audit.log >/dev/null
+        echo "[setup] 감사 로그 켬: /vault/logs/audit.log"
+      fi
+    '
+    unset VAULT_TOKEN
+    echo "[vault] setup 완료. 비밀 넣기·팀원 로그인 방식은 README 참고"
+    ;;
+
+  snapshot)
+    # Raft 스냅샷(암호화됨 — 복원하려면 unseal 키가 필요). 저장소 밖에 둔다. unseal 키와 다른 곳에 보관한다
+    dir="${2:-$(cd ../../.. && pwd)/pmart-vault-backups}"
+    mkdir -p "$dir"
+    out="$dir/pmart-vault-$(date +%Y%m%d-%H%M%S).snap"
+    read -rsp "관리자 토큰 (입력은 보이지 않음): " VAULT_TOKEN || [ -n "${VAULT_TOKEN:-}" ]; echo
+    export VAULT_TOKEN
+    vexec -e VAULT_TOKEN vault sh -c 'vault operator raft snapshot save /tmp/pmart.snap >/dev/null'
+    unset VAULT_TOKEN
+    dc cp vault:/tmp/pmart.snap "$out" >/dev/null
+    vexec vault rm -f /tmp/pmart.snap
+    echo "[vault] 스냅샷: $out ($(wc -c < "$out") bytes)"
+    ;;
+
+  seed) shift; exec ./seed.sh "$@" ;;
+  logs) dc logs --tail=200 vault ;;
+  down) dc down; echo "[vault] 중지(데이터 볼륨 유지)" ;;
+  *)
+    sed -n '3,12p' "$0"; exit 1 ;;
+esac
