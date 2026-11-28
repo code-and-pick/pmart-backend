@@ -91,6 +91,22 @@ pmart-config push → GitHub 웹훅 → smee.io 채널 → config-relay(pc4) →
 3. config-server 이미지 push 후 `lan.sh render` → `lan.sh deploy pc4`(config-server·config-relay) → 나머지 앱 재배포(새 이미지에 Bus 가 들어 있다).
 4. GitHub Recent Deliveries 는 언제나 200 이다 — GitHub 가 보내는 곳은 smee.io 이고 smee.io 는 받기만 하면 200 을 준다. config-server 의 결과(200·403)는 `lan.sh logs pc4 config-relay` 의 `POST http://config-server:8888/monitor - <상태>` 로만 보인다(ping 은 push 가 아니라 403). 설정 파일 하나를 push 해서 위 '확인'으로 본다. push 가 403 이면 Secret 불일치 또는 smee 재직렬화(ADR-0033 '결과').
 
+## 비밀 — Vault 에서 직접 (ADR-0100)
+
+서비스 비밀은 pc2 Vault(`https://192.168.0.34:8200`)의 `config/<앱>,lan` 에 있고, 서비스가 Spring Cloud Vault(서비스별 AppRole)로 직접 읽는다.
+Vault 쪽 운영(unseal·토큰 갱신·스냅샷·새 서비스 AppRole)은 `deploy/vault/README.md`.
+
+- **켜기**: `PMART_VAULT_APPS` 에 앱 이름(공백 구분) 또는 `all`. 비우면 지금처럼(Vault 안 씀).
+  ```bash
+  PMART_VAULT_APPS=payment-service deploy/lan/lan.sh deploy pc2   # 한 서비스 먼저(ADR-0100 결정 9)
+  PMART_VAULT_APPS=all deploy/lan/lan.sh deploy all               # 확인 뒤 전체
+  ```
+  render 가 **배포 토큰**(pmart-deployer — 구글 드라이브)을 숨김 입력으로 묻는다. 명령줄·파일에 두지 않는다(curl 헤더는 표준입력으로).
+- 켠 앱마다 render 가 role-id(compose)·secret-id(`.env`, 배포마다 새로 — PC IP 로 묶여 있고 90일 만료)를 받아
+  `SPRING_CONFIG_IMPORT=optional:configserver:,vault://`·`SPRING_CLOUD_VAULT_*` 와 CA 마운트(`./vault-ca.pem`)를 넣는다. config-server 는 대상 아님.
+- **순서**: Vault 가 unsealed 여야 켠 앱이 뜬다(fail-fast). 서비스 하나 → 전체 → 그 뒤에만 pmart-config `{cipher}` 삭제.
+- 주소를 바꿀 때 `PMART_VAULT_URI`. 새 앱은 pc2 `deploy/vault/service-roles.sh` 로 AppRole 을 먼저 만든다(없으면 render 가 멈춘다).
+
 ## 서비스 등록·조회 (Eureka, ADR-0032)
 - pc4 의 `eureka-server:8761`. 대시보드 `http://192.168.0.40:8761` — 사용자 `pmart`, 비밀번호 `deploy/lan/.secrets/eureka-password`(`init-secrets.sh` 가 만든다).
 - 모든 Spring 앱(config-server 제외)은 lan 프로필에서 **자기 PC 의 LAN IP + 포트**로 등록한다(`PMART_HOST_IP`, render.sh 가 placement.conf 의 IP 로 넣는다). 설정은 저장소 `application-lan.yml` 의 `eureka.*`.
