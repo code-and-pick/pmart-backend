@@ -157,6 +157,13 @@ vault_api() {
 json_field() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
 if vault_any; then
   [ -f "$VAULT_CA" ] || { echo "Vault CA 없음: $VAULT_CA" >&2; exit 1; }
+  # 배포 토큰: ① 셸의 VAULT_DEPLOYER_TOKEN ② 파일(PMART_VAULT_TOKEN_FILE, 기본 .secrets/vault-deployer-token — git 제외.
+  # 사용자가 메모장으로 저장 → 배포 뒤 지운다. BOM·CRLF·공백은 뗀다) ③ 숨김 입력. 어느 쪽이든 명령줄·로그에는 안 남는다
+  VAULT_TOKEN_FILE="${PMART_VAULT_TOKEN_FILE:-$SECRETS/vault-deployer-token}"
+  if [ -z "${VAULT_DEPLOYER_TOKEN:-}" ] && [ -f "$VAULT_TOKEN_FILE" ]; then
+    VAULT_DEPLOYER_TOKEN="$(sed -e '1s/^\xEF\xBB\xBF//' "$VAULT_TOKEN_FILE" | tr -d '\r\n\t ')"
+    echo "Vault 배포 토큰: 파일 $VAULT_TOKEN_FILE (배포가 끝나면 지운다)" >&2
+  fi
   if [ -z "${VAULT_DEPLOYER_TOKEN:-}" ]; then
     read -rsp "Vault 배포 토큰(pmart-deployer, 입력은 보이지 않음): " VAULT_DEPLOYER_TOKEN; echo >&2
   fi

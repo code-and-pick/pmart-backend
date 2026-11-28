@@ -101,7 +101,10 @@ Vault 쪽 운영(unseal·토큰 갱신·스냅샷·새 서비스 AppRole)은 `de
   PMART_VAULT_APPS=payment-service deploy/lan/lan.sh deploy pc2   # 한 서비스 먼저(ADR-0100 결정 9)
   PMART_VAULT_APPS=all deploy/lan/lan.sh deploy all               # 확인 뒤 전체
   ```
-  render 가 **배포 토큰**(pmart-deployer — 구글 드라이브)을 숨김 입력으로 묻는다. 명령줄·파일에 두지 않는다(curl 헤더는 표준입력으로).
+  **배포 토큰**(pmart-deployer — 구글 드라이브)은 ① 셸의 `VAULT_DEPLOYER_TOKEN` ② 파일 `deploy/lan/.secrets/vault-deployer-token`(git 제외,
+  다른 곳이면 `PMART_VAULT_TOKEN_FILE` — 메모장 저장 그대로 써도 BOM·줄바꿈은 뗀다) ③ 숨김 입력 순으로 찾는다. **파일은 배포가 끝나면 지운다**
+  (render 가 지우지 않는다 — render·deploy 를 이어서 돌릴 수 있게). 토큰은 curl 헤더로 표준입력에만 — 명령줄·로그에 남지 않는다.
+  `< 파일` 로 표준입력을 돌리는 방식은 쓰지 않는다(lan.sh 안의 다른 명령이 표준입력을 먼저 읽을 수 있다).
 - 켠 앱마다 render 가 role-id(compose)·secret-id(`.env`, 배포마다 새로 — PC IP 로 묶여 있고 90일 만료)를 받아
   `SPRING_CONFIG_IMPORT=optional:configserver:,vault://`·`SPRING_CLOUD_VAULT_*` 와 CA 마운트(`./vault-ca.pem`)를 넣는다. config-server 는 대상 아님.
 - **순서**: Vault 가 unsealed 여야 켠 앱이 뜬다(fail-fast). 서비스 하나 → 전체 → 그 뒤에만 pmart-config `{cipher}` 삭제.
