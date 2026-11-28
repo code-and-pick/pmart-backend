@@ -195,7 +195,14 @@ PC 6 은 같은 LAN(192.168.0.x)에 있지만 **집 Native 환경(pmart-native �
 
 1. **PC 6 에서(사용자, 관리자 PowerShell)**: 위 1단계와 같이 `pc-bootstrap.ps1` 실행 — OpenSSH 서버, PC 1 LAN 공개 키(`administrators_authorized_keys`), SSH 기본 셸 PowerShell, 방화벽 SSH·ping. 스크립트는 `192.168.0.0/24` 전체에 22번을 연다 — PC 1 만 열려면 실행 뒤
    `Set-NetFirewallRule -DisplayName 'PMart SSH (LAN)' -RemoteAddress 192.168.0.32`.
-   파일을 옮기는 방법: USB·공유 폴더로 `pc-bootstrap.ps1` 하나만(공개 키뿐이라 비밀 아님). Docker Hub 로그인·Docker 설정은 이 문서 대상이 아니다(PC 6 의 일).
+   파일을 옮기는 방법: USB·메신저 등으로 `pc-bootstrap.ps1` 하나만(공개 키뿐이라 비밀 아님, UTF-8 BOM 이라 PowerShell 5.1 에서도 한글이 안 깨진다). Docker Hub 로그인·Docker 설정은 이 문서 대상이 아니다(PC 6 의 일).
+   실행(시작 메뉴 "Windows PowerShell" → 오른쪽 클릭 "관리자 권한으로 실행", 파일을 `C:\pmart\` 에 뒀을 때):
+   ```powershell
+   cd C:\pmart
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\pc-bootstrap.ps1
+   Set-NetFirewallRule -DisplayName 'PMart SSH (LAN)' -RemoteAddress 192.168.0.32   # 선택 — SSH 를 PC 1 에서만
+   ```
+   끝에 컴퓨터 이름·사용자(관리자 True/False)·IPv4·sshd 상태가 나온다 — PC 1 에 알려 준다. 관리자가 아니면(False) 공개 키 자리가 `%USERPROFILE%\.sshuthorized_keys` 라 따로 맞춘다.
 2. **PC 1**: `~/.ssh/config` 에 `Host pmart-pc6`(HostName = PC 6 컴퓨터 이름 또는 192.168.0.217, HostKeyAlias pmart-pc6, AddressFamily inet, User = PC 6 관리자 계정, IdentityFile ~/.ssh/pmart_lan.pem) → `ssh pmart-pc6 hostname` 으로 첫 접속·호스트 키 확인. `deploy/lan/build/pc6` 은 만들지 않는다(LAN 배포 대상 아님).
 3. **키 옮기기(PC 1 → PC 6, 사용자가 옮길 목록을 정한 뒤)**: 받는 폴더는 저장소 밖(예 `D:\pmart-keys\`, Git 제외 — pmart-native `runtime/.env` 의 `SECRETS_DIR`). `scp <파일> pmart-pc6:D:/pmart-keys/` 로 파일만 — 값은 화면·로그·메시지·Git 에 남기지 않는다. 옮긴 뒤 파일 이름 목록만 네이티브 작업 세션에 알린다.
    - 후보(기능마다 선택, 원본 `deploy/lan/.secrets/`): toss-secret-key·toss-client-key, kakao-rest-api-key·kakao-mobility-rest-api-key·kakao-admin-key.txt·kakao-rider-admin-key.txt, octomo-api-key.txt, pmart-123-firebase-adminsdk-*.json. pmart-clients: `apps/customer_app/.secrets/customer.env`, 두 앱 `android/app/google-services.json`(PC 6 clone 의 같은 경로로). `%USERPROFILE%\.android\debug.keystore`(세 앱 서명 — 옮기면 소셜 콘솔 그대로). pmart-rider-simulation `.env.local`.
