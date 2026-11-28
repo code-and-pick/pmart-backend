@@ -63,6 +63,19 @@ public final class ProductQuestion {
 
   private ProductQuestion() {}
 
+  /** 주류 검색 보탬말 — 주류를 묻는 질문의 문서 검색어에 붙인다("소주 얼마예요?"가 구매 불가 조항을 찾게, 2026-11-28). */
+  public static final String ALCOHOL_HINT = " 주류 구매";
+
+  /** 주류를 묻는 질문인가(상품 검색 답 대신 문서로). */
+  public static boolean alcohol(String question) {
+    return ALCOHOL.matcher(RequestHashing.normalize(question)).find();
+  }
+
+  /** 문서 검색어: 주류 질문이면 보탬말을 붙인다. 그 밖에는 그대로. */
+  public static String retrievalQuery(String query) {
+    return alcohol(query) ? query + ALCOHOL_HINT : query;
+  }
+
   /** 상품 질문이면 검색어, 아니면 비어 있다. */
   public static Optional<String> keyword(String question) {
     String q = RequestHashing.normalize(question);

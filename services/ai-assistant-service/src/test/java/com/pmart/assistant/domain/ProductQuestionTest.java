@@ -54,6 +54,13 @@ class ProductQuestionTest {
   }
 
   @Test
+  void alcoholQuestionsSearchTheNoAlcoholRule() {
+    assertThat(ProductQuestion.retrievalQuery("소주 얼마예요?")).isEqualTo("소주 얼마예요? 주류 구매");
+    assertThat(ProductQuestion.retrievalQuery("술빵 얼마예요?")).isEqualTo("술빵 얼마예요?");
+    assertThat(ProductQuestion.retrievalQuery("봉투값은 얼마예요?")).isEqualTo("봉투값은 얼마예요?");
+  }
+
+  @Test
   void operatorTextListsItemsWithoutInventingPrice() {
     String text =
         ProductAnswerText.operator(

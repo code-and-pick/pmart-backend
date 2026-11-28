@@ -332,7 +332,12 @@ public class CustomerQuestionService {
     Future<AnswerGenerator.Generated> work =
         executor.submit(
             () -> {
-              Retriever.Retrieval r = retriever.retrieve(snapshot, question, false, scopes);
+              Retriever.Retrieval r =
+                  retriever.retrieve(
+                      snapshot,
+                      com.pmart.customerassistant.domain.ProductQuestion.retrievalQuery(question),
+                      false,
+                      scopes);
               top[0] = r.topSimilarity();
               sections[0] = r.topSections();
               return generator.generate(question, r.ranked(), r.companions());

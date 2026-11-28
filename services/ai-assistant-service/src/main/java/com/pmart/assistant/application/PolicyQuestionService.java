@@ -258,8 +258,9 @@ public class PolicyQuestionService {
             .map(t -> new AnswerGenerator.PriorTurn(t.question(), t.answer()))
             .toList();
     String searchQuery =
-        FollowUp.retrievalQuery(
-            question, history.stream().map(AnswerGenerator.PriorTurn::question).toList());
+        com.pmart.assistant.domain.ProductQuestion.retrievalQuery(
+            FollowUp.retrievalQuery(
+                question, history.stream().map(AnswerGenerator.PriorTurn::question).toList()));
     Future<AnswerGenerator.Generated> work =
         executor.submit(
             () -> {
