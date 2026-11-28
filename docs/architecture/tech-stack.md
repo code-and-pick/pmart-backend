@@ -41,13 +41,13 @@
 | 이미지 저장소 | Docker Hub 개인 계정, 공개 저장소 (ADR-0012) | 서비스별 저장소 `<계정>/pmart-<service>`, git SHA 태그, digest 배포 |
 | 실행 플랫폼 | Kubernetes | 서비스별 배포·확장·상태 확인 |
 | 배포 정의 | Helm | 환경별 배포 설정 |
-| 비밀정보 | Vault 또는 Cloud Secret Manager | 토큰·PG 키·DB 자격증명 관리 |
+| 비밀정보 | Vault 또는 Cloud Secret Manager | 토큰·PG 키·DB 자격증명 관리 — LAN 은 Vault(ADR-0100) |
 
 ## 선택적 스택
 - 검색 서비스: Elasticsearch 8.18 + nori(한국어 형태소) + n-gram, 색인은 Logstash 가 도메인 이벤트로(ADR-0031 — 2026-11-03 OpenSearch 에서 변경)
 - AI 서비스: Spring AI + pgvector
 - 경로·배정 최적화: Google OR-Tools **Java 바인딩** (`transport-routing-service`, `mfc-capacity-service`, `delivery-dispatch-service`(라이더 배정), 피킹 순서 담당 서비스(구현 때 정함) — ADR-0050). **OR-Tools 를 쓰는 서비스는 GraalVM Native 로 만들지 않고 JVM 으로 실행한다(ADR-0053).** 별도 Python 런타임은 두지 않는다 — **예외: 배송 AI 추천 배차용 Python AI 최적화 서버(GreedRL·RouteFinder, delivery-dispatch 가 계산 요청 — ADR-0058, 2026-11-13 승인)**. 그 밖의 Python 전용 모델은 따로 승인 후 검토.
-- 설정: Spring Cloud Config Server(`platform-services/config-server`). 정본은 GitHub `code-and-pick/pmart-config`, 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod), 비밀은 `{cipher}`(ADR-0027·0029). LAN 실행 중 갱신은 GitHub 웹훅(smee.io 중계) → `/monitor`(spring-cloud-config-monitor) → Spring Cloud Bus(Kafka, ADR-0033). 서비스 검색: local·LAN 은 Eureka(`platform-services/eureka-server`, 클라이언트는 lan 프로필만 켬, ADR-0032), 운영(Kubernetes)은 Service DNS.
+- 설정: Spring Cloud Config Server(`platform-services/config-server`). 정본은 GitHub `code-and-pick/pmart-config`, 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod), 비밀은 Vault(pc2 `https://192.168.0.34:8200`) — 서비스가 Spring Cloud Vault(서비스별 AppRole)로 직접 읽는다(ADR-0100, LAN 연결 후 `{cipher}`(ADR-0027·0029) 삭제 예정). LAN 실행 중 갱신은 GitHub 웹훅(smee.io 중계) → `/monitor`(spring-cloud-config-monitor) → Spring Cloud Bus(Kafka, ADR-0033). 서비스 검색: local·LAN 은 Eureka(`platform-services/eureka-server`, 클라이언트는 lan 프로필만 켬, ADR-0032), 운영(Kubernetes)은 Service DNS.
 - 일반 업무 서비스에 검색·AI 의존성을 일괄 적용하지 않는다.
 
 ## 전체 구조 예시

@@ -28,7 +28,7 @@
 | [0024](0024-provider-profile-to-customer-service.md) | 로그인 제공자(Google) 프로필(이름·이메일·사진)은 auth 에 저장하지 않고 CustomerAuthenticated 로 customer-service 에 넘긴다 | 제안 |
 | [0025](0025-customer-google-login-server-auth-code.md) | 고객 Google 로그인 하이브리드 — 앱은 서버 인가 코드, auth-service 가 OAuth 클라이언트로 교환(ADR-0019 결정 1·8 대체) | 기각 — ADR-0055 로 대체 |
 | [0026](0026-no-service-to-service-authentication.md) | 서비스 간 호출은 인증하지 않는다 — 신뢰 경계는 private subnet 과 API Gateway(ADR-0011 서비스 토큰 대체) | 승인 |
-| [0027](0027-config-server-github-cipher.md) | LAN 설정은 Spring Cloud Config Server(GitHub 저장소, {cipher})로 부팅 때 받는다 — 클라이언트 기본 꺼짐, 운영 Kubernetes 는 그대로 | 승인 (결정 2·3·5 는 ADR-0029 로 대체) |
+| [0027](0027-config-server-github-cipher.md) | LAN 설정은 Spring Cloud Config Server(GitHub 저장소, {cipher})로 부팅 때 받는다 — 클라이언트 기본 꺼짐, 운영 Kubernetes 는 그대로 | 승인 (결정 2·3·5 는 ADR-0029, 결정 6 은 ADR-0033, 결정 4 는 ADR-0100 으로 대체) |
 | [0028](0028-dev-base-image-temurin-jdk.md) | 개발 단계 컨테이너 베이스는 eclipse-temurin:21-jdk(Exec 탭 셸·JVM 진단, 비루트 ubuntu) — 운영은 GraalVM Native 로 따로 정한다 | 승인 |
 | [0029](0029-config-repo-as-source-of-truth.md) | 설정의 정본은 설정 저장소(pmart-config) — 서비스 yml 은 부트스트랩만, 환경은 프로필(local·lan·prod). ADR-0027 결정 2·3·5 대체 | 승인 |
 | [0030](0030-observability-metrics-logs-dead-letters.md) | 관측 — 지표 Prometheus·Grafana·Alertmanager, 로그 Fluent Bit → OpenSearch(Dashboards), 미처리 메시지는 서비스별 dead_letter 표·재처리 API | 승인 (결정 2·4 는 ADR-0031 로 대체) |
@@ -97,3 +97,4 @@
 | [0097](0097-new-rag-system-excludes-assistant-services.md) | 새 RAG 시스템은 새 서비스로(integration → chunking → 임베딩 …) — ai-assistant-service·customer-assistant-service 제외, 삭제 안 함 | 승인 (2026-11-28) |
 | [0098](0098-embedding-service-pgvector.md) | embedding-service — ES 청크를 Ollama qwen3-embedding(Spring AI)으로 1024차원 벡터로 바꿔 자기 pgvector(embedding_service)에 같은 chunkId 로(캐시·맞춰 보기) | 승인 (2026-11-28) |
 | [0099](0099-rag-query-service-search-confidence.md) | rag-query-service — ES-First 질문 검색: ES BM25 → SearchConfidenceEvaluator(핵심어 비율·상대 점수 차) → 끝(상위 3 카드) 또는 embedding-service 벡터·RRF·답변 불가 | 승인 (2026-11-28) |
+| [0100](0100-vault-secrets-spring-cloud-vault.md) | LAN 서비스 비밀은 Vault(pc2, TLS)에 두고 서비스가 Spring Cloud Vault 로 직접 읽는다(서비스별 AppRole, 기본 꺼짐·LAN 환경변수로 켬) — pmart-config {cipher} 제거. ADR-0027 결정 4 대체 | 승인 (2026-11-28, LAN 연결·{cipher} 삭제는 후속) |

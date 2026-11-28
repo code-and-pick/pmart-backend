@@ -1,8 +1,7 @@
 # deploy/vault — 팀 공용 Vault 서버
 
-비밀값의 정본. 서비스·인프라·운영 비밀을 모두 여기에 두고, `.env` 파일 운용을 없애는 것이 목표다
-(tech-stack.md "비밀정보: Vault 또는 Cloud Secret Manager"). 지금 단계는 **서버를 Docker Compose 로 띄우는 것까지**이고,
-비밀 이관·실행 스크립트 연결은 아직 하지 않았다.
+비밀값의 정본(ADR-0100). LAN 서비스는 Spring Cloud Vault 로 자기 비밀을 여기서 직접 읽고, pmart-config 의 `{cipher}` 는 없앤다.
+pc2 에서 운영 중: `https://192.168.0.34:8200`(TLS, 사설 CA). 서비스 연결(render.sh)·{cipher} 삭제는 PC 1 후속 — 아래 "{cipher} 제거".
 
 바탕: `C:\development\VaultStudy\vault-config-study`(학습 프로젝트)의 LAB 08 서버 모드 — Raft 단일 노드, 정책, init 흐름.
 
@@ -101,24 +100,50 @@ unset VAULT_TOKEN
     (`shared/lan/{infra,signing,keycloak,service-clients,hash-keys,test-accounts,external}`, `ops/{config-server,tls,registry,alerts}`)
   - 넣지 않음(사용자 결정): `pmart-42b37` Firebase 키, 발급된 토큰(`customer-token`, `.kc-claude-dev-token`). 외부 키 11개는 두 묶음 sha256 이 같아 한 번만 넣었다.
 
-## {cipher} 제거 — config-server 가 Vault 에서 비밀을 읽는다
+## {cipher} 제거 — 서비스가 Vault 에서 직접 읽는다 (ADR-0100)
 
-목적: pmart-config(GitHub)의 `{cipher}` 를 없애고 서비스 비밀은 Vault 에만 둔다(ADR-0027 결정 4·7 대체 — ADR 작성 예정).
+목적: pmart-config(GitHub)의 `{cipher}` 를 없애고 서비스 비밀은 Vault 에만 둔다. config-server 는 일반 설정만 내려준다.
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | 1 | `verify/verify-cipher.sh` — `{cipher}` 를 풀어 Vault 값과 sha256 비교(값 출력 없음) | 2026-11-28: 79개 중 75 일치, 4개는 형식 차이·원본 없음(이관에 지장 없음) |
 | 2 | `verify/migrate-cipher.sh` — `{cipher}` 를 풀어 `config/<서비스>,lan` 에 Spring 속성 이름 그대로 넣고 sha256 확인. `./vault.sh setup` 을 먼저 돌린다 | 2026-11-28: 44경로·82필드({cipher} 79 + kid 3) 모두 일치 |
-| 3 | config-server 를 Git + Vault 복합 백엔드로(Vault 우선), AppRole 로그인 | 예정 |
-| 4 | config-server PC(pc4)에서 pc2 Vault 접속(TLS 여부 결정) | 예정 |
-| 5 | pmart-config 에서 `{cipher}` 줄·signing.keys 목록 삭제, render.sh 암호화 단계 제거 | 예정(PC 1) |
-| 6 | ADR | 예정 |
+| 3 | 모든 앱에 Spring Cloud Vault(기본 꺼짐 — `common-observability` VaultDefaultsPostProcessor), 서비스별 정책·AppRole(`service-roles.sh`, PC IP 로 묶음), 배포 토큰(`pmart-deployer`) | 2026-11-28 완료(PR #564). 최신 pmart-config 기준 46경로·85필드, AppRole 53 |
+| 4 | TLS 로 LAN 에(pc2 인증서) — PC 1·pc3·pc4·pc5 에서 접속 확인 | 2026-11-28 완료 |
+| 5 | render.sh: Vault 환경변수(ADR-0100 결정 4)·CA 마운트·서비스별 secret-id 발급 → 이미지 재빌드 → 서비스 하나 먼저 → 전체 | 예정(PC 1) |
+| 6 | **5 가 전체에서 동작한 뒤에만** pmart-config `{cipher}` 줄·signing.keys 목록·시험 사본 삭제, render.sh 암호화 단계 제거 | 예정(PC 1) |
 
-- KV v2 마운트 **`config/`** = config-server 가 내려줄 값만. 경로 `config/<spring.application.name>,<프로필>`, 필드 = Spring 속성 이름(목록은 `[n]`).
+- KV v2 마운트 **`config/`** = 서비스가 읽는 비밀만. 경로 `config/<spring.application.name>,<프로필>`, 필드 = Spring 속성 이름(목록은 `[n]`).
 - **목록 주의**: Spring 은 목록을 우선순위가 높은 출처 하나에서 통째로 받는다. `signing.keys[0]` 는 `private-key` 와 `kid` 를 **둘 다** Vault 에 둔다(Git 쪽 목록은 5단계에서 지운다).
-- 정책 `config-server-read`(config/data/* 읽기만), AppRole `config-server`(토큰 1h·최대 24h, secret-id 는 배포 때 관리자가 발급).
-- 같은 비밀이 `pmart/shared/lan`(파일 형식)과 `config/`(속성 형식) 두 곳에 있다. **서비스 비밀의 정본은 `config/`**, `pmart/shared/lan` 에는 config-server 를 거치지 않는 것(postgres·Keycloak·config-server 자신 등)만 남기도록 정리한다(3단계 이후).
+- 정책 `svc-<앱>`(자기 경로만) + AppRole `svc-<앱>`(토큰 1h·최대 24h, secret-id 90일, placement.conf 의 PC IP 로 묶음 — pc2 앱은 Docker 대역도). 정책·AppRole `config-server-read`/`config-server` 는 복합 백엔드 안을 버리면서 쓰지 않는다(정리 대상).
+- 같은 비밀이 `pmart/shared/lan`(파일 형식)과 `config/`(속성 형식) 두 곳에 있다. **서비스 비밀의 정본은 `config/`**, `pmart/shared/lan` 에는 config-server 를 거치지 않는 것(postgres·Keycloak·config-server 자신 등)만 남기도록 정리한다(6단계 뒤).
 - 목록 추출 `verify/list-ciphers.py`, 복호화 `verify/CipherFingerprint.java`(config-server 와 같은 EncryptorFactory, Gradle 캐시 jar).
+
+## 운영 절차
+
+### pc2 재부팅·Vault 재시작
+1. Docker Desktop 이 뜨면 `pmart-vault` 컨테이너는 `restart: unless-stopped` 로 저절로 뜬다 — **sealed 상태**.
+2. unseal 키를 가진 관리자가 `./vault.sh unseal`(키 2개, 숨김 입력) → `./vault.sh status` 로 `unsealed` 확인.
+3. **unseal 전에는 LAN 앱의 새 기동·재시작이 실패**한다(fail-fast). 이미 떠 있는 앱은 영향 없음. LAN 전체를 다시 띄울 때는 **Vault unseal 을 맨 먼저**.
+4. 컨테이너를 다시 만들 때(`./vault.sh up` — 설정·인증서 바꾼 뒤)도 sealed 로 뜬다 → 2.
+
+### 정기 작업
+| 언제 | 할 일 | 명령 |
+|---|---|---|
+| 한 달에 한 번(32일 안) | 관리자·배포 토큰 갱신 | `./vault.sh renew`(둘 다) — PC 1 은 위 "관리자 토큰" 의 curl |
+| 비밀·역할을 바꾼 뒤 | 스냅샷 → unseal 키와 다른 드라이브 폴더 | `./vault.sh snapshot` |
+| 90일 안에 한 번 | LAN 재배포(서비스 secret-id 가 90일에 만료 — 재배포가 새로 발급) | PC 1 render·deploy |
+| 1년(2027-11-28 전) | pc2 인증서 갱신 | PC 1 `lan.sh tls-issue pc2` → `tls/vault.crt·vault.key` 교체 → `./vault.sh up` → unseal |
+
+### 비밀 바꾸기
+- 서비스 비밀: `config/<앱>,lan` 의 속성을 바꾼다(관리자 토큰, 값은 표준입력 `필드=-`) → **그 앱 재시작**(부팅 때 읽는다) → 스냅샷.
+- 같은 값이 `pmart/shared/lan/…`(파일 형식)에도 있으면 같이 바꾼다(정리 전까지).
+- 키가 샜으면 발급처에서 값 자체를 바꾸고 Vault 를 고친다. 감사 로그(`/vault/logs/audit.log`)로 누가 읽었는지 본다.
+
+### 새 서비스
+1. placement.conf 에 넣은 뒤 `./service-roles.sh <그 placement.conf>`(새 AppRole).
+2. 비밀이 있으면 `config/<앱>,lan` 에 속성 이름으로 넣는다({cipher} 로 더하지 않는다).
+3. 스냅샷.
 
 ## 규칙
 - 토큰·unseal 키·비밀값을 Git·문서·일지·채팅에 넣지 않는다. 확인은 이름·글자 수로만.
@@ -126,8 +151,7 @@ unset VAULT_TOKEN
 - TLS 를 켜기 전에는 `VAULT_BIND` 를 127.0.0.1 밖으로 바꾸지 않는다.
 
 ## 남은 결정 (사용자)
-1. 상시 켜 둘 서버 기계, 팀원 접속 경로(VPN)·TLS 인증서
-2. 팀원 로그인 방식(GitHub·userpass·OIDC), 스크립트용 AppRole
-3. HashiCorp Vault(BUSL 1.1) 유지 또는 OpenBao
-4. pmart-config `{cipher}` 처리(키만 Vault / config-server Vault 백엔드)
-5. ADR 작성(ADR-0027 이 Vault 를 제외 대안으로 적었으므로 새 ADR 로 대체)
+결정됨(2026-11-28, ADR-0100): 서버 pc2 유지, TLS(사설 CA), {cipher} 는 없애고 서비스가 직접 읽음(서비스별 AppRole).
+1. 팀원 로그인 방식(추천: GitHub 조직 `code-and-pick` 인증 — 팀별 정책)
+2. HashiCorp Vault(BUSL 1.1) 유지 또는 OpenBao
+3. `pmart/shared/lan` 정리 범위(config-server 를 거치지 않는 것만 남기기), 안 쓰는 `config-server-read`·AppRole `config-server` 지우기
