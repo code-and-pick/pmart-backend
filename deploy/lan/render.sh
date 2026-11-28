@@ -139,6 +139,39 @@ if [ -n "${WHERE[docs-relay]:-}" ] && [ ! -f "$SECRETS/rag-docs-smee-url" ]; the
 fi
 
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
+
+# ---- Vault(ADR-0100): 서비스가 자기 비밀을 pc2 Vault 의 config/<앱>,lan 에서 직접 읽는다(Spring Cloud Vault, 서비스별 AppRole) ----
+# PMART_VAULT_APPS = 켤 앱(공백 구분) 또는 all. 비우면 지금처럼(Vault 를 쓰지 않음). 한 서비스 먼저 → 전체(ADR-0100 결정 9).
+# 켠 앱은 배포마다 secret-id 를 새로 받는다(배포 토큰 pmart-deployer — 숨김 입력, 명령줄·파일에 두지 않는다). secret-id 는 .env 에만.
+# config-server 는 대상이 아니다(설정 저장소·자기 비밀은 configtree).
+VAULT_APPS=" ${PMART_VAULT_APPS:-} "
+VAULT_URI="${PMART_VAULT_URI:-https://192.168.0.34:8200}"
+VAULT_CA=$LAN/tls/pmart-lan-root-ca.crt
+vault_any() { [[ "$VAULT_APPS" =~ [^[:space:]] ]]; }
+vault_on() { [ "$1" != config-server ] && vault_any && { [ "$VAULT_APPS" = " all " ] || [[ "$VAULT_APPS" == *" $1 "* ]]; }; }
+# Vault API — 배포 토큰은 표준입력으로 curl 헤더에(-H @-), 명령줄에 두지 않는다. 실패하면 빈 출력
+vault_api() {
+  printf 'X-Vault-Token: %s\n' "$VAULT_DEPLOYER_TOKEN" \
+    | curl -sf --cacert "$VAULT_CA" --ssl-revoke-best-effort -H @- -X "$1" "$VAULT_URI/v1/$2" 2>/dev/null || true
+}
+json_field() { grep -o "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
+if vault_any; then
+  [ -f "$VAULT_CA" ] || { echo "Vault CA 없음: $VAULT_CA" >&2; exit 1; }
+  # 배포 토큰: ① 셸의 VAULT_DEPLOYER_TOKEN ② 파일(PMART_VAULT_TOKEN_FILE, 기본 .secrets/vault-deployer-token — git 제외.
+  # 사용자가 메모장으로 저장 → 배포 뒤 지운다. BOM·CRLF·공백은 뗀다) ③ 숨김 입력. 어느 쪽이든 명령줄·로그에는 안 남는다
+  VAULT_TOKEN_FILE="${PMART_VAULT_TOKEN_FILE:-$SECRETS/vault-deployer-token}"
+  if [ -z "${VAULT_DEPLOYER_TOKEN:-}" ] && [ -f "$VAULT_TOKEN_FILE" ]; then
+    VAULT_DEPLOYER_TOKEN="$(sed -e '1s/^\xEF\xBB\xBF//' "$VAULT_TOKEN_FILE" | tr -d '\r\n\t ')"
+    echo "Vault 배포 토큰: 파일 $VAULT_TOKEN_FILE (배포가 끝나면 지운다)" >&2
+  fi
+  if [ -z "${VAULT_DEPLOYER_TOKEN:-}" ]; then
+    read -rsp "Vault 배포 토큰(pmart-deployer, 입력은 보이지 않음): " VAULT_DEPLOYER_TOKEN; echo >&2
+  fi
+  [ -n "$(vault_api GET auth/token/lookup-self | json_field id)" ] \
+    || { echo "Vault 배포 토큰이 안 맞거나 $VAULT_URI 에 닿지 않음(sealed?) — pc2 deploy/vault/vault.sh status" >&2; exit 1; }
+  echo "Vault: $VAULT_URI — 켠 앱:${VAULT_APPS% }" >&2
+fi
+
 DB_PASSWORD="$(secret db-password)"
 rm -rf "$OUT"
 
@@ -164,6 +197,7 @@ for pc in "${PCS[@]}"; do
     hosts+="      - \"$c:${IP[${WHERE[$c]}]}\""$'\n'
   done
   hosts="$(printf '%s' "$hosts" | sort)"
+  VAULT_ENV_LINES="" # 이 PC 앱들의 Vault secret-id(아래 .env 에)
 
   {
     echo "# 생성 파일(deploy/lan/render.sh) — 직접 고치지 말고 placement.conf·render.sh 를 고친다."
@@ -1027,12 +1061,38 @@ EOF
         echo "      PMART_EUREKA_PASSWORD: \${PMART_EUREKA_PASSWORD}"
         # Bus 소비 그룹 이름 고정(bus-<앱>-<PC>, application-lan.yml) — 재시작마다 anonymous.* 그룹이 늘지 않게(2026-11-04)
         echo "      PMART_BUS_INSTANCE: $pc"
+        vols=()
+        if vault_on "$c"; then
+          # Vault(ADR-0100 결정 4): import 순서상 Vault 가 뒤라 같은 속성은 Vault 가 이긴다. yml 의 import(optional:configserver:)를 이 값이 대체한다
+          rid="$(vault_api GET "auth/approle/role/svc-$c/role-id" | json_field role_id)"
+          sid="$(vault_api POST "auth/approle/role/svc-$c/secret-id" | json_field secret_id)"
+          [ -n "$rid" ] && [ -n "$sid" ] \
+            || { echo "Vault AppRole svc-$c 에서 role-id·secret-id 를 못 받음 — pc2 deploy/vault/service-roles.sh(placement 반영)" >&2; exit 1; }
+          skey="PMART_VAULT_SECRET_ID_$(printf '%s' "$c" | tr 'a-z-' 'A-Z_')"
+          VAULT_ENV_LINES+="$skey=$sid"$'\n'
+          echo "      SPRING_CONFIG_IMPORT: \"optional:configserver:,vault://\""
+          echo "      SPRING_CLOUD_VAULT_ENABLED: \"true\""
+          echo "      SPRING_CLOUD_VAULT_URI: $VAULT_URI"
+          echo "      SPRING_CLOUD_VAULT_FAILFAST: \"true\""
+          echo "      SPRING_CLOUD_VAULT_AUTHENTICATION: APPROLE"
+          echo "      SPRING_CLOUD_VAULT_APPROLE_ROLEID: $rid"
+          echo "      SPRING_CLOUD_VAULT_APPROLE_SECRETID: \${$skey}"
+          echo "      SPRING_CLOUD_VAULT_KV_BACKEND: config"
+          echo "      SPRING_CLOUD_VAULT_KV_PROFILESEPARATOR: \",\""
+          echo "      SPRING_CLOUD_VAULT_KV_DEFAULTCONTEXT: \"\""
+          echo "      SPRING_CLOUD_VAULT_SSL_TRUSTSTORE: file:/etc/pmart-vault/ca.pem"
+          echo "      SPRING_CLOUD_VAULT_SSL_TRUSTSTORETYPE: PEM"
+          cp "$VAULT_CA" "$dir/vault-ca.pem"
+          vols+=("./vault-ca.pem:/etc/pmart-vault/ca.pem:ro # Vault TLS 사설 CA(ADR-0057·0100)")
+        fi
         if [ "$c" = api-gateway ]; then
-          echo "    volumes:"
-          echo "      - ./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(pmart-config api-gateway-lan.yml 의 SSL 번들 lan-tls)"
+          vols+=("./tls:/etc/pmart-tls:ro # 이 PC 서버 인증서·키(pmart-config api-gateway-lan.yml 의 SSL 번들 lan-tls)")
         elif [ "$c" = mail-provisioner ]; then
+          vols+=("mail-config:/tmp/docker-mailserver # 계정 파일 postfix-accounts.cf(메일 서버가 변경을 감지해 사서함을 만든다)")
+        fi
+        if [ ${#vols[@]} -gt 0 ]; then
           echo "    volumes:"
-          echo "      - mail-config:/tmp/docker-mailserver # 계정 파일 postfix-accounts.cf(메일 서버가 변경을 감지해 사서함을 만든다)"
+          for v in "${vols[@]}"; do echo "      - $v"; done
         fi
         echo
         # 운영자 RAG 색인 작업(ADR-0036 결정 6 — 기동 때 색인하지 않는다): 같은 이미지·설정, profiles 로 up 에서 제외,
@@ -1049,7 +1109,7 @@ EOF
     mem_limit: 768m
     environment: *env-$c
     volumes:
-      - ./rag/$kn:/repo:ro
+      - ./rag/$kn:/repo:ro$(vault_on "$c" && printf '\n      - ./vault-ca.pem:/etc/pmart-vault/ca.pem:ro # 같은 환경(앵커)이라 Vault 를 켰으면 CA 도')
     command:
       - --spring.main.web-application-type=none
       - --eureka.client.enabled=false
@@ -1375,6 +1435,8 @@ EOF
       echo "PMART_S3_ACCESS_KEY=$(secret s3-access-key)"
       echo "PMART_S3_SECRET_KEY=$(secret s3-secret-key)"
     fi
+    # Vault secret-id(ADR-0100) — 그 PC IP 에서만 쓸 수 있고 90일에 만료(배포마다 새로)
+    printf '%s' "$VAULT_ENV_LINES"
   } > "$dir/.env"
 
   # config-server 자신의 비밀(configtree: 파일 이름 = 속성 이름). build/ 에만 쓴다(git 제외)
