@@ -114,9 +114,12 @@ case "${1:-}" in
         vault auth enable approle >/dev/null
         echo "[setup] approle 인증 켬"
       fi
+      # config-server(ADR-0101 — Git + Vault 복합 백엔드). render 가 배포마다 secret-id 를 새로 발급하므로 90일 만료로
+      # 옛 것이 저절로 사라지게(2026-11-28 PC 1 제안). 대가: 90일 동안 config-server PC 재배포가 없으면 재시작 때 로그인 실패.
+      # IP 묶음은 두지 않는다 — Docker Desktop 포트 공개가 출발지를 게이트웨이(172.x)로 바꿔 의미가 없다(2026-11-28 장애)
       vault write auth/approle/role/config-server token_policies=config-server-read \
-        token_ttl=1h token_max_ttl=24h secret_id_ttl=0 secret_id_num_uses=0 >/dev/null
-      echo "[setup] AppRole config-server (정책 config-server-read, 토큰 1h·최대 24h)"
+        token_ttl=1h token_max_ttl=24h secret_id_ttl=2160h secret_id_num_uses=0 >/dev/null
+      echo "[setup] AppRole config-server (정책 config-server-read, 토큰 1h·최대 24h, secret-id 90일)"
       if vault audit list 2>/dev/null | grep -q "^file/"; then
         echo "[setup] 감사 로그 이미 켜짐"
       else
