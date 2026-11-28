@@ -420,6 +420,13 @@
 - **(2026-11-28, ADR-0094) 고객 RAG 문서의 정본**(`knowledge_document` 등 V4 — customer_app 16 + 고객 FAQ 13): 처음 한 번 Git 에서 가져오고 초안 → approval-service `RAG_DOCUMENT`(정본 customer-assistant-service) 승인 → 반영 → 1분 재색인(FAQ 목록도 같은 판). 문서 관리 API `/customer-assistant/knowledge-*` 는 직원(OPERATOR)만. **customer_app 은 운영자 RAG 와 같이 쓰는 문서** — 원본은 여기 하나, 내부 API `GET /internal/knowledge-documents/shared` 로 운영자 RAG 가 1분마다 받아 간다.
 - **발행·구독**(2026-11-28, ADR-0094): 구독 `ApprovalDecided`(type RAG_DOCUMENT·정본 이 서비스, 바인딩이 설정에 있을 때), 발행 `ApplicationReceiptRecorded`(Kafka 로 바로). **의존(동기)**: order-service `GET /orders`·`GET /orders/{id}`(고객 토큰 전달, 1 hop), search-service `GET /search/products`(공개 작업, 토큰 없이 — 2026-11-20 ADR-0083 상품 질문, 센터 없이 전체 기준). 모델 서버 Ollama 는 인프라.
 
+### integration-service `[ADR-0095 — 2026-11-28 추가·1차 구현]`
+- 문서 저장소 웹훅 흐름(Spring Integration — 이 서비스에만): GitHub `code-and-pick/pmart-all-docs`(private)의 push·delete 웹훅 → 바뀐 파일 확인 → `.md` 를 GitHub API 로 그 커밋 판에서 가져와 내용 추출 → 청킹 서비스로 전달. ES-First 하이브리드 RAG 의 적재 입구.
+- **소유**: 없음(DB·Kafka 없음, 로컬 파일 없음). 웹훅 판정·추출·전달만.
+- **소유하지 않음**: 문서 원본(GitHub 저장소), 청킹·ES·임베딩·pgvector(다음 단계 서비스), RAG 질문·답(ai-assistant·customer-assistant).
+- **API**(계약 0.1.0): `POST /internal/docs-webhook`(GitHub 웹훅 — smee 채널 → 같은 PC 의 docs-relay, 서명 확인, 게이트웨이에 없음).
+- **의존(동기)**: GitHub Contents API(읽기 전용 토큰), 청킹 서비스 `POST <chunking-url>`(설정 — 없으면 추출 기록만).
+
 ### approval-service `[1단계 — 추가 제안, ADR-0004]`
 - **소유**: ChangeRequest(초안; 승인 아님), ApprovalDossier(원도메인 승인 ID 참조, 이중 발급 금지), 승인 단위(업무 종류+원객체/행+범위+예상 버전+허용 행위+수량/금액+조건+효력/만료), 5축 상태(요청 DRAFT/SUBMITTED/WITHDRAW_REQUESTED/WITHDRAWN · 심사 REVIEW_PENDING/EVIDENCE_REQUIRED/APPROVED/PARTIALLY_APPROVED/REJECTED/EXPIRED/SUPERSEDED · 실행 NOT_REQUESTED/VALIDATING/ACCEPTED/IN_PROGRESS/PARTIAL/APPLIED/REJECTED/UNKNOWN_RESULT · 전달 PENDING/DELIVERED/ACKNOWLEDGED/RETRY_PENDING/FAILED · 사건), 부분 집행 불변식(`승인량 = 누적 유효 집행 + 승인된 미집행 취소 + 열린 잔량`), 재심사(새 버전+계보), 통합 승인함(BO-10, 종류별 결정 범위), 대량 변경(BO-26: 파일 해시 고정·행별 멱등·결과 분리), PolicyReference 레지스트리(BO-09: 원정책 ID·버전·반영 상태 연결; 계산 엔진 복제 없음), ApplicationReceipt(수신자별 반영 확인).
 - **소유하지 않음**: 승인 결과의 업무 정본(product/pricing/replenishment/claim/quality/serviceability/auth), 사건(case).

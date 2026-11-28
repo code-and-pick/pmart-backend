@@ -92,9 +92,14 @@ done
 if [ -n "${WHERE[api-gateway]:-}" ]; then
   COMPS[${WHERE[api-gateway]}]+=" api-docs"; WHERE[api-docs]=${WHERE[api-gateway]}
 fi
+# 문서 저장소 웹훅 중계(ADR-0095, 2026-11-28): integration-service PC 에 docs-relay — GitHub code-and-pick/pmart-all-docs 웹훅을 smee 채널에서 받아
+# integration-service 로 넘긴다(config-relay 와 같은 방식, 채널은 따로). 아래 LATE 로 줄 맨 뒤에 둔다
+if [ -n "${WHERE[integration-service]:-}" ]; then
+  COMPS[${WHERE[integration-service]}]+=" docs-relay"; WHERE[docs-relay]=${WHERE[integration-service]}
+fi
 # 위 보조 구성요소가 생긴 뒤 placement 에 더한 구성요소: 그 PC 줄의 맨 뒤(보조 구성요소 뒤)로 옮겨 기존 고정 IP 를 그대로 둔다
 # (2026-11-17 사용자 "보조 컨테이너 안 건드리고 싶은데" — 줄 중간에 끼면 뒤 보조 7개가 다시 만들어진다). 새로 붙일 것도 여기에 이어 적는다
-LATE=" rider-backoffice-web cdc-backoffice-web cdc-quality-service cdc-inbound-service fleet-service transport-planning-service transport-execution-service "
+LATE=" rider-backoffice-web cdc-backoffice-web cdc-quality-service cdc-inbound-service fleet-service transport-planning-service transport-execution-service integration-service docs-relay "
 for pc in "${PCS[@]}"; do
   for c in $LATE; do
     if [[ " ${COMPS[$pc]} " == *" $c "* ]]; then
@@ -128,6 +133,9 @@ for c in redis zipkin auth-service eureka-server; do
 done
 if [ -n "${WHERE[config-relay]:-}" ] && [ ! -f "$SECRETS/smee-url" ]; then
   echo "비밀정보 없음: $SECRETS/smee-url ($LAN/init-secrets.sh 먼저 — 웹훅 중계 채널, ADR-0033)" >&2; exit 1
+fi
+if [ -n "${WHERE[docs-relay]:-}" ] && [ ! -f "$SECRETS/rag-docs-smee-url" ]; then
+  echo "비밀정보 없음: $SECRETS/rag-docs-smee-url (문서 저장소 웹훅 채널, ADR-0095 — pmart-all-docs 웹훅 Payload URL 과 같은 값)" >&2; exit 1
 fi
 
 secret() { tr -d '\r\n' < "$SECRETS/$1"; } # Windows openssl 은 CRLF 로 쓴다
@@ -707,6 +715,23 @@ EOF
     networks: { default: { ipv4_address: $ip_addr } }
     mem_limit: 128m
     depends_on: [config-server]
+
+EOF
+        ;;
+      docs-relay)
+        # 문서 저장소 웹훅 중계(ADR-0095): smee.io 채널(.secrets/rag-docs-smee-url)에 붙어 GitHub pmart-all-docs 의 push·delete 웹훅을
+        # integration-service 로 넘긴다. 서명(X-Hub-Signature-256)은 integration-service 가 검사한다
+        cat <<EOF
+  docs-relay:
+    <<: *common
+    image: node:22.23.4-alpine
+    user: node
+    command: ["sh", "-c", "exec npx -y smee-client@5.0.0 --url \"\$\$PMART_DOCS_SMEE_URL\" --target http://integration-service:$(port_of integration-service)/api/v1/internal/docs-webhook"]
+    environment:
+      PMART_DOCS_SMEE_URL: \${PMART_DOCS_SMEE_URL}
+    networks: { default: { ipv4_address: $ip_addr } }
+    mem_limit: 128m
+    depends_on: [integration-service]
 
 EOF
         ;;
@@ -1329,6 +1354,7 @@ EOF
     echo "PMART_CONFIG_PASSWORD=$(secret config-password)"
     echo "PMART_EUREKA_PASSWORD=$(secret eureka-password)"
     [[ "$comps" == *" config-relay "* ]] && echo "PMART_SMEE_URL=$(secret smee-url)"
+    [[ "$comps" == *" docs-relay "* ]] && echo "PMART_DOCS_SMEE_URL=$(secret rag-docs-smee-url)"
     [[ "$comps" == *" grafana "* ]] && echo "PMART_GRAFANA_ADMIN_PASSWORD=$(secret grafana-admin-password)"
     if [[ "$comps" == *" rag-pgvector "* ]]; then
       echo "PMART_RAG_OPERATOR_DB_PASSWORD=$(secret rag-db-operator-password)"

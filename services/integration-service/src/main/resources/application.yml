@@ -1,0 +1,13 @@
+# 부트스트랩만 둔다. 나머지 설정은 config-server 가 준다(ADR-0029):
+#   code-and-pick/pmart-config 의 application.yml · application-<프로필>.yml · integration-service.yml · integration-service-<프로필>.yml
+# 프로필(SPRING_PROFILES_ACTIVE): local(개발자 PC, config-server 를 local 프로필로 띄움) · lan · prod
+spring:
+  application:
+    name: integration-service
+  config:
+    import: "optional:configserver:" # 주소 spring.cloud.config.uri(기본 http://localhost:8888, LAN·운영은 환경변수)
+  cloud:
+    config:
+      fail-fast: true # 설정을 못 받으면 기동하지 않는다(시험만 spring.cloud.config.enabled=false)
+      username: pmart
+      password: pmart-local # 로컬 config-server 기본값. LAN·운영은 환경변수 SPRING_CLOUD_CONFIG_PASSWORD

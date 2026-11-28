@@ -1,0 +1,83 @@
+openapi: 3.1.0
+info:
+  title: integration-service
+  version: 0.1.0
+  description: |
+    문서 저장소 웹훅 흐름(ADR-0095, 2026-11-28) — ES-First 하이브리드 RAG 의 적재 입구. 흐름은 Spring Integration(이 서비스에만).
+    GitHub `code-and-pick/pmart-all-docs`(private) 의 push·delete 웹훅을 받아(smee 채널 → 같은 PC 의 docs-relay → 이 서비스),
+    바뀐 파일을 GitHub Contents API 로 그 커밋 판에서 읽어 내용을 추출하고 청킹 서비스로 보낸다(`pmart.integration.docs.chunking-url`,
+    본문 `ExtractedDocument`). 로컬에 파일을 두지 않는다. DB·Kafka 없음.
+    사용자 토큰을 받지 않는 서비스 간 경로다(게이트웨이가 `/internal` 을 막는다). 대신 GitHub 서명 `X-Hub-Signature-256`(HMAC-SHA256)으로 확인하고,
+    Idempotency-Key·X-Source-System 공통 헤더를 받지 않는다(GitHub 가 보내지 않음 — 전달 ID `X-GitHub-Delivery` 로 중복 전달을 한 번만 처리).
+servers:
+  - url: /api/v1
+tags:
+  - { name: docs-webhook, description: 문서 저장소 웹훅 }
+
+paths:
+  /internal/docs-webhook:
+    post:
+      tags: [docs-webhook]
+      summary: "[GitHub(중계)→integration-service] 문서 저장소 웹훅 받기 (push·delete·ping)"
+      description: |
+        - 서명이 없거나 틀리면 401(아무것도 하지 않음).
+        - `push`: 지정 저장소·브랜치(main)만. 커밋들에 걸친 파일마다 마지막 상태(추가·수정·삭제)를 정해 202 로 바로 답하고, 파일 처리는 뒤에서
+          차례대로 한다 — `.md`(폴더 README 제외)만 내용을 추출해 청킹 서비스로 보낸다(삭제는 본문 없이). 일시 실패는 다시 시도.
+        - `delete`: 브랜치·태그 삭제 — 문서 변경으로 보지 않는다(파일 삭제는 push 의 removed 로 온다). 202.
+        - `ping`: 200. 그 밖 이벤트·다른 저장소: 202(무시).
+      operationId: receiveDocsWebhook
+      security: []
+      parameters:
+        - { name: X-GitHub-Event, in: header, required: true, schema: { type: string, examples: [push] } }
+        - { name: X-GitHub-Delivery, in: header, required: true, schema: { type: string } }
+        - { name: X-Hub-Signature-256, in: header, required: true, schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              description: GitHub 웹훅 본문 그대로(서명은 이 바이트로 확인)
+              type: object
+      responses:
+        '200':
+          description: ping 또는 이미 받은 전달
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResult' }
+        '202':
+          description: 받음(파일 처리는 뒤에서) 또는 무시
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResult' }
+        '401':
+          description: 서명 없음·틀림
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookResult' }
+
+components:
+  schemas:
+    WebhookResult:
+      type: object
+      required: [result, files]
+      properties:
+        result:
+          type: string
+          enum: [ACCEPTED, NO_CHANGES, PONG, REF_DELETED, IGNORED_EVENT, IGNORED_REPOSITORY, DUPLICATE_DELIVERY, INVALID_SIGNATURE]
+        files: { type: integer, description: 처리할 파일 변경 수(추출 대상 거르기 전) }
+    ExtractedDocument:
+      description: |
+        청킹 서비스로 보내는 본문(이 서비스가 부르는 쪽 — POST chunking-url). 파일 하나의 추출 내용과 원본 정보(ES-First 적재의 원본 확정에 씀).
+        받는 쪽은 (path, contentSha256) 로 멱등이어야 한다(같은 push 를 다시 보낼 수 있다).
+      type: object
+      required: [repository, commit, path, status, deliveryId, extractedAt]
+      properties:
+        repository: { type: string, examples: [code-and-pick/pmart-all-docs] }
+        commit: { type: string, description: 내용을 읽은 커밋(push 의 after) }
+        path: { type: string, examples: [operator/mfc/04-picking-packing.md] }
+        status: { type: string, enum: [ADDED, MODIFIED, REMOVED] }
+        title: { type: [string, 'null'], description: 첫 줄 "# 제목" }
+        content: { type: [string, 'null'], description: 추출 본문(UTF-8, 줄바꿈 LF, 마크다운 그대로). 삭제면 null }
+        contentSha256: { type: [string, 'null'] }
+        deliveryId: { type: string }
+        extractedAt: { type: string, format: date-time }

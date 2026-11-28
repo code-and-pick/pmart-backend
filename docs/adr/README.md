@@ -92,3 +92,4 @@
 | [0092](0092-rag-documents-managed-in-backoffice.md) | 운영자 RAG 문서를 백오피스에서 관리 — 정본 ai-assistant DB, 초안 → RAG_DOCUMENT 승인 → 반영 → 1분 재색인 (결정 2 는 0094 가 대체) | 승인 (2026-11-28) |
 | [0093](0093-cs-consult-assistant-panel.md) | 상담 도우미 — 상담 접수 화면 옆에서 본인 확인 절·정책 근거(LLM 없음, 저장 안 함) | 승인 (2026-11-28) |
 | [0094](0094-customer-rag-documents-in-db.md) | 고객 RAG 문서도 DB 에서 관리 — 기본 Git, 같은 문서(customer_app)는 원본 하나(고객 RAG DB)로 같이 관리, 운영자 RAG 는 1분마다 맞춤 | 승인 (2026-11-28) |
+| [0095](0095-integration-service-docs-webhook.md) | integration-service — 문서 저장소(pmart-all-docs) push·delete 웹훅 → 파일 내용 추출 → 청킹 서비스로 전달(Spring Integration, 로컬 사본 없음) | 승인 (2026-11-28) |
