@@ -405,8 +405,10 @@
 - RAG(정책 문서), 정책 설명, 권한 있는 도메인 API 호출(읽기 우선). 비즈니스 문서에 요구 없음.
 - **1차(2026-11-04, ADR-0036)**: 내부 운영자의 정책·업무 절차 질의응답 + 근거 표시만. 실시간 조회·명령 위임은 하지 않는다(`REALTIME_DATA_REQUIRED`·`OUT_OF_SCOPE`).
 - **소유**: 명시 목록 문서의 사본 색인(`index_snapshot`·`doc_chunk`·`embedding_cache`)과 답변 기록(`policy_answer` — 선점·lease·인용). 업무 정본은 없다.
+  - **(2026-11-28, ADR-0092) 운영자 RAG 문서의 정본**(`knowledge_document`·판 이력·초안·반영 기록, V3) — 처음 한 번 저장소에서 가져오고(`customer_app/` 은 저장소가 정본, 읽기만) 그 뒤로는 초안 → approval-service `RAG_DOCUMENT` 승인 → 반영 → 1분 주기 재색인. 설정 `pmart.assistant.knowledge.source=db` 일 때.
 - **API**: `POST/GET /assistant/policy-questions`, `GET /assistant/policy-questions/{answerId}`(운영자만). 채팅 세션(2026-11-21, ADR-0084): `GET /assistant/chat-sessions`, `GET·DELETE /assistant/chat-sessions/{sessionId}` — 본인만, 마지막 질문 뒤 14일 보존.
-- **발행·구독**: 없음. **의존(동기)**: search-service `GET /search/products`(공개 작업, 토큰 없이 — 2026-11-20 ADR-0083 상품 질문을 정해진 문장으로, 실패하면 문서로). 그 밖의 서비스 DB·API 는 부르지 않는다.
+- **API 추가(1.4.0, 2026-11-28)**: 문서 관리 `GET /assistant/knowledge-documents`(·`/detail`)·`/assistant/knowledge-drafts`(POST·GET·PUT·DELETE)·`/assistant/knowledge-applications`(ADR-0092), 상담 도우미 `GET /assistant/consult-guides`(CS_AGENT·OPERATOR_ADMIN — LLM 없이 본인 확인 절·정책 근거, ADR-0093).
+- **발행·구독**(2026-11-28, ADR-0092): 구독 `ApprovalDecided`(platform.approval.v1, type RAG_DOCUMENT 만 — 바인딩이 설정에 있을 때), 발행 `ApplicationReceiptRecorded`(outbox 없이 Kafka 로 바로 — 반영 기록으로 멱등). **의존(동기)**: search-service `GET /search/products`(공개 작업, 토큰 없이 — 2026-11-20 ADR-0083 상품 질문을 정해진 문장으로, 실패하면 문서로). 그 밖의 서비스 DB·API 는 부르지 않는다.
 - **운영자(백오피스) 전용**(2026-11-09, ADR-0051): 고객앱 질문은 아래 `customer-assistant-service` 가 받는다. DB 는 RAG 전용 pgvector 컨테이너의 `ai_assistant_service`. 모델은 LAN Ollama(ADR-0051 결정 6).
 
 ### customer-assistant-service `[ADR-0051 — 2026-11-09 추가·1차 구현]`

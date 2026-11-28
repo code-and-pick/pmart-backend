@@ -97,7 +97,68 @@ public class KnowledgeIngestor {
     this.chunker = new MarkdownChunker(maxChunkChars);
   }
 
+  /** 파일 대신 이미 읽은 문서(ADR-0092 — DB 의 지금 판). 경로 = 문서 ID. */
+  public record LoadedDoc(Doc doc, byte[] bytes) {}
+
+  /** 저장소 파일 색인(manifest 의 경로를 repo 에서 읽는다). */
   public Result ingest(Path repo, KnowledgeManifest manifest) {
+    return locked(
+        () ->
+            build(
+                manifest,
+                doc -> {
+                  Path file = repo.resolve(doc.path());
+                  if (!Files.isRegularFile(file)) {
+                    throw new IngestFailedException("manifest 경로 없음: " + doc.path(), null);
+                  }
+                  return Files.readAllBytes(file);
+                },
+                files -> {
+                  // 5. 색인 중 변경 감지
+                  for (SourceFile f : files) {
+                    Path file = repo.resolve(f.path());
+                    String now =
+                        Files.isRegularFile(file)
+                            ? RequestHashing.sha256(Files.readAllBytes(file))
+                            : "(삭제됨)";
+                    if (!now.equals(f.sha256())) {
+                      throw new IngestFailedException("색인 도중 파일이 바뀌었습니다: " + f.path(), null);
+                    }
+                  }
+                },
+                sourceRevision.revision(repo),
+                sourceRevision.dirty(repo)));
+  }
+
+  /**
+   * 이미 읽은 문서 색인(ADR-0092 — DB 의 문서 판). 입력이 메모리에 고정돼 있어 색인 중 변경 검사가 없다.
+   *
+   * @param inputHash 입력 식별(스냅숏 manifest_hash) — 문서 ID·본문 해시로 만든다
+   * @param revision 스냅숏 source_revision(예: {@code db:<승인 ID>})
+   */
+  public Result ingestDocuments(List<LoadedDoc> docs, String inputHash, @Nullable String revision) {
+    Map<String, byte[]> bytes = new HashMap<>();
+    List<Doc> metas = new ArrayList<>();
+    for (LoadedDoc d : docs) {
+      bytes.put(d.doc().path(), d.bytes());
+      metas.add(d.doc());
+    }
+    KnowledgeManifest m =
+        new KnowledgeManifest(1, "operator", List.copyOf(metas), List.of(), inputHash);
+    return locked(() -> build(m, doc -> bytes.get(doc.path()), files -> {}, revision, false));
+  }
+
+  @FunctionalInterface
+  private interface Reader {
+    byte[] read(Doc doc) throws IOException;
+  }
+
+  @FunctionalInterface
+  private interface Recheck {
+    void check(List<SourceFile> files) throws IOException;
+  }
+
+  private Result locked(java.util.function.Supplier<Result> work) {
     try (Connection lockConn = dataSource.getConnection()) {
       if (!tryLock(lockConn)) {
         throw new IngestFailedException("다른 색인 작업이 진행 중입니다(INGEST 잠금).", null);
@@ -107,7 +168,7 @@ public class KnowledgeIngestor {
         if (abandoned > 0) {
           log.warn("이전 색인이 중단돼 남은 BUILDING 스냅숏 {}개를 FAILED 로 바꿈", abandoned);
         }
-        return ingestLocked(repo, manifest);
+        return work.get();
       } finally {
         unlock(lockConn);
       }
@@ -116,7 +177,12 @@ public class KnowledgeIngestor {
     }
   }
 
-  private Result ingestLocked(Path repo, KnowledgeManifest manifest) {
+  private Result build(
+      KnowledgeManifest manifest,
+      Reader reader,
+      Recheck recheck,
+      @Nullable String revision,
+      boolean dirty) {
     String snapshotId =
         "IDX-"
             + DateTimeFormatter.ofPattern("yyyyMMddHHmmss")
@@ -125,39 +191,20 @@ public class KnowledgeIngestor {
             + "-"
             + UUID.randomUUID().toString().substring(0, 8);
     EmbeddingSpec spec = embeddings.spec();
-    snapshots.createBuilding(
-        snapshotId,
-        spec,
-        manifest.hash(),
-        sourceRevision.revision(repo),
-        sourceRevision.dirty(repo),
-        clock.instant());
+    snapshots.createBuilding(snapshotId, spec, manifest.hash(), revision, dirty, clock.instant());
     try {
       // 3. 바이트 한 번 읽기 → 해시·본문
       Map<String, byte[]> bytesByPath = new LinkedHashMap<>();
       List<SourceFile> files = new ArrayList<>();
       for (Doc doc : manifest.documents()) {
-        Path file = repo.resolve(doc.path());
-        if (!Files.isRegularFile(file)) {
-          throw new IngestFailedException("manifest 경로 없음: " + doc.path(), null);
-        }
-        byte[] bytes = Files.readAllBytes(file);
+        byte[] bytes = reader.read(doc);
         bytesByPath.put(doc.path(), bytes);
         files.add(new SourceFile(doc.path(), RequestHashing.sha256(bytes), bytes.length));
       }
       snapshots.addSourceFiles(snapshotId, files);
 
       List<ChunkRow> rows = buildChunks(manifest, bytesByPath, spec);
-
-      // 5. 색인 중 변경 감지
-      for (SourceFile f : files) {
-        Path file = repo.resolve(f.path());
-        String now =
-            Files.isRegularFile(file) ? RequestHashing.sha256(Files.readAllBytes(file)) : "(삭제됨)";
-        if (!now.equals(f.sha256())) {
-          throw new IngestFailedException("색인 도중 파일이 바뀌었습니다: " + f.path(), null);
-        }
-      }
+      recheck.check(files);
       if (rows.isEmpty()) {
         throw new IngestFailedException("청크가 없습니다", null);
       }

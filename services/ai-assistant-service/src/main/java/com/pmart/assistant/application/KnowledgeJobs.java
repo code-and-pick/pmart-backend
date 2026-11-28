@@ -24,7 +24,7 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li>{@code pmart.assistant.ingest.run=true}(Gradle {@code ingestKnowledge -Prepo=…}): 한 번 색인하고
- *       종료.
+ *       종료. {@code pmart.assistant.knowledge.source=db}(ADR-0092)면 없는 문서만 저장소에서 가져온 뒤 DB 의 지금 판으로 색인.
  *   <li>{@code pmart.assistant.ingest.prune=true}(Gradle {@code pruneSnapshots}): RETIRED·FAILED
  *       스냅숏 정리 한 번 하고 종료.
  *   <li>답변 보존 정리: {@code pmart.assistant.answers.retention} 이 있을 때만(없으면 지우지 않는다).
@@ -42,6 +42,8 @@ public class KnowledgeJobs implements ApplicationRunner {
   private final AssistantProperties props;
   private final Clock clock;
   private final ConfigurableApplicationContext context;
+  private final KnowledgeIndexing knowledge;
+  private final KnowledgeProperties knowledgeProps;
 
   public KnowledgeJobs(
       KnowledgeIngestor ingestor,
@@ -49,7 +51,11 @@ public class KnowledgeJobs implements ApplicationRunner {
       AnswerStore answers,
       AssistantProperties props,
       Clock clock,
-      ConfigurableApplicationContext context) {
+      ConfigurableApplicationContext context,
+      KnowledgeIndexing knowledge,
+      KnowledgeProperties knowledgeProps) {
+    this.knowledge = knowledge;
+    this.knowledgeProps = knowledgeProps;
     this.ingestor = ingestor;
     this.snapshots = snapshots;
     this.answers = answers;
@@ -70,8 +76,12 @@ public class KnowledgeJobs implements ApplicationRunner {
         if (ingest.getRepo() == null || ingest.getRepo().isBlank()) {
           throw new IllegalArgumentException("pmart.assistant.ingest.repo(-Prepo) 가 필요합니다.");
         }
+        Path repo = Path.of(ingest.getRepo()).toAbsolutePath().normalize();
         var result =
-            ingestor.ingest(Path.of(ingest.getRepo()).toAbsolutePath().normalize(), loadManifest());
+            knowledgeProps.getKnowledge().dbSource()
+                // ADR-0092: 없는 문서만 저장소에서 가져오고 DB 의 지금 판으로 색인(가져온 문서는 정본이 DB)
+                ? importThenIndex(repo)
+                : ingestor.ingest(repo, loadManifest());
         log.info(
             "ingestKnowledge 완료 snapshot={} chunks={} files={}",
             result.snapshotId(),
@@ -88,6 +98,11 @@ public class KnowledgeJobs implements ApplicationRunner {
     }
     int exit = code;
     System.exit(SpringApplication.exit(context, () -> exit));
+  }
+
+  private KnowledgeIngestor.Result importThenIndex(Path repo) {
+    knowledge.importFromRepo(repo, loadManifest());
+    return knowledge.indexFromDb();
   }
 
   public static KnowledgeManifest loadManifest() {

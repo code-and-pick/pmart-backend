@@ -91,6 +91,7 @@ deploy/lan/lan.sh rag-ingest-customer pc2                       # 고객 RAG 재
 - 임베딩 모델 파일을 바꾸면 설정 `embedding-version` 을 바꾸고 재색인.
 - `rag-ingest*` 는 render 를 먼저 해 문서 사본(`build/pc2/rag/knowledge-*`)을 새로 만든다(2026-11-15 전에는 마지막 render 때 문서로 색인했다).
 - 색인 목록(manifest)은 **이미지 안**에 들어간다 — manifest 를 바꾸면 이미지(Jib) → `lan.sh deploy pc2 ai-assistant-service` → `rag-ingest pc2` 순서.
+- **2026-11-28 ADR-0092(구현, 배포 전)**: 운영자 RAG 는 설정 `pmart.assistant.knowledge.source=db`(설정 저장소 -lan) 뒤 **문서 정본이 DB** — `rag-ingest pc2` 는 "없는 문서만 저장소에서 가져오기 + DB 의 지금 판으로 색인"이 되고, 문서 내용 변경은 백오피스 초안 → approval `RAG_DOCUMENT` 승인 → 1분 주기 재색인(배포·rag-ingest 없음). 모델·청크 규칙·임베딩 버전을 바꿀 때만 예전처럼 rag-ingest. `customer_app/`·고객 RAG 는 저장소 그대로. 상담 도우미 `GET /assistant/consult-guides`(ADR-0093)도 같은 색인을 쓴다.
 - 출처 커밋: 색인 컨테이너에는 `.git` 이 없어 render 가 문서 사본에 둔 `REVISION`(1줄 커밋, 2줄 `clean`·`dirty` — 복사한 문서·manifest 에 커밋 안 한 수정이 있으면 dirty)을 색인기(`GitSourceRevision`, 두 서비스)가 읽어 `index_snapshot.source_revision`·`source_dirty` 에 남긴다(2026-11-15 PC 1 — 그 전 LAN 색인은 빈 값·dirty). 커밋하지 않은 문서로 재색인하지 않는다.
 
 ## 5. 시험·평가

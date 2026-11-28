@@ -122,6 +122,28 @@ abstract class AssistantITBase extends PgvectorContainerSupport {
     ControllableEmbedding controllableEmbedding() {
       return new ControllableEmbedding();
     }
+
+    /** 승인 회신(ADR-0092) — Kafka 대신 기록만. */
+    @Bean
+    @Primary
+    RecordingReceipts recordingReceipts() {
+      return new RecordingReceipts();
+    }
+  }
+
+  /** 보낸 승인 회신(승인 ID, 본문). */
+  static class RecordingReceipts implements com.pmart.assistant.application.KnowledgeApprovals.Receipts {
+    final java.util.List<Map<String, Object>> sent = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    @Override
+    public String sourceSystem() {
+      return "ai-assistant-service";
+    }
+
+    @Override
+    public void send(String approvalId, Map<String, Object> payload) {
+      sent.add(payload);
+    }
   }
 
   @LocalServerPort int port;

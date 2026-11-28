@@ -2,6 +2,7 @@ package com.pmart.approval.application;
 
 import com.pmart.approval.domain.ApprovalRules;
 import com.pmart.approval.domain.MfcTargets;
+import com.pmart.approval.domain.RagDocumentTargets;
 import com.pmart.approval.domain.SearchSynonymTargets;
 import com.pmart.approval.infrastructure.ApprovalStore;
 import com.pmart.approval.infrastructure.ApprovalStore.ApprovalRow;
@@ -108,6 +109,27 @@ public class ApprovalService {
                 l.path("lineKey").asString(null), attrs.path("op").asString(null), terms));
       }
       SearchSynonymTargets.validate(
+          in.targetService(),
+          in.targetRef(),
+          body.hasNonNull("targetExpectedVersion")
+              ? body.get("targetExpectedVersion").asInt()
+              : null,
+          lines);
+    }
+    if (RagDocumentTargets.isRagDocumentType(in.type())) {
+      // 운영자 RAG 문서(ADR-0092): 대상 초안·기준 판·행 하나(문서 ID·op·초안·본문 해시) 형식
+      JsonNode body = mapper.valueToTree(in.body());
+      List<RagDocumentTargets.Line> lines = new ArrayList<>();
+      for (JsonNode l : body.path("lines")) {
+        JsonNode attrs = l.path("attributes");
+        lines.add(
+            new RagDocumentTargets.Line(
+                l.path("lineKey").asString(null),
+                attrs.path("op").asString(null),
+                attrs.path("draftId").asString(null),
+                attrs.path("contentSha256").asString(null)));
+      }
+      RagDocumentTargets.validate(
           in.targetService(),
           in.targetRef(),
           body.hasNonNull("targetExpectedVersion")

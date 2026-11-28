@@ -12,6 +12,8 @@ dependencies {
     implementation(project(":libraries:common-web"))
     implementation(project(":libraries:common-observability"))
     implementation(project(":libraries:common-security"))
+    implementation(project(":libraries:common-messaging")) // ADR-0092: 승인 반영(ApprovalDecided 구독·회신) — outbox 는 쓰지 않는다
+    implementation(libs.bundles.service.kafka)
     implementation(libs.bundles.service.data)
     implementation(libs.bundles.service.observability)
     implementation(platform(libs.spring.ai.bom))

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: ai-assistant-service
-  version: 1.3.0
+  version: 1.4.0
   x-stage: 3
   x-stage-note: 1차(문서 질의응답·근거 표시)를 2026-11-04 앞당겨 구현 — ADR-0036. 도메인 API 호출·명령 위임은 후속.
   description: |
@@ -35,6 +35,12 @@ info:
     **기준선 표시**: `answerMode=BASELINE_EXTRACTIVE`·`retrievalMode=BASELINE_HASH` 는 외부 모델 없이 동작하는 기준선이다
     — 파이프라인·계약은 검증되지만 의미 검색·생성 답변 품질은 검증된 것이 아니다.
 
+    **문서 관리**(1.4.0, ADR-0092): 운영자 RAG 문서의 정본은 이 서비스 DB 다(처음 한 번 저장소에서 가져옴, `customer_app/` 은 저장소가 정본 — 읽기만).
+    고치기는 초안(`/assistant/knowledge-drafts`) → approval-service `RAG_DOCUMENT` 승인 → 이 서비스가 ApprovalDecided 를 받아 기준 판·본문 해시가
+    같을 때만 새 판 → 1분 주기 재색인(바뀐 조각만 임베딩). 반영 결과는 `ApplicationReceiptRecorded` 로 회신하고 `/assistant/knowledge-applications` 에 남긴다.
+
+    **상담 도우미**(1.4.0, ADR-0093): `GET /assistant/consult-guides` — 문의 종류·회원 조회 결과·주문 상태로 본인 확인 절과 정책 근거를 찾아 준다. LLM 없음, 저장 안 함.
+
     **권한**: 운영자(typ=OPERATOR)만. 본문 context 는 화면 힌트일 뿐 권한·검색 범위 근거가 아니다. 저장 답변을 돌려주는 모든 경로에서
     질문한 본인 + 현재 권한(지금도 운영자, 인용 근거의 접근 범위를 지금도 가짐)을 다시 확인하고, 아니면 404.
 servers:
@@ -44,6 +50,8 @@ security:
 tags:
   - { name: ops, description: 운영 정보 }
   - { name: assistant, description: 정책·업무 절차 질의(읽기 전용) }
+  - { name: knowledge, description: '(1.4.0) 운영자 RAG 문서 관리 — 보기·초안, 반영은 승인으로(ADR-0092)' }
+  - { name: consult, description: '(1.4.0) 상담 도우미 — 상담 접수 화면 옆 칸(ADR-0093)' }
 
 paths:
   /actuator/health:
@@ -258,6 +266,207 @@ paths:
         '204': { description: 지움(없어도 멱등 성공) }
         '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
 
+  # ---- (1.4.0) 운영자 RAG 문서 관리(ADR-0092) ----
+  /assistant/knowledge-documents:
+    get:
+      tags: [knowledge]
+      summary: '(1.4.0) 운영자 RAG 문서 목록 — 판·색인 상태(본문 없음, ADR-0092)'
+      description: 운영자 누구나 본다. 문서 ID 순. `reindex` 는 마지막 재색인(승인 반영 뒤 1분 주기)의 결과.
+      operationId: listKnowledgeDocuments
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: includeRetired, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDocumentList' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /assistant/knowledge-documents/detail:
+    get:
+      tags: [knowledge]
+      summary: '(1.4.0) 문서 하나 — 본문(지금 판 또는 고른 판)과 판 이력'
+      description: 문서 ID 에 `/` 가 있어 경로 대신 query 로 받는다.
+      operationId: getKnowledgeDocument
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: documentId, in: query, required: true, schema: { type: string, maxLength: 300 } }
+        - { name: version, in: query, required: false, schema: { type: integer, minimum: 1 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDocumentDetail' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+
+  /assistant/knowledge-applications:
+    get:
+      tags: [knowledge]
+      summary: '(1.4.0) 최근 승인 반영 기록(최근 순)'
+      operationId: listKnowledgeApplications
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeApplicationList' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  /assistant/knowledge-drafts:
+    get:
+      tags: [knowledge]
+      summary: '(1.4.0) 내 열린 초안(최근 고친 순)'
+      operationId: listMyKnowledgeDrafts
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDraftList' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [knowledge]
+      summary: '(1.4.0) 초안 만들기 — 새 문서·고치기(UPSERT, 본문 전체)·내리기(RETIRE)'
+      description: |
+        편집 역할(`pmart.assistant.knowledge.editor-roles`, 기본 OPERATOR_ADMIN)만. 같은 Idempotency-Key 는 처음 만든 초안을 돌려준다
+        (다른 내용이면 409 IDEMPOTENCY_CONFLICT). 응답 `approvalRequest` 를 approval-service `POST /change-requests` 에 그대로 보내
+        승인을 요청한다(→ `POST /change-requests/{id}/submissions`). 승인되면 이 서비스가 새 판을 만들고 1분 안쪽에 재색인한다.
+        형식: 첫 줄 `# 제목`, 128KB 이하, 금지 표현("가정"·"설계안"·"확정 정책") 없음, 문서 ID `docs/rag/rag-docs/<영역>/<이름>.md`
+        (영역은 지금 있는 폴더). `customer_app/` 은 저장소가 정본이라 400.
+      operationId: createKnowledgeDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KnowledgeDraftCreate' }
+      responses:
+        '201':
+          description: 만듦(같은 키면 처음 것)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: STALE_VERSION(baseVersion 이 지금 판과 다름)·INVALID_STATE(내릴 문서 없음)·IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
+  /assistant/knowledge-drafts/{draftId}:
+    get:
+      tags: [knowledge]
+      summary: '(1.4.0) 초안 하나 + 지금 판(비교용) — 승인자도 본다(운영자 누구나)'
+      operationId: getKnowledgeDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: draftId, in: path, required: true, schema: { type: string, maxLength: 40 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDraft' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: '_common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [knowledge]
+      summary: '(1.4.0) 열린 초안 본문 고치기(만든 사람만)'
+      description: 승인을 요청한 뒤 고치면 본문 해시가 달라져 승인돼도 반영되지 않는다(REJECTED·DRAFT_CHANGED) — 새 `approvalRequest` 로 다시 요청한다.
+      operationId: updateKnowledgeDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: draftId, in: path, required: true, schema: { type: string, maxLength: 40 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/KnowledgeDraftUpdate' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeDraft' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '404':
+          description: NOT_FOUND — 없거나 다른 사람의 초안
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+        '409':
+          description: INVALID_STATE — 닫힌 초안(반영·거절·버림)
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+    delete:
+      tags: [knowledge]
+      summary: '(1.4.0) 초안 버리기(만든 사람·열린 초안만 — 아니어도 204)'
+      operationId: discardKnowledgeDraft
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/IdempotencyKey'
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - { name: draftId, in: path, required: true, schema: { type: string, maxLength: 40 } }
+      responses:
+        '204': { description: 버림(멱등) }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+
+  # ---- (1.4.0) 상담 도우미(ADR-0093) ----
+  /assistant/consult-guides:
+    get:
+      tags: [consult]
+      summary: '(1.4.0) 상담 도우미 — 문의 종류·회원 조회 결과·주문 상태로 본인 확인 절과 정책 근거(LLM 없음, 저장 안 함)'
+      description: |
+        `CS_AGENT`·`OPERATOR_ADMIN`(설정 `pmart.assistant.consult-guide.roles`)만. 개인정보·식별자(고객 ID·주문 번호·전화·주소)를 받지 않는다 —
+        주문 상태는 화면이 이미 조회한 상태 이름뿐. 근거는 설정 검색어로 지금 스냅숏에서 찾은 문서 조각(Citation)이라 문서를 고치면(ADR-0092) 다음
+        색인부터 바뀐다. 활성 색인이 없거나 임베딩이 안 되면 503 — 화면은 도우미 칸만 비우고 상담 접수는 그대로 한다.
+      operationId: getConsultGuide
+      x-pmart-user-types: [OPERATOR]
+      parameters:
+        - $ref: '_common.yaml#/components/parameters/SourceSystem'
+        - name: category
+          in: query
+          required: true
+          description: 상담 접수(case-service cs-intakes)와 같은 문의 종류
+          schema: { type: string, enum: [ORDER, DELIVERY, PAYMENT, REFUND, PRODUCT, ACCOUNT, OTHER] }
+        - { name: memberFound, in: query, required: false, description: 연락한 번호로 회원이 조회됐는지(화면 값 — 응답에 그대로), schema: { type: boolean } }
+        - { name: orderStatus, in: query, required: false, description: 화면이 보여 준 주문 상태 이름(order-service 값 그대로), schema: { type: string, maxLength: 40, pattern: '^[A-Z_]+$' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsultGuide' }
+        '400': { $ref: '_common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: '_common.yaml#/components/responses/Forbidden' }
+        '503':
+          description: DEPENDENCY_UNAVAILABLE — 활성 색인 없음·임베딩·검색 장애
+          content:
+            application/problem+json:
+              schema: { $ref: '_common.yaml#/components/schemas/ErrorResponse' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -407,6 +616,138 @@ components:
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/QuestionHistoryItem' } }
         page: { $ref: '_common.yaml#/components/schemas/Page' }
+
+    # ---- (1.4.0) 운영자 RAG 문서 관리(ADR-0092) ----
+    KnowledgeIndexState:
+      type: string
+      enum: [INDEXED, PENDING, FAILED, NOT_INDEXED]
+      description: 지금 판이 활성 스냅숏에 들어갔는지. PENDING=재색인 대기, FAILED=판을 바꾼 뒤 재색인이 실패(1분 뒤 다시 함), NOT_INDEXED=가져온 뒤 DB 로 아직 색인 안 함
+    KnowledgeDocumentSummary:
+      type: object
+      required: [documentId, domain, title, version, contentSha256, retired, readOnly, indexState, updatedAt, updatedBy]
+      properties:
+        documentId: { type: string, description: '저장소 경로 그대로(docs/rag/rag-docs/<영역>/<이름>.md) — 인용 documentId 와 같다' }
+        domain: { type: string, description: 영역 폴더 }
+        title: { type: string }
+        version: { type: integer }
+        contentSha256: { type: string }
+        retired: { type: boolean, description: 내린 문서(색인 안 함) }
+        readOnly: { type: boolean, description: '저장소가 정본(customer_app — 고객 RAG 와 같은 파일). 초안을 만들 수 없다' }
+        indexState: { $ref: '#/components/schemas/KnowledgeIndexState' }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { type: string, description: '반영한 초안의 작성자(운영자 ID), 가져오기는 IMPORT' }
+    KnowledgeReindex:
+      type: object
+      properties:
+        requestedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        lastResult: { type: [string, 'null'], description: 'OK·FAILED' }
+        lastSnapshotId: { type: [string, 'null'] }
+    KnowledgeDocumentList:
+      type: object
+      required: [items, source, reindex]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/KnowledgeDocumentSummary' } }
+        source: { type: string, enum: [files, db], description: '색인 원본 설정 — files 면 승인 반영돼도 재색인하지 않는다(가져오기 전)' }
+        reindex: { $ref: '#/components/schemas/KnowledgeReindex' }
+    KnowledgeVersion:
+      type: object
+      required: [version, op, title, contentSha256, createdBy, createdAt]
+      properties:
+        version: { type: integer }
+        op: { type: string, enum: [IMPORT, UPSERT, RETIRE] }
+        title: { type: string }
+        contentSha256: { type: string }
+        approvalId: { type: [string, 'null'] }
+        draftId: { type: [string, 'null'] }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+    KnowledgeDocumentDetail:
+      type: object
+      required: [document, content, shownVersion, versions]
+      properties:
+        document: { $ref: '#/components/schemas/KnowledgeDocumentSummary' }
+        content: { type: string, description: 마크다운 본문(shownVersion 판) }
+        shownVersion: { type: integer }
+        versions: { type: array, items: { $ref: '#/components/schemas/KnowledgeVersion' }, description: 최근 판 순 }
+    KnowledgeDraftCreate:
+      type: object
+      required: [documentId, op]
+      properties:
+        documentId: { type: string, maxLength: 300 }
+        op: { type: string, enum: [UPSERT, RETIRE] }
+        baseVersion: { type: [integer, 'null'], minimum: 0, description: '본 판(새 문서 0). 주면 지금 판과 같은지 본다(아니면 409 STALE_VERSION). 없으면 지금 판' }
+        content: { type: [string, 'null'], description: 'UPSERT 본문 전체(마크다운). RETIRE 는 비운다' }
+    KnowledgeDraftUpdate:
+      type: object
+      required: [content]
+      properties:
+        content: { type: string }
+    KnowledgeDraft:
+      type: object
+      required: [draftId, documentId, op, baseVersion, authorId, state, createdAt, updatedAt, approvalRequest]
+      properties:
+        draftId: { type: string }
+        documentId: { type: string }
+        op: { type: string, enum: [UPSERT, RETIRE] }
+        baseVersion: { type: integer }
+        title: { type: [string, 'null'] }
+        content: { type: [string, 'null'] }
+        contentSha256: { type: [string, 'null'] }
+        authorId: { type: string }
+        state: { type: string, enum: [OPEN, APPLIED, REJECTED, DISCARDED] }
+        approvalId: { type: [string, 'null'], description: 반영·거절한 승인 }
+        resultReason: { type: [string, 'null'], description: 'REJECTED 사유: STALE_VERSION·DRAFT_CHANGED·DRAFT_MISMATCH·READ_ONLY_DOCUMENT 등' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        current:
+          type: [object, 'null']
+          description: 지금 판(비교용 — 새 문서면 null)
+          properties:
+            version: { type: integer }
+            title: { type: string }
+            content: { type: string }
+            retired: { type: boolean }
+        approvalRequest:
+          type: object
+          additionalProperties: true
+          description: 'approval-service POST /change-requests 본문(type RAG_DOCUMENT, targetRef = draftId, targetExpectedVersion = baseVersion, 행 하나). 그대로 보낸다'
+    KnowledgeDraftList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/KnowledgeDraft' } }
+    KnowledgeApplication:
+      type: object
+      required: [approvalId, result, at]
+      properties:
+        approvalId: { type: string }
+        draftId: { type: [string, 'null'] }
+        documentId: { type: [string, 'null'] }
+        result: { type: string, enum: [APPLIED, REJECTED] }
+        reason: { type: [string, 'null'] }
+        version: { type: [integer, 'null'] }
+        approverId: { type: [string, 'null'] }
+        at: { type: string, format: date-time }
+    KnowledgeApplicationList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/KnowledgeApplication' } }
+
+    # ---- (1.4.0) 상담 도우미(ADR-0093) ----
+    ConsultGuide:
+      type: object
+      required: [category, policies, indexSnapshotId]
+      properties:
+        category: { type: string }
+        memberFound: { type: [boolean, 'null'] }
+        orderStatus: { type: [string, 'null'] }
+        identity:
+          $ref: '#/components/schemas/Citation'
+          description: '본인 확인 절(운영자 RAG backoffice/05 제15조). 문의 종류·회원 조회에 맞는 줄은 화면이 고른다. 못 찾으면 없음'
+        policies: { type: array, items: { $ref: '#/components/schemas/Citation' }, description: '문의 종류·주문 상태에 맞는 정책 근거(문서 조각)' }
+        indexSnapshotId: { type: string }
 
   examples:
     Answered:

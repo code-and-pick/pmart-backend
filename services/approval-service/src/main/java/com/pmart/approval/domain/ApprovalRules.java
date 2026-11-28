@@ -212,6 +212,7 @@ public final class ApprovalRules {
       case "MFC_OPERATION_RESTRICTION" -> "OperationRestriction";
       case "SEARCH_SYNONYM" -> "SynonymSet"; // ADR-0073, 원객체 = 동의어 집합
       case "PROMOTION" -> "Promotion"; // ADR-0082, 원객체 = 행사(기간 할인·쿠폰)
+      case "RAG_DOCUMENT" -> "KnowledgeDocument"; // ADR-0092, 원객체 = 운영자 RAG 문서
       default -> type;
     };
   }

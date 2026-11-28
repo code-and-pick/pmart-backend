@@ -30,5 +30,34 @@ pmart:
     answers:
       store-question: true # 질문 원문 저장 — 사용자 2026-11-19 "응 해줘"(백오피스 질문 목록에 질문이 보이게, ADR-0036 결정 3). 운영자 질문만(이 서비스는 직원 전용), 본인만 조회, 보존은 답변과 같음
       retention: 14d # 답변·채팅 세션 보존 기간 — 사용자 2026-11-26 "보존 기간을 14일로"(ADR-0084, AI-1 의 90일 대신). 비어 있으면 지우지 않는다
+    # 운영자 RAG 문서 관리(ADR-0092, 2026-11-28): files(저장소 manifest — 예전 그대로) | db(문서 정본 DB — 승인 반영 뒤 1분 주기 재색인).
+    # db 로 바꾸면 다음 rag-ingest 가 없는 문서만 저장소에서 가져온 뒤 DB 로 색인한다. 편집 역할 = 초안을 만들고 고칠 수 있는 역할(승인 요청 역할은 approval-service)
+    knowledge:
+      source: files
+      editor-roles: [OPERATOR_ADMIN] # ADR-0092 결정 4 기본값(사용자 확인 대상)
+    # 상담 도우미(ADR-0093, 2026-11-28): 문의 종류·주문 상태 → 검색어. LLM 없이 지금 색인에서 조각을 찾는다 — 문서를 바꾸면 검색어만 고친다
+    consult-guide:
+      roles: [CS_AGENT, OPERATOR_ADMIN]
+      identity-query: 상담 본인 확인과 주문 확인 문의 종류별 본인 확인 질문
+      per-query: 2
+      max-policies: 6
+      categories:
+        ORDER: [고객센터 주문 취소 가능 시점과 대리 취소, 예약 시간 변경, 결제 후 주소와 연락처 변경]
+        DELIVERY: [배송 지연 신고 처리, 배송 완료인데 받지 못함 미수령 처리, 오배송 확인과 귀책별 처리]
+        PAYMENT: [결제 확인 중 상태 안내, 결제 금액 배달팁 봉투값 기준]
+        REFUND: [환불 금액 기준과 진행 단계, 결품 부분 취소 환불, 환불 완료 안내 기준]
+        PRODUCT: [받은 상품 누락 다른 상품 처리, 파손 품질 문제 처리, 반품 접수 기한과 회수비]
+        ACCOUNT: [회원 계정 문의 본인 확인, 탈퇴 중 주문 처리]
+        OTHER: [상담 접수 기록과 고객 동의 기록, 접수와 실행 완료 안내 기준]
+      order-statuses:
+        PAYMENT_PENDING: [결제 확인 중 상태 안내]
+        PAYMENT_UNKNOWN: [결제 확인 중 상태 안내]
+        CONFIRMED: [상품준비 전 고객센터 주문 취소]
+        PREPARING: [상품준비 뒤 취소 불가와 인계 뒤 반품]
+        PARTIALLY_HANDED_OVER: [인계 뒤 반품과 회수]
+        IN_DELIVERY: [배송 중 지연 신고와 취소 불가]
+        PARTIALLY_DELIVERED: [부분 배송 누락 처리]
+        COMPLETED: [반품 접수 기한과 회수비, 배송 완료인데 받지 못함 미수령 처리]
+        CANCELLED: [취소 완료 기준과 전액 환불]
     ingest:
       prune-grace: 1h # RETIRED·FAILED 스냅숏 수동 정리 유예(lease×2 이상)
