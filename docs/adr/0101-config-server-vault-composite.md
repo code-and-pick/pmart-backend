@@ -1,6 +1,7 @@
 # ADR-0101 LAN 서비스 비밀은 config-server 가 Git + Vault 복합 백엔드로 내려준다 — 서비스는 Vault 를 직접 읽지 않는다
 
 - 상태: **승인** (2026-11-28, 사용자 결정 — "eum 이랑 동일한 구조로 가야할것같아" → Eum 의 두 부분(① config-server 복합 백엔드 ② 서비스 직접 읽기·공용 루트 토큰) 중 "응 1번이야"). 구현 전.
+- 경위: 사용자는 처음(ADR-0100) **서비스별 최소 권한**을 이유로 복합 백엔드를 뺐다("정석이 아니야"). 여러 PC 의 출발지 IP 장애(배경) 뒤 **단순함을 택해** 바꿨다 — 최소 권한이 없어진다는 설명을 듣고 다시 확인(pc2 Vault 세션 경유, 2026-11-28 "eum 프로젝트 방향으로 가려면 pc1이 결정한대로 진행해").
 - 대체: **ADR-0100 결정 3·4·5·6**(서비스가 Spring Cloud Vault 로 직접 읽음, 기본 꺼짐·LAN 환경변수로 켬, 서비스별 AppRole·IP 묶음, 배포 토큰으로 서비스별 secret-id 발급). ADR-0100 의 **대안 1("config-server 를 Git + Vault 복합 백엔드로" — 그때 사용자 "정석이 아니야")을 이번 결정으로 채택**한다.
 - 유지: ADR-0100 결정 1(pc2 Vault, TLS)·2(KV v2 `config/<앱>,lan`, 필드 = Spring 속성 이름)·7(목록은 통째로)·8(unseal·관리자 토큰·감사·스냅샷)·9 의 ⑤(전체가 동작한 뒤에만 `{cipher}` 삭제). ADR-0027 결정 4 대체(`{cipher}` 제거)도 그대로.
 - 범위: LAN. 운영(AWS·Kubernetes·Native)은 ADR-0100 과 같이 이 ADR 밖.
@@ -32,3 +33,8 @@
 - **비밀을 바꾸면**: Vault `config/<앱>,lan` 을 고친 뒤 그 앱 재시작(또는 `/actuator/busrefresh`). Vault 변경은 GitHub 웹훅이 없어 `/monitor` 로 자동 전달되지 않는다.
 - 목록(`signing.keys[0]` 등)은 한 출처에서 통째로 오므로 그 목록의 일반 값(kid)도 Vault 에 둔다(ADR-0100 결정 7 유지 — 복합 응답에서도 같은지 통합 시험으로 확인).
 - `render.sh` 의 서비스 Vault 환경변수·CA 마운트·secret-id 발급(#566~#568)은 쓰지 않게 된다 — 정리는 ⑤ 뒤에 따로.
+
+## 확인 (2026-11-28, PC 1 — 전환 ①)
+- 구현: config-server `application.yml` 의 `vault` 프로필(LAN 은 `SPRING_PROFILES_ACTIVE=git,vault`, Vault order 1·Git order 2, kv-v2 `config`, 구분자 `,`, AppRole), `VaultTrustStorePostProcessor`(Vault 백엔드는 신뢰 저장소를 PKCS12 로만 읽어 — 형식 설정이 없다 — `pmart.config.vault.ca-pem` 의 PEM 을 기동 때 PKCS12 임시 파일로 바꿔 넣는다. 파일·인증서가 없으면 기동 실패). role-id·secret-id 는 configtree 파일 `spring.cloud.config.server.vault.app-role.role-id`·`secret-id`.
+- `ConfigServerVaultIT`(4 — Vault 1.21.4 dev-tls 컨테이너, LAN 과 같은 정책 `config/data/*` 읽기만): Vault 출처가 Git 보다 앞·같은 속성은 Vault 값·Git 의 다른 값 유지 / Vault 경로 없는 앱은 Git 만 / 서비스(config client)는 비밀은 Vault 값·목록(`pmart.auth.signing.keys`)은 Vault 것 1개로 통째로 / 틀린 secret-id 면 config-server 응답 500(`VaultLoginException: invalid role or secret ID`)·fail-fast 서비스 기동 실패. `VaultTrustStorePostProcessorTest`(4). 기존 `ConfigServerIT` 9·`MonitorBusIT` 3·`ConfigCipherToolTest` 5 그대로 통과(`:platform-services:config-server:check`).
+- 남은 것: ② render.sh(config-server 의 role-id·secret-id 파일·CA 마운트·프로필) → ③ LAN.
